@@ -16,6 +16,8 @@ export interface JobRecord {
   output: string
   /** Providers that hit a limit on this job, in order. */
   failedOver: ProviderId[]
+  /** Model that ran the job, as the CLI reported it. */
+  model?: string
   error?: string
 }
 

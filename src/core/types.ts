@@ -49,6 +49,15 @@ export interface RunOptions {
   resume?: string
   /** Makes this a lead session: connect to the bridge and allow only its tools. */
   bridge?: BridgeInfo
+  /** Model the person chose for this plan. Unset means whatever the CLI is set to. */
+  model?: string
+}
+
+/** A model a CLI can run, for the model picker. */
+export interface ModelOption {
+  /** What is passed to the CLI's --model flag. */
+  id: string
+  label: string
 }
 
 export interface ProviderAdapter {
@@ -81,5 +90,7 @@ export interface LeadMessage {
   text: string
   /** Plan the lead ran on, for lead messages. */
   provider?: ProviderId
+  /** Model that answered, as the CLI reported it. */
+  model?: string
   status: 'streaming' | 'done' | 'error'
 }

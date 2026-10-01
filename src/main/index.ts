@@ -93,6 +93,7 @@ app.whenReady().then(async () => {
       restingUntil: worker.restingUntil,
       resetsAt: null,
       atRisk: false,
+      model: null,
       busy: worker.busy,
       queued: worker.queued
     }))

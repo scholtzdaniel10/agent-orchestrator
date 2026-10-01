@@ -1,4 +1,4 @@
-import type { JobType, LeadMessage, ProviderId } from '../core/types'
+import type { JobType, LeadMessage, ModelOption, ProviderId } from '../core/types'
 import type { JobRecord } from '../core/router'
 
 /** One subscription plan as the sidebar shows it. */
@@ -18,6 +18,8 @@ export interface PlanStatus {
   busy: boolean
   /** Jobs waiting in its queue. */
   queued: number
+  /** Model the person chose for this plan; null means the CLI's own default. */
+  model: string | null
 }
 
 /** Everything the renderer can ask of the main process: `window.api`. */
@@ -29,10 +31,15 @@ export interface OrchestratorApi {
   listPlans(): Promise<PlanStatus[]>
   onPlansUpdate(cb: (plans: PlanStatus[]) => void): () => void
 
+  /** Models the plan's CLI offers. May be empty; any model name can still be typed. */
+  listModels(provider: ProviderId): Promise<ModelOption[]>
+  /** Choose the model for a plan (null = the CLI's default). Pushes a plans update. */
+  setModel(provider: ProviderId, model: string | null): Promise<void>
+
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>
   resetLead(): Promise<void>
   onLeadUpdate(cb: (message: LeadMessage) => void): () => void
 }
 
-export type { JobRecord, JobType, LeadMessage, ProviderId }
+export type { JobRecord, JobType, LeadMessage, ModelOption, ProviderId }

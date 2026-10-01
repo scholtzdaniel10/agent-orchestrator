@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { JobRecord } from '../core/router'
-import type { JobType, LeadMessage } from '../core/types'
+import type { JobType, LeadMessage, ModelOption, ProviderId } from '../core/types'
 import type { OrchestratorApi, PlanStatus } from './api-types'
 
 const api: OrchestratorApi = {
@@ -31,6 +31,12 @@ const api: OrchestratorApi = {
     return () => {
       ipcRenderer.removeListener('plans:update', listener)
     }
+  },
+  listModels(provider: ProviderId): Promise<ModelOption[]> {
+    return ipcRenderer.invoke('models:list', provider)
+  },
+  setModel(provider: ProviderId, model: string | null): Promise<void> {
+    return ipcRenderer.invoke('settings:setModel', provider, model)
   },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)
