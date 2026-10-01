@@ -46,6 +46,7 @@ html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -59,9 +60,36 @@ body {
 
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 230px;
+  grid-template-areas: 'lead workers usage';
   height: 100%;
+  min-height: 0;
   gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.panel-lead {
+  grid-area: lead;
+}
+
+.panel-workers {
+  grid-area: workers;
+}
+
+.panel-usage {
+  grid-area: usage;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 12px;
 }
 
@@ -72,6 +100,10 @@ h2 {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.panel > h2 {
+  flex-shrink: 0;
 }
 
 .job-box,
@@ -106,7 +138,8 @@ textarea {
   background: var(--bg);
 }
 
-.job-actions {
+.job-actions,
+.lead-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -152,6 +185,89 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+.lead-chat,
+.workers,
+.usage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.workers {
+  gap: 12px;
+}
+
+.lead-form,
+.workers > .hint,
+.workers > .job-box {
+  flex-shrink: 0;
+}
+
+.lead-chat > .output-error {
+  flex: none;
+  margin-top: 0;
+}
+
+.lead-form textarea {
+  resize: none;
+}
+
+.lead-log,
+.usage-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+
+.lead-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lead-msg {
+  max-width: 92%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.lead-msg-user {
+  align-self: flex-end;
+  background: var(--selected);
+}
+
+.lead-msg-lead {
+  align-self: flex-start;
+  background: var(--bg);
+}
+
+.lead-meta {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: normal;
+}
+
+.lead-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lead-text.output-error {
+  margin-top: 0;
+}
+
 .jobs,
 .output-pane {
   display: flex;
@@ -159,11 +275,19 @@ select:focus-visible,
   overflow: hidden;
 }
 
+.workers .jobs,
+.workers .output-pane {
+  flex: 1 1 0;
+}
+
 .job-list {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  scrollbar-gutter: stable;
 }
 
 .job-row {
@@ -221,10 +345,13 @@ select:focus-visible,
 .output,
 .output-error {
   margin: 0;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
+  scrollbar-gutter: stable;
 }
 
 .output-error {
@@ -233,4 +360,156 @@ select:focus-visible,
   color: var(--error);
   background: var(--error-bg);
   border-radius: 6px;
+}
+
+.usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.usage-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg);
+}
+
+.usage-card.is-dim {
+  background: var(--badge);
+}
+
+.usage-card.is-dim .usage-name,
+.usage-card.is-dim .usage-left,
+.usage-card.is-dim .usage-detail {
+  color: var(--muted);
+}
+
+.usage-card.is-dim .meter-fill {
+  background: var(--muted);
+}
+
+.usage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.usage-name {
+  font-weight: 650;
+}
+
+.usage-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.meter {
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--badge);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--running);
+}
+
+.meter-fill.is-low,
+.usage-card.is-dim .meter-fill.is-low {
+  background: var(--failed);
+}
+
+.usage-left {
+  flex: none;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-detail {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-risk {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 2px solid var(--error);
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--error);
+  font-weight: 700;
+}
+
+.usage-risk-mark {
+  display: inline-block;
+  flex: none;
+  min-width: 1.25em;
+  padding: 0 4px;
+  border: 2px solid var(--error);
+  border-radius: 4px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+}
+
+@media (max-width: 999px) {
+  .app {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-rows: fit-content(280px) minmax(0, 1fr);
+    grid-template-areas:
+      'usage usage'
+      'lead workers';
+  }
+
+  .panel-usage {
+    overflow: auto;
+  }
+
+  .panel-usage .usage,
+  .panel-usage .usage-list {
+    flex: none;
+    overflow: visible;
+  }
+
+  .usage-list {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .usage-card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: fit-content(420px) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'usage'
+      'lead'
+      'workers';
+  }
+
+  .usage-list {
+    flex-direction: column;
+  }
+
+  .usage-card {
+    flex: none;
+  }
 }
