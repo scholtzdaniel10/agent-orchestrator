@@ -1,6 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentEvent, Job, ProviderAdapter, RunHandle } from '../types'
+import type { AgentEvent, BridgeInfo, Job, ProviderAdapter, RunHandle, RunOptions } from '../types'
 import { runCaptured, spawnCli, type Bin } from './process'
 
 const LIMIT_RE = /usage limit|rate.?limit|limit reached|out of (usage|credits)|spend limit|quota/i
@@ -23,14 +23,17 @@ export class CursorAdapter implements ProviderAdapter {
     return code === 0 && /logged in/i.test(stdout + stderr)
   }
 
-  run(job: Job, cwd: string): RunHandle {
-    return spawnCli(
-      this.bin,
-      ['-p', '--trust', '--output-format', 'stream-json'],
-      job.prompt,
-      cwd,
-      (line) => this.parseEvent(line)
-    )
+  run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
+    const args = ['-p', '--trust', '--output-format', 'stream-json']
+    if (opts?.resume) args.push('--resume', opts.resume)
+    if (opts?.bridge) {
+      const cursorDir = join(cwd, '.cursor')
+      mkdirSync(cursorDir, { recursive: true })
+      writeFileSync(join(cursorDir, 'mcp.json'), cursorMcpConfig(opts.bridge))
+      writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig())
+      args.push('--approve-mcps')
+    }
+    return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseEvent(line))
   }
 
   parseEvent(line: string): AgentEvent | null {
@@ -45,6 +48,26 @@ export class CursorAdapter implements ProviderAdapter {
     if (typeof e === 'string') return LIMIT_RE.test(e)
     return e.kind === 'limit'
   }
+}
+
+function cursorMcpConfig(bridge: BridgeInfo): string {
+  return JSON.stringify({
+    mcpServers: {
+      orchestrator: {
+        url: bridge.url,
+        headers: { Authorization: `Bearer ${bridge.token}` }
+      }
+    }
+  })
+}
+
+function cursorCliConfig(): string {
+  return JSON.stringify({
+    permissions: {
+      allow: ['Mcp(orchestrator:*)'],
+      deny: ['Shell(*)', 'Write(**)']
+    }
+  })
 }
 
 function resolveCursorBin(): Bin {

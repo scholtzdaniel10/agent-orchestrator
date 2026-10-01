@@ -1,6 +1,6 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import type { AgentEvent, Job, ProviderAdapter, RunHandle } from '../types'
+import type { AgentEvent, BridgeInfo, Job, ProviderAdapter, RunHandle, RunOptions } from '../types'
 import { runCaptured, spawnCli, type Bin } from './process'
 
 const LIMIT_RE =
@@ -29,14 +29,25 @@ export class ClaudeAdapter implements ProviderAdapter {
     }
   }
 
-  run(job: Job, cwd: string): RunHandle {
-    return spawnCli(
-      this.bin,
-      ['-p', '--output-format', 'stream-json', '--verbose'],
-      job.prompt,
-      cwd,
-      (line) => this.parseEvent(line)
-    )
+  run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
+    const args = ['-p', '--output-format', 'stream-json', '--verbose']
+    if (opts?.resume) args.push('--resume', opts.resume)
+    if (opts?.bridge) {
+      mkdirSync(cwd, { recursive: true })
+      const configPath = join(cwd, 'orchestrator-mcp.json')
+      writeFileSync(configPath, claudeMcpConfig(opts.bridge))
+      const allowed = opts.bridge.tools.map((tool) => `mcp__orchestrator__${tool}`).join(',')
+      args.push(
+        '--mcp-config',
+        configPath,
+        '--strict-mcp-config',
+        '--allowedTools',
+        allowed,
+        '--setting-sources',
+        'project'
+      )
+    }
+    return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseEvent(line))
   }
 
   parseEvent(line: string): AgentEvent | null {
@@ -51,6 +62,18 @@ export class ClaudeAdapter implements ProviderAdapter {
     if (typeof e === 'string') return LIMIT_RE.test(e)
     return e.kind === 'limit'
   }
+}
+
+function claudeMcpConfig(bridge: BridgeInfo): string {
+  return JSON.stringify({
+    mcpServers: {
+      orchestrator: {
+        type: 'http',
+        url: bridge.url,
+        headers: { Authorization: `Bearer ${bridge.token}` }
+      }
+    }
+  })
 }
 
 function resolveClaudeBin(): Bin {

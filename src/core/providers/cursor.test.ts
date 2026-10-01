@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,6 +39,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       }
     )
   })
+}
+
+async function cliArgs(handle: RunHandle): Promise<string[]> {
+  const { exit } = await collect(handle)
+  expect(exit.code).toBe(0)
+  return JSON.parse(exit.stderr) as string[]
 }
 
 async function collect(
@@ -150,7 +156,7 @@ setInterval(() => {}, 1000000)
 `
   )
   const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
-  const handle = adapter.run({ id: 'k', type: 'debugging', prompt: 'x' }, dir)
+  const handle = adapter.run({ id: 'k', prompt: 'x' }, dir)
   try {
     const iter = handle.events[Symbol.asyncIterator]()
     const first = await withTimeout(iter.next(), 3000)
@@ -166,13 +172,68 @@ setInterval(() => {}, 1000000)
   }
 }, 15_000)
 
+test('run args cover no opts, resume, bridge, and both', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-opts-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { writeSync } from 'node:fs'
+writeSync(2, JSON.stringify(process.argv.slice(2)))
+process.exit(0)
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  const url = 'http://127.0.0.1:9/mcp'
+  const token = 'secret-token'
+  const bridge = { url, token, tools: ['send_job', 'get_result'] }
+  const job = { id: 'job-1', prompt: 'hello' }
+  const base = ['-p', '--trust', '--output-format', 'stream-json']
+  const mcpJson = `{"mcpServers":{"orchestrator":{"url":"${url}","headers":{"Authorization":"Bearer ${token}"}}}}`
+  const cliJson =
+    '{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}'
+  try {
+    const plain = join(root, 'plain')
+    const resumeDir = join(root, 'resume')
+    const bridged = join(root, 'bridged')
+    const both = join(root, 'both')
+    mkdirSync(plain)
+    mkdirSync(resumeDir)
+
+    expect(await cliArgs(adapter.run(job, plain))).toEqual(base)
+    expect(existsSync(join(plain, '.cursor'))).toBe(false)
+
+    expect(await cliArgs(adapter.run(job, resumeDir, { resume: 'sess-1' }))).toEqual([
+      ...base,
+      '--resume',
+      'sess-1'
+    ])
+    expect(existsSync(join(resumeDir, '.cursor'))).toBe(false)
+
+    expect(await cliArgs(adapter.run(job, bridged, { bridge }))).toEqual([
+      ...base,
+      '--approve-mcps'
+    ])
+    expect(readFileSync(join(bridged, '.cursor', 'mcp.json'), 'utf8')).toBe(mcpJson)
+    expect(readFileSync(join(bridged, '.cursor', 'cli.json'), 'utf8')).toBe(cliJson)
+
+    expect(await cliArgs(adapter.run(job, both, { resume: 'sess-2', bridge }))).toEqual([
+      ...base,
+      '--resume',
+      'sess-2',
+      '--approve-mcps'
+    ])
+    expect(readFileSync(join(both, '.cursor', 'mcp.json'), 'utf8')).toBe(mcpJson)
+    expect(readFileSync(join(both, '.cursor', 'cli.json'), 'utf8')).toBe(cliJson)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('missing CLI resolves exit and ends events', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-missing-'))
   const adapter = new CursorAdapter({ command: join(dir, 'missing-cli.exe') })
   try {
-    const { events, exit } = await collect(
-      adapter.run({ id: 'm', type: 'review', prompt: 'hi' }, dir)
-    )
+    const { events, exit } = await collect(adapter.run({ id: 'm', prompt: 'hi' }, dir))
     expect(events).toEqual([])
     expect(exit.code).toBeNull()
     expect(exit.stderr.length).toBeGreaterThan(0)
