@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, RunHandle } from '../types'
-import { CursorAdapter } from './cursor'
+import { CursorAdapter, cursorEnv } from './cursor'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const prompt = 'say "hello"\n100% |& done >'
@@ -241,3 +241,36 @@ test('missing CLI resolves exit and ends events', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('cursorEnv drops the Git Bash markers on Windows only', () => {
+  const source = { PATH: 'p', SHELL: '/bin/bash.exe', MSYSTEM: 'MINGW64', Shell: 'x', TERM: 't' }
+  expect(cursorEnv('win32', source)).toEqual({ PATH: 'p', TERM: 't' })
+  expect(cursorEnv('linux', source)).toBeUndefined()
+  expect(cursorEnv('darwin', source)).toBeUndefined()
+})
+
+test.runIf(process.platform === 'win32')(
+  'run does not pass SHELL or MSYSTEM to the CLI on Windows',
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-env-'))
+    const script = writeScript(
+      dir,
+      'env.mjs',
+      `process.stderr.write(JSON.stringify({ shell: process.env.SHELL ?? null, msystem: process.env.MSYSTEM ?? null, path: typeof process.env.PATH }))\n`
+    )
+    const saved = { SHELL: process.env.SHELL, MSYSTEM: process.env.MSYSTEM }
+    process.env.SHELL = '/bin/bash.exe'
+    process.env.MSYSTEM = 'MINGW64'
+    try {
+      const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+      const { exit } = await collect(adapter.run({ id: 'e', prompt: 'x' }, dir))
+      expect(JSON.parse(exit.stderr)).toEqual({ shell: null, msystem: null, path: 'string' })
+    } finally {
+      if (saved.SHELL === undefined) delete process.env.SHELL
+      else process.env.SHELL = saved.SHELL
+      if (saved.MSYSTEM === undefined) delete process.env.MSYSTEM
+      else process.env.MSYSTEM = saved.MSYSTEM
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+)

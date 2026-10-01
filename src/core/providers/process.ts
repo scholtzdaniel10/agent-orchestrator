@@ -61,7 +61,8 @@ export function spawnCli(
   args: string[],
   prompt: string,
   cwd: string,
-  parse: (line: string) => AgentEvent | null
+  parse: (line: string) => AgentEvent | null,
+  env?: NodeJS.ProcessEnv
 ): RunHandle {
   const queue = createEventQueue()
   let stderr = ''
@@ -104,6 +105,7 @@ export function spawnCli(
 
   const child = spawn(bin.command, [...(bin.args ?? []), ...args], {
     cwd,
+    env,
     windowsHide: true,
     shell: false,
     stdio: ['pipe', 'pipe', 'pipe'],

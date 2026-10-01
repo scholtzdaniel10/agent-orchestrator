@@ -33,7 +33,14 @@ export class CursorAdapter implements ProviderAdapter {
       writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig())
       args.push('--approve-mcps')
     }
-    return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseEvent(line))
+    return spawnCli(
+      this.bin,
+      args,
+      job.prompt,
+      cwd,
+      (line) => this.parseEvent(line),
+      cursorEnv(process.platform, process.env)
+    )
   }
 
   parseEvent(line: string): AgentEvent | null {
@@ -48,6 +55,24 @@ export class CursorAdapter implements ProviderAdapter {
     if (typeof e === 'string') return LIMIT_RE.test(e)
     return e.kind === 'limit'
   }
+}
+
+/**
+ * On Windows the Cursor CLI runs its hooks through bash when SHELL or MSYSTEM is set (the app
+ * was started from Git Bash), but hooks installed there are PowerShell commands. They fail to
+ * parse, and a failed beforeMCPExecution hook blocks every MCP tool call. Drop both variables.
+ */
+export function cursorEnv(
+  platform: NodeJS.Platform,
+  source: NodeJS.ProcessEnv
+): NodeJS.ProcessEnv | undefined {
+  if (platform !== 'win32') return undefined
+  const env: NodeJS.ProcessEnv = {}
+  for (const [key, value] of Object.entries(source)) {
+    const upper = key.toUpperCase()
+    if (upper !== 'SHELL' && upper !== 'MSYSTEM') env[key] = value
+  }
+  return env
 }
 
 function cursorMcpConfig(bridge: BridgeInfo): string {
