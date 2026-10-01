@@ -60,7 +60,8 @@ app.whenReady().then(async () => {
   })
 
   store = new Store(join(app.getPath('userData'), 'orchestrator.sqlite'))
-  const rules = loadRules()
+  // ORCH_RULES points at an edited copy of rules.json; unset uses the bundled defaults.
+  const rules = loadRules(process.env.ORCH_RULES)
   const orch = new Orchestrator({
     adapters: [new ClaudeAdapter(), new CursorAdapter()],
     store,

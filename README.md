@@ -34,7 +34,7 @@ pnpm build   # typecheck + build
 pnpm gate    # acceptance check: 10 real jobs + one forced failover (uses your real plans)
 ```
 
-Routing rules and the allowance estimates live in `src/core/router/rules.json`. Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild. Set `ORCH_CWD` to choose the folder jobs run in.
+Routing rules and the allowance estimates live in `src/core/router/rules.json`. Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild. Set `ORCH_CWD` to choose the folder jobs run in, and `ORCH_RULES` to point at your own edited copy of the rules file.
 
 ## License
 

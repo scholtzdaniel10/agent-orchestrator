@@ -47,6 +47,22 @@ test('loadRules() parses the bundled file and covers every job type', () => {
   }
 })
 
+test('loadRules(path) loads an edited copy of the rules', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'router-rules-'))
+  try {
+    const path = join(dir, 'rules.json')
+    const edited = { ...loadRules(), fallbackFit: 0.9 }
+    edited.rules = { ...edited.rules, boilerplate: ['claude', 'cursor'] }
+    writeFileSync(path, JSON.stringify(edited))
+    const rules = loadRules(path)
+    expect(rules.fallbackFit).toBe(0.9)
+    expect(rules.rules.boilerplate).toEqual(['claude', 'cursor'])
+    expect(loadRules().rules.boilerplate).toEqual(['cursor', 'claude'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('loadRules rejects a file missing a job type', () => {
   const dir = mkdtempSync(join(tmpdir(), 'router-rules-'))
   try {
