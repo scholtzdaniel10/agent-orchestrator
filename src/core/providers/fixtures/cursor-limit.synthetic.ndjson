@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/work/example","session_id":"00000000-0000-4000-8000-000000000002","model":"Grok 4.7 256K Extra High","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Reply with exactly the word: ok"}]},"session_id":"00000000-0000-4000-8000-000000000002"}
+{"type":"result","subtype":"error","duration_ms":800,"duration_api_ms":0,"is_error":true,"result":"You've hit your usage limit for this plan.","session_id":"00000000-0000-4000-8000-000000000002","request_id":"00000000-0000-4000-8000-0000000000aa"}

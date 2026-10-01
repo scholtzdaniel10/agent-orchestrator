@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/work/example","session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79","model":"Grok 4.7 256K Extra High","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Reply with exactly the word: ok"}]},"session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79"}
+{"type":"thinking","subtype":"delta","text":"The user requested a","session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79","timestamp_ms":1790832734780}
+{"type":"thinking","subtype":"delta","text":" reply containing exactly","session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79","timestamp_ms":1790832734905}
+{"type":"thinking","subtype":"completed","session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79","timestamp_ms":1790832736070}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]},"session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79"}
+{"type":"result","subtype":"success","duration_ms":14224,"duration_api_ms":14224,"is_error":false,"result":"ok","session_id":"f7be1458-1eb0-461c-a896-c2dca9092f79","request_id":"9b2e8877-f228-4175-9c23-9b34ee09afe1","usage":{"inputTokens":10300,"outputTokens":106,"cacheReadTokens":5888,"cacheWriteTokens":0}}

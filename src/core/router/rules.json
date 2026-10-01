@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "planning": ["claude", "cursor"],
+    "debugging": ["claude", "cursor"],
+    "review": ["claude", "cursor"],
+    "refactor": ["cursor", "claude"],
+    "boilerplate": ["cursor", "claude"]
+  },
+  "fallbackFit": 0.7,
+  "allowance": {
+    "claude": { "windowHours": 5, "units": 15 },
+    "cursor": { "windowHours": 720, "units": 20000000 }
+  },
+  "defaultRestHours": 5
+}

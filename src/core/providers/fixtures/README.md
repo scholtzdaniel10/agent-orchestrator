@@ -1,0 +1,9 @@
+# Fixtures
+
+Captured from the real CLIs (`claude -p --output-format stream-json --verbose` and `agent -p --output-format stream-json`), then scrubbed: local paths, hook output, command/skill/plugin lists and extra thinking deltas removed. Event shapes are otherwise unchanged. Capture versions: claude 2.1.280, agent 2026.09.26.
+
+| File | Source |
+| --- | --- |
+| `claude-plain`, `claude-tool` | real, scrubbed |
+| `cursor-plain`, `cursor-tool` | real, scrubbed |
+| `claude-limit.synthetic`, `cursor-limit.synthetic` | **hand-built**. No real limit had been hit when these were written. They follow the documented shapes (`rate_limit_event` status `rejected`, `system/api_retry` error `rate_limit`, `is_error` result). Replace them with real captures the first time a plan actually runs out. |
