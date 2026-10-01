@@ -1,12 +1,26 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { JobRecord } from '../core/router'
+import type { JobType } from '../core/types'
 
-// Custom APIs for renderer
-const api = {}
+const api = {
+  submitJob(type: JobType, prompt: string): Promise<JobRecord> {
+    return ipcRenderer.invoke('jobs:submit', type, prompt)
+  },
+  listJobs(): Promise<JobRecord[]> {
+    return ipcRenderer.invoke('jobs:list')
+  },
+  onJobUpdate(cb: (job: JobRecord) => void): () => void {
+    const listener = (_event: IpcRendererEvent, job: JobRecord): void => {
+      cb(job)
+    }
+    ipcRenderer.on('jobs:update', listener)
+    return () => {
+      ipcRenderer.removeListener('jobs:update', listener)
+    }
+  }
+}
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
