@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentEvent, JobType, ProviderAdapter, ProviderId, RouterRules } from '../types'
-import { pickProvider } from './router'
+import { headroom, pickProvider } from './router'
 import type { Store } from './store'
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
@@ -33,6 +33,20 @@ interface InternalJob {
 
 type ResultEvent = Extract<AgentEvent, { kind: 'result' }>
 type LimitEvent = Extract<AgentEvent, { kind: 'limit' }>
+
+export interface WorkerInfo {
+  id: ProviderId
+  /** Installed and signed in: present in the candidate set. */
+  available: boolean
+  /** Fraction of allowance left, 0..1. */
+  headroom: number
+  /** Epoch milliseconds, only while that instant is still ahead. */
+  restingUntil: number | null
+  /** A job is running on this provider. */
+  busy: boolean
+  /** Jobs waiting in this provider's queue. */
+  queued: number
+}
 
 export class Orchestrator {
   private readonly adapters: ProviderAdapter[]
@@ -107,6 +121,28 @@ export class Orchestrator {
 
   list(): JobRecord[] {
     return this.jobs.map((job) => copy(job))
+  }
+
+  get(id: string): JobRecord | null {
+    const job = this.byJob.get(id)
+    if (!job) return null
+    return copy(job)
+  }
+
+  workers(): WorkerInfo[] {
+    const now = this.now()
+    return this.adapters.map((adapter) => {
+      const until = this.store.restingUntil(adapter.id)
+      const queue = this.queues.get(adapter.id)
+      return {
+        id: adapter.id,
+        available: this.candidates.includes(adapter.id),
+        headroom: headroom(adapter.id, this.store, this.rules, now),
+        restingUntil: until !== null && until > now ? until : null,
+        busy: this.running.has(adapter.id),
+        queued: queue?.length ?? 0
+      }
+    })
   }
 
   onUpdate(cb: (job: JobRecord) => void): () => void {

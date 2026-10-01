@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, ProviderAdapter, ProviderId, RunHandle } from '../types'
 import { Orchestrator, type JobRecord } from './orchestrator'
-import { loadRules } from './router'
+import { headroom, loadRules } from './router'
 import { Store } from './store'
 
 const CWD = 'C:\\work'
@@ -470,5 +470,64 @@ test('no signed-in provider fails the job; init can be called again', async () =
     orch.submit('planning', 'second')
     await orch.idle()
     expect(cursor.received.map((job) => job.prompt)).toEqual(['second'])
+  })
+})
+
+test('workers reports availability, rest, headroom, busy work, and queue depth', async () => {
+  const now = 1_700_000_000_000
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }, ok('b')])
+  const cursor = new FakeAdapter('cursor', [])
+  cursor.signedIn = false
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      store.setResting('claude', now - 1_000)
+      store.setResting('cursor', now + 60_000)
+      orch.submit('planning', 'one')
+      orch.submit('planning', 'two')
+      const rules = loadRules()
+      const workers = orch.workers()
+      expect(workers.map((worker) => worker.id)).toEqual(['claude', 'cursor'])
+      expect(workers[0]).toMatchObject({
+        available: true,
+        restingUntil: null,
+        busy: true,
+        queued: 1
+      })
+      expect(workers[1]).toMatchObject({
+        available: false,
+        restingUntil: now + 60_000,
+        busy: false,
+        queued: 0
+      })
+      expect(workers[0].headroom).toBe(headroom('claude', store, rules, now))
+      expect(workers[1].headroom).toBe(headroom('cursor', store, rules, now))
+      expect(workers[1].headroom).toBe(0)
+      held.open()
+      await orch.idle()
+      expect(orch.workers()[0]).toMatchObject({ busy: false, queued: 0 })
+    },
+    () => now
+  )
+})
+
+test('get returns a copy of the job, or null for an unknown id', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('secret') }])
+  await withOrch([claude], async (orch) => {
+    const submitted = orch.submit('review', 'read me')
+    const first = orch.get(submitted.id)
+    expect(first).toEqual(submitted)
+    expect(first).not.toBe(submitted)
+    if (!first) throw new Error('expected a job')
+    first.output = 'mutated'
+    first.prompt = 'changed'
+    first.failedOver.push('cursor')
+    expect(orch.get(submitted.id)).toEqual(submitted)
+    expect(orch.get('missing')).toBeNull()
+    held.open()
+    await orch.idle()
+    expect(orch.get(submitted.id)?.output).toBe('secret')
   })
 })
