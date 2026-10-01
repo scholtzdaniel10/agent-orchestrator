@@ -6,7 +6,7 @@
     "refactor": ["cursor", "claude"],
     "boilerplate": ["cursor", "claude"]
   },
-  "fallbackFit": 0.7,
+  "fallbackFit": 0.5,
   "allowance": {
     "claude": { "windowHours": 5, "units": 15 },
     "cursor": { "windowHours": 720, "units": 20000000 }
