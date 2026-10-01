@@ -180,7 +180,7 @@ export class Orchestrator {
     try {
       const adapter = this.byId.get(provider)
       if (!adapter) throw new Error(`no adapter for ${provider}`)
-      handle = adapter.run({ id: job.id, type: job.type, prompt: job.prompt }, this.cwd)
+      handle = adapter.run({ id: job.id, prompt: job.prompt }, this.cwd)
       for await (const event of handle.events) {
         if (event.kind === 'text') {
           this.appendText(job, event.text)

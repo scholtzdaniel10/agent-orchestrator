@@ -34,12 +34,29 @@ export interface RunHandle {
   kill(): void
 }
 
+/** How a CLI session reaches the app's local MCP bridge. */
+export interface BridgeInfo {
+  /** e.g. http://127.0.0.1:53124/mcp */
+  url: string
+  /** Bearer token; a new one every app start. */
+  token: string
+  /** Tool names the bridge serves, e.g. ['list_workers', 'send_job', ...]. */
+  tools: string[]
+}
+
+export interface RunOptions {
+  /** Continue an earlier session of the same provider. */
+  resume?: string
+  /** Makes this a lead session: connect to the bridge and allow only its tools. */
+  bridge?: BridgeInfo
+}
+
 export interface ProviderAdapter {
   id: ProviderId
   isInstalled(): Promise<boolean>
   isSignedIn(): Promise<boolean>
   /** Spawns the official CLI headless. Read-only: no edit flags until worktrees exist. */
-  run(job: Job, cwd: string): RunHandle
+  run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle
   parseEvent(line: string): AgentEvent | null
   /** True for a `limit` event, or for stderr text that says the plan is spent. */
   isLimitError(e: AgentEvent | string): boolean
@@ -55,4 +72,14 @@ export interface RouterRules {
   allowance: Record<ProviderId, { windowHours: number; units: number }>
   /** Hours to rest a provider after a limit error that gave no reset time. */
   defaultRestHours: number
+}
+
+/** One message in the lead chat. A lead message grows while its turn streams. */
+export interface LeadMessage {
+  id: string
+  role: 'user' | 'lead'
+  text: string
+  /** Plan the lead ran on, for lead messages. */
+  provider?: ProviderId
+  status: 'streaming' | 'done' | 'error'
 }
