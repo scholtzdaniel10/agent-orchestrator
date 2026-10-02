@@ -81,7 +81,7 @@ app.whenReady().then(async () => {
   const started = await startBridge(createOrchestratorTools(orch))
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
-  const prefer: ProviderId | undefined =
+  const envPrefer: ProviderId | undefined =
     leadEnv === 'claude' || leadEnv === 'cursor' ? leadEnv : undefined
   const lead = new Lead({
     adapters,
@@ -89,7 +89,7 @@ app.whenReady().then(async () => {
     rules,
     bridge: started.info,
     dir: join(app.getPath('userData'), 'lead'),
-    prefer,
+    prefer: () => settings.leadPlan() ?? envPrefer,
     modelFor
   })
   await lead.init()
@@ -100,10 +100,10 @@ app.whenReady().then(async () => {
       available: worker.available,
       used: clamp01(1 - worker.headroom),
       restingUntil: worker.restingUntil,
-      resetsAt: null,
-      atRisk: false,
+      resetsAt: worker.resetsAt,
+      atRisk: worker.atRisk,
       model: settings.model(worker.id) ?? null,
-      windows: [],
+      windows: worker.windows,
       busy: worker.busy,
       queued: worker.queued
     }))
@@ -123,18 +123,32 @@ app.whenReady().then(async () => {
     if (message.status !== 'streaming') mainWindow.webContents.send('plans:update', plans())
   }
 
-  ipcMain.handle('jobs:submit', (_event, type: JobType, prompt: string) => {
+  ipcMain.handle('jobs:submit', (_event, type: JobType, prompt: string, provider?: unknown) => {
     if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
       throw new Error('unknown job type')
     }
     if (typeof prompt !== 'string' || prompt.trim() === '') throw new Error('empty prompt')
-    return orch.submit(type, prompt)
+    if (
+      provider !== undefined &&
+      provider !== null &&
+      provider !== 'claude' &&
+      provider !== 'cursor'
+    ) {
+      throw new Error('unknown provider')
+    }
+    const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
+    return orch.submit(type, prompt, chosen)
   })
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('plans:list', () => plans())
   ipcMain.handle('models:list', (_event, provider: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
     return provider === 'claude' ? claude.listModels() : cursor.listModels()
+  })
+  ipcMain.handle('settings:getLeadPlan', () => settings.leadPlan() ?? null)
+  ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
+    if (plan !== null && plan !== 'claude' && plan !== 'cursor') throw new Error('unknown plan')
+    settings.setLeadPlan(plan)
   })
   ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')

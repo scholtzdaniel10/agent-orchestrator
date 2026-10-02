@@ -74,6 +74,30 @@ test('lastUtilization picks the newest non-null value inside the window', async 
   })
 })
 
+test('saveWindows upserts by provider and name and windows() lists one provider by name', async () => {
+  await withStore((store) => {
+    store.saveWindows(
+      'claude',
+      [
+        { name: 'seven_day', utilization: 0.4, resetsAt: 20 },
+        { name: 'five_hour', utilization: 0.2, resetsAt: null }
+      ],
+      5
+    )
+    store.saveWindows('cursor', [{ name: 'five_hour', utilization: 0.9, resetsAt: 30 }], 6)
+    store.saveWindows('claude', [{ name: 'five_hour', utilization: 0.3, resetsAt: 25 }], 7)
+
+    expect(store.windows('claude')).toEqual([
+      { name: 'five_hour', utilization: 0.3, resetsAt: 25, observedAt: 7 },
+      { name: 'seven_day', utilization: 0.4, resetsAt: 20, observedAt: 5 }
+    ])
+    expect(store.windows('cursor')).toEqual([
+      { name: 'five_hour', utilization: 0.9, resetsAt: 30, observedAt: 6 }
+    ])
+    expect(store.windows('missing')).toEqual([])
+  })
+})
+
 test('resting is set, replaced, and cleared', async () => {
   await withStore((store) => {
     expect(store.restingUntil('claude')).toBeNull()

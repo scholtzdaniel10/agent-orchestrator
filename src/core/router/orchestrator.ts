@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentEvent, JobType, ProviderAdapter, ProviderId, RouterRules } from '../types'
-import { headroom, pickProvider } from './router'
+import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
@@ -34,6 +34,10 @@ interface InternalJob {
   failedOver: ProviderId[]
   /** Model the CLI reported for the attempt now running. Cleared on failover. */
   model?: string
+  /** Why this plan got the job. */
+  reason?: string
+  /** The person named the plan. That job is never moved to another one. */
+  chosen: boolean
   error?: string
 }
 
@@ -52,6 +56,11 @@ export interface WorkerInfo {
   busy: boolean
   /** Jobs waiting in this provider's queue. */
   queued: number
+  /** Epoch ms the worst window resets, when known. */
+  resetsAt: number | null
+  /** A large share of allowance is about to expire unused. */
+  atRisk: boolean
+  windows: { name: string; used: number; resetsAt: number | null }[]
 }
 
 export class Orchestrator {
@@ -98,7 +107,7 @@ export class Orchestrator {
     this.candidates = available
   }
 
-  submit(type: JobType, prompt: string): JobRecord {
+  submit(type: JobType, prompt: string, provider?: ProviderId): JobRecord {
     const job: InternalJob = {
       id: randomUUID(),
       type,
@@ -107,24 +116,37 @@ export class Orchestrator {
       provider: null,
       status: 'queued',
       output: '',
-      failedOver: []
+      failedOver: [],
+      chosen: false
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
 
-    const provider = pickProvider(type, this.candidates, this.store, this.rules, this.now())
-    if (!provider) {
-      job.status = 'failed'
-      job.error = 'no provider available'
+    if (provider !== undefined) {
+      job.provider = provider
+      if (!this.candidates.includes(provider)) {
+        return this.failNow(job, `${provider} is not signed in`)
+      }
+      const until = this.store.restingUntil(provider)
+      if (until !== null && until > this.now()) {
+        return this.failNow(job, `${provider} is resting`)
+      }
+      job.chosen = true
+      job.reason = 'chosen'
+      this.enqueue(provider, job.id)
       this.emit(job)
-      this.resolveIdle()
+      this.pump(provider)
       return copy(job)
     }
 
-    job.provider = provider
-    this.enqueue(provider, job.id)
+    const pick = pickWithReason(type, this.candidates, this.store, this.rules, this.now())
+    if (!pick) return this.failNow(job, 'no provider available')
+
+    job.provider = pick.provider
+    job.reason = pick.reason
+    this.enqueue(pick.provider, job.id)
     this.emit(job)
-    this.pump(provider)
+    this.pump(pick.provider)
     return copy(job)
   }
 
@@ -143,13 +165,21 @@ export class Orchestrator {
     return this.adapters.map((adapter) => {
       const until = this.store.restingUntil(adapter.id)
       const queue = this.queues.get(adapter.id)
+      const usage = planUsage(adapter.id, this.store, this.rules, now)
       return {
         id: adapter.id,
         available: this.candidates.includes(adapter.id),
         headroom: headroom(adapter.id, this.store, this.rules, now),
         restingUntil: until !== null && until > now ? until : null,
         busy: this.running.has(adapter.id),
-        queued: queue?.length ?? 0
+        queued: queue?.length ?? 0,
+        resetsAt: usage.resetsAt,
+        atRisk: usage.atRisk,
+        windows: usage.windows.map((window) => ({
+          name: window.name,
+          used: window.used,
+          resetsAt: window.resetsAt
+        }))
       }
     })
   }
@@ -238,6 +268,17 @@ export class Orchestrator {
           this.appendText(job, event.text)
         } else if (event.kind === 'usage') {
           utilization = event.utilization
+          if (event.windows) {
+            this.store.saveWindows(
+              provider,
+              event.windows.map((window) => ({
+                name: window.name,
+                utilization: window.utilization,
+                resetsAt: window.resetsAt === undefined ? null : window.resetsAt * 1000
+              })),
+              this.now()
+            )
+          }
         } else if (event.kind === 'result') {
           result = event
           if (event.text !== '' && job.output === '') {
@@ -314,6 +355,13 @@ export class Orchestrator {
       : now + this.rules.defaultRestHours * 3600_000
     this.store.setResting(provider, until)
     this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'limit')
+    if (job.chosen) {
+      job.status = 'failed'
+      job.error = `${provider} hit its usage limit`
+      this.emit(job)
+      this.rerouteQueued(provider)
+      return
+    }
     const output = job.output
     this.requeue(job, provider, true, output)
     this.rerouteQueued(provider)
@@ -326,6 +374,12 @@ export class Orchestrator {
     for (const id of waiting) {
       const job = this.byJob.get(id)
       if (!job || job.status !== 'queued' || job.provider !== provider) continue
+      if (job.chosen) {
+        job.status = 'failed'
+        job.error = `${provider} hit its usage limit`
+        this.emit(job)
+        continue
+      }
       this.requeue(job, provider, false, '')
     }
   }
@@ -370,6 +424,7 @@ export class Orchestrator {
     job.output = ''
     job.status = 'queued'
     job.provider = next
+    job.reason = 'failover'
     delete job.model
     delete job.error
     this.enqueue(next, job.id)
@@ -415,6 +470,14 @@ export class Orchestrator {
     })
   }
 
+  private failNow(job: InternalJob, error: string): JobRecord {
+    job.status = 'failed'
+    job.error = error
+    this.emit(job)
+    this.resolveIdle()
+    return copy(job)
+  }
+
   private emit(job: InternalJob): void {
     const snap = copy(job)
     for (const cb of this.listeners) cb(snap)
@@ -442,6 +505,7 @@ function copy(job: InternalJob): JobRecord {
   }
   if (job.error !== undefined) record.error = job.error
   if (job.model !== undefined) record.model = job.model
+  if (job.reason !== undefined) record.reason = job.reason
   return record
 }
 

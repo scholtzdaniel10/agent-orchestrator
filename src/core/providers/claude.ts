@@ -7,7 +7,8 @@ import type {
   ModelOption,
   ProviderAdapter,
   RunHandle,
-  RunOptions
+  RunOptions,
+  UsageWindow
 } from '../types'
 import { runCaptured, spawnCli, type Bin } from './process'
 
@@ -170,20 +171,22 @@ function rateLimitEvent(value: Record<string, unknown>): AgentEvent | null {
       : { kind: 'limit', message: 'rate limit rejected', resetsAt }
   }
   if (!isRecord(info.unifiedWindows)) return null
+  const windows: UsageWindow[] = []
   let best: { utilization: number; resetsAt?: number } | null = null
-  for (const window of Object.values(info.unifiedWindows)) {
+  for (const [name, window] of Object.entries(info.unifiedWindows)) {
     if (!isRecord(window)) continue
     const utilization = finiteNumber(window.utilization)
     if (utilization === undefined) continue
+    const resetsAt = finiteNumber(window.resetsAt)
+    windows.push(resetsAt === undefined ? { name, utilization } : { name, utilization, resetsAt })
     if (!best || utilization > best.utilization) {
-      const resetsAt = finiteNumber(window.resetsAt)
       best = resetsAt === undefined ? { utilization } : { utilization, resetsAt }
     }
   }
   if (!best) return null
   return best.resetsAt === undefined
-    ? { kind: 'usage', utilization: best.utilization }
-    : { kind: 'usage', utilization: best.utilization, resetsAt: best.resetsAt }
+    ? { kind: 'usage', utilization: best.utilization, windows }
+    : { kind: 'usage', utilization: best.utilization, resetsAt: best.resetsAt, windows }
 }
 
 function resultEvent(

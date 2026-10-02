@@ -64,7 +64,15 @@ test('claude-plain parses init, text, usage, and result', () => {
       model: 'claude-opus-5-5'
     },
     { kind: 'text', text: 'ok' },
-    { kind: 'usage', utilization: 0.41, resetsAt: 1791118800 },
+    {
+      kind: 'usage',
+      utilization: 0.41,
+      resetsAt: 1791118800,
+      windows: [
+        { name: 'five_hour', utilization: 0.24, resetsAt: 1790848800 },
+        { name: 'seven_day', utilization: 0.41, resetsAt: 1791118800 }
+      ]
+    },
     {
       kind: 'result',
       ok: true,
@@ -89,7 +97,15 @@ test('claude-tool skips tool-only assistant output', () => {
       sessionId: '3c3cd804-ea6e-4395-9d68-7031b3e29180',
       model: 'claude-opus-5-5'
     },
-    { kind: 'usage', utilization: 0.41, resetsAt: 1791118800 },
+    {
+      kind: 'usage',
+      utilization: 0.41,
+      resetsAt: 1791118800,
+      windows: [
+        { name: 'five_hour', utilization: 0.25, resetsAt: 1790848800 },
+        { name: 'seven_day', utilization: 0.41, resetsAt: 1791118800 }
+      ]
+    },
     { kind: 'text', text: 'It says "hello fixture".' },
     {
       kind: 'result',

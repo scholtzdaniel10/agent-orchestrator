@@ -9,6 +9,8 @@ const CWD = 'C:\\work'
 interface Script {
   events?: AgentEvent[]
   gate?: Promise<void>
+  /** Awaited once, after the first event, so a test can look mid-run. */
+  pause?: Promise<void>
   exitCode?: number | null
   stderr?: string
   throwOnRun?: boolean
@@ -49,9 +51,14 @@ class FakeAdapter implements ProviderAdapter {
     const events = (async function* (): AsyncGenerator<AgentEvent> {
       if (script.gate) await script.gate
       if (killed) return
+      let paused = false
       for (const event of script.events ?? []) {
         if (killed) return
         yield event
+        if (!paused && script.pause) {
+          paused = true
+          await script.pause
+        }
       }
     })()
     return {
@@ -497,7 +504,10 @@ test('workers reports availability, rest, headroom, busy work, and queue depth',
         available: true,
         restingUntil: null,
         busy: true,
-        queued: 1
+        queued: 1,
+        resetsAt: null,
+        atRisk: false,
+        windows: []
       })
       expect(workers[1]).toMatchObject({
         available: false,
@@ -618,4 +628,219 @@ test('get returns a copy of the job, or null for an unknown id', async () => {
     await orch.idle()
     expect(orch.get(submitted.id)?.output).toBe('secret')
   })
+})
+
+test('a usage event with windows is stored before the run ends and changes the next pick', async () => {
+  const now = 1_800_000_000_000
+  const pause = gate()
+  const claude = new FakeAdapter('claude', [
+    {
+      pause: pause.promise,
+      events: [
+        {
+          kind: 'usage',
+          utilization: 0.9,
+          windows: [{ name: 'reported', utilization: 0.9, resetsAt: 1_800_003_600 }]
+        },
+        { kind: 'result', ok: true, text: 'done', costUsd: 1, tokens: 1, sessionId: 's' }
+      ]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('next')])
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      const first = orch.submit('planning', 'first')
+      await waitFor(() => store.windows('claude').length === 1)
+      expect(orch.get(first.id)?.status).toBe('running')
+      expect(store.windows('claude')).toEqual([
+        {
+          name: 'reported',
+          utilization: 0.9,
+          resetsAt: 1_800_003_600_000,
+          observedAt: now
+        }
+      ])
+      const second = orch.submit('planning', 'second')
+      expect(second).toMatchObject({ provider: 'cursor', reason: 'more headroom' })
+      pause.open()
+      await orch.idle()
+      expect(cursor.received.map((job) => job.prompt)).toEqual(['second'])
+      expect(claude.received).toHaveLength(1)
+      expect(store.runs('claude')[0]).toMatchObject({ utilization: 0.9, outcome: 'ok' })
+    },
+    () => now
+  )
+})
+
+test('reason is set and copied on submit, list, get, and updates', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  const cursor = new FakeAdapter('cursor', [ok('b')])
+  await withOrch([claude, cursor], async (orch) => {
+    const snaps: JobRecord[] = []
+    orch.onUpdate((job) => snaps.push(job))
+    const submitted = orch.submit('planning', 'plan')
+    expect(submitted.reason).toBe('first choice')
+    expect(orch.list()[0]?.reason).toBe('first choice')
+    expect(orch.get(submitted.id)?.reason).toBe('first choice')
+    const queued = snaps.find((snap) => snap.status === 'queued')
+    expect(queued?.reason).toBe('first choice')
+    if (queued) queued.reason = 'mutated'
+    expect(orch.get(submitted.id)?.reason).toBe('first choice')
+    await orch.idle()
+    expect(orch.list()[0]?.reason).toBe('first choice')
+    expect(snaps.some((snap) => snap.status === 'done' && snap.reason === 'first choice')).toBe(
+      true
+    )
+  })
+})
+
+test('submit with a provider runs on that plan even when the router would not', async () => {
+  const claude = new FakeAdapter('claude', [ok('plan')])
+  const cursor = new FakeAdapter('cursor', [ok('files')])
+  await withOrch([claude, cursor], async (orch) => {
+    const job = orch.submit('planning', 'on cursor', 'cursor')
+    expect(job).toMatchObject({ provider: 'cursor', reason: 'chosen' })
+    await orch.idle()
+    expect(cursor.received.map((received) => received.prompt)).toEqual(['on cursor'])
+    expect(claude.received).toHaveLength(0)
+    expect(orch.list()[0]).toMatchObject({ status: 'done', provider: 'cursor', reason: 'chosen' })
+  })
+})
+
+test('a chosen plan that is not signed in or is resting fails the job', async () => {
+  const now = 1_800_000_000_000
+  const claude = new FakeAdapter('claude', [ok('no')])
+  const cursor = new FakeAdapter('cursor', [ok('no')])
+  cursor.signedIn = false
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      const unsigned = orch.submit('planning', 'cursor please', 'cursor')
+      expect(unsigned).toMatchObject({ status: 'failed', error: 'cursor is not signed in' })
+      expect(cursor.received).toHaveLength(0)
+
+      store.setResting('claude', now + 1000)
+      const resting = orch.submit('boilerplate', 'claude please', 'claude')
+      expect(resting).toMatchObject({ status: 'failed', error: 'claude is resting' })
+      expect(claude.received).toHaveLength(0)
+      await orch.idle()
+    },
+    () => now
+  )
+})
+
+test('a chosen job that hits its limit fails, and an unchosen queued sibling fails over', async () => {
+  const now = 1_800_000_000_000
+  const held = gate()
+  const claude = new FakeAdapter('claude', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }
+      ]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('moved')])
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      const chosen = orch.submit('planning', 'pinned', 'claude')
+      expect(chosen.reason).toBe('chosen')
+      const sibling = orch.submit('planning', 'sibling')
+      expect(sibling).toMatchObject({
+        status: 'queued',
+        provider: 'claude',
+        reason: 'first choice'
+      })
+      held.open()
+      await orch.idle()
+      expect(orch.get(chosen.id)).toMatchObject({
+        status: 'failed',
+        error: 'claude hit its usage limit',
+        provider: 'claude',
+        reason: 'chosen'
+      })
+      expect(orch.get(sibling.id)).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        reason: 'failover',
+        output: 'moved'
+      })
+      expect(cursor.received.map((job) => job.prompt)).toEqual(['sibling'])
+      expect(claude.received).toHaveLength(1)
+      expect(store.restingUntil('claude')).toBe(1_900_000_000_000)
+      expect(store.runs('claude')[0]).toMatchObject({ outcome: 'limit' })
+    },
+    () => now
+  )
+})
+
+test('a chosen job waiting on a plan that hits its limit fails instead of moving', async () => {
+  const now = 1_800_000_000_000
+  const held = gate()
+  const claude = new FakeAdapter('claude', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }
+      ]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('moved')])
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      const runner = orch.submit('planning', 'runner')
+      const chosen = orch.submit('planning', 'pinned', 'claude')
+      expect(chosen).toMatchObject({ status: 'queued', provider: 'claude', reason: 'chosen' })
+      held.open()
+      await orch.idle()
+      expect(orch.get(chosen.id)).toMatchObject({
+        status: 'failed',
+        error: 'claude hit its usage limit',
+        provider: 'claude',
+        reason: 'chosen'
+      })
+      expect(orch.get(runner.id)).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        reason: 'failover'
+      })
+      expect(cursor.received).toHaveLength(1)
+      expect(cursor.received[0]?.prompt).toContain('runner')
+      expect(cursor.received[0]?.prompt).not.toContain('pinned')
+    },
+    () => now
+  )
+})
+
+test('workers reports resetsAt, atRisk, and windows', async () => {
+  const now = 1_800_000_000_000
+  const week = 168 * 3600_000
+  const claude = new FakeAdapter('claude', [])
+  await withOrch(
+    [claude],
+    async (orch, store) => {
+      store.saveWindows(
+        'claude',
+        [
+          { name: 'five_hour', utilization: 0.2, resetsAt: now + 3600_000 },
+          { name: 'seven_day', utilization: 0.5, resetsAt: now + week / 10 }
+        ],
+        now
+      )
+      expect(orch.workers()[0]).toMatchObject({
+        resetsAt: now + week / 10,
+        atRisk: true,
+        windows: [
+          { name: 'five_hour', used: 0.2, resetsAt: now + 3600_000 },
+          { name: 'seven_day', used: 0.5, resetsAt: now + week / 10 }
+        ]
+      })
+    },
+    () => now
+  )
 })

@@ -117,18 +117,11 @@ function gate(): { promise: Promise<void>; open: () => void } {
 }
 
 function seed(store: Store, provider: ProviderId, utilization: number, startedAt: number): void {
-  store.insertRun({
-    job_id: `seed-${provider}`,
+  store.saveWindows(
     provider,
-    job_type: 'planning',
-    started_at: startedAt,
-    duration_ms: 1,
-    cost_usd: null,
-    tokens: null,
-    utilization,
-    outcome: 'ok',
-    session_id: null
-  })
+    [{ name: 'reported', utilization, resetsAt: startedAt + 3_600_000 }],
+    startedAt
+  )
 }
 
 function leadRuns(store: Store): ReturnType<Store['runs']> {
@@ -140,7 +133,7 @@ async function withLead(
   fn: (lead: Lead, store: Store) => Promise<void>,
   opts?: {
     now?: () => number
-    prefer?: ProviderId
+    prefer?: ProviderId | (() => ProviderId | undefined)
     modelFor?: (provider: ProviderId) => string | undefined
   }
 ): Promise<void> {
@@ -295,7 +288,11 @@ test('a later turn resumes the same provider even when headroom changes', async 
     {
       events: [
         { kind: 'init', sessionId: 'sess-1' },
-        { kind: 'usage', utilization: 0.99 },
+        {
+          kind: 'usage',
+          utilization: 0.99,
+          windows: [{ name: 'reported', utilization: 0.99 }]
+        },
         { kind: 'result', ok: true, text: 'first', sessionId: 'sess-1', costUsd: 1, tokens: 2 }
       ]
     },
@@ -605,5 +602,110 @@ test('modelFor reaches the run with bridge and resume, and init sets the message
       expect(lead.messages()[1]?.model).toBe('claude-opus-4-8')
     },
     { modelFor: () => chosen }
+  )
+})
+
+test('a usage event with windows is saved', async () => {
+  const now = 1_800_000_000_000
+  const cursor = new FakeAdapter('cursor', [
+    {
+      events: [
+        { kind: 'init', sessionId: 'sess-1' },
+        {
+          kind: 'usage',
+          utilization: 0.33,
+          windows: [
+            { name: 'five_hour', utilization: 0.2, resetsAt: 1_800_000_050 },
+            { name: 'seven_day', utilization: 0.33, resetsAt: 1_800_000_100 }
+          ]
+        },
+        { kind: 'result', ok: true, text: 'ok', sessionId: 'sess-1', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withLead(
+    [cursor],
+    async (lead, store) => {
+      await lead.send('hi')
+      expect(store.windows('cursor')).toEqual([
+        { name: 'five_hour', utilization: 0.2, resetsAt: 1_800_000_050_000, observedAt: now },
+        { name: 'seven_day', utilization: 0.33, resetsAt: 1_800_000_100_000, observedAt: now }
+      ])
+      expect(leadRuns(store)[0]?.utilization).toBe(0.33)
+    },
+    { now: () => now }
+  )
+})
+
+test('a function prefer is read each turn, and a change drops the session', async () => {
+  let prefer: ProviderId = 'cursor'
+  let reads = 0
+  const claude = new FakeAdapter('claude', [done('c-sess', 'from claude')])
+  const cursor = new FakeAdapter('cursor', [done('u-sess', 'from cursor')])
+  await withLead(
+    [claude, cursor],
+    async (lead) => {
+      const first = await lead.send('one')
+      expect(first.provider).toBe('cursor')
+      expect(cursor.calls[0]?.opts?.resume).toBeUndefined()
+      expect(cursor.calls[0]?.job.prompt.startsWith(LEAD_INSTRUCTIONS)).toBe(true)
+      const kept = lead.messages()
+      const afterFirst = reads
+      prefer = 'claude'
+      const second = await lead.send('two')
+      expect(reads).toBeGreaterThan(afterFirst)
+      expect(second.provider).toBe('claude')
+      expect(claude.calls).toHaveLength(1)
+      expect(claude.calls[0]?.opts?.resume).toBeUndefined()
+      expect(claude.calls[0]?.job.prompt).toBe(`${LEAD_INSTRUCTIONS}\n\nUser request:\ntwo`)
+      expect(cursor.calls).toHaveLength(1)
+      expect(lead.messages().slice(0, 2)).toEqual(kept)
+      expect(lead.messages()).toHaveLength(4)
+    },
+    {
+      prefer: () => {
+        reads += 1
+        return prefer
+      }
+    }
+  )
+})
+
+test('changing preference does not drop the session when the plan is unavailable or resting', async () => {
+  const now = 1_800_000_000_000
+  let prefer: ProviderId = 'cursor'
+  const unavailable = new FakeAdapter('claude', [done('no')])
+  unavailable.signedIn = false
+  const cursor = new FakeAdapter('cursor', [done('u1', 'first'), done('u1', 'second')])
+  await withLead(
+    [unavailable, cursor],
+    async (lead) => {
+      await lead.send('one')
+      prefer = 'claude'
+      await lead.send('two')
+      expect(cursor.calls).toHaveLength(2)
+      expect(cursor.calls[1]?.opts?.resume).toBe('u1')
+      expect(cursor.calls[1]?.job.prompt).toBe('two')
+      expect(unavailable.calls).toHaveLength(0)
+    },
+    { prefer: () => prefer }
+  )
+
+  prefer = 'cursor'
+  const claude = new FakeAdapter('claude', [done('c')])
+  const restingCursor = new FakeAdapter('cursor', [done('u2', 'first'), done('u2', 'second')])
+  await withLead(
+    [claude, restingCursor],
+    async (lead, store) => {
+      await lead.send('one')
+      store.setResting('claude', now + 10_000)
+      prefer = 'claude'
+      await lead.send('two')
+      expect(restingCursor.calls).toHaveLength(2)
+      expect(restingCursor.calls[1]?.opts?.resume).toBe('u2')
+      expect(restingCursor.calls[1]?.job.prompt).toBe('two')
+      expect(claude.calls).toHaveLength(0)
+    },
+    { now: () => now, prefer: () => prefer }
   )
 })

@@ -36,7 +36,7 @@ export class Lead {
   private readonly rules: RouterRules
   private readonly bridge: BridgeInfo
   private readonly dir: string
-  private readonly prefer: ProviderId | undefined
+  private readonly prefer?: ProviderId | (() => ProviderId | undefined)
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private available: ProviderId[] = []
@@ -52,7 +52,7 @@ export class Lead {
     rules: RouterRules
     bridge: BridgeInfo
     dir: string
-    prefer?: ProviderId
+    prefer?: ProviderId | (() => ProviderId | undefined)
     now?: () => number
     modelFor?: (provider: ProviderId) => string | undefined
   }) {
@@ -123,6 +123,25 @@ export class Lead {
     this.sessionProvider = null
   }
 
+  private preferredPlan(): ProviderId | undefined {
+    if (typeof this.prefer === 'function') return this.prefer()
+    return this.prefer
+  }
+
+  /**
+   * A new preference for a different available plan with headroom starts this
+   * turn fresh, so the lead instructions are sent again. Shown messages stay.
+   */
+  private followPreference(): void {
+    if (this.sessionProvider === null || !this.sessionId) return
+    const prefer = this.preferredPlan()
+    if (prefer === undefined || prefer === this.sessionProvider) return
+    if (!this.available.includes(prefer)) return
+    if (headroom(prefer, this.store, this.rules, this.now()) <= 0) return
+    this.sessionId = undefined
+    this.sessionProvider = null
+  }
+
   private planFor(text: string): Plan | null {
     if (this.sessionProvider !== null && this.sessionId) {
       return { provider: this.sessionProvider, resume: this.sessionId, prompt: text }
@@ -145,7 +164,8 @@ export class Lead {
       if (room > 0) any = true
     }
     if (!any) return null
-    if (this.prefer !== undefined && (rooms.get(this.prefer) ?? 0) > 0) return this.prefer
+    const prefer = this.preferredPlan()
+    if (prefer !== undefined && (rooms.get(prefer) ?? 0) > 0) return prefer
     let best: ProviderId | null = null
     let bestRoom = 0
     for (const [id, room] of rooms) {
@@ -186,6 +206,7 @@ export class Lead {
     }
 
     try {
+      this.followPreference()
       const plan = this.planFor(text)
       if (!plan) {
         lead.status = 'error'
@@ -223,6 +244,17 @@ export class Lead {
           this.append(lead, event.text)
         } else if (event.kind === 'usage') {
           utilization = event.utilization
+          if (event.windows) {
+            this.store.saveWindows(
+              provider,
+              event.windows.map((window) => ({
+                name: window.name,
+                utilization: window.utilization,
+                resetsAt: window.resetsAt === undefined ? null : window.resetsAt * 1000
+              })),
+              this.now()
+            )
+          }
         } else if (event.kind === 'result') {
           result = event
           if (event.sessionId) {

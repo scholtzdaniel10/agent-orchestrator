@@ -27,6 +27,18 @@ export class Settings {
     return value.trim()
   }
 
+  leadPlan(): ProviderId | undefined {
+    const value = this.data.lead
+    if (value === 'claude' || value === 'cursor') return value
+    return undefined
+  }
+
+  setLeadPlan(plan: ProviderId | null): void {
+    if (plan === null) delete this.data.lead
+    else this.data.lead = plan
+    this.persist()
+  }
+
   setModel(provider: ProviderId, model: string | null): void {
     let stored: string | null = null
     if (model !== null) {

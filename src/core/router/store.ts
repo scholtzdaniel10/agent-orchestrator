@@ -1,5 +1,13 @@
 import { DatabaseSync } from 'node:sqlite'
 
+export interface StoredWindow {
+  name: string
+  utilization: number
+  /** Epoch ms, or null when the CLI did not say. */
+  resetsAt: number | null
+  observedAt: number
+}
+
 export interface RunRow {
   id?: number
   job_id: string
@@ -40,6 +48,14 @@ export class Store {
       CREATE TABLE IF NOT EXISTS resting (
         provider TEXT PRIMARY KEY,
         until INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS usage_windows (
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        utilization REAL NOT NULL,
+        resets_at INTEGER,
+        observed_at INTEGER NOT NULL,
+        PRIMARY KEY (provider, name)
       );
     `)
   }
@@ -86,6 +102,35 @@ export class Store {
     return rows.map((row) => mapRun(row as Row))
   }
 
+  saveWindows(
+    provider: string,
+    windows: { name: string; utilization: number; resetsAt: number | null }[],
+    observedAt: number
+  ): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO usage_windows (provider, name, utilization, resets_at, observed_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(provider, name) DO UPDATE SET
+         utilization = excluded.utilization,
+         resets_at = excluded.resets_at,
+         observed_at = excluded.observed_at`
+    )
+    for (const window of windows) {
+      stmt.run(provider, window.name, window.utilization, window.resetsAt, observedAt)
+    }
+  }
+
+  /** One row per window name, ordered by name. */
+  windows(provider: string): StoredWindow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT name, utilization, resets_at, observed_at
+         FROM usage_windows WHERE provider = ? ORDER BY name ASC`
+      )
+      .all(provider)
+    return rows.map((row) => mapWindow(row as Row))
+  }
+
   /** Utilization of the newest in-window row that has one, else null. */
   lastUtilization(provider: string, sinceMs: number): number | null {
     const row = this.db
@@ -125,6 +170,15 @@ export class Store {
 }
 
 type Row = Record<string, string | number | bigint | null | Uint8Array>
+
+function mapWindow(row: Row): StoredWindow {
+  return {
+    name: String(row.name),
+    utilization: Number(row.utilization),
+    resetsAt: row.resets_at === null ? null : Number(row.resets_at),
+    observedAt: Number(row.observed_at)
+  }
+}
 
 function mapRun(row: Row): RunRow {
   return {

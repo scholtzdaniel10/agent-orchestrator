@@ -95,6 +95,31 @@ test('isValidModel accepts CLI model ids, including bracketed options', () => {
   expect(isValidModel(null)).toBe(false)
 })
 
+test('leadPlan round-trips, null clears, and an invalid stored value is ignored', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, JSON.stringify({ lead: 'nope', models: { claude: 'opus' } }))
+    const settings = new Settings(path)
+    expect(settings.leadPlan()).toBeUndefined()
+    expect(settings.model('claude')).toBe('opus')
+
+    settings.setLeadPlan('claude')
+    const saved = new Settings(path)
+    expect(saved.leadPlan()).toBe('claude')
+    expect(saved.model('claude')).toBe('opus')
+
+    saved.setLeadPlan('cursor')
+    expect(new Settings(path).leadPlan()).toBe('cursor')
+    saved.setLeadPlan(null)
+    const cleared = new Settings(path)
+    expect(cleared.leadPlan()).toBeUndefined()
+    expect(cleared.model('claude')).toBe('opus')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ models: { claude: 'opus' } })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('setModel creates a missing parent folder', () => {
   const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
   try {
