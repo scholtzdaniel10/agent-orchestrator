@@ -1,4 +1,12 @@
-import type { JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo } from '../core/types'
+import type {
+  ChangeSet,
+  JobType,
+  LeadMessage,
+  ModelOption,
+  ProjectInfo,
+  ProviderId,
+  TerminalInfo
+} from '../core/types'
 import type { JobRecord } from '../core/router'
 
 /** One subscription plan as the sidebar shows it. */
@@ -37,7 +45,13 @@ export interface PlanWindow {
 /** Everything the renderer can ask of the main process: `window.api`. */
 export interface OrchestratorApi {
   /** `provider` hands the job to that plan instead of letting the router choose. */
-  submitJob(type: JobType, prompt: string, provider?: ProviderId): Promise<JobRecord>
+  submitJob(
+    type: JobType,
+    prompt: string,
+    provider?: ProviderId,
+    /** Let the job edit files, in a git worktree of its own. */
+    edit?: boolean
+  ): Promise<JobRecord>
   listJobs(): Promise<JobRecord[]>
   onJobUpdate(cb: (job: JobRecord) => void): () => void
 
@@ -48,6 +62,20 @@ export interface OrchestratorApi {
   listModels(provider: ProviderId): Promise<ModelOption[]>
   /** Choose the model for a plan (null = the CLI's default). Pushes a plans update. */
   setModel(provider: ProviderId, model: string | null): Promise<void>
+
+  getProject(): Promise<ProjectInfo>
+  /** Opens a folder picker. Resolves null when cancelled. Refused while work is running. */
+  chooseProject(): Promise<ProjectInfo | null>
+
+  /** Changes waiting for review: one per editing job that touched files. */
+  listChanges(): Promise<ChangeSet[]>
+  onChangesUpdate(cb: (changes: ChangeSet[]) => void): () => void
+  /** Unified diff of a change against the commit it started from. */
+  changeDiff(id: string): Promise<string>
+  /** Applies the change to the project as staged, uncommitted edits, then removes the worktree. */
+  mergeChange(id: string): Promise<{ ok: boolean; message: string }>
+  /** Deletes the worktree and its branch. */
+  discardChange(id: string): Promise<void>
 
   /** Plan the person chose to run the lead; null means the one with the most headroom. */
   getLeadPlan(): Promise<ProviderId | null>
@@ -74,4 +102,13 @@ export interface OrchestratorApi {
   onTerminalUpdate(cb: (info: TerminalInfo, removed: boolean) => void): () => void
 }
 
-export type { JobRecord, JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo }
+export type {
+  ChangeSet,
+  JobRecord,
+  JobType,
+  LeadMessage,
+  ModelOption,
+  ProjectInfo,
+  ProviderId,
+  TerminalInfo
+}

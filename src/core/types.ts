@@ -63,6 +63,8 @@ export interface RunOptions {
   bridge?: BridgeInfo
   /** Model the person chose for this plan. Unset means whatever the CLI is set to. */
   model?: string
+  /** Let the CLI edit files in its working folder (a job's own worktree). Never shell commands. */
+  edit?: boolean
 }
 
 /** A model a CLI can run, for the model picker. */
@@ -133,4 +135,34 @@ export interface TerminalInfo {
   model: string | null
   /** Epoch ms. */
   startedAt: number
+}
+
+/** One file touched by a job, as git reports it. */
+export interface ChangedFile {
+  path: string
+  /** Lines added and removed; null for a binary file. */
+  insertions: number | null
+  deletions: number | null
+}
+
+/** A job's pending change: the worktree it edited, waiting to be merged or discarded. */
+export interface ChangeSet {
+  /** First 8 characters of the job id; also the folder name and the branch suffix. */
+  id: string
+  /** Always `orch/<id>`. */
+  branch: string
+  /** The worktree folder. */
+  path: string
+  files: ChangedFile[]
+  insertions: number
+  deletions: number
+}
+
+/** The folder jobs and terminals work in. */
+export interface ProjectInfo {
+  path: string
+  /** A git repository: jobs can be allowed to edit it. */
+  isRepo: boolean
+  /** Current branch, when it is a repository and not detached. */
+  branch: string | null
 }

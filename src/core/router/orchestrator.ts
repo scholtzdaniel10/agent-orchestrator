@@ -20,6 +20,10 @@ export interface JobRecord {
   model?: string
   /** Why this plan got the job, e.g. "first choice", "allowance expiring", "chosen". */
   reason?: string
+  /** The job may edit files, in its own worktree. */
+  edit?: boolean
+  /** Id of the job's change set (see `ChangeSet`), once its worktree exists. */
+  change?: string
   error?: string
 }
 

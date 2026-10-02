@@ -1,12 +1,25 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { JobRecord } from '../core/router'
-import type { JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo } from '../core/types'
+import type {
+  ChangeSet,
+  JobType,
+  LeadMessage,
+  ModelOption,
+  ProjectInfo,
+  ProviderId,
+  TerminalInfo
+} from '../core/types'
 import type { OrchestratorApi, PlanStatus } from './api-types'
 
 const api: OrchestratorApi = {
-  submitJob(type: JobType, prompt: string, provider?: ProviderId): Promise<JobRecord> {
-    return ipcRenderer.invoke('jobs:submit', type, prompt, provider)
+  submitJob(
+    type: JobType,
+    prompt: string,
+    provider?: ProviderId,
+    edit?: boolean
+  ): Promise<JobRecord> {
+    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, edit)
   },
   listJobs(): Promise<JobRecord[]> {
     return ipcRenderer.invoke('jobs:list')
@@ -37,6 +50,33 @@ const api: OrchestratorApi = {
   },
   setModel(provider: ProviderId, model: string | null): Promise<void> {
     return ipcRenderer.invoke('settings:setModel', provider, model)
+  },
+  getProject(): Promise<ProjectInfo> {
+    return ipcRenderer.invoke('project:get')
+  },
+  chooseProject(): Promise<ProjectInfo | null> {
+    return ipcRenderer.invoke('project:choose')
+  },
+  listChanges(): Promise<ChangeSet[]> {
+    return ipcRenderer.invoke('changes:list')
+  },
+  onChangesUpdate(cb: (changes: ChangeSet[]) => void): () => void {
+    const listener = (_event: IpcRendererEvent, changes: ChangeSet[]): void => {
+      cb(changes)
+    }
+    ipcRenderer.on('changes:update', listener)
+    return () => {
+      ipcRenderer.removeListener('changes:update', listener)
+    }
+  },
+  changeDiff(id: string): Promise<string> {
+    return ipcRenderer.invoke('changes:diff', id)
+  },
+  mergeChange(id: string): Promise<{ ok: boolean; message: string }> {
+    return ipcRenderer.invoke('changes:merge', id)
+  },
+  discardChange(id: string): Promise<void> {
+    return ipcRenderer.invoke('changes:discard', id)
   },
   getLeadPlan(): Promise<ProviderId | null> {
     return ipcRenderer.invoke('settings:getLeadPlan')
