@@ -84,7 +84,9 @@ function diffRouter(
   for (const job of next) {
     const before = prevById.get(job.id)
     if (before === undefined) {
-      events.push(change(now, 'router', `${job.type} → ${job.provider ?? 'no plan'}`))
+      const target = job.provider ?? 'no plan'
+      const routed = `${job.type} → ${target}`
+      events.push(change(now, 'router', job.reason ? `${routed} · ${job.reason}` : routed))
     }
     if (before === undefined || job.failedOver.length <= before.failedOver.length) continue
     const added = job.failedOver.slice(before.failedOver.length)

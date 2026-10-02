@@ -104,6 +104,51 @@ test('a lead turn finishing or failing is recorded once', () => {
   expect(stillStreaming).toEqual([])
 })
 
+test('a new job with a reason appends it after the plan', () => {
+  const prev = snap()
+  const next = snap({
+    jobs: [
+      job({
+        id: 'j1',
+        status: 'queued',
+        provider: 'cursor',
+        type: 'review',
+        reason: 'allowance expiring'
+      }),
+      job({
+        id: 'j2',
+        status: 'queued',
+        provider: null,
+        type: 'refactor',
+        reason: 'chosen'
+      })
+    ]
+  })
+  expect(diffFlow(prev, next, NOW)).toEqual([
+    { at: NOW, actor: 'router', text: 'review → cursor · allowance expiring' },
+    { at: NOW, actor: 'router', text: 'refactor → no plan · chosen' }
+  ])
+})
+
+test('a new running job keeps the reason on the router line only', () => {
+  const next = snap({
+    jobs: [
+      job({
+        id: 'j',
+        status: 'running',
+        provider: 'claude',
+        type: 'boilerplate',
+        reason: 'first choice'
+      })
+    ],
+    plans: [plan({ id: 'claude' })]
+  })
+  expect(diffFlow(snap(), next, NOW)).toEqual([
+    { at: NOW, actor: 'router', text: 'boilerplate → claude · first choice' },
+    { at: NOW, actor: 'claude', text: 'boilerplate running' }
+  ])
+})
+
 test('a new job names its plan, or no plan', () => {
   const prev = snap()
   const next = snap({

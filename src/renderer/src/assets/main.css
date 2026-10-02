@@ -203,6 +203,19 @@ textarea {
   min-width: 0;
 }
 
+.head-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.head-actions label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 h2 {
   margin: 0;
   color: var(--muted);
@@ -303,9 +316,18 @@ textarea {
 
 .composer-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.job-type {
+  width: 112px;
+}
+
+.plan-choice {
+  width: 88px;
 }
 
 .composer-hint {
@@ -763,6 +785,16 @@ select {
   color: var(--faint);
 }
 
+.job-reason {
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .job-model {
   min-width: 0;
   max-width: 40%;
@@ -956,11 +988,60 @@ select {
   background: var(--bad);
 }
 
+.meter-thin {
+  height: 4px;
+}
+
+.usage-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-window {
+  display: grid;
+  grid-template-columns: minmax(0, 8ch) minmax(8px, 1fr) 11ch;
+  align-items: center;
+  column-gap: 6px;
+  min-height: 16px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.usage-window-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.usage-window-left {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Its own line under the bar: the reset time is the number that matters and must not be cut off. */
+.usage-window-reset {
+  grid-column: 1 / -1;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usage-window-reset:empty {
+  display: none;
+}
+
 .usage-risk {
   display: flex;
   align-items: flex-start;
   gap: 4px;
   margin: 0;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.usage-risk-mark {
   color: var(--warn);
   font-weight: 600;
 }
@@ -998,27 +1079,18 @@ select {
 .bot-avatar {
   display: block;
   flex: none;
-  overflow: visible;
-}
-
-.bot-body {
-  stroke-width: 3;
-  stroke-linejoin: round;
 }
 
 .bot-lead .bot-body {
   fill: var(--bot-lead);
-  stroke: var(--bot-lead);
 }
 
 .bot-claude .bot-body {
   fill: var(--bot-claude);
-  stroke: var(--bot-claude);
 }
 
 .bot-cursor .bot-body {
   fill: var(--bot-cursor);
-  stroke: var(--bot-cursor);
 }
 
 .bot-eye {
@@ -1027,44 +1099,48 @@ select {
 
 .bot-error {
   fill: var(--bad);
-  stroke: var(--panel);
-  stroke-width: 1.5;
 }
 
 .bot-avatar.is-working {
-  animation: bot-bob 1.2s ease-in-out infinite;
+  animation: bot-hop 1.1s steps(1) infinite;
 }
 
 .bot-avatar.is-working .bot-eye {
   transform-box: fill-box;
   transform-origin: center;
-  animation: bot-blink 2.4s ease-in-out infinite;
+  animation: bot-blink 2.2s steps(1) infinite;
 }
 
 .bot-avatar.is-resting {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
-@keyframes bot-bob {
-  0%,
-  100% {
+@keyframes bot-hop {
+  0% {
     transform: translateY(0);
   }
 
   50% {
-    transform: translateY(-1.5px);
+    transform: translateY(-10%);
+  }
+
+  100% {
+    transform: translateY(0);
   }
 }
 
 @keyframes bot-blink {
   0%,
-  92%,
-  100% {
+  92% {
     transform: scaleY(1);
   }
 
   96% {
-    transform: scaleY(0.15);
+    transform: scaleY(0.05);
+  }
+
+  100% {
+    transform: scaleY(1);
   }
 }
 
@@ -1417,7 +1493,7 @@ select {
 
 .flow-plan-row {
   display: grid;
-  grid-template-columns: auto minmax(24px, 1fr) 4ch 11ch;
+  grid-template-columns: auto minmax(24px, 1fr) 6ch 11ch;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -1431,8 +1507,18 @@ select {
 }
 
 .flow-pct {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  white-space: nowrap;
+}
+
+.flow-risk {
+  flex: none;
+  width: 1ch;
+  text-align: center;
 }
 
 .flow-queued {

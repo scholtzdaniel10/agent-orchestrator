@@ -60,6 +60,12 @@ function meterFillClass(id: PlanStatus['id'], left: number): string {
   return `meter-fill meter-${id}`
 }
 
+function windowLabel(name: string): string {
+  if (name === 'five_hour') return '5-hour'
+  if (name === 'seven_day') return 'weekly'
+  return name
+}
+
 function UsageHeading(): React.JSX.Element {
   return (
     <div className="panel-head">
@@ -101,7 +107,9 @@ function UsageMeter({
           const word = planWord(plan, now)
           const left = headroomPercent(plan.used)
           const restingUntil = plan.restingUntil
-          const reset = plan.resetsAt === null ? null : resetPhrase(plan.resetsAt, now)
+          const hasWindows = plan.windows.length > 0
+          const reset =
+            hasWindows || plan.resetsAt === null ? null : resetPhrase(plan.resetsAt, now)
           const showResting = word === 'resting' && restingUntil !== null
           const showQueued = plan.queued > 0
           const hasDetails = showResting || reset !== null || showQueued || plan.atRisk
@@ -131,6 +139,40 @@ function UsageMeter({
                   >
                     <div className={meterFillClass(plan.id, left)} style={{ width: `${left}%` }} />
                   </div>
+                  {hasWindows ? (
+                    <div className="usage-windows">
+                      {plan.windows.map((slot, index) => {
+                        const slotLeft = headroomPercent(slot.used)
+                        const slotLabel = windowLabel(slot.name)
+                        const slotReset =
+                          slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
+                        return (
+                          <div key={`${slot.name}-${index}`} className="usage-window">
+                            <span className="usage-window-label" title={slotLabel}>
+                              {slotLabel}
+                            </span>
+                            <div
+                              className="meter meter-thin"
+                              role="meter"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={slotLeft}
+                              aria-label={`${plan.id} ${slotLabel} allowance left`}
+                            >
+                              <div
+                                className={meterFillClass(plan.id, slotLeft)}
+                                style={{ width: `${slotLeft}%` }}
+                              />
+                            </div>
+                            <span className="usage-window-left">{slotLeft}% left</span>
+                            <span className="usage-window-reset" title={slotReset ?? undefined}>
+                              {slotReset ?? ''}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                 </div>
                 {hasDetails ? (
                   <div className="usage-details">

@@ -8,7 +8,9 @@ import type { TerminalBus } from './terminal-bus'
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type JobType = Parameters<Window['api']['submitJob']>[0]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+type PlanChoice = 'auto' | ProviderId
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
 
@@ -16,6 +18,15 @@ function errorText(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'string') return err
   return 'Request failed'
+}
+
+function asPlanChoice(value: string): PlanChoice {
+  if (value === 'claude' || value === 'cursor') return value
+  return 'auto'
+}
+
+function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boolean {
+  return plans !== null && plans.some((plan) => plan.id === id && plan.available)
 }
 
 function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
@@ -29,6 +40,7 @@ function outputTitle(job: JobRecord): string {
   const parts: string[] = [job.type]
   if (job.provider !== null) parts.push(job.provider)
   if (job.model) parts.push(job.model)
+  if (job.reason) parts.push(job.reason)
   return parts.join(' · ')
 }
 
@@ -62,6 +74,7 @@ function placementFor(
 
 function Workers({
   jobs,
+  plans,
   terminals,
   initialTerminalIds,
   bus,
@@ -69,6 +82,7 @@ function Workers({
   onTerminal
 }: {
   jobs: JobRecord[]
+  plans: PlanStatus[] | null
   terminals: TerminalInfo[]
   initialTerminalIds: ReadonlySet<string> | null
   bus: TerminalBus
@@ -78,6 +92,7 @@ function Workers({
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
+  const [worker, setWorker] = useState<PlanChoice>('auto')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [recentOther, setRecentOther] = useState<string | null>(null)
   const [split, setSplit] = useState(false)
@@ -161,7 +176,10 @@ function Workers({
     if (text.trim() === '' || sending.current) return
     sending.current = true
     try {
-      const job = await window.api.submitJob(jobType, text)
+      const job =
+        worker === 'auto'
+          ? await window.api.submitJob(jobType, text)
+          : await window.api.submitJob(jobType, text, worker)
       setPrompt('')
       onJob(job)
       setSelectedJobId(job.id)
@@ -246,6 +264,7 @@ function Workers({
                   <label htmlFor="job-type">Job type</label>
                   <select
                     id="job-type"
+                    className="job-type"
                     value={jobType}
                     onChange={(event) => setJobType(event.target.value as JobType)}
                   >
@@ -254,6 +273,21 @@ function Workers({
                         {type}
                       </option>
                     ))}
+                  </select>
+                  <label htmlFor="job-worker">Worker</label>
+                  <select
+                    id="job-worker"
+                    className="plan-choice"
+                    value={worker}
+                    onChange={(event) => setWorker(asPlanChoice(event.target.value))}
+                  >
+                    <option value="auto">auto</option>
+                    <option value="claude" disabled={!planAvailable(plans, 'claude')}>
+                      claude
+                    </option>
+                    <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
+                      cursor
+                    </option>
                   </select>
                 </div>
                 <button className="btn btn-primary" type="submit" disabled={promptEmpty}>
@@ -291,6 +325,11 @@ function Workers({
                           />
                         ) : null}
                         <span className="chip">{job.type}</span>
+                        {job.reason ? (
+                          <span className="job-reason" title={job.reason}>
+                            {job.reason}
+                          </span>
+                        ) : null}
                         <span className="job-id" title={job.id}>
                           {job.id.slice(0, 8)}
                         </span>
@@ -330,7 +369,7 @@ function Workers({
                       size={20}
                     />
                   ) : null}
-                  <span>{outputTitle(selectedJob)}</span>
+                  <span title={outputTitle(selectedJob)}>{outputTitle(selectedJob)}</span>
                 </div>
                 <div className="output-body">
                   <RichText text={selectedJob.output} />

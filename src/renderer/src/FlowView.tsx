@@ -343,7 +343,16 @@ function Topology({
               >
                 <div className={fillClass(plan.id, left)} style={{ width: `${left}%` }} />
               </div>
-              <span className="flow-pct">{left}%</span>
+              <span className="flow-pct">
+                <span>{left}%</span>
+                <span className="flow-risk">
+                  {plan.atRisk ? (
+                    <span className="usage-risk-mark" title="Unused allowance expires soon">
+                      !
+                    </span>
+                  ) : null}
+                </span>
+              </span>
               <span className="flow-queued">
                 {plan.queued > 0 ? ` · ${plan.queued} queued` : ''}
               </span>

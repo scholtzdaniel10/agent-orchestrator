@@ -1,13 +1,25 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
 import RichText from './RichText'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
+type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+type ProviderId = PlanStatus['id']
+type PlanChoice = 'auto' | ProviderId
 
 function errorText(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'string') return err
   return 'Request failed'
+}
+
+function asPlanChoice(value: string): PlanChoice {
+  if (value === 'claude' || value === 'cursor') return value
+  return 'auto'
+}
+
+function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boolean {
+  return plans !== null && plans.some((plan) => plan.id === id && plan.available)
 }
 
 function leadMeta(message: LeadMessage): string {
@@ -42,16 +54,57 @@ function StreamingDots(): React.JSX.Element {
 
 function LeadChat({
   messages,
+  plans,
   onReset
 }: {
   messages: LeadMessage[]
+  plans: PlanStatus[] | null
   onReset: () => Promise<void>
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [choice, setChoice] = useState<PlanChoice>('auto')
+  const [planError, setPlanError] = useState<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const sending = useRef(false)
   const resetting = useRef(false)
+  const choiceRef = useRef<PlanChoice>('auto')
+  const picked = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    void window.api.getLeadPlan().then(
+      (plan) => {
+        if (!active || picked.current) return
+        const value: PlanChoice = plan ?? 'auto'
+        choiceRef.current = value
+        setChoice(value)
+      },
+      (err: unknown) => {
+        if (!active || picked.current) return
+        setPlanError(errorText(err))
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function changePlan(value: PlanChoice): Promise<void> {
+    const previous = choiceRef.current
+    picked.current = true
+    choiceRef.current = value
+    setChoice(value)
+    setPlanError(null)
+    try {
+      await window.api.setLeadPlan(value === 'auto' ? null : value)
+    } catch (err: unknown) {
+      if (choiceRef.current !== value) return
+      choiceRef.current = previous
+      setChoice(previous)
+      setPlanError(errorText(err))
+    }
+  }
 
   useLayoutEffect(() => {
     const log = logRef.current
@@ -108,17 +161,45 @@ function LeadChat({
           <BotAvatar bot="lead" state={leadStreaming ? 'working' : 'idle'} size={20} />
           <h2 id="lead-heading">Lead</h2>
         </div>
-        <button
-          type="button"
-          className="btn btn-quiet"
-          disabled={anyStreaming}
-          onClick={() => {
-            void newChat()
-          }}
-        >
-          New chat
-        </button>
+        <div className="head-actions">
+          <label htmlFor="lead-plan">Runs on</label>
+          <select
+            id="lead-plan"
+            className="plan-choice"
+            title="Switching plans starts a fresh lead session."
+            value={choice}
+            disabled={leadStreaming}
+            aria-invalid={planError !== null ? true : undefined}
+            aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
+            onChange={(event) => {
+              void changePlan(asPlanChoice(event.target.value))
+            }}
+          >
+            <option value="auto">auto</option>
+            <option value="claude" disabled={!planAvailable(plans, 'claude')}>
+              claude
+            </option>
+            <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
+              cursor
+            </option>
+          </select>
+          <button
+            type="button"
+            className="btn btn-quiet"
+            disabled={anyStreaming}
+            onClick={() => {
+              void newChat()
+            }}
+          >
+            New chat
+          </button>
+        </div>
       </div>
+      {planError !== null ? (
+        <p id="lead-plan-error" className="field-error" role="alert">
+          {planError}
+        </p>
+      ) : null}
       <div ref={logRef} className="lead-log" role="log" aria-live="polite">
         {messages.length === 0 ? (
           <div className="empty">

@@ -1,5 +1,42 @@
 type BotName = 'lead' | 'claude' | 'cursor'
 type BotState = 'idle' | 'working' | 'resting' | 'error'
+type Cell = readonly [number, number, number, number]
+
+const BODIES: Record<BotName, readonly Cell[]> = {
+  lead: [
+    [4, 0, 2, 2],
+    [1, 2, 8, 1],
+    [0, 3, 10, 5],
+    [1, 8, 8, 1],
+    [2, 9, 6, 1]
+  ],
+  claude: [
+    [1, 0, 8, 1],
+    [0, 1, 10, 8],
+    [1, 9, 8, 1]
+  ],
+  cursor: [
+    [4, 0, 2, 1],
+    [3, 1, 4, 1],
+    [2, 2, 6, 1],
+    [1, 3, 8, 1],
+    [0, 4, 10, 2],
+    [1, 6, 8, 1],
+    [2, 7, 6, 1],
+    [3, 8, 4, 1],
+    [4, 9, 2, 1]
+  ]
+}
+
+const EYES_OPEN: readonly Cell[] = [
+  [3, 4, 1, 2],
+  [6, 4, 1, 2]
+]
+
+const EYES_REST: readonly Cell[] = [
+  [2, 5, 2, 1],
+  [6, 5, 2, 1]
+]
 
 function BotAvatar({
   bot,
@@ -13,8 +50,7 @@ function BotAvatar({
   title?: string
 }): React.JSX.Element {
   const resting = state === 'resting'
-  const eyeY = resting ? 15.2 : 13
-  const eyeH = resting ? 1.6 : 6
+  const eyes = resting ? EYES_REST : EYES_OPEN
   const label = title !== undefined && title !== '' ? title : undefined
   const classes = ['bot-avatar', `bot-${bot}`]
   if (state === 'working') classes.push('is-working')
@@ -25,34 +61,19 @@ function BotAvatar({
       className={classes.join(' ')}
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 10 10"
+      shapeRendering="crispEdges"
       role={label !== undefined ? 'img' : undefined}
       aria-label={label}
       aria-hidden={label === undefined ? true : undefined}
     >
-      {bot === 'lead' ? (
-        <path
-          className="bot-body"
-          d="M16 3.6 26.7 9.8v12.4L16 28.4 5.3 22.2V9.8z"
-          strokeWidth={3}
-          strokeLinejoin="round"
-        />
-      ) : null}
-      {bot === 'claude' ? <circle className="bot-body" cx={16} cy={16} r={13} /> : null}
-      {bot === 'cursor' ? (
-        <rect
-          className="bot-body"
-          x={7}
-          y={7}
-          width={18}
-          height={18}
-          rx={5}
-          transform="rotate(45 16 16)"
-        />
-      ) : null}
-      <rect className="bot-eye" x={11} y={eyeY} width={3} height={eyeH} rx={1.5} />
-      <rect className="bot-eye" x={18} y={eyeY} width={3} height={eyeH} rx={1.5} />
-      {state === 'error' ? <circle className="bot-error" cx={26} cy={6} r={4} /> : null}
+      {BODIES[bot].map(([x, y, width, height]) => (
+        <rect key={`${x}-${y}`} className="bot-body" x={x} y={y} width={width} height={height} />
+      ))}
+      {eyes.map(([x, y, width, height]) => (
+        <rect key={`eye-${x}-${y}`} className="bot-eye" x={x} y={y} width={width} height={height} />
+      ))}
+      {state === 'error' ? <rect className="bot-error" x={8} y={0} width={2} height={2} /> : null}
     </svg>
   )
 }

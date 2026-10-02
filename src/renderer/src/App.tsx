@@ -416,11 +416,12 @@ function App(): React.JSX.Element {
         />
       </section>
       <section className="panel panel-lead" aria-labelledby="lead-heading">
-        <LeadChat messages={messages} onReset={resetLead} />
+        <LeadChat messages={messages} plans={plans} onReset={resetLead} />
       </section>
       <section className="panel panel-workers" aria-labelledby="workers-heading">
         <Workers
           jobs={jobs}
+          plans={plans}
           terminals={terminals}
           initialTerminalIds={initialTerminalIds}
           bus={terminalBus}
