@@ -118,7 +118,7 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 230px;
+  grid-template-columns: minmax(300px, 1fr) minmax(540px, 1.7fr) 230px;
   grid-template-rows: 36px minmax(0, 1fr);
   grid-template-areas:
     'header header header'
@@ -162,6 +162,8 @@ textarea {
 
 .panel-workers {
   grid-area: workers;
+  container-name: workers;
+  container-type: inline-size;
 }
 
 .panel-usage {
@@ -324,8 +326,215 @@ select {
   min-height: 0;
 }
 
-.workers > .hint {
+.tab-bar {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tab-scroll {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 38px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+}
+
+.tab,
+.tab-item {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.tab {
+  gap: 6px;
+  padding: 0 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab-item .tab,
+.tab-item:hover .tab,
+.tab-item.is-selected .tab,
+.tab-item.is-selected:hover .tab {
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+
+.tab:hover,
+.tab-item:hover {
+  background: var(--raised);
+}
+
+.tab.is-selected,
+.tab-item.is-selected {
+  border-color: var(--border);
+  background: var(--accent-soft);
+}
+
+.tab.is-selected:hover,
+.tab-item.is-selected:hover {
+  background: var(--accent-soft);
+}
+
+.tab:focus-visible,
+.tab-close:focus-visible {
+  outline-offset: -2px;
+}
+
+.tab-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab-close:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.tab-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.tab-new {
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.tab-split[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.workers-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workers-jobs,
+.terminal-stage {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workers-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workers-jobs.is-hidden,
+.terminal-stage.is-inactive {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.terminal-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.terminal-stage.is-split {
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+}
+
+.terminal-divider {
+  grid-column: 2;
+  grid-row: 1;
+  background: var(--border);
+}
+
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.terminal-pane.is-only,
+.terminal-pane.is-left {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.terminal-pane.is-right {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.terminal-pane.is-hidden {
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.terminal-banner {
+  flex: none;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.terminal-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+  overflow: hidden;
 }
 
 .lead-chat > .output-error {
@@ -851,6 +1060,23 @@ select {
 
   96% {
     transform: scaleY(0.15);
+  }
+}
+
+@container workers (max-width: 899px) {
+  .terminal-stage.is-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 1px minmax(0, 1fr);
+  }
+
+  .terminal-divider {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .terminal-pane.is-right {
+    grid-column: 1;
+    grid-row: 3;
   }
 }
 

@@ -150,6 +150,9 @@ function UsageMeter({
                   </div>
                 ) : null}
                 <ModelPicker plan={plan} disabled={word === 'not signed in'} />
+                {plan.id === 'cursor' ? (
+                  <p className="hint">Cursor keeps the last model used as its own default.</p>
+                ) : null}
               </div>
             </div>
           )

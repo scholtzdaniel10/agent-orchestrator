@@ -2,10 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import LeadChat from './LeadChat'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
+import { createTerminalBus, type TerminalBus } from './terminal-bus'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+
+const terminalBus: TerminalBus = createTerminalBus((listener) =>
+  window.api.onTerminalData(listener)
+)
 
 const MINUTE_MS = 60_000
 
@@ -45,6 +51,38 @@ function mergeJobList(current: JobRecord[], list: JobRecord[]): JobRecord[] {
   return merged
 }
 
+function applyTerminalUpdate(
+  current: TerminalInfo[],
+  info: TerminalInfo,
+  removed: boolean
+): TerminalInfo[] {
+  if (removed) return current.filter((item) => item.id !== info.id)
+  const index = current.findIndex((item) => item.id === info.id)
+  if (index === -1) return [...current, info]
+  const next = current.slice()
+  next[index] = info
+  return next
+}
+
+function mergeTerminalList(
+  current: TerminalInfo[],
+  list: TerminalInfo[],
+  removed: ReadonlySet<string>
+): TerminalInfo[] {
+  const live = new Map(current.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+  const merged: TerminalInfo[] = []
+  for (const info of list) {
+    if (removed.has(info.id)) continue
+    seen.add(info.id)
+    merged.push(live.get(info.id) ?? info)
+  }
+  for (const info of current) {
+    if (!seen.has(info.id) && !removed.has(info.id)) merged.push(info)
+  }
+  return merged
+}
+
 /** Signed in and not resting. A busy plan still counts: it is in use, not unavailable. */
 function readyPlans(plans: readonly PlanStatus[], now: number): number {
   return plans.filter((plan) => {
@@ -62,6 +100,8 @@ function App(): React.JSX.Element {
   const [messages, setMessages] = useState<LeadMessage[]>([])
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [plans, setPlans] = useState<PlanStatus[] | null>(null)
+  const [terminals, setTerminals] = useState<TerminalInfo[]>([])
+  const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const acceptList = useRef(true)
 
@@ -113,6 +153,35 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    let active = true
+    const removed = new Set<string>()
+    const unsubscribe = window.api.onTerminalUpdate((info, isRemoved) => {
+      if (isRemoved) {
+        removed.add(info.id)
+        terminalBus.forget(info.id)
+      } else {
+        removed.delete(info.id)
+      }
+      setTerminals((current) => applyTerminalUpdate(current, info, isRemoved))
+    })
+    void window.api.listTerminals().then(
+      (list) => {
+        if (!active) return
+        setInitialTerminalIds((current) => current ?? new Set(list.map((info) => info.id)))
+        setTerminals((current) => mergeTerminalList(current, list, removed))
+      },
+      () => {
+        if (!active) return
+        setInitialTerminalIds((current) => current ?? new Set())
+      }
+    )
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now())
     }, MINUTE_MS)
@@ -143,8 +212,14 @@ function App(): React.JSX.Element {
       <section className="panel panel-workers" aria-labelledby="workers-heading">
         <Workers
           jobs={jobs}
+          terminals={terminals}
+          initialTerminalIds={initialTerminalIds}
+          bus={terminalBus}
           onJob={(job) => {
             setJobs((current) => mergeJob(current, job))
+          }}
+          onTerminal={(info) => {
+            setTerminals((current) => applyTerminalUpdate(current, info, false))
           }}
         />
       </section>
