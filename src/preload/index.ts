@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { JobRecord } from '../core/router'
-import type { JobType, LeadMessage, ModelOption, ProviderId } from '../core/types'
+import type { JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo } from '../core/types'
 import type { OrchestratorApi, PlanStatus } from './api-types'
 
 const api: OrchestratorApi = {
@@ -54,6 +54,42 @@ const api: OrchestratorApi = {
     ipcRenderer.on('lead:update', listener)
     return () => {
       ipcRenderer.removeListener('lead:update', listener)
+    }
+  },
+  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('terminals:open', provider, cols, rows)
+  },
+  writeTerminal(id: string, data: string): void {
+    ipcRenderer.send('terminals:write', id, data)
+  },
+  resizeTerminal(id: string, cols: number, rows: number): void {
+    ipcRenderer.send('terminals:resize', id, cols, rows)
+  },
+  closeTerminal(id: string): Promise<void> {
+    return ipcRenderer.invoke('terminals:close', id)
+  },
+  listTerminals(): Promise<TerminalInfo[]> {
+    return ipcRenderer.invoke('terminals:list')
+  },
+  terminalSnapshot(id: string): Promise<string> {
+    return ipcRenderer.invoke('terminals:snapshot', id)
+  },
+  onTerminalData(cb: (id: string, data: string) => void): () => void {
+    const listener = (_event: IpcRendererEvent, id: string, data: string): void => {
+      cb(id, data)
+    }
+    ipcRenderer.on('terminals:data', listener)
+    return () => {
+      ipcRenderer.removeListener('terminals:data', listener)
+    }
+  },
+  onTerminalUpdate(cb: (info: TerminalInfo, removed: boolean) => void): () => void {
+    const listener = (_event: IpcRendererEvent, info: TerminalInfo, removed: boolean): void => {
+      cb(info, removed)
+    }
+    ipcRenderer.on('terminals:update', listener)
+    return () => {
+      ipcRenderer.removeListener('terminals:update', listener)
     }
   }
 }

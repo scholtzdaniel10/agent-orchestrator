@@ -1,4 +1,4 @@
-import type { JobType, LeadMessage, ModelOption, ProviderId } from '../core/types'
+import type { JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo } from '../core/types'
 import type { JobRecord } from '../core/router'
 
 /** One subscription plan as the sidebar shows it. */
@@ -40,6 +40,20 @@ export interface OrchestratorApi {
   listLeadMessages(): Promise<LeadMessage[]>
   resetLead(): Promise<void>
   onLeadUpdate(cb: (message: LeadMessage) => void): () => void
+
+  /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
+  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo>
+  /** Keystrokes for a terminal. Fire and forget. */
+  writeTerminal(id: string, data: string): void
+  resizeTerminal(id: string, cols: number, rows: number): void
+  /** Ends the session (whole process tree) and removes the terminal. */
+  closeTerminal(id: string): Promise<void>
+  listTerminals(): Promise<TerminalInfo[]>
+  /** Recent output of a terminal, to repaint a pane that attaches late. */
+  terminalSnapshot(id: string): Promise<string>
+  onTerminalData(cb: (id: string, data: string) => void): () => void
+  /** Fires when a terminal opens, exits or is removed (`removed: true`). */
+  onTerminalUpdate(cb: (info: TerminalInfo, removed: boolean) => void): () => void
 }
 
-export type { JobRecord, JobType, LeadMessage, ModelOption, ProviderId }
+export type { JobRecord, JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo }

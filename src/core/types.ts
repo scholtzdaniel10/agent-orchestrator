@@ -94,3 +94,17 @@ export interface LeadMessage {
   model?: string
   status: 'streaming' | 'done' | 'error'
 }
+
+/** One interactive CLI session, shown as a terminal tab. */
+export interface TerminalInfo {
+  id: string
+  provider: ProviderId
+  /** Short label, e.g. "claude 1". */
+  title: string
+  status: 'running' | 'exited'
+  exitCode: number | null
+  /** Model passed to the CLI, or null for the CLI's own default. */
+  model: string | null
+  /** Epoch ms. */
+  startedAt: number
+}
