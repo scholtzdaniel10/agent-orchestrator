@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { AgentEvent, Job, ProviderAdapter, ProviderId, RunHandle } from '../types'
+import type { AgentEvent, Job, ProviderAdapter, ProviderId, RunHandle, RunOptions } from '../types'
 import { Orchestrator, type JobRecord } from './orchestrator'
 import { headroom, loadRules } from './router'
 import { Store } from './store'
@@ -19,6 +19,7 @@ class FakeAdapter implements ProviderAdapter {
   readonly id: ProviderId
   readonly received: Job[] = []
   readonly cwds: string[] = []
+  readonly options: Array<RunOptions | undefined> = []
   installed = true
   signedIn = true
   private readonly scripts: Script[]
@@ -36,9 +37,10 @@ class FakeAdapter implements ProviderAdapter {
     return this.signedIn
   }
 
-  run(job: Job, cwd: string): RunHandle {
+  run(job: Job, cwd: string, opts?: RunOptions): RunHandle {
     this.received.push({ ...job })
     this.cwds.push(cwd)
+    this.options.push(opts)
     const script = this.scripts.shift()
     if (!script) throw new Error(`no script left for ${this.id}`)
     script.onStart?.()
@@ -99,7 +101,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 async function withOrch(
   adapters: ProviderAdapter[],
   fn: (orch: Orchestrator, store: Store) => Promise<void>,
-  now?: () => number
+  now?: () => number,
+  modelFor?: (provider: ProviderId) => string | undefined
 ): Promise<void> {
   const store = new Store(':memory:')
   try {
@@ -108,7 +111,8 @@ async function withOrch(
       store,
       rules: loadRules(),
       cwd: CWD,
-      now
+      now,
+      modelFor
     })
     await orch.init()
     await fn(orch, store)
@@ -510,6 +514,90 @@ test('workers reports availability, rest, headroom, busy work, and queue depth',
     },
     () => now
   )
+})
+
+test('modelFor is read when each run starts', async () => {
+  let chosen = 'opus'
+  const claude = new FakeAdapter('claude', [ok('a'), ok('b')])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'one')
+      await orch.idle()
+      expect(claude.options[0]?.model).toBe('opus')
+      chosen = 'sonnet'
+      orch.submit('planning', 'two')
+      await orch.idle()
+      expect(claude.options[1]?.model).toBe('sonnet')
+    },
+    undefined,
+    () => chosen
+  )
+})
+
+test('without modelFor the adapter sees no model', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'one')
+    await orch.idle()
+    expect(claude.options[0]?.model).toBeUndefined()
+  })
+})
+
+test('an init model is stored, copied, and emitted', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        { kind: 'init', sessionId: 's1', model: 'claude-opus-4-8' },
+        { kind: 'result', ok: true, text: 'done', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    const snaps: JobRecord[] = []
+    orch.onUpdate((job) => snaps.push(job))
+    const submitted = orch.submit('planning', 'prompt')
+    await orch.idle()
+    expect(orch.get(submitted.id)?.model).toBe('claude-opus-4-8')
+    expect(orch.list()[0]?.model).toBe('claude-opus-4-8')
+    expect(snaps.some((snap) => snap.model === 'claude-opus-4-8')).toBe(true)
+    const listed = orch.list()[0]
+    if (!listed) throw new Error('expected a job')
+    listed.model = 'mutated'
+    expect(orch.get(submitted.id)?.model).toBe('claude-opus-4-8')
+  })
+})
+
+test('failover clears the model until the next provider reports one', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        { kind: 'init', sessionId: 's1', model: 'opus' },
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'usage limit' }
+      ]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [
+    {
+      events: [
+        { kind: 'init', sessionId: 's2', model: 'composer' },
+        { kind: 'result', ok: true, text: 'recovered', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withOrch([claude, cursor], async (orch) => {
+    const snaps: JobRecord[] = []
+    orch.onUpdate((job) => snaps.push(job))
+    orch.submit('planning', 'original')
+    await orch.idle()
+    const opusAt = snaps.findIndex((snap) => snap.model === 'opus')
+    const handed = snaps.findIndex((snap) => snap.provider === 'cursor' && snap.status === 'queued')
+    expect(opusAt).toBeGreaterThanOrEqual(0)
+    expect(handed).toBeGreaterThan(opusAt)
+    expect(snaps[handed]?.model).toBeUndefined()
+    expect(orch.list()[0]?.model).toBe('composer')
+  })
 })
 
 test('get returns a copy of the job, or null for an unknown id', async () => {

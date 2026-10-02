@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, RunHandle } from '../types'
-import { CursorAdapter, cursorEnv } from './cursor'
+import { CursorAdapter, cursorEnv, parseCursorModels } from './cursor'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const prompt = 'say "hello"\n100% |& done >'
@@ -224,6 +224,20 @@ process.exit(0)
     ])
     expect(readFileSync(join(both, '.cursor', 'mcp.json'), 'utf8')).toBe(mcpJson)
     expect(readFileSync(join(both, '.cursor', 'cli.json'), 'utf8')).toBe(cliJson)
+
+    const modelDir = join(root, 'model')
+    mkdirSync(modelDir)
+    expect(await cliArgs(adapter.run(job, modelDir, { model: 'composer-2.5' }))).toEqual([
+      ...base,
+      '--model',
+      'composer-2.5'
+    ])
+    expect(await cliArgs(adapter.run(job, plain, { model: '' }))).toEqual(base)
+
+    const all = join(root, 'all')
+    expect(
+      await cliArgs(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'composer-2.5' }))
+    ).toEqual([...base, '--resume', 'sess-3', '--approve-mcps', '--model', 'composer-2.5'])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -239,6 +253,89 @@ test('missing CLI resolves exit and ends events', async () => {
     expect(exit.stderr.length).toBeGreaterThan(0)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('parseCursorModels keeps id - label lines and drops the rest', () => {
+  const zw = '\u200B\u200C\u200D\uFEFF'
+  const stdout = [
+    'Available models',
+    '',
+    `${zw}auto${zw} - Auto${zw}`,
+    'composer-2.5 - Composer 2.5 - fast',
+    'not a model line'
+  ].join('\r\n')
+  expect(parseCursorModels(stdout)).toEqual([
+    { id: 'auto', label: 'Auto' },
+    { id: 'composer-2.5', label: 'Composer 2.5 - fast' }
+  ])
+  expect(parseCursorModels('')).toEqual([])
+  expect(parseCursorModels('\n\n')).toEqual([])
+})
+
+test('listModels parses the CLI, caches a success, and does not cache a failure', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-models-'))
+  try {
+    const counter = join(root, 'count.txt')
+    const okScript = writeScript(
+      root,
+      'ok.mjs',
+      `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(counter)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+if (n > 0) process.exit(1)
+process.stdout.write('Available models\\n\\nauto - Auto\\ncomposer-2.5 - Composer 2.5\\n')
+`
+    )
+    const ok = new CursorAdapter({ command: process.execPath, args: [okScript] })
+    const first = await ok.listModels()
+    const second = await ok.listModels()
+    expect(first).toEqual([
+      { id: 'auto', label: 'Auto' },
+      { id: 'composer-2.5', label: 'Composer 2.5' }
+    ])
+    expect(second).toEqual(first)
+    expect(readFileSync(counter, 'utf8')).toBe('1')
+
+    const failCount = join(root, 'fail.txt')
+    const failScript = writeScript(
+      root,
+      'fail.mjs',
+      `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(failCount)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+if (n === 0) process.exit(2)
+process.stdout.write('auto - Auto\\n')
+`
+    )
+    const failing = new CursorAdapter({ command: process.execPath, args: [failScript] })
+    expect(await failing.listModels()).toEqual([])
+    expect(await failing.listModels()).toEqual([{ id: 'auto', label: 'Auto' }])
+    expect(readFileSync(failCount, 'utf8')).toBe('2')
+
+    const emptyCount = join(root, 'empty.txt')
+    const emptyScript = writeScript(
+      root,
+      'empty.mjs',
+      `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(emptyCount)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+if (n === 0) {
+  process.stdout.write('Available models\\n\\n')
+  process.exit(0)
+}
+process.stdout.write('haiku - Haiku\\n')
+`
+    )
+    const empty = new CursorAdapter({ command: process.execPath, args: [emptyScript] })
+    expect(await empty.listModels()).toEqual([])
+    expect(await empty.listModels()).toEqual([{ id: 'haiku', label: 'Haiku' }])
+    expect(readFileSync(emptyCount, 'utf8')).toBe('2')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
 

@@ -246,9 +246,33 @@ process.exit(0)
       ...mcpArgs(both)
     ])
     expect(readFileSync(join(both, 'orchestrator-mcp.json'), 'utf8')).toBe(expectedConfig)
+
+    const modelDir = join(root, 'model')
+    mkdirSync(modelDir)
+    expect(await cliArgs(adapter.run(job, modelDir, { model: 'opus' }))).toEqual([
+      ...base,
+      '--model',
+      'opus'
+    ])
+    expect(await cliArgs(adapter.run(job, plain, { model: '' }))).toEqual(base)
+
+    const all = join(root, 'all')
+    expect(
+      await cliArgs(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
+    ).toEqual([...base, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('listModels returns the four help-text aliases', async () => {
+  const adapter = new ClaudeAdapter({ command: 'claude' })
+  await expect(adapter.listModels()).resolves.toEqual([
+    { id: 'fable', label: 'Fable (latest)' },
+    { id: 'opus', label: 'Opus (latest)' },
+    { id: 'sonnet', label: 'Sonnet (latest)' },
+    { id: 'haiku', label: 'Haiku (latest)' }
+  ])
 })
 
 test('missing CLI resolves exit and ends events', async () => {

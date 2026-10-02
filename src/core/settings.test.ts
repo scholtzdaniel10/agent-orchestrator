@@ -1,0 +1,111 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, test } from 'vitest'
+import { isValidModel, Settings } from './settings'
+
+function tempFile(): { root: string; path: string } {
+  const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
+  return { root, path: join(root, 'settings.json') }
+}
+
+test('missing file reads as empty and setModel round-trips through a new instance', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    expect(existsSync(path)).toBe(false)
+    expect(settings.model('claude')).toBeUndefined()
+    expect(settings.model('cursor')).toBeUndefined()
+
+    settings.setModel('claude', '  opus  ')
+    settings.setModel('cursor', 'auto')
+    const again = new Settings(path)
+    expect(again.model('claude')).toBe('opus')
+    expect(again.model('cursor')).toBe('auto')
+
+    again.setModel('claude', null)
+    const cleared = new Settings(path)
+    expect(cleared.model('claude')).toBeUndefined()
+    expect(cleared.model('cursor')).toBe('auto')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('corrupt JSON is empty and a later setModel still persists', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, '{')
+    const settings = new Settings(path)
+    expect(settings.model('claude')).toBeUndefined()
+    settings.setModel('cursor', 'auto')
+    expect(new Settings(path).model('cursor')).toBe('auto')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ models: { cursor: 'auto' } })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('an invalid stored model is ignored and unknown keys survive a write', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        theme: 'dark',
+        models: { claude: '--force', cursor: 'auto', extra: 1 }
+      })
+    )
+    const settings = new Settings(path)
+    expect(settings.model('claude')).toBeUndefined()
+    expect(settings.model('cursor')).toBe('auto')
+    settings.setModel('claude', 'opus')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      theme: 'dark',
+      models: { claude: 'opus', cursor: 'auto', extra: 1 }
+    })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('setModel rejects names that must not become command-line arguments', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    settings.setModel('claude', 'opus')
+    const bad = ['', '   ', '--force', '-m', 'a b', 'a'.repeat(201), 'opus\n4']
+    for (const name of bad) {
+      expect(() => settings.setModel('claude', name)).toThrow('invalid model name')
+    }
+    expect(new Settings(path).model('claude')).toBe('opus')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('isValidModel accepts CLI model ids, including bracketed options', () => {
+  expect(isValidModel('opus')).toBe(true)
+  expect(isValidModel('grok-4.7-xhigh')).toBe(true)
+  expect(isValidModel('claude-opus-4-8[context=1m,effort=high,fast=false]')).toBe(true)
+  expect(isValidModel('gpt-5.2')).toBe(true)
+  expect(isValidModel('a'.repeat(200))).toBe(true)
+  expect(isValidModel('a'.repeat(201))).toBe(false)
+  expect(isValidModel('--force')).toBe(false)
+  expect(isValidModel(null)).toBe(false)
+})
+
+test('setModel creates a missing parent folder', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
+  try {
+    const path = join(root, 'nested', 'dir', 'settings.json')
+    expect(existsSync(join(root, 'nested'))).toBe(false)
+    const settings = new Settings(path)
+    settings.setModel('cursor', 'auto')
+    expect(existsSync(path)).toBe(true)
+    expect(existsSync(`${path}.tmp`)).toBe(false)
+    expect(new Settings(path).model('cursor')).toBe('auto')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

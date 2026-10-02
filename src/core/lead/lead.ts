@@ -38,6 +38,7 @@ export class Lead {
   private readonly dir: string
   private readonly prefer: ProviderId | undefined
   private readonly now: () => number
+  private readonly modelFor?: (provider: ProviderId) => string | undefined
   private available: ProviderId[] = []
   private history: LeadMessage[] = []
   private readonly listeners = new Set<(message: LeadMessage) => void>()
@@ -53,6 +54,7 @@ export class Lead {
     dir: string
     prefer?: ProviderId
     now?: () => number
+    modelFor?: (provider: ProviderId) => string | undefined
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -62,6 +64,7 @@ export class Lead {
     this.dir = opts.dir
     this.prefer = opts.prefer
     this.now = opts.now ?? ((): number => Date.now())
+    this.modelFor = opts.modelFor
   }
 
   /** Providers that are installed and signed in become the candidate set. */
@@ -204,13 +207,18 @@ export class Lead {
       let limitEv: LimitEvent | null = null
       handle = adapter.run({ id: lead.id, prompt: plan.prompt }, this.dir, {
         resume: plan.resume,
-        bridge: this.bridge
+        bridge: this.bridge,
+        model: this.modelFor?.(provider)
       })
       for await (const event of handle.events) {
         if (event.kind === 'init') {
           sessionId = event.sessionId
           this.sessionId = event.sessionId
           this.sessionProvider = provider
+          if (event.model !== undefined) {
+            lead.model = event.model
+            this.emit(lead)
+          }
         } else if (event.kind === 'text') {
           this.append(lead, event.text)
         } else if (event.kind === 'usage') {
@@ -330,6 +338,7 @@ function copyMessage(message: LeadMessage): LeadMessage {
     status: message.status
   }
   if (message.provider !== undefined) copy.provider = message.provider
+  if (message.model !== undefined) copy.model = message.model
   return copy
 }
 

@@ -30,6 +30,8 @@ interface InternalJob {
   status: JobStatus
   output: string
   failedOver: ProviderId[]
+  /** Model the CLI reported for the attempt now running. Cleared on failover. */
+  model?: string
   error?: string
 }
 
@@ -57,6 +59,7 @@ export class Orchestrator {
   private readonly rules: RouterRules
   private readonly cwd: string
   private readonly now: () => number
+  private readonly modelFor?: (provider: ProviderId) => string | undefined
   private candidates: ProviderId[] = []
   private readonly jobs: InternalJob[] = []
   private readonly byJob = new Map<string, InternalJob>()
@@ -71,6 +74,7 @@ export class Orchestrator {
     rules: RouterRules
     cwd: string
     now?: () => number
+    modelFor?: (provider: ProviderId) => string | undefined
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -78,6 +82,7 @@ export class Orchestrator {
     this.rules = opts.rules
     this.cwd = opts.cwd
     this.now = opts.now ?? ((): number => Date.now())
+    this.modelFor = opts.modelFor
   }
 
   /** Providers that are installed and signed in become the candidate set. */
@@ -218,9 +223,16 @@ export class Orchestrator {
     try {
       const adapter = this.byId.get(provider)
       if (!adapter) throw new Error(`no adapter for ${provider}`)
-      handle = adapter.run({ id: job.id, prompt: job.prompt }, this.cwd)
+      handle = adapter.run({ id: job.id, prompt: job.prompt }, this.cwd, {
+        model: this.modelFor?.(provider)
+      })
       for await (const event of handle.events) {
-        if (event.kind === 'text') {
+        if (event.kind === 'init') {
+          if (event.model !== undefined) {
+            job.model = event.model
+            this.emit(job)
+          }
+        } else if (event.kind === 'text') {
           this.appendText(job, event.text)
         } else if (event.kind === 'usage') {
           utilization = event.utilization
@@ -356,6 +368,7 @@ export class Orchestrator {
     job.output = ''
     job.status = 'queued'
     job.provider = next
+    delete job.model
     delete job.error
     this.enqueue(next, job.id)
     this.emit(job)
@@ -426,6 +439,7 @@ function copy(job: InternalJob): JobRecord {
     failedOver: [...job.failedOver]
   }
   if (job.error !== undefined) record.error = job.error
+  if (job.model !== undefined) record.model = job.model
   return record
 }
 

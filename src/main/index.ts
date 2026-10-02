@@ -7,6 +7,7 @@ import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
+import { isValidModel, Settings } from '../core/settings'
 import type { JobType, LeadMessage, ProviderId } from '../core/types'
 import type { PlanStatus } from '../preload/api-types'
 
@@ -59,14 +60,19 @@ app.whenReady().then(async () => {
 
   store = new Store(join(app.getPath('userData'), 'orchestrator.sqlite'))
   const shared = store
+  const settings = new Settings(join(app.getPath('userData'), 'settings.json'))
+  const modelFor = (id: ProviderId): string | undefined => settings.model(id)
   // ORCH_RULES points at an edited copy of rules.json; unset uses the bundled defaults.
   const rules = loadRules(process.env.ORCH_RULES)
-  const adapters = [new ClaudeAdapter(), new CursorAdapter()]
+  const claude = new ClaudeAdapter()
+  const cursor = new CursorAdapter()
+  const adapters = [claude, cursor]
   const orch = new Orchestrator({
     adapters,
     store: shared,
     rules,
-    cwd: process.env.ORCH_CWD ?? process.cwd()
+    cwd: process.env.ORCH_CWD ?? process.cwd(),
+    modelFor
   })
   await orch.init()
 
@@ -81,7 +87,8 @@ app.whenReady().then(async () => {
     rules,
     bridge: started.info,
     dir: join(app.getPath('userData'), 'lead'),
-    prefer
+    prefer,
+    modelFor
   })
   await lead.init()
 
@@ -93,7 +100,7 @@ app.whenReady().then(async () => {
       restingUntil: worker.restingUntil,
       resetsAt: null,
       atRisk: false,
-      model: null,
+      model: settings.model(worker.id) ?? null,
       busy: worker.busy,
       queued: worker.queued
     }))
@@ -122,6 +129,18 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('plans:list', () => plans())
+  ipcMain.handle('models:list', (_event, provider: unknown) => {
+    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+    return provider === 'claude' ? claude.listModels() : cursor.listModels()
+  })
+  ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
+    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+    if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
+    settings.setModel(provider, model)
+    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
+      return
+    mainWindow.webContents.send('plans:update', plans())
+  })
   ipcMain.handle('lead:send', (_event, text: unknown) => {
     if (typeof text !== 'string' || text === '') throw new Error('empty message')
     return lead.send(text)

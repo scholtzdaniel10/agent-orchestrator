@@ -1,13 +1,24 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentEvent, BridgeInfo, Job, ProviderAdapter, RunHandle, RunOptions } from '../types'
+import type {
+  AgentEvent,
+  BridgeInfo,
+  Job,
+  ModelOption,
+  ProviderAdapter,
+  RunHandle,
+  RunOptions
+} from '../types'
 import { runCaptured, spawnCli, type Bin } from './process'
 
 const LIMIT_RE = /usage limit|rate.?limit|limit reached|out of (usage|credits)|spend limit|quota/i
 
+const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g
+
 export class CursorAdapter implements ProviderAdapter {
   readonly id = 'cursor' as const
   private readonly bin: Bin
+  private cachedModels: ModelOption[] | undefined
 
   constructor(bin?: Bin) {
     this.bin = bin ?? resolveCursorBin()
@@ -23,6 +34,16 @@ export class CursorAdapter implements ProviderAdapter {
     return code === 0 && /logged in/i.test(stdout + stderr)
   }
 
+  async listModels(): Promise<ModelOption[]> {
+    if (this.cachedModels !== undefined) return this.cachedModels
+    const { code, stdout } = await runCaptured(this.bin, ['models'])
+    if (code !== 0) return []
+    const parsed = parseCursorModels(stdout)
+    if (parsed.length === 0) return []
+    this.cachedModels = parsed
+    return parsed
+  }
+
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--trust', '--output-format', 'stream-json']
     if (opts?.resume) args.push('--resume', opts.resume)
@@ -33,6 +54,7 @@ export class CursorAdapter implements ProviderAdapter {
       writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig())
       args.push('--approve-mcps')
     }
+    if (opts?.model) args.push('--model', opts.model)
     return spawnCli(
       this.bin,
       args,
@@ -55,6 +77,20 @@ export class CursorAdapter implements ProviderAdapter {
     if (typeof e === 'string') return LIMIT_RE.test(e)
     return e.kind === 'limit'
   }
+}
+
+export function parseCursorModels(stdout: string): ModelOption[] {
+  const models: ModelOption[] = []
+  for (const raw of stdout.split(/\r?\n/)) {
+    const line = raw.replace(ZERO_WIDTH_RE, '').trim()
+    const sep = line.indexOf(' - ')
+    if (sep <= 0) continue
+    const id = line.slice(0, sep)
+    const label = line.slice(sep + 3)
+    if (!/^\S+$/.test(id) || label.length === 0) continue
+    models.push({ id, label })
+  }
+  return models
 }
 
 /**

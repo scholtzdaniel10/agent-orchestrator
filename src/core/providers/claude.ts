@@ -1,6 +1,14 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import type { AgentEvent, BridgeInfo, Job, ProviderAdapter, RunHandle, RunOptions } from '../types'
+import type {
+  AgentEvent,
+  BridgeInfo,
+  Job,
+  ModelOption,
+  ProviderAdapter,
+  RunHandle,
+  RunOptions
+} from '../types'
 import { runCaptured, spawnCli, type Bin } from './process'
 
 const LIMIT_RE =
@@ -29,6 +37,16 @@ export class ClaudeAdapter implements ProviderAdapter {
     }
   }
 
+  // Static: the Claude CLI has no command that lists models; help names these aliases.
+  async listModels(): Promise<ModelOption[]> {
+    return [
+      { id: 'fable', label: 'Fable (latest)' },
+      { id: 'opus', label: 'Opus (latest)' },
+      { id: 'sonnet', label: 'Sonnet (latest)' },
+      { id: 'haiku', label: 'Haiku (latest)' }
+    ]
+  }
+
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
     if (opts?.resume) args.push('--resume', opts.resume)
@@ -47,6 +65,7 @@ export class ClaudeAdapter implements ProviderAdapter {
         'project'
       )
     }
+    if (opts?.model) args.push('--model', opts.model)
     return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseEvent(line))
   }
 

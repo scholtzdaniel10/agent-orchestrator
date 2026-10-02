@@ -138,7 +138,11 @@ function leadRuns(store: Store): ReturnType<Store['runs']> {
 async function withLead(
   adapters: ProviderAdapter[],
   fn: (lead: Lead, store: Store) => Promise<void>,
-  opts?: { now?: () => number; prefer?: ProviderId }
+  opts?: {
+    now?: () => number
+    prefer?: ProviderId
+    modelFor?: (provider: ProviderId) => string | undefined
+  }
 ): Promise<void> {
   const store = new Store(':memory:')
   try {
@@ -149,7 +153,8 @@ async function withLead(
       bridge,
       dir: DIR,
       prefer: opts?.prefer,
-      now: opts?.now
+      now: opts?.now,
+      modelFor: opts?.modelFor
     })
     await lead.init()
     await fn(lead, store)
@@ -554,4 +559,51 @@ test('rejects blank text and a send while busy; reset and unsubscribe behave', a
     expect(cursor.calls[1].job.prompt.startsWith(LEAD_INSTRUCTIONS)).toBe(true)
     expect(lead.messages()).toHaveLength(2)
   })
+})
+
+test('modelFor reaches the run with bridge and resume, and init sets the message model', async () => {
+  let chosen = 'opus'
+  const cursor = new FakeAdapter('cursor', [
+    {
+      events: [
+        { kind: 'init', sessionId: 'sess-1', model: 'claude-opus-4-8' },
+        { kind: 'result', ok: true, text: 'first', sessionId: 'sess-1', costUsd: 1, tokens: 1 }
+      ]
+    },
+    {
+      events: [
+        { kind: 'init', sessionId: 'sess-1', model: 'claude-sonnet-4-6' },
+        { kind: 'result', ok: true, text: 'second', sessionId: 'sess-1', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withLead(
+    [cursor],
+    async (lead) => {
+      const seen: LeadMessage[] = []
+      lead.onUpdate((message) => seen.push(message))
+      const first = await lead.send('plan the work')
+      expect(cursor.calls[0]?.opts).toMatchObject({ bridge, model: 'opus' })
+      expect(cursor.calls[0]?.opts?.resume).toBeUndefined()
+      expect(first.model).toBe('claude-opus-4-8')
+      expect(lead.messages()[1]?.model).toBe('claude-opus-4-8')
+      expect(seen.some((message) => message.model === 'claude-opus-4-8')).toBe(true)
+      const copied = lead.messages()[1]
+      if (!copied) throw new Error('expected a lead message')
+      copied.model = 'mutated'
+      expect(lead.messages()[1]?.model).toBe('claude-opus-4-8')
+
+      chosen = 'sonnet'
+      const second = await lead.send('continue')
+      expect(cursor.calls[1]?.opts).toMatchObject({
+        bridge,
+        resume: 'sess-1',
+        model: 'sonnet'
+      })
+      expect(second.model).toBe('claude-sonnet-4-6')
+      expect(lead.messages()[3]?.model).toBe('claude-sonnet-4-6')
+      expect(lead.messages()[1]?.model).toBe('claude-opus-4-8')
+    },
+    { modelFor: () => chosen }
+  )
 })
