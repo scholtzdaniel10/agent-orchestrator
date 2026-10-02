@@ -109,11 +109,20 @@ app.whenReady().then(async () => {
     }))
   }
 
+  function publishPlans(): void {
+    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
+      return
+    mainWindow.webContents.send('plans:update', plans())
+  }
+
   function publish(job: JobRecord): void {
     if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
       return
     mainWindow.webContents.send('jobs:update', job)
-    mainWindow.webContents.send('plans:update', plans())
+    publishPlans()
+    // The orchestrator frees a plan just after a job's last update; look again once it has,
+    // or the plan stays "busy" on screen until something else happens.
+    setTimeout(publishPlans, 0)
   }
 
   function publishLead(message: LeadMessage): void {
