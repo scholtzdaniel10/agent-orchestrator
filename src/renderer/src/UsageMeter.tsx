@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import BotAvatar from './BotAvatar'
+import ModelPicker from './ModelPicker'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
@@ -42,39 +43,42 @@ function resetPhrase(resetsAt: number, now: number): string | null {
   return `resets in ${parts.join(' ')}`
 }
 
-function UsageMeter(): React.JSX.Element {
-  const [plans, setPlans] = useState<PlanStatus[] | null>(null)
-  const [now, setNow] = useState(() => Date.now())
+function usageAvatarState(word: PlanWord): 'idle' | 'working' | 'resting' {
+  if (word === 'not signed in' || word === 'resting') return 'resting'
+  if (word === 'busy') return 'working'
+  return 'idle'
+}
 
-  useEffect(() => {
-    let active = true
-    let sawUpdate = false
-    const unsubscribe = window.api.onPlansUpdate((next) => {
-      sawUpdate = true
-      setPlans(next)
-    })
-    void window.api.listPlans().then((list) => {
-      if (!active || sawUpdate) return
-      setPlans(list)
-    })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [])
+function statusClass(word: PlanWord): string {
+  if (word === 'not signed in') return 'status status-out'
+  return `status status-${word}`
+}
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now())
-    }, MINUTE_MS)
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [])
+function meterFillClass(id: PlanStatus['id'], left: number): string {
+  if (left < 15) return 'meter-fill meter-bad'
+  if (left < 30) return 'meter-fill meter-warn'
+  return `meter-fill meter-${id}`
+}
 
+function UsageHeading(): React.JSX.Element {
+  return (
+    <div className="panel-head">
+      <h2 id="usage-heading">Usage</h2>
+    </div>
+  )
+}
+
+function UsageMeter({
+  plans,
+  now
+}: {
+  plans: PlanStatus[] | null
+  now: number
+}): React.JSX.Element {
   if (plans === null) {
     return (
       <div className="usage">
+        <UsageHeading />
         <p className="hint">Checking plans…</p>
       </div>
     )
@@ -83,6 +87,7 @@ function UsageMeter(): React.JSX.Element {
   if (plans.length === 0) {
     return (
       <div className="usage">
+        <UsageHeading />
         <p className="hint">No plans found. Sign in to the claude or agent CLI.</p>
       </div>
     )
@@ -90,51 +95,66 @@ function UsageMeter(): React.JSX.Element {
 
   return (
     <div className="usage">
+      <UsageHeading />
       <div className="usage-list">
         {plans.map((plan) => {
           const word = planWord(plan, now)
           const left = headroomPercent(plan.used)
-          const dim = word === 'not signed in' || word === 'resting'
           const restingUntil = plan.restingUntil
           const reset = plan.resetsAt === null ? null : resetPhrase(plan.resetsAt, now)
+          const showResting = word === 'resting' && restingUntil !== null
+          const showQueued = plan.queued > 0
+          const hasDetails = showResting || reset !== null || showQueued || plan.atRisk
           return (
-            <div key={plan.id} className={dim ? 'usage-card is-dim' : 'usage-card'}>
-              <div className="usage-head">
-                <span className="usage-name">{plan.id}</span>
-                <span className="badge">{word}</span>
-              </div>
-              <div className="usage-meter-row">
-                <div
-                  className="meter"
-                  role="meter"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={left}
-                  aria-label={`${plan.id} allowance left`}
-                >
-                  <div
-                    className={left < 15 ? 'meter-fill is-low' : 'meter-fill'}
-                    style={{ width: `${left}%` }}
-                  />
-                </div>
-                <span className="usage-left">{left}% left</span>
-              </div>
-              {word === 'resting' && restingUntil !== null ? (
-                <p className="usage-detail">resting until {clock(restingUntil)}</p>
-              ) : null}
-              {reset !== null ? <p className="usage-detail">{reset}</p> : null}
-              {plan.queued > 0 ? <p className="usage-detail">{plan.queued} queued</p> : null}
-              {plan.atRisk ? (
-                <p className="usage-risk">
-                  <span className="usage-risk-mark" aria-hidden="true">
-                    !
+            <div key={plan.id} className="usage-card-wrap">
+              <div className="usage-card">
+                <div className="usage-head">
+                  <BotAvatar bot={plan.id} state={usageAvatarState(word)} size={32} />
+                  <span className="usage-name">{plan.id}</span>
+                  <span className={statusClass(word)}>
+                    <span className="status-dot" aria-hidden="true" />
+                    {word}
                   </span>
-                  Unused allowance expires soon
-                </p>
-              ) : null}
+                </div>
+                <div className="usage-readout">
+                  <div className="usage-figure">
+                    <span className="usage-percent">{left}%</span>
+                    <span className="usage-left-word">left</span>
+                  </div>
+                  <div
+                    className="meter"
+                    role="meter"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={left}
+                    aria-label={`${plan.id} allowance left`}
+                  >
+                    <div className={meterFillClass(plan.id, left)} style={{ width: `${left}%` }} />
+                  </div>
+                </div>
+                {hasDetails ? (
+                  <div className="usage-details">
+                    {showResting && restingUntil !== null ? (
+                      <p className="usage-detail">resting until {clock(restingUntil)}</p>
+                    ) : null}
+                    {reset !== null ? <p className="usage-detail">{reset}</p> : null}
+                    {showQueued ? <p className="usage-detail">{plan.queued} queued</p> : null}
+                    {plan.atRisk ? (
+                      <p className="usage-risk">
+                        <span className="usage-risk-mark" aria-hidden="true">
+                          !
+                        </span>
+                        Unused allowance expires soon
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <ModelPicker plan={plan} disabled={word === 'not signed in'} />
+              </div>
             </div>
           )
         })}
+        <p className="model-hint">A model applies to the next job or lead turn on that plan.</p>
       </div>
     </div>
   )

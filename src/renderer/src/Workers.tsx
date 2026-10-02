@@ -1,49 +1,37 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import BotAvatar from './BotAvatar'
+import RichText from './RichText'
 
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type JobType = Parameters<Window['api']['submitJob']>[0]
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
 
-function mergeJob(jobs: JobRecord[], job: JobRecord): JobRecord[] {
-  const index = jobs.findIndex((item) => item.id === job.id)
-  if (index === -1) return [...jobs, job]
-  const next = jobs.slice()
-  next[index] = job
-  return next
+function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
+  if (status === 'running') return 'working'
+  if (status === 'failed') return 'error'
+  if (status === 'queued') return 'resting'
+  return 'idle'
 }
 
-function mergeList(current: JobRecord[], list: JobRecord[]): JobRecord[] {
-  const listed = new Set(list.map((job) => job.id))
-  const live = new Map(current.map((job) => [job.id, job]))
-  const merged = list.map((job) => live.get(job.id) ?? job)
-  for (const job of current) {
-    if (!listed.has(job.id)) merged.push(job)
-  }
-  return merged
+function outputTitle(job: JobRecord): string {
+  const parts: string[] = [job.type]
+  if (job.provider !== null) parts.push(job.provider)
+  if (job.model) parts.push(job.model)
+  return parts.join(' · ')
 }
 
-function Workers(): React.JSX.Element {
-  const [jobs, setJobs] = useState<JobRecord[]>([])
+function Workers({
+  jobs,
+  onJob
+}: {
+  jobs: JobRecord[]
+  onJob: (job: JobRecord) => void
+}): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
   const sending = useRef(false)
-
-  useEffect(() => {
-    let active = true
-    const unsubscribe = window.api.onJobUpdate((job) => {
-      setJobs((prev) => mergeJob(prev, job))
-    })
-    void window.api.listJobs().then((list) => {
-      if (!active) return
-      setJobs((prev) => mergeList(prev, list))
-    })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [])
 
   const newest = jobs.slice().reverse()
   const selected = jobs.find((job) => job.id === selectedId) ?? null
@@ -56,7 +44,7 @@ function Workers(): React.JSX.Element {
     try {
       const job = await window.api.submitJob(jobType, text)
       setPrompt('')
-      setJobs((prev) => mergeJob(prev, job))
+      onJob(job)
       setSelectedId(job.id)
     } finally {
       sending.current = false
@@ -88,43 +76,49 @@ function Workers(): React.JSX.Element {
 
   return (
     <div className="workers">
+      <div className="panel-head">
+        <h2 id="workers-heading">Workers</h2>
+      </div>
       <p className="hint">Hand a job straight to a worker.</p>
       <form
-        className="job-box"
+        className="composer"
         onSubmit={(event) => {
           event.preventDefault()
           void submit()
         }}
       >
         <label htmlFor="prompt">Prompt</label>
-        <textarea
-          id="prompt"
-          rows={5}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          onKeyDown={onPromptKeyDown}
-        />
-        <div className="job-actions">
-          <label htmlFor="job-type">Job type</label>
-          <select
-            id="job-type"
-            value={jobType}
-            onChange={(event) => setJobType(event.target.value as JobType)}
-          >
-            {JOB_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-          <button type="submit" disabled={promptEmpty}>
-            Submit
-          </button>
+        <div className="composer-box">
+          <textarea
+            id="prompt"
+            rows={3}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={onPromptKeyDown}
+          />
+          <div className="composer-foot">
+            <div className="composer-tools">
+              <label htmlFor="job-type">Job type</label>
+              <select
+                id="job-type"
+                value={jobType}
+                onChange={(event) => setJobType(event.target.value as JobType)}
+              >
+                {JOB_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={promptEmpty}>
+              Submit
+            </button>
+          </div>
         </div>
       </form>
 
       <section className="jobs" aria-label="Jobs">
-        <h2>Jobs</h2>
         {newest.length === 0 ? (
           <p className="hint">No jobs yet.</p>
         ) : (
@@ -138,16 +132,34 @@ function Workers(): React.JSX.Element {
                   role="option"
                   aria-selected={isSelected}
                   tabIndex={isSelected || (selectedId === null && index === 0) ? 0 : -1}
-                  className={isSelected ? 'job-row selected' : 'job-row'}
+                  className={isSelected ? 'job-row is-selected' : 'job-row'}
                   onClick={() => setSelectedId(job.id)}
                   onKeyDown={(event) => onRowKeyDown(event, index)}
                 >
-                  <span className="job-id" title={job.id}>
-                    {job.id.slice(0, 8)}
-                  </span>
-                  <span>{job.type}</span>
-                  <span>{job.provider ?? '—'}</span>
-                  <span className={`badge badge-${job.status}`}>{job.status}</span>
+                  <div className="job-main">
+                    {job.provider !== null ? (
+                      <BotAvatar
+                        bot={job.provider}
+                        state={jobAvatarState(job.status)}
+                        size={20}
+                        title={job.provider}
+                      />
+                    ) : null}
+                    <span className="chip">{job.type}</span>
+                    <span className="job-id" title={job.id}>
+                      {job.id.slice(0, 8)}
+                    </span>
+                    <span className="job-grow" />
+                    {job.model ? (
+                      <span className="job-model" title={job.model}>
+                        {job.model}
+                      </span>
+                    ) : null}
+                    <span className={`status status-${job.status}`}>
+                      <span className="status-dot" aria-hidden="true" />
+                      {job.status}
+                    </span>
+                  </div>
                   {job.failedOver.length > 0 ? (
                     <span className="failover">
                       ↪ {[...job.failedOver, job.provider ?? '—'].join('→')}
@@ -161,12 +173,23 @@ function Workers(): React.JSX.Element {
       </section>
 
       <section className="output-pane" aria-label="Output">
-        <h2>Output</h2>
         {selected === null ? (
           <p className="hint">Select a job to see its output.</p>
         ) : (
           <>
-            <pre className="output">{selected.output}</pre>
+            <div className="output-head">
+              {selected.provider !== null ? (
+                <BotAvatar
+                  bot={selected.provider}
+                  state={jobAvatarState(selected.status)}
+                  size={20}
+                />
+              ) : null}
+              <span>{outputTitle(selected)}</span>
+            </div>
+            <div className="output-body">
+              <RichText text={selected.output} />
+            </div>
             {selected.error ? <pre className="output-error">{selected.error}</pre> : null}
           </>
         )}

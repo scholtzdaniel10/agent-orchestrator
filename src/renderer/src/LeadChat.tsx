@@ -1,24 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import BotAvatar from './BotAvatar'
+import RichText from './RichText'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
-
-function mergeMessage(messages: LeadMessage[], message: LeadMessage): LeadMessage[] {
-  const index = messages.findIndex((item) => item.id === message.id)
-  if (index === -1) return [...messages, message]
-  const next = messages.slice()
-  next[index] = message
-  return next
-}
-
-function mergeMessageList(current: LeadMessage[], list: LeadMessage[]): LeadMessage[] {
-  const listed = new Set(list.map((message) => message.id))
-  const live = new Map(current.map((message) => [message.id, message]))
-  const merged = list.map((message) => live.get(message.id) ?? message)
-  for (const message of current) {
-    if (!listed.has(message.id)) merged.push(message)
-  }
-  return merged
-}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -27,34 +11,47 @@ function errorText(err: unknown): string {
 }
 
 function leadMeta(message: LeadMessage): string {
-  const name = message.provider ? `lead · ${message.provider}` : 'lead'
-  if (message.status === 'streaming') return `${name} · working…`
-  return name
+  const parts = ['Lead']
+  if (message.provider) parts.push(message.provider)
+  if (message.model) parts.push(message.model)
+  if (message.status === 'streaming') parts.push('working…')
+  return parts.join(' · ')
 }
 
-function LeadChat(): React.JSX.Element {
-  const [messages, setMessages] = useState<LeadMessage[]>([])
+function leadAvatarState(status: LeadMessage['status']): 'idle' | 'working' | 'error' {
+  if (status === 'streaming') return 'working'
+  if (status === 'error') return 'error'
+  return 'idle'
+}
+
+function bubbleClass(message: LeadMessage): string {
+  if (message.status === 'error') return 'lead-bubble lead-bubble-error'
+  if (message.role === 'user') return 'lead-bubble lead-bubble-user'
+  return 'lead-bubble'
+}
+
+function StreamingDots(): React.JSX.Element {
+  return (
+    <span className="dots" aria-hidden="true">
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+    </span>
+  )
+}
+
+function LeadChat({
+  messages,
+  onReset
+}: {
+  messages: LeadMessage[]
+  onReset: () => Promise<void>
+}): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const sending = useRef(false)
   const resetting = useRef(false)
-  const acceptList = useRef(true)
-
-  useEffect(() => {
-    let active = true
-    const unsubscribe = window.api.onLeadUpdate((message) => {
-      setMessages((current) => mergeMessage(current, message))
-    })
-    void window.api.listLeadMessages().then((list) => {
-      if (!active || !acceptList.current) return
-      setMessages((current) => mergeMessageList(current, list))
-    })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [])
 
   useLayoutEffect(() => {
     const log = logRef.current
@@ -89,9 +86,7 @@ function LeadChat(): React.JSX.Element {
     if (anyStreaming || resetting.current) return
     resetting.current = true
     try {
-      await window.api.resetLead()
-      acceptList.current = false
-      setMessages([])
+      await onReset()
       setSendError(null)
     } catch (err: unknown) {
       setSendError(errorText(err))
@@ -108,21 +103,50 @@ function LeadChat(): React.JSX.Element {
 
   return (
     <div className="lead-chat">
+      <div className="panel-head">
+        <div className="panel-title">
+          <BotAvatar bot="lead" state={leadStreaming ? 'working' : 'idle'} size={20} />
+          <h2 id="lead-heading">Lead</h2>
+        </div>
+        <button
+          type="button"
+          className="btn btn-quiet"
+          disabled={anyStreaming}
+          onClick={() => {
+            void newChat()
+          }}
+        >
+          New chat
+        </button>
+      </div>
       <div ref={logRef} className="lead-log" role="log" aria-live="polite">
         {messages.length === 0 ? (
-          <p className="hint">
-            Ask the lead for something and it will split the work across your plans.
-          </p>
+          <div className="empty">
+            <BotAvatar bot="lead" state="idle" size={40} />
+            <p className="hint">
+              Ask the lead for something and it will split the work across your plans.
+            </p>
+          </div>
         ) : (
           messages.map((message) => {
             const isUser = message.role === 'user'
-            const isError = message.status === 'error'
-            const bubble = isUser ? 'lead-msg lead-msg-user' : 'lead-msg lead-msg-lead'
+            const showDots = !isUser && message.status === 'streaming' && message.text === ''
             return (
-              <div key={message.id} className={bubble}>
-                {isUser ? null : <span className="lead-meta">{leadMeta(message)}</span>}
-                <div className={isError ? 'lead-text output-error' : 'lead-text'}>
-                  {message.text}
+              <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
+                {isUser ? null : (
+                  <BotAvatar bot="lead" state={leadAvatarState(message.status)} size={28} />
+                )}
+                <div className={bubbleClass(message)}>
+                  {isUser ? null : <span className="lead-meta">{leadMeta(message)}</span>}
+                  <div className="lead-body">
+                    {isUser ? (
+                      message.text
+                    ) : showDots ? (
+                      <StreamingDots />
+                    ) : (
+                      <RichText text={message.text} />
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -135,28 +159,28 @@ function LeadChat(): React.JSX.Element {
         </pre>
       ) : null}
       <form
-        className="lead-form"
+        className="composer"
         onSubmit={(event) => {
           event.preventDefault()
           void send()
         }}
       >
         <label htmlFor="lead-input">Message to the lead</label>
-        <textarea
-          id="lead-input"
-          rows={3}
-          value={draft}
-          aria-describedby={sendError !== null ? 'lead-error' : undefined}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={onDraftKeyDown}
-        />
-        <div className="lead-actions">
-          <button type="submit" disabled={sendDisabled}>
-            Send
-          </button>
-          <button type="button" disabled={anyStreaming} onClick={() => void newChat()}>
-            New chat
-          </button>
+        <div className="composer-box">
+          <textarea
+            id="lead-input"
+            rows={3}
+            value={draft}
+            aria-describedby={sendError !== null ? 'lead-error' : undefined}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onDraftKeyDown}
+          />
+          <div className="composer-foot">
+            <span className="composer-hint">Ctrl+Enter to send</span>
+            <button className="btn btn-primary" type="submit" disabled={sendDisabled}>
+              Send
+            </button>
+          </div>
         </div>
       </form>
     </div>
