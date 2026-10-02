@@ -18,6 +18,8 @@ export interface JobRecord {
   failedOver: ProviderId[]
   /** Model that ran the job, as the CLI reported it. */
   model?: string
+  /** Why this plan got the job, e.g. "first choice", "allowance expiring", "chosen". */
+  reason?: string
   error?: string
 }
 

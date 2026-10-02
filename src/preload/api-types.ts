@@ -20,11 +20,24 @@ export interface PlanStatus {
   queued: number
   /** Model the person chose for this plan; null means the CLI's own default. */
   model: string | null
+  /** Each allowance window the plan reports (empty when only an estimate exists). */
+  windows: PlanWindow[]
+}
+
+/** One allowance window of a plan, e.g. Claude's five-hour and weekly windows. */
+export interface PlanWindow {
+  /** As the CLI names it: `five_hour`, `seven_day`. */
+  name: string
+  /** Fraction used, 0..1. */
+  used: number
+  /** Epoch ms it resets, or null when unknown. */
+  resetsAt: number | null
 }
 
 /** Everything the renderer can ask of the main process: `window.api`. */
 export interface OrchestratorApi {
-  submitJob(type: JobType, prompt: string): Promise<JobRecord>
+  /** `provider` hands the job to that plan instead of letting the router choose. */
+  submitJob(type: JobType, prompt: string, provider?: ProviderId): Promise<JobRecord>
   listJobs(): Promise<JobRecord[]>
   onJobUpdate(cb: (job: JobRecord) => void): () => void
 
@@ -35,6 +48,11 @@ export interface OrchestratorApi {
   listModels(provider: ProviderId): Promise<ModelOption[]>
   /** Choose the model for a plan (null = the CLI's default). Pushes a plans update. */
   setModel(provider: ProviderId, model: string | null): Promise<void>
+
+  /** Plan the person chose to run the lead; null means the one with the most headroom. */
+  getLeadPlan(): Promise<ProviderId | null>
+  /** Takes effect on the next message; switching plans starts a fresh lead session. */
+  setLeadPlan(plan: ProviderId | null): Promise<void>
 
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>

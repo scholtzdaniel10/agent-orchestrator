@@ -5,8 +5,8 @@ import type { JobType, LeadMessage, ModelOption, ProviderId, TerminalInfo } from
 import type { OrchestratorApi, PlanStatus } from './api-types'
 
 const api: OrchestratorApi = {
-  submitJob(type: JobType, prompt: string): Promise<JobRecord> {
-    return ipcRenderer.invoke('jobs:submit', type, prompt)
+  submitJob(type: JobType, prompt: string, provider?: ProviderId): Promise<JobRecord> {
+    return ipcRenderer.invoke('jobs:submit', type, prompt, provider)
   },
   listJobs(): Promise<JobRecord[]> {
     return ipcRenderer.invoke('jobs:list')
@@ -37,6 +37,12 @@ const api: OrchestratorApi = {
   },
   setModel(provider: ProviderId, model: string | null): Promise<void> {
     return ipcRenderer.invoke('settings:setModel', provider, model)
+  },
+  getLeadPlan(): Promise<ProviderId | null> {
+    return ipcRenderer.invoke('settings:getLeadPlan')
+  },
+  setLeadPlan(plan: ProviderId | null): Promise<void> {
+    return ipcRenderer.invoke('settings:setLeadPlan', plan)
   },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)

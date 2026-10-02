@@ -11,5 +11,12 @@
     "claude": { "windowHours": 5, "units": 15 },
     "cursor": { "windowHours": 720, "units": 20000000 }
   },
-  "defaultRestHours": 5
+  "defaultRestHours": 5,
+  "pace": {
+    "weight": 1.5,
+    "min": 0.5,
+    "max": 2,
+    "atRiskSlack": 0.25,
+    "atRiskLeft": 0.15
+  }
 }

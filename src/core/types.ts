@@ -7,12 +7,24 @@ export interface Job {
   prompt: string
 }
 
+/** One allowance window of a plan, as its CLI reports it (e.g. `five_hour`, `seven_day`). */
+export interface UsageWindow {
+  name: string
+  /** Fraction used, 0..1. */
+  utilization: number
+  /** Epoch seconds when the window resets, when the CLI says. */
+  resetsAt?: number
+}
+
 /** Provider-neutral view of one stream-json line. Lines that carry nothing we use parse to null. */
 export type AgentEvent =
   | { kind: 'init'; sessionId: string; model?: string }
   | { kind: 'text'; text: string }
-  /** Fraction of the plan already used (0..1), the worst of its windows. Claude only. */
-  | { kind: 'usage'; utilization: number; resetsAt?: number }
+  /**
+   * Fraction of the plan already used (0..1), the worst of its windows, plus each window
+   * as the CLI reported it. Claude only.
+   */
+  | { kind: 'usage'; utilization: number; resetsAt?: number; windows?: UsageWindow[] }
   /** The plan is spent. resetsAt is epoch seconds when the CLI said so. */
   | { kind: 'limit'; resetsAt?: number; message: string }
   | {
@@ -81,6 +93,20 @@ export interface RouterRules {
   allowance: Record<ProviderId, { windowHours: number; units: number }>
   /** Hours to rest a provider after a limit error that gave no reset time. */
   defaultRestHours: number
+  /** How routing leans toward a plan that is behind an even-usage pace. Defaults apply when absent. */
+  pace?: PaceRules
+}
+
+export interface PaceRules {
+  /** Score multiplier is 1 + weight × slack, where slack = share of the window elapsed − share used. */
+  weight: number
+  /** Lower and upper bound of that multiplier. */
+  min: number
+  max: number
+  /** A plan is "at risk" of wasting allowance when slack is at least this… */
+  atRiskSlack: number
+  /** …and no more than this share of its window is left. */
+  atRiskLeft: number
 }
 
 /** One message in the lead chat. A lead message grows while its turn streams. */

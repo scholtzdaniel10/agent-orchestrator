@@ -103,6 +103,7 @@ app.whenReady().then(async () => {
       resetsAt: null,
       atRisk: false,
       model: settings.model(worker.id) ?? null,
+      windows: [],
       busy: worker.busy,
       queued: worker.queued
     }))
