@@ -339,6 +339,31 @@ process.stdout.write('haiku - Haiku\\n')
   }
 })
 
+test('interactive is the resolved node entry with no -p', () => {
+  const plain = new CursorAdapter({ command: 'agent' })
+  expect(plain.interactive()).toEqual({
+    command: 'agent',
+    args: [],
+    env: cursorEnv(process.platform, process.env)
+  })
+  expect(plain.interactive('composer-2.5')).toEqual({
+    command: 'agent',
+    args: ['--model', 'composer-2.5'],
+    env: cursorEnv(process.platform, process.env)
+  })
+  const wrapped = new CursorAdapter({ command: 'node.exe', args: ['index.js'] })
+  expect(wrapped.interactive()).toEqual({
+    command: 'node.exe',
+    args: ['index.js'],
+    env: cursorEnv(process.platform, process.env)
+  })
+  expect(wrapped.interactive('fast')).toEqual({
+    command: 'node.exe',
+    args: ['index.js', '--model', 'fast'],
+    env: cursorEnv(process.platform, process.env)
+  })
+})
+
 test('cursorEnv drops the Git Bash markers on Windows only', () => {
   const source = { PATH: 'p', SHELL: '/bin/bash.exe', MSYSTEM: 'MINGW64', Shell: 'x', TERM: 't' }
   expect(cursorEnv('win32', source)).toEqual({ PATH: 'p', TERM: 't' })

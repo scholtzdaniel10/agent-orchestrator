@@ -275,6 +275,21 @@ test('listModels returns the four help-text aliases', async () => {
   ])
 })
 
+test('interactive is the resolved binary with no -p', () => {
+  const plain = new ClaudeAdapter({ command: 'claude.exe' })
+  expect(plain.interactive()).toEqual({ command: 'claude.exe', args: [] })
+  expect(plain.interactive('opus')).toEqual({
+    command: 'claude.exe',
+    args: ['--model', 'opus']
+  })
+  const wrapped = new ClaudeAdapter({ command: 'node.exe', args: ['cli.js'] })
+  expect(wrapped.interactive()).toEqual({ command: 'node.exe', args: ['cli.js'] })
+  expect(wrapped.interactive('sonnet')).toEqual({
+    command: 'node.exe',
+    args: ['cli.js', '--model', 'sonnet']
+  })
+})
+
 test('missing CLI resolves exit and ends events', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ao-claude-missing-'))
   const adapter = new ClaudeAdapter({ command: join(dir, 'missing-cli.exe') })

@@ -44,6 +44,15 @@ export class CursorAdapter implements ProviderAdapter {
     return parsed
   }
 
+  /** Interactive session: the same node + index.js as `run`, with no `-p`. */
+  interactive(model?: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
+    return {
+      command: this.bin.command,
+      args: [...(this.bin.args ?? []), ...(model ? ['--model', model] : [])],
+      env: cursorEnv(process.platform, process.env)
+    }
+  }
+
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--trust', '--output-format', 'stream-json']
     if (opts?.resume) args.push('--resume', opts.resume)

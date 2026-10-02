@@ -6,6 +6,7 @@ import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridg
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
+import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type { JobType, LeadMessage, ProviderId } from '../core/types'
@@ -14,11 +15,12 @@ import type { PlanStatus } from '../preload/api-types'
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
 let bridge: Bridge | null = null
+let terminals: PtyHost | null = null
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 670,
+    width: 1400,
+    height: 820,
     show: false,
     autoHideMenuBar: true,
     title: 'agent-orchestrator',
@@ -149,6 +151,49 @@ app.whenReady().then(async () => {
   ipcMain.handle('lead:reset', () => {
     lead.reset()
   })
+  const terms = new PtyHost({
+    launch: (provider, model) =>
+      provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
+    cwd: process.env.ORCH_CWD ?? process.cwd(),
+    modelFor,
+    store: shared
+  })
+  terminals = terms
+
+  function canSend(): boolean {
+    return mainWindow !== null && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()
+  }
+
+  ipcMain.handle('terminals:open', (_event, provider: unknown, cols: unknown, rows: unknown) => {
+    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+    return terms.open(provider, cols as number, rows as number)
+  })
+  ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
+    if (typeof id !== 'string') return
+    terms.write(id, data as string)
+  })
+  ipcMain.on('terminals:resize', (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string') return
+    terms.resize(id, cols as number, rows as number)
+  })
+  ipcMain.handle('terminals:close', (_event, id: unknown) => {
+    if (typeof id !== 'string') return
+    terms.close(id)
+  })
+  ipcMain.handle('terminals:list', () => terms.list())
+  ipcMain.handle('terminals:snapshot', (_event, id: unknown) => {
+    if (typeof id !== 'string') return ''
+    return terms.snapshot(id)
+  })
+  terms.onData((id, data) => {
+    if (!canSend()) return
+    mainWindow?.webContents.send('terminals:data', id, data)
+  })
+  terms.onUpdate((info, removed) => {
+    if (!canSend()) return
+    mainWindow?.webContents.send('terminals:update', info, removed)
+  })
+
   orch.onUpdate(publish)
   lead.onUpdate(publishLead)
 
@@ -160,6 +205,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  terminals?.closeAll()
   if (bridge) void bridge.close()
   store?.close()
   store = null

@@ -47,6 +47,14 @@ export class ClaudeAdapter implements ProviderAdapter {
     ]
   }
 
+  /** Interactive session: the same binary as `run`, with no `-p`. */
+  interactive(model?: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
+    return {
+      command: this.bin.command,
+      args: [...(this.bin.args ?? []), ...(model ? ['--model', model] : [])]
+    }
+  }
+
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
     if (opts?.resume) args.push('--resume', opts.resume)
