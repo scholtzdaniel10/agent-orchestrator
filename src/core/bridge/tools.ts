@@ -14,7 +14,8 @@ const JOB_TYPE_SCHEMA: Record<string, unknown> = {
   required: ['type', 'prompt'],
   properties: {
     type: { type: 'string', enum: [...JOB_TYPES] },
-    prompt: { type: 'string', minLength: 1, maxLength: MAX_PROMPT }
+    prompt: { type: 'string', minLength: 1, maxLength: MAX_PROMPT },
+    edit: { type: 'boolean' }
   }
 }
 
@@ -40,10 +41,10 @@ export function createOrchestratorTools(orch: Orchestrator): BridgeTool[] {
     {
       name: 'send_job',
       description:
-        'Hand one job to a worker and return its id immediately. The router chooses the worker. Workers are read-only (they can read files and answer, not edit). The prompt must be self-contained because the worker sees nothing else.',
+        'Hand one job to a worker and return its id immediately. The router chooses the worker. Workers are read-only (they can read files and answer, not edit). The prompt must be self-contained because the worker sees nothing else. Set edit to true only when the job has to change files; its changes go to a separate worktree and wait for the user to review and merge them.',
       inputSchema: JOB_TYPE_SCHEMA,
       async handler(args) {
-        rejectUnknown(args, ['type', 'prompt'])
+        rejectUnknown(args, ['type', 'prompt', 'edit'])
         if (!isJobType(args.type)) {
           throw new Error('type must be planning, debugging, review, refactor, or boilerplate')
         }
@@ -52,7 +53,15 @@ export function createOrchestratorTools(orch: Orchestrator): BridgeTool[] {
           throw new Error('prompt must be at most 20000 characters')
         }
         if (args.prompt.trim() === '') throw new Error('prompt must be a non-empty string')
-        const job = orch.submit(args.type, args.prompt)
+        if (args.edit !== undefined && typeof args.edit !== 'boolean') {
+          throw new Error('edit must be a boolean')
+        }
+        const job = orch.submit(
+          args.type,
+          args.prompt,
+          undefined,
+          typeof args.edit === 'boolean' ? args.edit : undefined
+        )
         return { id: job.id, provider: job.provider, status: job.status }
       }
     },
@@ -128,6 +137,8 @@ function resultView(job: JobRecord): {
   failed_over: JobRecord['failedOver']
   output: string
   truncated: boolean
+  edit: boolean
+  change: string | null
   error?: string
 } {
   const view = {
@@ -136,7 +147,9 @@ function resultView(job: JobRecord): {
     provider: job.provider,
     failed_over: [...job.failedOver],
     output: job.output.slice(-MAX_OUTPUT),
-    truncated: job.output.length > MAX_OUTPUT
+    truncated: job.output.length > MAX_OUTPUT,
+    edit: job.edit === true,
+    change: job.change ?? null
   }
   if (job.error !== undefined) return { ...view, error: job.error }
   return view

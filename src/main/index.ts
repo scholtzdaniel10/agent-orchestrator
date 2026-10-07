@@ -1,4 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
+import { statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -10,12 +11,14 @@ import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type { JobType, LeadMessage, ProviderId } from '../core/types'
+import { Worktrees } from '../core/worktrees'
 import type { PlanStatus } from '../preload/api-types'
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
+let publishChanges: () => void = () => {}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -34,6 +37,10 @@ function createWindow(): void {
 
   win.on('ready-to-show', () => {
     win.show()
+  })
+
+  win.webContents.on('did-finish-load', () => {
+    publishChanges()
   })
 
   win.webContents.setWindowOpenHandler((details) => {
@@ -64,6 +71,35 @@ app.whenReady().then(async () => {
   const shared = store
   const settings = new Settings(join(app.getPath('userData'), 'settings.json'))
   const modelFor = (id: ProviderId): string | undefined => settings.model(id)
+
+  function projectDir(): string {
+    const saved = settings.project()
+    if (saved !== undefined && isFolder(saved)) return saved
+    return process.env.ORCH_CWD ?? process.cwd()
+  }
+
+  const worktrees = new Worktrees({
+    root: process.env.ORCH_WORKTREES ?? join(app.getPath('home'), '.orchestrator', 'wt')
+  })
+
+  function pushChanges(): void {
+    void worktrees
+      .list(projectDir())
+      .then((list) => {
+        if (
+          mainWindow === null ||
+          mainWindow.isDestroyed() ||
+          mainWindow.webContents.isDestroyed()
+        ) {
+          return
+        }
+        mainWindow.webContents.send('changes:update', list)
+      })
+      .catch((err: unknown) => {
+        console.error(err)
+      })
+  }
+  publishChanges = pushChanges
   // ORCH_RULES points at an edited copy of rules.json; unset uses the bundled defaults.
   const rules = loadRules(process.env.ORCH_RULES)
   const claude = new ClaudeAdapter()
@@ -73,8 +109,12 @@ app.whenReady().then(async () => {
     adapters,
     store: shared,
     rules,
-    cwd: process.env.ORCH_CWD ?? process.cwd(),
-    modelFor
+    cwd: projectDir,
+    modelFor,
+    worktrees,
+    onChanges: () => {
+      pushChanges()
+    }
   })
   await orch.init()
 
@@ -132,22 +172,29 @@ app.whenReady().then(async () => {
     if (message.status !== 'streaming') mainWindow.webContents.send('plans:update', plans())
   }
 
-  ipcMain.handle('jobs:submit', (_event, type: JobType, prompt: string, provider?: unknown) => {
-    if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
-      throw new Error('unknown job type')
+  ipcMain.handle(
+    'jobs:submit',
+    (_event, type: JobType, prompt: string, provider?: unknown, edit?: unknown) => {
+      if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
+        throw new Error('unknown job type')
+      }
+      if (typeof prompt !== 'string' || prompt.trim() === '') throw new Error('empty prompt')
+      if (
+        provider !== undefined &&
+        provider !== null &&
+        provider !== 'claude' &&
+        provider !== 'cursor'
+      ) {
+        throw new Error('unknown provider')
+      }
+      if (edit !== undefined && edit !== null && typeof edit !== 'boolean') {
+        throw new Error('edit must be true or false')
+      }
+      const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
+      const editing = typeof edit === 'boolean' ? edit : undefined
+      return orch.submit(type, prompt, chosen, editing)
     }
-    if (typeof prompt !== 'string' || prompt.trim() === '') throw new Error('empty prompt')
-    if (
-      provider !== undefined &&
-      provider !== null &&
-      provider !== 'claude' &&
-      provider !== 'cursor'
-    ) {
-      throw new Error('unknown provider')
-    }
-    const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
-    return orch.submit(type, prompt, chosen)
-  })
+  )
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('plans:list', () => plans())
   ipcMain.handle('models:list', (_event, provider: unknown) => {
@@ -178,7 +225,7 @@ app.whenReady().then(async () => {
   const terms = new PtyHost({
     launch: (provider, model) =>
       provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
-    cwd: process.env.ORCH_CWD ?? process.cwd(),
+    cwd: projectDir,
     modelFor,
     store: shared
   })
@@ -209,6 +256,37 @@ app.whenReady().then(async () => {
     if (typeof id !== 'string') return ''
     return terms.snapshot(id)
   })
+  ipcMain.handle('project:get', () => worktrees.info(projectDir()))
+  ipcMain.handle('project:choose', async () => {
+    if (orch.busy() || terms.list().some((term) => term.status === 'running')) {
+      throw new Error('finish or close running work first')
+    }
+    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      defaultPath: projectDir()
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    const path = picked.filePaths[0]
+    if (path === undefined) return null
+    settings.setProject(path)
+    pushChanges()
+    return worktrees.info(path)
+  })
+  ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
+  ipcMain.handle('changes:diff', (_event, id: unknown) => {
+    return worktrees.diff(projectDir(), requireChangeId(id))
+  })
+  ipcMain.handle('changes:merge', async (_event, id: unknown) => {
+    const result = await worktrees.merge(projectDir(), requireChangeId(id))
+    pushChanges()
+    return result
+  })
+  ipcMain.handle('changes:discard', async (_event, id: unknown) => {
+    await worktrees.discard(projectDir(), requireChangeId(id))
+    pushChanges()
+  })
+
   terms.onData((id, data) => {
     if (!canSend()) return
     mainWindow?.webContents.send('terminals:data', id, data)
@@ -240,6 +318,19 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+function isFolder(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function requireChangeId(id: unknown): string {
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
+  return id
+}
 
 function clamp01(value: number): number {
   if (value < 0) return 0

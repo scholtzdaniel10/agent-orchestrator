@@ -46,7 +46,7 @@ interface Session {
 
 interface PtyHostOptions {
   launch: (provider: ProviderId, model: string | undefined) => Launch
-  cwd: string
+  cwd: string | (() => string)
   modelFor?: (provider: ProviderId) => string | undefined
   store?: Store
   spawn?: SpawnPty
@@ -71,7 +71,7 @@ export function terminalEnv(source: NodeJS.ProcessEnv): Record<string, string> {
 
 export class PtyHost {
   private readonly launch: PtyHostOptions['launch']
-  private readonly cwd: string
+  private readonly cwd: string | (() => string)
   private readonly modelFor: PtyHostOptions['modelFor']
   private readonly store: Store | undefined
   private readonly spawnPty: SpawnPty
@@ -108,7 +108,7 @@ export class PtyHost {
         name: 'xterm-256color',
         cols: size.cols,
         rows: size.rows,
-        cwd: this.cwd,
+        cwd: typeof this.cwd === 'function' ? this.cwd() : this.cwd,
         env: terminalEnv(spec.env ?? process.env)
       })
     } catch (err) {

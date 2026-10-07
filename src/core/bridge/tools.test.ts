@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import type { AgentEvent, ProviderAdapter, ProviderId, RunHandle } from '../types'
+import type { Worktrees } from '../worktrees'
 import { loadRules, Orchestrator, Store } from '../router'
 import { createOrchestratorTools, startBridge, type BridgeTool } from './index'
 
@@ -195,7 +196,9 @@ test('get_result waits until the job finishes and returns its output', async () 
       provider: 'claude',
       failed_over: [],
       output: 'finished-text',
-      truncated: false
+      truncated: false,
+      edit: false,
+      change: null
     })
     await orch.idle()
   })
@@ -362,3 +365,46 @@ async function callTool(
   expect(body.result?.isError).toBeUndefined()
   return JSON.parse(body.result?.content[0]?.text ?? 'null') as Record<string, unknown>
 }
+
+test('send_job passes edit through and get_result reports the change', async () => {
+  const claude = new FakeAdapter('claude', [ok('edited')])
+  const store = new Store(':memory:')
+  const worktrees = {
+    async create(_project: string, jobId: string) {
+      const id = jobId.slice(0, 8)
+      return { id, path: 'wt', branch: `orch/${id}` }
+    }
+  } as unknown as Worktrees
+  const orch = new Orchestrator({
+    adapters: [claude],
+    store,
+    rules: loadRules(),
+    cwd: '.',
+    worktrees
+  })
+  try {
+    await orch.init()
+    const tools = createOrchestratorTools(orch)
+    const send = tool(tools, 'send_job')
+    expect(send.description).toContain(
+      'Set edit to true only when the job has to change files; its changes go to a separate worktree and wait for the user to review and merge them.'
+    )
+    await expect(send.handler({ type: 'planning', prompt: 'x', edit: 'yes' })).rejects.toThrow(
+      'edit must be a boolean'
+    )
+    const sent = (await send.handler({
+      type: 'boilerplate',
+      prompt: 'change it',
+      edit: true
+    })) as { id: string }
+    await orch.idle()
+    const result = await tool(tools, 'get_result').handler({ id: sent.id, wait_seconds: 1 })
+    expect(result).toMatchObject({
+      status: 'done',
+      edit: true,
+      change: sent.id.slice(0, 8)
+    })
+  } finally {
+    store.close()
+  }
+})

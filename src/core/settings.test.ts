@@ -120,6 +120,28 @@ test('leadPlan round-trips, null clears, and an invalid stored value is ignored'
   }
 })
 
+test('project round-trips and ignores a stored value that is not a non-empty string', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, JSON.stringify({ project: '', models: { claude: 'opus' } }))
+    expect(new Settings(path).project()).toBeUndefined()
+    writeFileSync(path, JSON.stringify({ project: 4, models: { claude: 'opus' } }))
+    const settings = new Settings(path)
+    expect(settings.project()).toBeUndefined()
+    expect(settings.model('claude')).toBe('opus')
+    settings.setProject('repo')
+    const again = new Settings(path)
+    expect(again.project()).toBe('repo')
+    expect(again.model('claude')).toBe('opus')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      project: 'repo',
+      models: { claude: 'opus' }
+    })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('setModel creates a missing parent folder', () => {
   const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
   try {

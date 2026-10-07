@@ -27,6 +27,17 @@ export class Settings {
     return value.trim()
   }
 
+  project(): string | undefined {
+    const value = this.data.project
+    if (typeof value !== 'string' || value === '') return undefined
+    return value
+  }
+
+  setProject(path: string): void {
+    this.data.project = path
+    this.persist()
+  }
+
   leadPlan(): ProviderId | undefined {
     const value = this.data.lead
     if (value === 'claude' || value === 'cursor') return value

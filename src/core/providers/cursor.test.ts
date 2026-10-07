@@ -243,6 +243,76 @@ process.exit(0)
   }
 })
 
+test('edit writes a permission file before spawn and removes it after exit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-edit-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { existsSync, readFileSync, writeSync } from 'node:fs'
+import { join } from 'node:path'
+const cli = join(process.cwd(), '.cursor', 'cli.json')
+const body = existsSync(cli) ? readFileSync(cli, 'utf8') : ''
+writeSync(2, JSON.stringify({ argv: process.argv.slice(2), body }))
+process.exit(0)
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  const job = { id: 'job-1', prompt: 'hello' }
+  const base = ['-p', '--trust', '--output-format', 'stream-json']
+  const editJson = '{"permissions":{"allow":["Read(**)","Write(**)"],"deny":["Shell(*)"]}}'
+  try {
+    const fresh = join(root, 'fresh')
+    mkdirSync(fresh)
+    const created = adapter.run(job, fresh, { edit: true })
+    const cli = join(fresh, '.cursor', 'cli.json')
+    expect(existsSync(cli)).toBe(true)
+    expect(readFileSync(cli, 'utf8')).toBe(editJson)
+    const createdExit = await created.exit
+    expect(createdExit.code).toBe(0)
+    const createdReport = JSON.parse(createdExit.stderr) as { argv: string[]; body: string }
+    expect(createdReport.argv).toEqual(base)
+    expect(createdReport.argv).not.toContain('--force')
+    expect(createdReport.body).toBe(editJson)
+    expect(existsSync(cli)).toBe(false)
+    expect(existsSync(join(fresh, '.cursor'))).toBe(false)
+
+    const kept = join(root, 'kept')
+    mkdirSync(join(kept, '.cursor'), { recursive: true })
+    const keptCli = join(kept, '.cursor', 'cli.json')
+    const own = '{"permissions":{"allow":["Read(**)"]}}'
+    writeFileSync(keptCli, own)
+    const keptRun = adapter.run(job, kept, { edit: true })
+    expect(readFileSync(keptCli, 'utf8')).toBe(own)
+    const keptExit = await keptRun.exit
+    expect(JSON.parse(keptExit.stderr)).toMatchObject({ argv: base, body: own })
+    expect(readFileSync(keptCli, 'utf8')).toBe(own)
+    expect(existsSync(join(kept, '.cursor'))).toBe(true)
+
+    const shared = join(root, 'shared')
+    mkdirSync(join(shared, '.cursor'), { recursive: true })
+    writeFileSync(join(shared, '.cursor', 'other.txt'), 'keep')
+    const sharedRun = adapter.run(job, shared, { edit: true })
+    expect(existsSync(join(shared, '.cursor', 'cli.json'))).toBe(true)
+    await sharedRun.exit
+    expect(existsSync(join(shared, '.cursor', 'cli.json'))).toBe(false)
+    expect(readFileSync(join(shared, '.cursor', 'other.txt'), 'utf8')).toBe('keep')
+
+    const bridged = join(root, 'bridged')
+    const bridge = { url: 'http://127.0.0.1:9/mcp', token: 'secret-token', tools: ['send_job'] }
+    const bridgeRun = adapter.run(job, bridged, { edit: true, bridge })
+    const bridgeCli = join(bridged, '.cursor', 'cli.json')
+    const bridgeBody = readFileSync(bridgeCli, 'utf8')
+    expect(bridgeBody).not.toBe(editJson)
+    const bridgeExit = await bridgeRun.exit
+    const bridgeReport = JSON.parse(bridgeExit.stderr) as { argv: string[] }
+    expect(bridgeReport.argv).toContain('--approve-mcps')
+    expect(bridgeReport.argv).not.toContain('--force')
+    expect(readFileSync(bridgeCli, 'utf8')).toBe(bridgeBody)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('missing CLI resolves exit and ends events', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-missing-'))
   const adapter = new CursorAdapter({ command: join(dir, 'missing-cli.exe') })

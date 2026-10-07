@@ -156,6 +156,13 @@ async function withLead(
   }
 }
 
+test('instructions tell the lead when a worker may edit', () => {
+  expect(LEAD_INSTRUCTIONS).toContain(
+    'A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves. Use edit: true only when the request asks for code or files to be changed, and say in your report which jobs left a change waiting for review.'
+  )
+  expect(LEAD_INSTRUCTIONS).not.toContain('read-only for now')
+})
+
 test('picks the provider with more headroom', async () => {
   const now = 1_700_000_000_000
   const claude = new FakeAdapter('claude', [done('c')])

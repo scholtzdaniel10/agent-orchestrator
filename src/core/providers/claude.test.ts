@@ -276,6 +276,25 @@ process.exit(0)
     expect(
       await cliArgs(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
     ).toEqual([...base, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
+
+    const editDir = join(root, 'edit')
+    mkdirSync(editDir)
+    expect(await cliArgs(adapter.run(job, editDir, { edit: true }))).toEqual([
+      ...base,
+      '--permission-mode',
+      'acceptEdits'
+    ])
+    expect(
+      await cliArgs(adapter.run(job, editDir, { edit: true, resume: 'sess-e', model: 'opus' }))
+    ).toEqual([
+      ...base,
+      '--permission-mode',
+      'acceptEdits',
+      '--resume',
+      'sess-e',
+      '--model',
+      'opus'
+    ])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

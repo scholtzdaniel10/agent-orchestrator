@@ -60,7 +60,7 @@ interface SpawnCall {
 }
 
 function makeHost(partial?: {
-  cwd?: string
+  cwd?: string | (() => string)
   maxTerminals?: number
   modelFor?: (provider: ProviderId) => string | undefined
   store?: Store
@@ -173,6 +173,15 @@ test('open returns running terminals, passes the model, and clamps the spawn', (
     { title: 'claude 2', removed: false },
     { title: 'cursor 1', removed: false }
   ])
+})
+
+test('cwd is read when a terminal opens', () => {
+  let dir = 'one'
+  const { host, calls } = makeHost({ cwd: () => dir })
+  host.open('claude', 80, 24)
+  dir = 'two'
+  host.open('cursor', 80, 24)
+  expect(calls.map((call) => call.opts.cwd)).toEqual(['one', 'two'])
 })
 
 test('open throws at the terminal limit', () => {

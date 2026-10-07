@@ -58,6 +58,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
+    if (opts?.edit) args.push('--permission-mode', 'acceptEdits')
     if (opts?.resume) args.push('--resume', opts.resume)
     if (opts?.bridge) {
       mkdirSync(cwd, { recursive: true })

@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, ProviderAdapter, ProviderId, RunHandle, RunOptions } from '../types'
+import type { Worktrees } from '../worktrees'
 import { Orchestrator, type JobRecord } from './orchestrator'
 import { headroom, loadRules } from './router'
 import { Store } from './store'
@@ -109,7 +110,12 @@ async function withOrch(
   adapters: ProviderAdapter[],
   fn: (orch: Orchestrator, store: Store) => Promise<void>,
   now?: () => number,
-  modelFor?: (provider: ProviderId) => string | undefined
+  modelFor?: (provider: ProviderId) => string | undefined,
+  extra?: {
+    cwd?: string | (() => string)
+    worktrees?: Worktrees
+    onChanges?: () => void
+  }
 ): Promise<void> {
   const store = new Store(':memory:')
   try {
@@ -117,9 +123,11 @@ async function withOrch(
       adapters,
       store,
       rules: loadRules(),
-      cwd: CWD,
+      cwd: extra?.cwd ?? CWD,
       now,
-      modelFor
+      modelFor,
+      worktrees: extra?.worktrees,
+      onChanges: extra?.onChanges
     })
     await orch.init()
     await fn(orch, store)
@@ -843,4 +851,202 @@ test('workers reports resetsAt, atRisk, and windows', async () => {
     },
     () => now
   )
+})
+
+function fakeWorktrees(
+  create: (project: string, jobId: string) => Promise<{ id: string; path: string; branch: string }>
+): Worktrees {
+  return { create } as unknown as Worktrees
+}
+
+test('an editing job runs in its worktree and reports the change', async () => {
+  const claude = new FakeAdapter('claude', [ok('edited')])
+  const projects: string[] = []
+  const worktrees = fakeWorktrees(async (project, jobId) => {
+    projects.push(project)
+    const id = jobId.slice(0, 8)
+    return { id, path: `wt/${id}`, branch: `orch/${id}` }
+  })
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const submitted = orch.submit('boilerplate', 'change it', undefined, true)
+      expect(submitted.edit).toBe(true)
+      await orch.idle()
+      const id = submitted.id.slice(0, 8)
+      expect(orch.get(submitted.id)).toMatchObject({ status: 'done', edit: true, change: id })
+      expect(claude.cwds).toEqual([`wt/${id}`])
+      expect(claude.options[0]).toMatchObject({ edit: true })
+      expect(projects).toEqual([CWD])
+    },
+    undefined,
+    undefined,
+    { worktrees }
+  )
+})
+
+test('a failed worktree create fails the job without spawning', async () => {
+  const claude = new FakeAdapter('claude', [ok('nope')])
+  const worktrees = fakeWorktrees(async () => {
+    throw new Error('not a git repository')
+  })
+  await withOrch(
+    [claude],
+    async (orch, store) => {
+      orch.submit('boilerplate', 'change it', undefined, true)
+      await orch.idle()
+      expect(orch.list()[0]).toMatchObject({
+        status: 'failed',
+        error: 'cannot edit here: not a git repository'
+      })
+      expect(claude.received).toHaveLength(0)
+      expect(store.runs()).toHaveLength(0)
+    },
+    undefined,
+    undefined,
+    { worktrees }
+  )
+})
+
+test('editing without worktrees fails the job without spawning', async () => {
+  const claude = new FakeAdapter('claude', [ok('nope')])
+  await withOrch([claude], async (orch, store) => {
+    orch.submit('boilerplate', 'change it', undefined, true)
+    await orch.idle()
+    expect(orch.list()[0]).toMatchObject({
+      status: 'failed',
+      error: 'cannot edit here: no worktrees'
+    })
+    expect(claude.received).toHaveLength(0)
+    expect(store.runs()).toHaveLength(0)
+  })
+})
+
+test('a non-editing job is unchanged and does not touch worktrees', async () => {
+  const claude = new FakeAdapter('claude', [ok('read')])
+  let creates = 0
+  let changes = 0
+  const worktrees = fakeWorktrees(async () => {
+    creates += 1
+    throw new Error('should not create')
+  })
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'look')
+      await orch.idle()
+      expect(creates).toBe(0)
+      expect(changes).toBe(0)
+      expect(claude.cwds).toEqual([CWD])
+      expect(claude.options[0]?.edit).toBeUndefined()
+      expect(orch.list()[0]?.edit).toBeUndefined()
+      expect(orch.list()[0]?.change).toBeUndefined()
+    },
+    undefined,
+    undefined,
+    {
+      worktrees,
+      onChanges: () => {
+        changes += 1
+      }
+    }
+  )
+})
+
+test('failover of an editing job keeps the folder and adds the handoff line', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'usage limit' }
+      ]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('done')])
+  const worktrees = fakeWorktrees(async (_project, jobId) => {
+    const id = jobId.slice(0, 8)
+    return { id, path: `wt/${id}`, branch: `orch/${id}` }
+  })
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      orch.submit('planning', 'change it', undefined, true)
+      await orch.idle()
+      expect(claude.cwds).toEqual(cursor.cwds)
+      expect(claude.cwds[0]).toMatch(/^wt\//)
+      expect(cursor.received[0]?.prompt).toContain(
+        'The files you need are already changed in this folder; continue from them.'
+      )
+      expect(cursor.options[0]?.edit).toBe(true)
+      expect(orch.list()[0]).toMatchObject({ status: 'done', edit: true })
+    },
+    undefined,
+    undefined,
+    { worktrees }
+  )
+})
+
+test('onChanges fires after an editing run of any outcome', async () => {
+  const claude = new FakeAdapter('claude', [
+    ok('edited'),
+    { events: [{ kind: 'result', ok: false, text: 'nope' }] }
+  ])
+  let calls = 0
+  const worktrees = fakeWorktrees(async (_project, jobId) => {
+    const id = jobId.slice(0, 8)
+    return { id, path: `wt/${id}`, branch: `orch/${id}` }
+  })
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('boilerplate', 'change it', 'claude', true)
+      await orch.idle()
+      expect(calls).toBe(1)
+      orch.submit('boilerplate', 'fail it', 'claude', true)
+      await orch.idle()
+      expect(calls).toBe(2)
+      expect(orch.list()[1]).toMatchObject({ status: 'failed', edit: true })
+    },
+    undefined,
+    undefined,
+    {
+      worktrees,
+      onChanges: () => {
+        calls += 1
+      }
+    }
+  )
+})
+
+test('cwd as a function is read when each job starts', async () => {
+  let folder = 'alpha'
+  const claude = new FakeAdapter('claude', [ok('a'), ok('b')])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'one')
+      await orch.idle()
+      folder = 'beta'
+      orch.submit('planning', 'two')
+      await orch.idle()
+      expect(claude.cwds).toEqual(['alpha', 'beta'])
+    },
+    undefined,
+    undefined,
+    { cwd: () => folder }
+  )
+})
+
+test('busy is true while any job is queued or running', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }, ok('b')])
+  await withOrch([claude], async (orch) => {
+    expect(orch.busy()).toBe(false)
+    orch.submit('planning', 'one')
+    orch.submit('planning', 'two')
+    expect(orch.busy()).toBe(true)
+    held.open()
+    await orch.idle()
+    expect(orch.busy()).toBe(false)
+  })
 })

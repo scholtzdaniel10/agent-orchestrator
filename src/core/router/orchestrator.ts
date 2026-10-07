@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentEvent, JobType, ProviderAdapter, ProviderId, RouterRules } from '../types'
+import { Worktrees } from '../worktrees'
 import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
 
@@ -42,6 +43,10 @@ interface InternalJob {
   reason?: string
   /** The person named the plan. That job is never moved to another one. */
   chosen: boolean
+  /** The job may edit files, in its own worktree. */
+  edit?: boolean
+  /** Id of the job's change set, once its worktree exists. */
+  change?: string
   error?: string
 }
 
@@ -72,7 +77,9 @@ export class Orchestrator {
   private readonly byId: Map<ProviderId, ProviderAdapter>
   private readonly store: Store
   private readonly rules: RouterRules
-  private readonly cwd: string
+  private readonly cwd: string | (() => string)
+  private readonly worktrees: Worktrees | undefined
+  private readonly onChanges: (() => void) | undefined
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private candidates: ProviderId[] = []
@@ -87,15 +94,19 @@ export class Orchestrator {
     adapters: ProviderAdapter[]
     store: Store
     rules: RouterRules
-    cwd: string
+    cwd: string | (() => string)
     now?: () => number
     modelFor?: (provider: ProviderId) => string | undefined
+    worktrees?: Worktrees
+    onChanges?: () => void
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
     this.store = opts.store
     this.rules = opts.rules
     this.cwd = opts.cwd
+    this.worktrees = opts.worktrees
+    this.onChanges = opts.onChanges
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
   }
@@ -111,7 +122,7 @@ export class Orchestrator {
     this.candidates = available
   }
 
-  submit(type: JobType, prompt: string, provider?: ProviderId): JobRecord {
+  submit(type: JobType, prompt: string, provider?: ProviderId, edit?: boolean): JobRecord {
     const job: InternalJob = {
       id: randomUUID(),
       type,
@@ -121,7 +132,8 @@ export class Orchestrator {
       status: 'queued',
       output: '',
       failedOver: [],
-      chosen: false
+      chosen: false,
+      ...(edit === true ? { edit: true } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -202,7 +214,7 @@ export class Orchestrator {
     })
   }
 
-  private busy(): boolean {
+  busy(): boolean {
     return this.jobs.some((job) => job.status === 'queued' || job.status === 'running')
   }
 
@@ -249,6 +261,26 @@ export class Orchestrator {
       })
   }
 
+  private workingDir(): string {
+    return typeof this.cwd === 'function' ? this.cwd() : this.cwd
+  }
+
+  private async editFolder(job: InternalJob, project: string): Promise<string | null> {
+    try {
+      if (!this.worktrees) throw new Error('no worktrees')
+      const created = await this.worktrees.create(project, job.id)
+      job.change = created.id
+      this.emit(job)
+      return created.path
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      job.status = 'failed'
+      job.error = `cannot edit here: ${message}`
+      this.emit(job)
+      return null
+    }
+  }
+
   private async execute(job: InternalJob, provider: ProviderId): Promise<void> {
     const startedAt = this.now()
     const t0 = Date.now()
@@ -256,11 +288,21 @@ export class Orchestrator {
     let result: ResultEvent | null = null
     let limitEv: LimitEvent | null = null
     let handle: ReturnType<ProviderAdapter['run']> | undefined
+    let started = false
     try {
+      const dir = this.workingDir()
+      let runCwd = dir
+      if (job.edit) {
+        const folder = await this.editFolder(job, dir)
+        if (!folder) return
+        runCwd = folder
+      }
       const adapter = this.byId.get(provider)
       if (!adapter) throw new Error(`no adapter for ${provider}`)
-      handle = adapter.run({ id: job.id, prompt: job.prompt }, this.cwd, {
-        model: this.modelFor?.(provider)
+      started = true
+      handle = adapter.run({ id: job.id, prompt: job.prompt }, runCwd, {
+        model: this.modelFor?.(provider),
+        ...(job.edit ? { edit: true } : {})
       })
       for await (const event of handle.events) {
         if (event.kind === 'init') {
@@ -315,6 +357,8 @@ export class Orchestrator {
     } catch (err) {
       safeKill(handle)
       this.failThrown(job, provider, err, startedAt, Date.now() - t0, utilization, result)
+    } finally {
+      if (started && job.edit) this.onChanges?.()
     }
   }
 
@@ -424,6 +468,10 @@ export class Orchestrator {
           `\n\n[Handoff: a previous attempt on ${from} stopped at its usage limit. Its output so far:]\n` +
           tail
       }
+      if (job.edit) {
+        const note = 'The files you need are already changed in this folder; continue from them.'
+        job.prompt += output === '' ? `\n\n${note}` : `\n${note}`
+      }
     }
     job.output = ''
     job.status = 'queued'
@@ -510,6 +558,8 @@ function copy(job: InternalJob): JobRecord {
   if (job.error !== undefined) record.error = job.error
   if (job.model !== undefined) record.model = job.model
   if (job.reason !== undefined) record.reason = job.reason
+  if (job.edit === true) record.edit = true
+  if (job.change !== undefined) record.change = job.change
   return record
 }
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
   AgentEvent,
@@ -56,6 +56,8 @@ export class CursorAdapter implements ProviderAdapter {
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--trust', '--output-format', 'stream-json']
     if (opts?.resume) args.push('--resume', opts.resume)
+    // bridge wins: its own permission file stays, and edit is ignored.
+    const cleanupEdit = opts?.edit && !opts.bridge ? allowEdits(cwd) : undefined
     if (opts?.bridge) {
       const cursorDir = join(cwd, '.cursor')
       mkdirSync(cursorDir, { recursive: true })
@@ -64,7 +66,7 @@ export class CursorAdapter implements ProviderAdapter {
       args.push('--approve-mcps')
     }
     if (opts?.model) args.push('--model', opts.model)
-    return spawnCli(
+    const handle = spawnCli(
       this.bin,
       args,
       job.prompt,
@@ -72,6 +74,17 @@ export class CursorAdapter implements ProviderAdapter {
       (line) => this.parseEvent(line),
       cursorEnv(process.platform, process.env)
     )
+    if (!cleanupEdit) return handle
+    return {
+      events: handle.events,
+      kill: (): void => {
+        handle.kill()
+      },
+      exit: handle.exit.then((result) => {
+        cleanupEdit()
+        return result
+      })
+    }
   }
 
   parseEvent(line: string): AgentEvent | null {
@@ -129,6 +142,31 @@ function cursorMcpConfig(bridge: BridgeInfo): string {
       }
     }
   })
+}
+
+const EDIT_CLI = '{"permissions":{"allow":["Read(**)","Write(**)"],"deny":["Shell(*)"]}}'
+
+/** Write a headless edit permission file when the project has none, and remove only what we added. */
+function allowEdits(cwd: string): (() => void) | undefined {
+  const cursorDir = join(cwd, '.cursor')
+  const cliPath = join(cursorDir, 'cli.json')
+  if (existsSync(cliPath)) return undefined
+  const createdDir = !existsSync(cursorDir)
+  mkdirSync(cursorDir, { recursive: true })
+  writeFileSync(cliPath, EDIT_CLI)
+  return (): void => {
+    try {
+      unlinkSync(cliPath)
+    } catch {
+      // Already gone.
+    }
+    if (!createdDir) return
+    try {
+      if (readdirSync(cursorDir).length === 0) rmdirSync(cursorDir)
+    } catch {
+      // Not empty, or already gone.
+    }
+  }
 }
 
 function cursorCliConfig(): string {
