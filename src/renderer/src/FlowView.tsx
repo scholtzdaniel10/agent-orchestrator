@@ -100,6 +100,23 @@ function terminalSuffix(terminals: readonly TerminalInfo[], id: PlanStatus['id']
   return ` · ${count} ${count === 1 ? 'terminal' : 'terminals'}`
 }
 
+function changeSuffix(
+  changes: FlowSnapshot['changes'],
+  jobs: readonly JobRecord[],
+  id: PlanStatus['id']
+): string {
+  const ids = new Set<string>()
+  for (const job of jobs) {
+    if (job.provider === id && job.change !== undefined) ids.add(job.change)
+  }
+  let count = 0
+  for (const item of changes) {
+    if (ids.has(item.id)) count += 1
+  }
+  if (count === 0) return ''
+  return ` · ${count} ${count === 1 ? 'change' : 'changes'}`
+}
+
 function planFeeding(jobs: readonly JobRecord[], id: PlanStatus['id']): boolean {
   return jobs.some(
     (job) => job.provider === id && (job.status === 'running' || job.status === 'queued')
@@ -194,6 +211,7 @@ function Topology({
   plans,
   lead,
   terminals,
+  changes,
   now,
   elapsedNow,
   starts,
@@ -203,6 +221,7 @@ function Topology({
   plans: PlanStatus[]
   lead: LeadMessage[]
   terminals: TerminalInfo[]
+  changes: FlowSnapshot['changes']
   now: number
   elapsedNow: number
   starts: Record<string, number>
@@ -264,7 +283,7 @@ function Topology({
     return () => {
       observer.disconnect()
     }
-  }, [plans, jobs, lead, terminals, elapsedNow, streaming, now, starts, flashes])
+  }, [plans, jobs, lead, terminals, changes, elapsedNow, streaming, now, starts, flashes])
 
   return (
     <div className="topo" ref={rootRef}>
@@ -365,13 +384,15 @@ function Topology({
           const avatar = workerAvatar(plan, jobs, now)
           const running = runningJob(jobs, plan.id)
           const suffix = terminalSuffix(terminals, plan.id)
+          const waiting = changeSuffix(changes, jobs, plan.id)
+          const extra = `${suffix}${waiting}`
           const tone = avatar === 'working' || avatar === 'error' ? plan.id : null
-          let text = `idle${suffix}`
+          let text = `idle${extra}`
           let elapsed: string | null = null
           if (!plan.available) {
-            text = `not signed in${suffix}`
+            text = `not signed in${extra}`
           } else if (plan.restingUntil !== null && plan.restingUntil > now) {
-            text = `resting until ${formatHoursMinutes(plan.restingUntil)}${suffix}`
+            text = `resting until ${formatHoursMinutes(plan.restingUntil)}${extra}`
           } else if (running !== undefined) {
             const started = starts[running.id] ?? elapsedNow
             text = `${running.type} · running · `
@@ -393,8 +414,8 @@ function Topology({
               <div className="flow-sub">
                 <span className="flow-sub-text">{text}</span>
                 {elapsed !== null ? <span className="flow-elapsed">{elapsed}</span> : null}
-                {elapsed !== null && suffix !== '' ? (
-                  <span className="flow-sub-text">{suffix}</span>
+                {elapsed !== null && extra !== '' ? (
+                  <span className="flow-sub-text">{extra}</span>
                 ) : null}
               </div>
             </div>
@@ -410,6 +431,7 @@ function FlowView({
   plans,
   lead,
   terminals,
+  changes,
   events,
   now,
   starts,
@@ -419,6 +441,7 @@ function FlowView({
   plans: PlanStatus[]
   lead: LeadMessage[]
   terminals: TerminalInfo[]
+  changes: FlowSnapshot['changes']
   events: FlowEvent[]
   now: number
   starts: Record<string, number>
@@ -454,6 +477,7 @@ function FlowView({
             plans={plans}
             lead={lead}
             terminals={terminals}
+            changes={changes}
             now={now}
             elapsedNow={elapsedNow}
             starts={starts}

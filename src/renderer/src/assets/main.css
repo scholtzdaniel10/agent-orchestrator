@@ -16,6 +16,8 @@
   --warn: #f2c14e;
   --bad: #ff8f8f;
   --bad-soft: rgba(255, 143, 143, 0.12);
+  --ok-soft: rgba(95, 211, 154, 0.14);
+  --del-soft: rgba(255, 143, 143, 0.14);
   --bot-lead: #8b7cf6;
   --bot-claude: #f08a5d;
   --bot-cursor: #3cc6a0;
@@ -42,6 +44,8 @@
     --warn: #8a6200;
     --bad: #a8322f;
     --bad-soft: rgba(168, 50, 47, 0.08);
+    --ok-soft: rgba(29, 122, 74, 0.12);
+    --del-soft: rgba(168, 50, 47, 0.12);
     --bot-lead: #6d5bd0;
     --bot-claude: #d2632f;
     --bot-cursor: #128a6b;
@@ -134,6 +138,7 @@ textarea {
 .app-header {
   grid-area: header;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -147,12 +152,53 @@ textarea {
 }
 
 .app-summary {
+  flex: none;
   min-width: 0;
   margin: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-bar {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-line {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin: 0;
+}
+
+.project-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-note {
+  flex: none;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.project-error {
+  flex: 0 1 240px;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 22px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -273,6 +319,16 @@ label {
   background: var(--raised);
 }
 
+.btn-compact {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.btn.is-danger-label {
+  color: var(--bad);
+}
+
 button:disabled,
 input:disabled,
 select:disabled,
@@ -328,6 +384,31 @@ textarea {
 
 .plan-choice {
   width: 88px;
+}
+
+.edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.edit-toggle:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.edit-toggle input:disabled {
+  opacity: 1;
 }
 
 .composer-hint {
@@ -467,6 +548,24 @@ select {
   background: var(--accent-soft);
 }
 
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab.is-selected .tab-badge {
+  background: var(--panel);
+}
+
 .workers-stage {
   position: relative;
   flex: 1;
@@ -475,6 +574,7 @@ select {
 }
 
 .workers-jobs,
+.workers-changes,
 .terminal-stage {
   position: absolute;
   inset: 0;
@@ -489,7 +589,13 @@ select {
   gap: 12px;
 }
 
+.workers-changes {
+  display: flex;
+  flex-direction: column;
+}
+
 .workers-jobs.is-hidden,
+.workers-changes.is-hidden,
 .terminal-stage.is-inactive {
   visibility: hidden;
   pointer-events: none;
@@ -890,6 +996,175 @@ select {
   font-size: 12px;
 }
 
+.changes-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.changes {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.change-list {
+  display: flex;
+  flex: 0 0 240px;
+  flex-direction: column;
+  gap: 4px;
+  width: 240px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.change-id,
+.change-branch,
+.change-path,
+.diff-block {
+  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  font-variant-ligatures: none;
+}
+
+.change-origin {
+  color: var(--muted);
+}
+
+.change-detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.change-head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.change-branch {
+  flex: none;
+  font-weight: 600;
+}
+
+.change-stats {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stat-add {
+  color: var(--ok);
+}
+
+.stat-del {
+  color: var(--bad);
+}
+
+.diff-binary {
+  flex: none;
+  color: var(--faint);
+}
+
+.change-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.change-help,
+.change-ok,
+.diff-status {
+  flex: none;
+  margin: 0;
+}
+
+.change-help,
+.diff-status {
+  color: var(--faint);
+}
+
+.change-ok {
+  color: var(--ok);
+}
+
+.change-files {
+  flex: none;
+  max-height: 30%;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.change-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.change-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.diff-block {
+  flex: 1 1 auto;
+  min-height: 144px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  line-height: 1.45;
+}
+
+.diff-line {
+  min-height: 1.45em;
+  padding: 0 8px;
+  white-space: pre;
+  width: max-content;
+  min-width: 100%;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.45em;
+}
+
+.diff-line.is-add {
+  background: var(--ok-soft);
+}
+
+.diff-line.is-del {
+  background: var(--del-soft);
+}
+
+.diff-line.is-hunk {
+  color: var(--run);
+}
+
+.diff-line.is-file {
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+}
+
+.diff-line.is-meta {
+  color: var(--faint);
+}
+
 .usage-list {
   display: flex;
   flex: 1;
@@ -1158,6 +1433,18 @@ select {
   .terminal-pane.is-right {
     grid-column: 1;
     grid-row: 3;
+  }
+}
+
+@container workers (max-width: 560px) {
+  .changes {
+    flex-direction: column;
+  }
+
+  .change-list {
+    flex: 0 1 auto;
+    width: auto;
+    max-height: 30%;
   }
 }
 

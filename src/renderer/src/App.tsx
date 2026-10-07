@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import FlowView from './FlowView'
 import LeadChat from './LeadChat'
+import ProjectBar from './ProjectBar'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
 
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+type ProjectInfo = Awaited<ReturnType<Window['api']['getProject']>>
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 
 const terminalBus: TerminalBus = createTerminalBus((listener) =>
@@ -23,7 +26,8 @@ interface FlowBag {
   plans: PlanStatus[] | null
   lead: LeadMessage[]
   terminals: TerminalInfo[]
-  ready: { lead: boolean; jobs: boolean; plans: boolean; terminals: boolean }
+  changes: ChangeSet[]
+  ready: { lead: boolean; jobs: boolean; plans: boolean; terminals: boolean; changes: boolean }
   prev: FlowSnapshot | null
   nextId: number
   starts: Record<string, number>
@@ -36,7 +40,8 @@ function createBag(): FlowBag {
     plans: null,
     lead: [],
     terminals: [],
-    ready: { lead: false, jobs: false, plans: false, terminals: false },
+    changes: [],
+    ready: { lead: false, jobs: false, plans: false, terminals: false, changes: false },
     prev: null,
     nextId: 1,
     starts: {},
@@ -44,13 +49,28 @@ function createBag(): FlowBag {
   }
 }
 
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+  return 'Request failed'
+}
+
 function publish(bag: FlowBag, setEvents: Dispatch<SetStateAction<FlowEvent[]>>): void {
-  if (!bag.ready.lead || !bag.ready.jobs || !bag.ready.plans || !bag.ready.terminals) return
+  if (
+    !bag.ready.lead ||
+    !bag.ready.jobs ||
+    !bag.ready.plans ||
+    !bag.ready.terminals ||
+    !bag.ready.changes
+  ) {
+    return
+  }
   const next: FlowSnapshot = {
     jobs: bag.jobs,
     plans: bag.plans ?? EMPTY_PLANS,
     lead: bag.lead,
-    terminals: bag.terminals
+    terminals: bag.terminals,
+    changes: bag.changes
   }
   const diff = observeFlow(bag.prev, next, Date.now())
   bag.prev = next
@@ -149,6 +169,18 @@ function mergeMessageList(current: LeadMessage[], list: LeadMessage[]): LeadMess
   return merged.concat(extras)
 }
 
+function commitChanges(
+  bag: FlowBag,
+  next: ChangeSet[],
+  setChanges: Dispatch<SetStateAction<ChangeSet[]>>,
+  setEvents: Dispatch<SetStateAction<FlowEvent[]>>
+): void {
+  bag.ready.changes = true
+  bag.changes = next
+  setChanges(next)
+  publish(bag, setEvents)
+}
+
 function mergeJob(jobs: JobRecord[], job: JobRecord): JobRecord[] {
   const index = jobs.findIndex((item) => item.id === job.id)
   if (index === -1) return [...jobs, job]
@@ -218,12 +250,16 @@ function App(): React.JSX.Element {
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [plans, setPlans] = useState<PlanStatus[] | null>(null)
   const [terminals, setTerminals] = useState<TerminalInfo[]>([])
+  const [changes, setChanges] = useState<ChangeSet[]>([])
+  const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
   const acceptList = useRef(true)
+  const choosing = useRef(false)
   const bag = useRef(createBag())
 
   useEffect(() => {
@@ -355,6 +391,55 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    let active = true
+    let sawUpdate = false
+    const state = bag.current
+    const unsubscribe = window.api.onChangesUpdate((next) => {
+      sawUpdate = true
+      if (!active) return
+      commitChanges(state, next, setChanges, setEvents)
+    })
+    void window.api.listChanges().then(
+      (list) => {
+        if (!active || sawUpdate) return
+        commitChanges(state, list, setChanges, setEvents)
+      },
+      () => {
+        if (!active || sawUpdate) return
+        state.ready.changes = true
+        publish(state, setEvents)
+      }
+    )
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void window.api.getProject().then(
+      (info) => {
+        if (!active) return
+        setProject(info)
+      },
+      (err: unknown) => {
+        if (!active) return
+        setProjectError({ text: errorText(err), at: Date.now() })
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (projectError === null) return
+    const timer = window.setTimeout(() => setProjectError(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [projectError])
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now())
     }, MINUTE_MS)
@@ -384,6 +469,22 @@ function App(): React.JSX.Element {
     }
   }, [flashes])
 
+  async function changeProject(): Promise<void> {
+    if (choosing.current) return
+    choosing.current = true
+    try {
+      const next = await window.api.chooseProject()
+      if (next === null) return
+      setProject(next)
+      const list = await window.api.listChanges()
+      commitChanges(bag.current, list, setChanges, setEvents)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    } finally {
+      choosing.current = false
+    }
+  }
+
   async function resetLead(): Promise<void> {
     await window.api.resetLead()
     acceptList.current = false
@@ -401,6 +502,13 @@ function App(): React.JSX.Element {
     <div className="app">
       <header className="app-header">
         <div className="app-name">agent-orchestrator</div>
+        <ProjectBar
+          project={project}
+          error={projectError === null ? null : projectError.text}
+          onChange={() => {
+            void changeProject()
+          }}
+        />
         <p className="app-summary">{summaryLine(ready, running, queued)}</p>
       </header>
       <section className="panel panel-flow" aria-labelledby="flow-heading">
@@ -409,6 +517,7 @@ function App(): React.JSX.Element {
           plans={plans ?? EMPTY_PLANS}
           lead={messages}
           terminals={terminals}
+          changes={changes}
           events={events}
           now={now}
           starts={starts}
@@ -424,6 +533,8 @@ function App(): React.JSX.Element {
           plans={plans}
           terminals={terminals}
           initialTerminalIds={initialTerminalIds}
+          changes={changes}
+          isRepo={project?.isRepo === true}
           bus={terminalBus}
           onJob={(job) => {
             commitJobs(

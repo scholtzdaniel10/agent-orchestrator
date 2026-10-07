@@ -1,5 +1,11 @@
 import { expect, test } from 'vitest'
-import type { JobRecord, LeadMessage, PlanStatus, TerminalInfo } from '../../preload/api-types'
+import type {
+  ChangeSet,
+  JobRecord,
+  LeadMessage,
+  PlanStatus,
+  TerminalInfo
+} from '../../preload/api-types'
 import { diffFlow, formatHoursMinutes, observeFlow, type FlowSnapshot } from './flow-events'
 
 const NOW = Date.UTC(2026, 9, 2, 8, 0, 0)
@@ -51,12 +57,24 @@ function terminal(partial: Partial<TerminalInfo> & Pick<TerminalInfo, 'id'>): Te
   }
 }
 
+function changeSet(partial: Partial<ChangeSet> & Pick<ChangeSet, 'id'>): ChangeSet {
+  return {
+    branch: `orch/${partial.id}`,
+    path: partial.id,
+    files: [{ path: 'notes.txt', insertions: 1, deletions: 0 }],
+    insertions: 1,
+    deletions: 0,
+    ...partial
+  }
+}
+
 function snap(partial: Partial<FlowSnapshot> = {}): FlowSnapshot {
   return {
     jobs: partial.jobs ?? [],
     plans: partial.plans ?? [],
     lead: partial.lead ?? [],
-    terminals: partial.terminals ?? []
+    terminals: partial.terminals ?? [],
+    changes: partial.changes ?? []
   }
 }
 
@@ -65,7 +83,11 @@ function clone(snapshot: FlowSnapshot): FlowSnapshot {
     jobs: snapshot.jobs.map((item) => ({ ...item, failedOver: [...item.failedOver] })),
     plans: snapshot.plans.map((item) => ({ ...item })),
     lead: snapshot.lead.map((item) => ({ ...item })),
-    terminals: snapshot.terminals.map((item) => ({ ...item }))
+    terminals: snapshot.terminals.map((item) => ({ ...item })),
+    changes: snapshot.changes.map((item) => ({
+      ...item,
+      files: item.files.map((file) => ({ ...file }))
+    }))
   }
 }
 
@@ -286,10 +308,11 @@ test('terminals opening, ending, and disappearing are recorded', () => {
 
 test('the first snapshot yields nothing', () => {
   const first = snap({
-    jobs: [job({ id: 'j', status: 'running', provider: 'claude' })],
+    jobs: [job({ id: 'j', status: 'running', provider: 'claude', edit: true, change: 'abcd1234' })],
     lead: [lead({ id: 'a', role: 'lead', status: 'done', text: 'hi' })],
     terminals: [terminal({ id: 't' })],
-    plans: [plan({ id: 'claude', restingUntil: NOW + 60_000, model: 'opus' })]
+    plans: [plan({ id: 'claude', restingUntil: NOW + 60_000, model: 'opus' })],
+    changes: [changeSet({ id: 'abcd1234' })]
   })
   expect(observeFlow(null, first, NOW)).toEqual([])
 })
@@ -299,7 +322,8 @@ test('an unchanged snapshot yields nothing', () => {
     jobs: [job({ id: 'j', status: 'running', provider: 'claude', output: 'partial' })],
     lead: [lead({ id: 'a', role: 'lead', status: 'streaming', text: 'partial', model: 'opus' })],
     plans: [plan({ id: 'claude', model: 'opus', busy: true })],
-    terminals: [terminal({ id: 't', status: 'exited', exitCode: 0 })]
+    terminals: [terminal({ id: 't', status: 'exited', exitCode: 0 })],
+    changes: [changeSet({ id: 'abcd1234' })]
   })
   expect(diffFlow(current, clone(current), NOW)).toEqual([])
   const edited = clone(current)
@@ -354,6 +378,85 @@ test('several changes in one diff stay in lead, router, plan, then terminal orde
     'cursor: terminal opened (cursor 1)',
     'claude: terminal closed (claude 1)'
   ])
+})
+
+test('an editing job ends the router line with edits', () => {
+  const next = snap({
+    jobs: [
+      job({
+        id: 'j',
+        status: 'running',
+        provider: 'claude',
+        type: 'boilerplate',
+        edit: true,
+        reason: 'first choice'
+      })
+    ],
+    plans: [plan({ id: 'claude' })]
+  })
+  expect(diffFlow(snap(), next, NOW)).toEqual([
+    { at: NOW, actor: 'router', text: 'boilerplate → claude · first choice · edits' },
+    { at: NOW, actor: 'claude', text: 'boilerplate running' }
+  ])
+})
+
+test('an editing job without a reason still ends with edits', () => {
+  expect(
+    diffFlow(
+      snap(),
+      snap({
+        jobs: [job({ id: 'j', status: 'queued', provider: null, type: 'review', edit: true })]
+      }),
+      NOW
+    )
+  ).toEqual([{ at: NOW, actor: 'router', text: 'review → no plan · edits' }])
+})
+
+test('a change ready event uses the provider of the job that owns it', () => {
+  const item = changeSet({ id: 'abcd1234' })
+  const owned = job({ id: 'j', status: 'done', provider: 'cursor', change: 'abcd1234' })
+  expect(diffFlow(snap({ jobs: [owned] }), snap({ jobs: [owned], changes: [item] }), NOW)).toEqual([
+    { at: NOW, actor: 'cursor', text: 'change ready (1 file)', tone: 'ok' }
+  ])
+})
+
+test('a change with no matching job, or a job with no provider, is ready on the router', () => {
+  const lone = changeSet({
+    id: 'aaaaaaaa',
+    files: [
+      { path: 'a.txt', insertions: 1, deletions: 0 },
+      { path: 'b.txt', insertions: 2, deletions: 1 }
+    ]
+  })
+  const unassigned = changeSet({ id: 'bbbbbbbb' })
+  const owned = job({ id: 'j', status: 'done', provider: null, change: 'bbbbbbbb' })
+  expect(diffFlow(snap(), snap({ changes: [lone] }), NOW)).toEqual([
+    { at: NOW, actor: 'router', text: 'change ready (2 files)', tone: 'ok' }
+  ])
+  expect(
+    diffFlow(snap({ jobs: [owned] }), snap({ jobs: [owned], changes: [unassigned] }), NOW)
+  ).toEqual([{ at: NOW, actor: 'router', text: 'change ready (1 file)', tone: 'ok' }])
+})
+
+test('a change that disappears is closed by the router', () => {
+  const staying = changeSet({ id: 'aaaaaaaa' })
+  const leaving = changeSet({ id: 'bbbbbbbb' })
+  const arriving = changeSet({
+    id: 'cccccccc',
+    files: [
+      { path: 'a.txt', insertions: 1, deletions: 0 },
+      { path: 'b.txt', insertions: 1, deletions: 0 },
+      { path: 'c.txt', insertions: 1, deletions: 0 }
+    ]
+  })
+  const jobs = [job({ id: 'j', status: 'done', provider: 'claude', change: 'cccccccc' })]
+  expect(
+    diffFlow(
+      snap({ jobs, changes: [staying, leaving] }),
+      snap({ jobs, changes: [staying, arriving] }),
+      NOW
+    ).map((event) => `${event.actor}: ${event.text}`)
+  ).toEqual(['claude: change ready (3 files)', 'router: change closed (bbbbbbbb)'])
 })
 
 test('a job that is new and already running yields the router line and the running line', () => {

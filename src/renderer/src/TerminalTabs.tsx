@@ -24,9 +24,16 @@ function reveal(element: HTMLElement): void {
   }
 }
 
+function tabElementId(active: string): string {
+  if (active === 'jobs') return 'worker-tab-jobs'
+  if (active === 'changes') return 'worker-tab-changes'
+  return `worker-tab-${active}`
+}
+
 function TerminalTabs({
   terminals,
-  selectedId,
+  active,
+  changeCount,
   split,
   opening,
   onSelect,
@@ -35,10 +42,12 @@ function TerminalTabs({
   onToggleSplit
 }: {
   terminals: readonly TerminalInfo[]
-  selectedId: string | null
+  /** `jobs`, `changes`, or a terminal id. */
+  active: string
+  changeCount: number
   split: boolean
   opening: boolean
-  onSelect: (id: string | null, source: 'click' | 'arrow') => void
+  onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
   onOpen: (provider: ProviderId) => void
   onToggleSplit: () => void
@@ -46,20 +55,19 @@ function TerminalTabs({
   const tabKey = terminals.map((info) => info.id).join('\0')
 
   useEffect(() => {
-    const element = document.getElementById(
-      selectedId === null ? 'worker-tab-jobs' : `worker-tab-${selectedId}`
-    )
+    const element = document.getElementById(tabElementId(active))
     if (element instanceof HTMLButtonElement) reveal(element)
-  }, [selectedId, tabKey])
+  }, [active, tabKey])
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    if (next < 0 || next > terminals.length) return
-    const id = next === 0 ? null : terminals[next - 1].id
+    const last = terminals.length + 1
+    if (next < 0 || next > last) return
+    const id = next === 0 ? 'jobs' : next === 1 ? 'changes' : terminals[next - 2].id
     onSelect(id, 'arrow')
-    const element = document.getElementById(id === null ? 'worker-tab-jobs' : `worker-tab-${id}`)
+    const element = document.getElementById(tabElementId(id))
     if (element instanceof HTMLButtonElement) element.focus()
   }
 
@@ -70,19 +78,39 @@ function TerminalTabs({
           id="worker-tab-jobs"
           type="button"
           role="tab"
-          className={selectedId === null ? 'tab is-selected' : 'tab'}
-          aria-selected={selectedId === null}
-          tabIndex={selectedId === null ? 0 : -1}
+          className={active === 'jobs' ? 'tab is-selected' : 'tab'}
+          aria-selected={active === 'jobs'}
+          tabIndex={active === 'jobs' ? 0 : -1}
           onClick={() => {
-            onSelect(null, 'click')
+            onSelect('jobs', 'click')
           }}
           onKeyDown={(event) => onTabKeyDown(event, 0)}
         >
           Jobs
         </button>
+        <button
+          id="worker-tab-changes"
+          type="button"
+          role="tab"
+          className={active === 'changes' ? 'tab is-selected' : 'tab'}
+          aria-selected={active === 'changes'}
+          tabIndex={active === 'changes' ? 0 : -1}
+          onClick={() => {
+            onSelect('changes', 'click')
+          }}
+          onKeyDown={(event) => onTabKeyDown(event, 1)}
+        >
+          {'Changes'}
+          {changeCount > 0 ? (
+            <>
+              {' '}
+              <span className="tab-badge">{changeCount}</span>
+            </>
+          ) : null}
+        </button>
         {terminals.map((info, index) => {
-          const selected = info.id === selectedId
-          const tabIndex = index + 1
+          const selected = info.id === active
+          const tabIndex = index + 2
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
               <button

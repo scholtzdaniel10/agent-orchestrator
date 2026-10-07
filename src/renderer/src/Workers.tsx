@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
+import ChangesTab from './ChangesTab'
 import RichText from './RichText'
 import TerminalPane, { type PanePlacement } from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
 
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type JobType = Parameters<Window['api']['submitJob']>[0]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
@@ -41,7 +43,14 @@ function outputTitle(job: JobRecord): string {
   if (job.provider !== null) parts.push(job.provider)
   if (job.model) parts.push(job.model)
   if (job.reason) parts.push(job.reason)
+  if (job.edit === true) parts.push('edits')
   return parts.join(' · ')
+}
+
+function visibleChange(job: JobRecord, changes: readonly ChangeSet[]): string | null {
+  const id = job.change
+  if (id === undefined) return null
+  return changes.some((item) => item.id === id) ? id : null
 }
 
 function splitPartner(
@@ -77,6 +86,8 @@ function Workers({
   plans,
   terminals,
   initialTerminalIds,
+  changes,
+  isRepo,
   bus,
   onJob,
   onTerminal
@@ -85,6 +96,8 @@ function Workers({
   plans: PlanStatus[] | null
   terminals: TerminalInfo[]
   initialTerminalIds: ReadonlySet<string> | null
+  changes: ChangeSet[]
+  isRepo: boolean
   bus: TerminalBus
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
@@ -93,6 +106,9 @@ function Workers({
   const [prompt, setPrompt] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
   const [worker, setWorker] = useState<PlanChoice>('auto')
+  const [editFiles, setEditFiles] = useState(false)
+  const [mainTab, setMainTab] = useState<'jobs' | 'changes'>('jobs')
+  const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [recentOther, setRecentOther] = useState<string | null>(null)
   const [split, setSplit] = useState(false)
@@ -139,6 +155,7 @@ function Workers({
       selectedRef.current = left
       setSelectedId(left)
       if (left === null) {
+        setMainTab('jobs')
         document.getElementById('worker-tab-jobs')?.focus()
       } else {
         requestFocus(left)
@@ -176,10 +193,8 @@ function Workers({
     if (text.trim() === '' || sending.current) return
     sending.current = true
     try {
-      const job =
-        worker === 'auto'
-          ? await window.api.submitJob(jobType, text)
-          : await window.api.submitJob(jobType, text, worker)
+      const provider = worker === 'auto' ? undefined : worker
+      const job = await window.api.submitJob(jobType, text, provider, isRepo && editFiles)
       setPrompt('')
       onJob(job)
       setSelectedJobId(job.id)
@@ -211,7 +226,21 @@ function Workers({
     document.getElementById(`job-${next.id}`)?.focus()
   }
 
-  const showJobs = shownId === null
+  const showJobs = shownId === null && mainTab === 'jobs'
+  const showChanges = shownId === null && mainTab === 'changes'
+
+  function showMain(tab: 'jobs' | 'changes'): void {
+    const previous = selectedRef.current
+    if (previous !== null) setRecentOther(previous)
+    selectedRef.current = null
+    setSelectedId(null)
+    setMainTab(tab)
+  }
+
+  function viewChange(id: string): void {
+    setSelectedChangeId(id)
+    showMain('changes')
+  }
 
   return (
     <div className="workers">
@@ -220,10 +249,17 @@ function Workers({
       </div>
       <TerminalTabs
         terminals={terminals}
-        selectedId={shownId}
+        active={shownId ?? mainTab}
+        changeCount={changes.length}
         split={split}
         opening={opening}
-        onSelect={selectTab}
+        onSelect={(id, source) => {
+          if (id === 'jobs' || id === 'changes') {
+            showMain(id)
+            return
+          }
+          selectTab(id, source)
+        }}
         onClose={closeTerminal}
         onOpen={(provider) => {
           void openProvider(provider)
@@ -289,6 +325,21 @@ function Workers({
                       cursor
                     </option>
                   </select>
+                  <label
+                    className="edit-toggle"
+                    htmlFor="job-edit"
+                    title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
+                  >
+                    <input
+                      id="job-edit"
+                      type="checkbox"
+                      checked={editFiles}
+                      disabled={!isRepo}
+                      title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
+                      onChange={(event) => setEditFiles(event.target.checked)}
+                    />
+                    Let it edit files
+                  </label>
                 </div>
                 <button className="btn btn-primary" type="submit" disabled={promptEmpty}>
                   Submit
@@ -325,6 +376,21 @@ function Workers({
                           />
                         ) : null}
                         <span className="chip">{job.type}</span>
+                        {job.edit === true ? <span className="chip">edits</span> : null}
+                        {visibleChange(job, changes) !== null ? (
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-compact"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              const id = job.change
+                              if (id !== undefined) viewChange(id)
+                            }}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
+                            View change
+                          </button>
+                        ) : null}
                         {job.reason ? (
                           <span className="job-reason" title={job.reason}>
                             {job.reason}
@@ -380,14 +446,25 @@ function Workers({
           </section>
         </div>
         <div
+          className={showChanges ? 'workers-changes' : 'workers-changes is-hidden'}
+          inert={showChanges ? undefined : true}
+        >
+          <ChangesTab
+            changes={changes}
+            jobs={jobs}
+            selectedId={selectedChangeId}
+            onSelect={setSelectedChangeId}
+          />
+        </div>
+        <div
           className={
-            showJobs
+            shownId === null
               ? 'terminal-stage is-inactive'
               : splitOn
                 ? 'terminal-stage is-split'
                 : 'terminal-stage'
           }
-          inert={showJobs ? true : undefined}
+          inert={shownId === null ? true : undefined}
         >
           {splitOn ? <div className="terminal-divider" aria-hidden="true" /> : null}
           {initialTerminalIds === null

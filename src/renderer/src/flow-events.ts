@@ -1,4 +1,10 @@
-import type { JobRecord, LeadMessage, PlanStatus, TerminalInfo } from '../../preload/api-types'
+import type {
+  ChangeSet,
+  JobRecord,
+  LeadMessage,
+  PlanStatus,
+  TerminalInfo
+} from '../../preload/api-types'
 
 export interface FlowEvent {
   id: number
@@ -14,6 +20,7 @@ export interface FlowSnapshot {
   plans: PlanStatus[]
   lead: LeadMessage[]
   terminals: TerminalInfo[]
+  changes: ChangeSet[]
 }
 
 type FlowChange = Omit<FlowEvent, 'id'>
@@ -32,6 +39,7 @@ export function diffFlow(prev: FlowSnapshot, next: FlowSnapshot, now: number): F
   return [
     ...diffLead(prev.lead, next.lead, now),
     ...diffRouter(prev.jobs, next.jobs, now),
+    ...diffChanges(prev, next, now),
     ...diffWorkers(prev, next, now),
     ...diffTerminals(prev.terminals, next.terminals, now)
   ]
@@ -86,7 +94,9 @@ function diffRouter(
     if (before === undefined) {
       const target = job.provider ?? 'no plan'
       const routed = `${job.type} → ${target}`
-      events.push(change(now, 'router', job.reason ? `${routed} · ${job.reason}` : routed))
+      let text = job.reason ? `${routed} · ${job.reason}` : routed
+      if (job.edit === true) text += ' · edits'
+      events.push(change(now, 'router', text))
     }
     if (before === undefined || job.failedOver.length <= before.failedOver.length) continue
     const added = job.failedOver.slice(before.failedOver.length)
@@ -95,6 +105,38 @@ function diffRouter(
       const to = index + 1 < added.length ? added[index + 1] : (job.provider ?? 'no plan')
       events.push(change(now, 'router', `${job.type} failover ${from} → ${to}`, 'warn'))
     }
+  }
+  return events
+}
+
+function fileCount(count: number): string {
+  return `${count} ${count === 1 ? 'file' : 'files'}`
+}
+
+function changeActor(jobs: readonly JobRecord[], id: string): FlowEvent['actor'] {
+  const match = jobs.find((job) => job.change === id)
+  if (match === undefined || match.provider === null) return 'router'
+  return match.provider
+}
+
+function diffChanges(prev: FlowSnapshot, next: FlowSnapshot, now: number): FlowChange[] {
+  const prevIds = new Set(prev.changes.map((item) => item.id))
+  const nextIds = new Set(next.changes.map((item) => item.id))
+  const events: FlowChange[] = []
+  for (const item of next.changes) {
+    if (prevIds.has(item.id)) continue
+    events.push(
+      change(
+        now,
+        changeActor(next.jobs, item.id),
+        `change ready (${fileCount(item.files.length)})`,
+        'ok'
+      )
+    )
+  }
+  for (const item of prev.changes) {
+    if (nextIds.has(item.id)) continue
+    events.push(change(now, 'router', `change closed (${item.id})`))
   }
   return events
 }
