@@ -15,6 +15,7 @@ type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProjectInfo = Awaited<ReturnType<Window['api']['getProject']>>
+type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 
 const terminalBus: TerminalBus = createTerminalBus((listener) =>
@@ -285,6 +286,7 @@ function App(): React.JSX.Element {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([])
   const [changes, setChanges] = useState<ChangeSet[]>([])
   const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -433,6 +435,13 @@ function App(): React.JSX.Element {
       sawUpdate = true
       if (!active) return
       commitChanges(state, next, setChanges, setEvents)
+      void window.api.listProjects().then(
+        (list) => {
+          if (!active) return
+          setProjects(list)
+        },
+        () => {}
+      )
     })
     void window.api.listChanges().then(
       (list) => {
@@ -462,6 +471,13 @@ function App(): React.JSX.Element {
         if (!active) return
         setProjectError({ text: errorText(err), at: Date.now() })
       }
+    )
+    void window.api.listProjects().then(
+      (list) => {
+        if (!active) return
+        setProjects(list)
+      },
+      () => {}
     )
     return () => {
       active = false
@@ -504,19 +520,46 @@ function App(): React.JSX.Element {
     }
   }, [flashes])
 
+  async function adoptProject(next: ProjectInfo): Promise<void> {
+    setProject(next)
+    const list = await window.api.listChanges()
+    commitChanges(bag.current, list, setChanges, setEvents)
+    setProjects(await window.api.listProjects())
+  }
+
   async function changeProject(): Promise<void> {
     if (choosing.current) return
     choosing.current = true
     try {
       const next = await window.api.chooseProject()
       if (next === null) return
-      setProject(next)
-      const list = await window.api.listChanges()
-      commitChanges(bag.current, list, setChanges, setEvents)
+      await adoptProject(next)
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
     } finally {
       choosing.current = false
+    }
+  }
+
+  async function switchProject(path: string): Promise<void> {
+    if (choosing.current) return
+    choosing.current = true
+    try {
+      const next = await window.api.switchProject(path)
+      await adoptProject(next)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    } finally {
+      choosing.current = false
+    }
+  }
+
+  async function removeProject(path: string): Promise<void> {
+    try {
+      await window.api.removeProject(path)
+      setProjects(await window.api.listProjects())
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
     }
   }
 
@@ -543,15 +586,22 @@ function App(): React.JSX.Element {
           </span>
           <div className="app-name">agent-orchestrator</div>
         </div>
-        <ProjectBar
-          project={project}
-          error={projectError === null ? null : projectError.text}
-          onChange={() => {
-            void changeProject()
-          }}
-        />
         <AppSummary ready={ready} running={running} queued={queued} />
       </header>
+      <ProjectBar
+        projects={projects}
+        busy={running > 0 || queued > 0}
+        error={projectError === null ? null : projectError.text}
+        onAdd={() => {
+          void changeProject()
+        }}
+        onSwitch={(path) => {
+          void switchProject(path)
+        }}
+        onRemove={(path) => {
+          void removeProject(path)
+        }}
+      />
       <section className="panel panel-flow" aria-labelledby="flow-heading">
         <RayBurst />
         <FlowView

@@ -135,8 +135,87 @@ test('project round-trips and ignores a stored value that is not a non-empty str
     expect(again.model('claude')).toBe('opus')
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       project: 'repo',
-      models: { claude: 'opus' }
+      models: { claude: 'opus' },
+      projects: ['repo']
     })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('projects round-trips through setProject and a new instance', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    expect(settings.projects()).toEqual([])
+    settings.setProject('/a')
+    settings.setProject('/b')
+    expect(settings.projects()).toEqual(['/a', '/b'])
+    expect(new Settings(path).projects()).toEqual(['/a', '/b'])
+    expect(new Settings(path).project()).toBe('/b')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('projects de-duplicates and keeps order', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, JSON.stringify({ projects: ['/a', '/b', '/a', '/c', '/b'] }))
+    expect(new Settings(path).projects()).toEqual(['/a', '/b', '/c'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('projects ignores junk values', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(
+      path,
+      JSON.stringify({ projects: ['/ok', '', 4, null, '  ', '/also', { x: 1 }] })
+    )
+    expect(new Settings(path).projects()).toEqual(['/ok', '/also'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('projects includes the current project first when it is missing from the list', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, JSON.stringify({ project: '/current', projects: ['/a', '/b'] }))
+    expect(new Settings(path).projects()).toEqual(['/current', '/a', '/b'])
+    writeFileSync(path, JSON.stringify({ project: '/a', projects: ['/a', '/b'] }))
+    expect(new Settings(path).projects()).toEqual(['/a', '/b'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('removeProject drops a folder from the list', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    settings.setProject('/a')
+    settings.setProject('/b')
+    settings.removeProject('/a')
+    expect(settings.projects()).toEqual(['/b'])
+    expect(new Settings(path).projects()).toEqual(['/b'])
+    expect(settings.project()).toBe('/b')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('removeProject throws when asked to remove the active project', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    settings.setProject('/a')
+    settings.setProject('/b')
+    expect(() => settings.removeProject('/b')).toThrow('cannot remove the active project')
+    expect(settings.projects()).toEqual(['/a', '/b'])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

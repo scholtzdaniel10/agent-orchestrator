@@ -1,4 +1,6 @@
-type ProjectInfo = Awaited<ReturnType<Window['api']['getProject']>>
+import { Star } from './Star'
+
+type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 
 function folderName(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, '')
@@ -25,66 +27,108 @@ function FolderGlyph(): React.JSX.Element {
   )
 }
 
-function ChevronGlyph(): React.JSX.Element {
-  return (
-    <svg
-      className="project-chevron"
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M3.25 4.5 6 7.25 8.75 4.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function ProjectBar({
-  project,
+  projects,
+  busy,
   error,
-  onChange
+  onAdd,
+  onSwitch,
+  onRemove
 }: {
-  project: ProjectInfo | null
+  projects: ProjectEntry[]
+  busy: boolean
   error: string | null
-  onChange: () => void
+  onAdd: () => void
+  onSwitch: (path: string) => void
+  onRemove: (path: string) => void
 }): React.JSX.Element {
   return (
-    <div className="project-bar">
-      <button
-        type="button"
-        className="project-chip"
-        aria-label="Change project folder"
-        title={project === null ? undefined : project.path}
-        onClick={onChange}
-      >
-        <FolderGlyph />
-        {project === null ? null : (
-          <>
-            <span className="project-name">{folderName(project.path)}</span>
-            {project.isRepo && project.branch !== null ? (
-              <span className="project-branch">{project.branch}</span>
-            ) : null}
-            {!project.isRepo ? (
-              <span className="project-note">not a git repository</span>
-            ) : null}
-          </>
-        )}
-        <ChevronGlyph />
-      </button>
+    <aside className="project-bar" aria-labelledby="projects-heading">
+      <div className="panel-head">
+        <div className="panel-title">
+          <Star size={12} />
+          <h2 id="projects-heading">Projects</h2>
+        </div>
+        <div className="head-actions">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact project-add"
+            onClick={onAdd}
+            aria-label="Add folder"
+            title="Add folder"
+          >
+            <span className="project-add-label">Add folder</span>
+            <span className="project-add-glyph" aria-hidden="true">
+              +
+            </span>
+          </button>
+        </div>
+      </div>
+      <ul className="project-list">
+        {projects.map((entry) => {
+          const name = folderName(entry.path)
+          const active = entry.active
+          return (
+            <li key={entry.path} className="project-item">
+              <button
+                type="button"
+                className={`project-row${active ? ' is-selected' : ''}`}
+                title={entry.path}
+                aria-label={name}
+                aria-current={active ? 'true' : undefined}
+                onClick={() => {
+                  if (!active) onSwitch(entry.path)
+                }}
+              >
+                <FolderGlyph />
+                <span className="project-row-body">
+                  <span className="project-name">{name}</span>
+                  <span className="project-row-meta">
+                    {entry.isRepo && entry.branch !== null ? (
+                      <span className="project-branch">{entry.branch}</span>
+                    ) : (
+                      <span className="project-note">not a git repository</span>
+                    )}
+                  </span>
+                  {active && busy ? (
+                    <span className="status status-running project-row-run">
+                      <span className="status-dot" aria-hidden="true" />
+                      running
+                    </span>
+                  ) : null}
+                </span>
+                {entry.changes > 0 ? (
+                  <span
+                    className="project-row-changes"
+                    aria-label={`${String(entry.changes)} changes waiting`}
+                  >
+                    {entry.changes}
+                  </span>
+                ) : null}
+              </button>
+              {!active ? (
+                <button
+                  type="button"
+                  className="project-remove"
+                  aria-label={`Remove ${name} from the list`}
+                  title="Remove from this list (does not delete the folder)"
+                  onClick={() => {
+                    onRemove(entry.path)
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
       {error !== null ? (
         <p className="field-error project-error" role="alert">
           {error}
         </p>
       ) : null}
-    </div>
+    </aside>
   )
 }
 

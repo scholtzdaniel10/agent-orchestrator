@@ -194,6 +194,40 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }
     )
   }
+  const projectPath = 'C:/Users/dev/projects/agent-orchestrator'
+  const projectList = empty
+    ? [
+        {
+          path: projectPath,
+          isRepo: true,
+          branch: 'main',
+          active: true,
+          changes: changes.length
+        }
+      ]
+    : [
+        {
+          path: projectPath,
+          isRepo: true,
+          branch: 'main',
+          active: true,
+          changes: changes.length
+        },
+        {
+          path: 'C:/Users/dev/projects/estate-agents',
+          isRepo: true,
+          branch: 'feature/search',
+          active: false,
+          changes: 2
+        },
+        {
+          path: 'C:/Users/dev/projects/notes',
+          isRepo: false,
+          branch: null,
+          active: false,
+          changes: 0
+        }
+      ]
   const off = () => () => {}
   const ok = (value) => () => Promise.resolve(value)
   window.api = {
@@ -217,11 +251,18 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     ]),
     setModel: ok(undefined),
     getProject: ok({
-      path: 'C:/Users/dev/projects/agent-orchestrator',
+      path: projectPath,
       isRepo: true,
       branch: 'main'
     }),
+    listProjects: ok(projectList),
     chooseProject: ok(null),
+    switchProject: (path) => {
+      const entry = projectList.find((item) => item.path === path)
+      if (entry === undefined) return Promise.reject(new Error('unknown project'))
+      return Promise.resolve({ path: entry.path, isRepo: entry.isRepo, branch: entry.branch })
+    },
+    removeProject: ok(undefined),
     listChanges: ok(changes),
     onChangesUpdate: off,
     changeDiff: ok(diff),

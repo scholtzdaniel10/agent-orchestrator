@@ -33,8 +33,23 @@ export class Settings {
     return value
   }
 
+  projects(): string[] {
+    const list = readProjects(this.data.projects)
+    const current = this.project()
+    if (current === undefined || list.includes(current)) return list
+    return [current, ...list]
+  }
+
   setProject(path: string): void {
+    const list = this.projects()
     this.data.project = path
+    this.data.projects = list.includes(path) ? list : [...list, path]
+    this.persist()
+  }
+
+  removeProject(path: string): void {
+    if (this.project() === path) throw new Error('cannot remove the active project')
+    this.data.projects = this.projects().filter((entry) => entry !== path)
     this.persist()
   }
 
@@ -85,4 +100,15 @@ function readSettings(path: string): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readProjects(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry.trim() === '') continue
+    if (out.includes(entry)) continue
+    out.push(entry)
+  }
+  return out
 }

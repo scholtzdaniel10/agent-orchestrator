@@ -10,7 +10,7 @@ import { CursorAdapter } from '../core/providers/cursor'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import type { JobType, LeadMessage, ProviderId } from '../core/types'
+import type { JobType, LeadMessage, ProjectEntry, ProviderId } from '../core/types'
 import { Worktrees } from '../core/worktrees'
 import type { PlanStatus } from '../preload/api-types'
 
@@ -275,11 +275,45 @@ app.whenReady().then(async () => {
     if (typeof id !== 'string') return ''
     return terms.snapshot(id)
   })
-  ipcMain.handle('project:get', () => worktrees.info(projectDir()))
-  ipcMain.handle('project:choose', async () => {
+  function assertProjectIdle(): void {
     if (orch.busy() || terms.list().some((term) => term.status === 'running')) {
       throw new Error('finish or close running work first')
     }
+  }
+
+  ipcMain.handle('project:get', () => worktrees.info(projectDir()))
+  ipcMain.handle('projects:list', async (): Promise<ProjectEntry[]> => {
+    const active = projectDir()
+    const paths = settings.projects().filter((path) => isFolder(path))
+    const entries: ProjectEntry[] = []
+    for (const path of paths) {
+      try {
+        const info = await worktrees.info(path)
+        const changes = (await worktrees.list(path)).length
+        entries.push({ ...info, active: path === active, changes })
+      } catch {
+        entries.push({
+          path,
+          isRepo: false,
+          branch: null,
+          active: path === active,
+          changes: 0
+        })
+      }
+    }
+    if (entries.length === 0) {
+      try {
+        const info = await worktrees.info(active)
+        const changes = (await worktrees.list(active)).length
+        return [{ ...info, active: true, changes }]
+      } catch {
+        return [{ path: active, isRepo: false, branch: null, active: true, changes: 0 }]
+      }
+    }
+    return entries
+  })
+  ipcMain.handle('project:choose', async () => {
+    assertProjectIdle()
     if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
     const picked = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
@@ -291,6 +325,19 @@ app.whenReady().then(async () => {
     settings.setProject(path)
     pushChanges()
     return worktrees.info(path)
+  })
+  ipcMain.handle('project:switch', async (_event, path: unknown) => {
+    if (typeof path !== 'string' || !settings.projects().includes(path) || !isFolder(path)) {
+      throw new Error('unknown project')
+    }
+    assertProjectIdle()
+    settings.setProject(path)
+    pushChanges()
+    return worktrees.info(path)
+  })
+  ipcMain.handle('project:remove', (_event, path: unknown) => {
+    if (typeof path !== 'string') throw new Error('unknown project')
+    settings.removeProject(path)
   })
   ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {

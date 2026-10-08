@@ -166,3 +166,10 @@ export interface ProjectInfo {
   /** Current branch, when it is a repository and not detached. */
   branch: string | null
 }
+
+export interface ProjectEntry extends ProjectInfo {
+  /** True for the folder jobs and the lead currently work in. */
+  active: boolean
+  /** Changes waiting for review in this project. */
+  changes: number
+}

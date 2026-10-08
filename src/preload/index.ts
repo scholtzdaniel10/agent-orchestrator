@@ -6,6 +6,7 @@ import type {
   JobType,
   LeadMessage,
   ModelOption,
+  ProjectEntry,
   ProjectInfo,
   ProviderId,
   TerminalInfo
@@ -55,8 +56,17 @@ const api: OrchestratorApi = {
   getProject(): Promise<ProjectInfo> {
     return ipcRenderer.invoke('project:get')
   },
+  listProjects(): Promise<ProjectEntry[]> {
+    return ipcRenderer.invoke('projects:list')
+  },
   chooseProject(): Promise<ProjectInfo | null> {
     return ipcRenderer.invoke('project:choose')
+  },
+  switchProject(path: string): Promise<ProjectInfo> {
+    return ipcRenderer.invoke('project:switch', path)
+  },
+  removeProject(path: string): Promise<void> {
+    return ipcRenderer.invoke('project:remove', path)
   },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')

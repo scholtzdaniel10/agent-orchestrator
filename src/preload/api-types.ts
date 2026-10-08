@@ -3,6 +3,7 @@ import type {
   JobType,
   LeadMessage,
   ModelOption,
+  ProjectEntry,
   ProjectInfo,
   ProviderId,
   TerminalInfo
@@ -66,8 +67,14 @@ export interface OrchestratorApi {
   setModel(provider: ProviderId, model: string | null): Promise<void>
 
   getProject(): Promise<ProjectInfo>
+  /** Remembered project folders, with the active one marked. */
+  listProjects(): Promise<ProjectEntry[]>
   /** Opens a folder picker. Resolves null when cancelled. Refused while work is running. */
   chooseProject(): Promise<ProjectInfo | null>
+  /** Switch the active project. Refused while work is running. */
+  switchProject(path: string): Promise<ProjectInfo>
+  /** Forget a folder from the list. Refused for the active project. */
+  removeProject(path: string): Promise<void>
 
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
@@ -110,6 +117,7 @@ export type {
   JobType,
   LeadMessage,
   ModelOption,
+  ProjectEntry,
   ProjectInfo,
   ProviderId,
   TerminalInfo

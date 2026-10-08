@@ -1,19 +1,21 @@
 :root {
   color-scheme: dark;
-  --bg: rgb(0, 0, 242);
-  --inset: rgb(0, 0, 176);
-  --deep: rgb(0, 0, 128);
-  --raised: color-mix(in srgb, rgb(242, 242, 242) 10%, var(--bg));
-  --selected: color-mix(in srgb, rgb(242, 242, 242) 18%, var(--bg));
+  --bg: rgb(4, 4, 8);
+  --blue: rgb(40, 56, 220);
+  --inset: color-mix(in srgb, var(--blue) 10%, var(--bg));
+  --deep: color-mix(in srgb, var(--blue) 17%, var(--bg));
+  --raised: color-mix(in srgb, var(--blue) 26%, var(--bg));
+  --selected: color-mix(in srgb, var(--blue) 40%, var(--bg));
   --panel: var(--bg);
   --text: rgb(242, 242, 242);
-  --muted: color-mix(in srgb, var(--text) 68%, var(--bg));
-  --faint: color-mix(in srgb, var(--text) 48%, var(--bg));
-  --border: color-mix(in srgb, var(--text) 28%, var(--bg));
-  --border-strong: color-mix(in srgb, var(--text) 60%, var(--bg));
-  --frame: color-mix(in srgb, var(--text) 40%, var(--bg));
-  --accent: rgb(242, 242, 242);
-  --on-accent: rgb(0, 0, 242);
+  --muted: color-mix(in srgb, var(--text) 62%, var(--blue));
+  --faint: color-mix(in srgb, var(--text) 42%, var(--blue));
+  --border: color-mix(in srgb, var(--blue) 62%, var(--bg));
+  --border-strong: var(--blue);
+  --frame: var(--blue);
+  --ray: rgb(150, 165, 255);
+  --accent: var(--blue);
+  --on-accent: rgb(242, 242, 242);
   --signal: rgb(255, 230, 0);
   --bad: rgb(255, 150, 140);
   --ok: var(--muted);
@@ -36,18 +38,20 @@
   :root {
     color-scheme: light;
     --bg: rgb(242, 242, 242);
+    --blue: rgb(40, 56, 220);
+    --ray: var(--blue);
     --inset: rgb(228, 228, 232);
     --deep: rgb(214, 214, 222);
-    --raised: color-mix(in srgb, rgb(0, 0, 242) 8%, var(--bg));
-    --selected: color-mix(in srgb, rgb(0, 0, 242) 14%, var(--bg));
+    --raised: color-mix(in srgb, var(--blue) 8%, var(--bg));
+    --selected: color-mix(in srgb, var(--blue) 14%, var(--bg));
     --panel: var(--bg);
-    --text: rgb(0, 0, 242);
+    --text: var(--blue);
     --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
     --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
     --border: color-mix(in srgb, var(--text) 28%, var(--bg));
     --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
     --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
-    --accent: rgb(0, 0, 242);
+    --accent: var(--blue);
     --on-accent: rgb(242, 242, 242);
     --signal: rgb(180, 120, 0);
     --bad: rgb(180, 50, 40);
@@ -133,12 +137,12 @@ textarea {
 .app {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.35fr) 230px;
+  grid-template-columns: 200px minmax(200px, 1fr) minmax(280px, 1.35fr) 230px;
   grid-template-rows: 40px min(190px, 30vh) minmax(0, 1fr);
   grid-template-areas:
-    'header header header'
-    'flow flow flow'
-    'lead workers usage';
+    'header header header header'
+    'projects flow flow flow'
+    'projects lead workers usage';
   height: 100%;
   min-height: 0;
   gap: 0;
@@ -157,7 +161,7 @@ textarea {
 
 @media (max-width: 1099px) {
   .app {
-    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.35fr) 200px;
+    grid-template-columns: 44px minmax(200px, 1fr) minmax(280px, 1.35fr) 200px;
   }
 }
 
@@ -285,38 +289,92 @@ textarea {
 }
 
 .project-bar {
+  grid-area: projects;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.project-bar .panel-head {
+  padding: 0 10px;
+}
+
+.project-bar .panel-title h2 {
+  font-size: 16px;
+}
+
+.project-add-glyph {
+  display: none;
+}
+
+.project-list {
   display: flex;
   flex: 1;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.project-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
   min-width: 0;
 }
 
-.project-chip {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 6px;
+.project-row {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 8px 0 10px;
-  overflow: hidden;
-  border: 1px solid var(--border);
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
   border-radius: 0;
-  background: var(--raised);
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
   color: var(--text);
+  text-align: left;
   cursor: pointer;
 }
 
-.project-chip:hover:not(:disabled) {
-  border-color: var(--border-strong);
+.project-row:hover {
+  background: var(--raised);
 }
 
-.project-folder,
-.project-chevron {
+.project-row.is-selected {
+  background: var(--selected);
+  border-left-color: var(--signal);
+}
+
+.project-row.is-selected:hover {
+  background: var(--selected);
+}
+
+.project-folder {
   flex: none;
+  margin-top: 2px;
   color: var(--muted);
+}
+
+.project-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .project-name {
@@ -331,34 +389,137 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.project-row-meta {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .project-branch {
-  flex: none;
-  max-width: 12ch;
+  min-width: 0;
   overflow: hidden;
   color: var(--faint);
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-ligatures: none;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .project-note {
-  flex: none;
-  color: var(--signal);
+  color: var(--muted);
+  font-family: var(--font-display);
   font-size: 11px;
+  font-stretch: 75%;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
+.project-row-run {
+  margin-top: 2px;
+}
+
+.project-row-changes {
+  flex: none;
+  align-self: center;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.project-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-item:hover .project-remove,
+.project-item:focus-within .project-remove,
+.project-remove:focus-visible {
+  display: inline-flex;
+}
+
+.project-remove:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .project-error {
-  flex: 0 1 240px;
+  flex: none;
   min-width: 0;
+  margin: 0;
+  padding: 0 10px;
   overflow: hidden;
-  padding-top: 0;
-  padding-bottom: 0;
-  line-height: 22px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+@media (max-width: 1099px) {
+  .project-bar {
+    padding: 8px 0;
+  }
+
+  .project-bar .panel-head {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .project-bar .panel-title {
+    display: none;
+  }
+
+  .project-add {
+    width: 28px;
+    padding: 0;
+  }
+
+  .project-add-label {
+    display: none;
+  }
+
+  .project-add-glyph {
+    display: inline;
+  }
+
+  .project-row {
+    justify-content: center;
+    padding: 10px 0;
+  }
+
+  .project-row-body,
+  .project-row-changes,
+  .project-remove,
+  .project-item:hover .project-remove,
+  .project-item:focus-within .project-remove,
+  .project-remove:focus-visible {
+    display: none;
+  }
+
+  .project-error {
+    display: none;
+  }
+
+  .project-folder {
+    margin-top: 0;
+  }
 }
 
 .panel-flow {
@@ -2137,13 +2298,13 @@ select {
 
 @media (max-width: 899px) {
   .app {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr);
     grid-template-rows: 40px min(190px, 30vh) fit-content(280px) minmax(0, 1fr);
     grid-template-areas:
-      'header header'
-      'flow flow'
-      'usage usage'
-      'lead workers';
+      'header header header'
+      'projects flow flow'
+      'projects usage usage'
+      'projects lead workers';
   }
 
   .panel-lead {
@@ -2185,14 +2346,14 @@ select {
 
 @media (max-width: 699px) {
   .app {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
     grid-template-rows: 40px min(190px, 30vh) fit-content(420px) minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
-      'header'
-      'flow'
-      'usage'
-      'lead'
-      'workers';
+      'header header'
+      'projects flow'
+      'projects usage'
+      'projects lead'
+      'projects workers';
   }
 
   .panel-lead,
@@ -2227,7 +2388,7 @@ select {
   transform: translate(-50%, -50%);
   background: repeating-conic-gradient(
     from 0deg,
-    var(--text) 0deg 0.4deg,
+    var(--ray) 0deg 0.4deg,
     transparent 0.4deg 5deg
   );
   opacity: 0.14;
