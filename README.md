@@ -2,12 +2,17 @@
 
 A desktop app (Electron + TypeScript) that spreads your coding jobs across the AI subscriptions you already pay for, so no plan sits idle or runs out early.
 
-**Status:** early. The router and the lead bot work: provider adapters, job queue, routing rules, usage log, failover, a local MCP bridge and a lead chat. Jobs are read-only for now. Terminals, a git worktree per job and saved sessions come next.
+![The app with fake data: lead chat, flow, jobs and a side-by-side comparison](docs/screenshot.png)
+
+**Status:** early. The router and the lead bot work: provider adapters, job queue, routing rules, usage log, failover, a local MCP bridge, a lead chat, terminals, and a git worktree per editing job with diff, merge and discard. Saved sessions come next.
 
 ## How it works
 
 - **Lead chat.** You talk to one lead bot. It splits your request into jobs, hands them to workers, and reports back. The lead is an ordinary CLI session that can only call the app's own tools.
+  Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate).
+- **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
+- **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it.
 - **Router.** A rule table plus how much allowance each plan has left picks the provider. Claude's headroom comes from the usage figure its CLI reports.
 - **Adapters.** The app spawns each provider's official CLI headless (`claude -p`, `agent -p`) and reads its `stream-json` output.
 - **Failover.** If a plan reports a limit error, it is marked resting and its queued jobs move to the other plan.
@@ -37,6 +42,7 @@ pnpm install
 pnpm dev           # run the app
 pnpm test          # unit tests, no real CLIs
 pnpm build         # typecheck + build
+pnpm shots         # screenshots of the UI with fake data, in .orchestrator/shots/
 pnpm gate router   # acceptance: 10 real jobs + one forced failover
 pnpm gate lead     # acceptance: the lead splits a two-part request across both plans
 ```
