@@ -720,8 +720,8 @@ test('jobs submitted with the same group keep it on submit and list', async () =
   const claude = new FakeAdapter('claude', [ok('a')])
   const cursor = new FakeAdapter('cursor', [ok('b')])
   await withOrch([claude, cursor], async (orch) => {
-    const a = orch.submit('planning', 'same', 'claude', undefined, 'cmp-1')
-    const b = orch.submit('planning', 'same', 'cursor', undefined, 'cmp-1')
+    const a = orch.submit('planning', 'same', 'claude', undefined, { group: 'cmp-1' })
+    const b = orch.submit('planning', 'same', 'cursor', undefined, { group: 'cmp-1' })
     const plain = orch.submit('planning', 'alone', 'claude')
     expect(a.group).toBe('cmp-1')
     expect(b.group).toBe('cmp-1')
@@ -730,6 +730,22 @@ test('jobs submitted with the same group keep it on submit and list', async () =
     expect(listed.find((job) => job.id === a.id)?.group).toBe('cmp-1')
     expect(listed.find((job) => job.id === b.id)?.group).toBe('cmp-1')
     expect(listed.find((job) => job.id === plain.id)).not.toHaveProperty('group')
+    await orch.idle()
+  })
+})
+
+test('jobs submitted with leadMessage keep it on submit and list', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  await withOrch([claude], async (orch) => {
+    const linked = orch.submit('planning', 'from lead', undefined, undefined, {
+      leadMessage: 'm1'
+    })
+    const plain = orch.submit('planning', 'alone')
+    expect(linked.leadMessage).toBe('m1')
+    expect(plain).not.toHaveProperty('leadMessage')
+    const listed = orch.list()
+    expect(listed.find((job) => job.id === linked.id)?.leadMessage).toBe('m1')
+    expect(listed.find((job) => job.id === plain.id)).not.toHaveProperty('leadMessage')
     await orch.idle()
   })
 })

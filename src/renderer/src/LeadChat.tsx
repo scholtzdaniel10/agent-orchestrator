@@ -3,9 +3,21 @@ import BotAvatar from './BotAvatar'
 import RichText from './RichText'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
+type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = PlanStatus['id']
 type PlanChoice = 'auto' | ProviderId
+
+function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
+  if (status === 'running') return 'working'
+  if (status === 'failed') return 'error'
+  if (status === 'queued') return 'resting'
+  return 'idle'
+}
+
+function jobsForMessage(jobs: readonly JobRecord[], messageId: string): JobRecord[] {
+  return jobs.filter((job) => job.leadMessage === messageId)
+}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -54,12 +66,16 @@ function StreamingDots(): React.JSX.Element {
 
 function LeadChat({
   messages,
+  jobs,
   plans,
-  onReset
+  onReset,
+  onShowJob
 }: {
   messages: LeadMessage[]
+  jobs: JobRecord[]
   plans: PlanStatus[] | null
   onReset: () => Promise<void>
+  onShowJob: (id: string) => void
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
@@ -212,6 +228,7 @@ function LeadChat({
           messages.map((message) => {
             const isUser = message.role === 'user'
             const showDots = !isUser && message.status === 'streaming' && message.text === ''
+            const delegated = isUser ? [] : jobsForMessage(jobs, message.id)
             return (
               <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
                 {isUser ? null : (
@@ -228,6 +245,55 @@ function LeadChat({
                       <RichText text={message.text} />
                     )}
                   </div>
+                  {delegated.length > 0 ? (
+                    <div className="lead-delegated">
+                      <h3 className="lead-delegated-title">Delegated</h3>
+                      <div className="lead-delegated-list">
+                        {delegated.map((job) => {
+                          const label = `Show job: ${job.prompt.slice(0, 60)}`
+                          return (
+                            <button
+                              key={job.id}
+                              type="button"
+                              className="lead-job-card"
+                              aria-label={label}
+                              onClick={() => onShowJob(job.id)}
+                            >
+                              <div className="lead-job-card-main">
+                                {job.provider !== null ? (
+                                  <BotAvatar
+                                    bot={job.provider}
+                                    state={jobAvatarState(job.status)}
+                                    size={20}
+                                    title={job.provider}
+                                  />
+                                ) : null}
+                                <span className="lead-job-plan">
+                                  {job.provider ?? 'waiting for a worker'}
+                                </span>
+                                <span className={`status status-${job.status}`}>
+                                  <span className="status-dot" aria-hidden="true" />
+                                  {job.status}
+                                </span>
+                              </div>
+                              <div className="lead-job-card-meta">
+                                <span className="chip">{job.type}</span>
+                                {job.edit === true ? <span className="chip">edits</span> : null}
+                                {job.reason ? (
+                                  <span className="lead-job-reason" title={job.reason}>
+                                    {job.reason}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="lead-job-prompt" title={job.prompt}>
+                                {job.prompt}
+                              </p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )

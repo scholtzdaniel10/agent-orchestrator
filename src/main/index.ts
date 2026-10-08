@@ -118,7 +118,10 @@ app.whenReady().then(async () => {
   })
   await orch.init()
 
-  const started = await startBridge(createOrchestratorTools(orch))
+  const leadRef: { current: Lead | null } = { current: null }
+  const started = await startBridge(
+    createOrchestratorTools(orch, () => leadRef.current?.currentTurn() ?? null)
+  )
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
   const envPrefer: ProviderId | undefined =
@@ -132,6 +135,7 @@ app.whenReady().then(async () => {
     prefer: () => settings.leadPlan() ?? envPrefer,
     modelFor
   })
+  leadRef.current = lead
   await lead.init()
 
   function plans(): PlanStatus[] {
@@ -201,7 +205,13 @@ app.whenReady().then(async () => {
       const editing = typeof edit === 'boolean' ? edit : undefined
       const grouping =
         typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
-      return orch.submit(type, prompt, chosen, editing, grouping)
+      return orch.submit(
+        type,
+        prompt,
+        chosen,
+        editing,
+        grouping !== undefined ? { group: grouping } : undefined
+      )
     }
   )
   ipcMain.handle('jobs:list', () => orch.list())

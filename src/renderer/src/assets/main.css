@@ -138,7 +138,7 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.7fr) 230px;
+  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.35fr) 230px;
   grid-template-rows: 40px min(190px, 30vh) minmax(0, 1fr);
   grid-template-areas:
     'header header header'
@@ -153,7 +153,7 @@ textarea {
 
 @media (max-width: 1099px) {
   .app {
-    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.7fr) 200px;
+    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.35fr) 200px;
   }
 }
 
@@ -1037,7 +1037,7 @@ select {
   flex: 0 1 auto;
   flex-direction: column;
   gap: 8px;
-  max-height: 55%;
+  max-height: 40%;
   min-height: 120px;
   overflow: hidden;
 }
@@ -1133,6 +1133,99 @@ select {
 
 .chip-compare {
   background: var(--accent-soft);
+}
+
+.chip-from-lead {
+  background: var(--bot-lead-soft);
+  color: var(--bot-lead);
+}
+
+.lead-delegated {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.lead-delegated-title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lead-delegated-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lead-job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lead-job-card:hover {
+  border-color: var(--border-strong);
+}
+
+.lead-job-card-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lead-job-plan {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lead-job-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lead-job-reason {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lead-job-prompt {
+  margin: 0;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .job-id {

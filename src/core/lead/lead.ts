@@ -45,6 +45,8 @@ export class Lead {
   private sessionId: string | undefined
   private sessionProvider: ProviderId | null = null
   private busy = false
+  /** Id of the lead message whose turn is running, or null. */
+  private turnId: string | null = null
 
   constructor(opts: {
     adapters: ProviderAdapter[]
@@ -83,6 +85,7 @@ export class Lead {
     const user: LeadMessage = { id: randomUUID(), role: 'user', text, status: 'done' }
     const lead: LeadMessage = { id: randomUUID(), role: 'lead', text: '', status: 'streaming' }
     this.history.push(user, lead)
+    this.turnId = lead.id
     try {
       this.emit(user)
       this.emit(lead)
@@ -97,8 +100,14 @@ export class Lead {
       }
     } finally {
       this.busy = false
+      this.turnId = null
     }
     return copyMessage(lead)
+  }
+
+  /** Id of the lead message whose turn is running right now, or null. */
+  currentTurn(): string | null {
+    return this.turnId
   }
 
   messages(): LeadMessage[] {

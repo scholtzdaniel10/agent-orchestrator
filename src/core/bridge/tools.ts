@@ -19,7 +19,10 @@ const JOB_TYPE_SCHEMA: Record<string, unknown> = {
   }
 }
 
-export function createOrchestratorTools(orch: Orchestrator): BridgeTool[] {
+export function createOrchestratorTools(
+  orch: Orchestrator,
+  leadTurn?: () => string | null
+): BridgeTool[] {
   return [
     {
       name: 'list_workers',
@@ -56,11 +59,13 @@ export function createOrchestratorTools(orch: Orchestrator): BridgeTool[] {
         if (args.edit !== undefined && typeof args.edit !== 'boolean') {
           throw new Error('edit must be a boolean')
         }
+        const turn = leadTurn?.() ?? null
         const job = orch.submit(
           args.type,
           args.prompt,
           undefined,
-          typeof args.edit === 'boolean' ? args.edit : undefined
+          typeof args.edit === 'boolean' ? args.edit : undefined,
+          turn !== null ? { leadMessage: turn } : undefined
         )
         return { id: job.id, provider: job.provider, status: job.status }
       }

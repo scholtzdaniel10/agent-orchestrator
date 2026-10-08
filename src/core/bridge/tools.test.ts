@@ -99,6 +99,29 @@ function tool(tools: BridgeTool[], name: string): BridgeTool {
   return found
 }
 
+test('send_job passes leadMessage when leadTurn returns an id', async () => {
+  const claude = new FakeAdapter('claude', [ok('done')])
+  await withOrch([claude], async (orch) => {
+    const withTurn = tool(createOrchestratorTools(orch, () => 'm-turn'), 'send_job')
+    const linked = (await withTurn.handler({ type: 'planning', prompt: 'delegated' })) as {
+      id: string
+    }
+    expect(orch.get(linked.id)?.leadMessage).toBe('m-turn')
+
+    const nullTurn = tool(createOrchestratorTools(orch, () => null), 'send_job')
+    const omitted = (await nullTurn.handler({ type: 'planning', prompt: 'plain' })) as {
+      id: string
+    }
+    expect(orch.get(omitted.id)).not.toHaveProperty('leadMessage')
+
+    const noCallback = tool(createOrchestratorTools(orch), 'send_job')
+    const bare = (await noCallback.handler({ type: 'planning', prompt: 'bare' })) as { id: string }
+    expect(orch.get(bare.id)).not.toHaveProperty('leadMessage')
+
+    await orch.idle()
+  })
+})
+
 test('send_job returns the job id and provider and rejects bad input', async () => {
   const held = gate()
   const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('done') }, ok('next')])

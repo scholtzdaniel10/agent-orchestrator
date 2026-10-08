@@ -522,6 +522,30 @@ test('a thrown adapter becomes an error and the next send works', async () => {
   })
 })
 
+test('currentTurn is the lead message id while streaming and null otherwise', async () => {
+  const held = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'init', sessionId: 's1' },
+        { kind: 'result', ok: true, text: 'ok', sessionId: 's1', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withLead([cursor], async (lead) => {
+    expect(lead.currentTurn()).toBeNull()
+    const pending = lead.send('hello')
+    const during = lead.messages().find((message) => message.role === 'lead')
+    expect(during).toBeDefined()
+    expect(lead.currentTurn()).toBe(during!.id)
+    held.open()
+    const done = await pending
+    expect(done.id).toBe(during!.id)
+    expect(lead.currentTurn()).toBeNull()
+  })
+})
+
 test('rejects blank text and a send while busy; reset and unsubscribe behave', async () => {
   const held = gate()
   const cursor = new FakeAdapter('cursor', [

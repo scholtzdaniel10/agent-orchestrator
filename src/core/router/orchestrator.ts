@@ -27,6 +27,8 @@ export interface JobRecord {
   change?: string
   /** Jobs submitted together to compare plans share this id. */
   group?: string
+  /** Id of the lead chat message whose turn created this job. */
+  leadMessage?: string
   error?: string
 }
 
@@ -51,6 +53,8 @@ interface InternalJob {
   change?: string
   /** Jobs submitted together to compare plans share this id. */
   group?: string
+  /** Id of the lead chat message whose turn created this job. */
+  leadMessage?: string
   error?: string
 }
 
@@ -131,7 +135,7 @@ export class Orchestrator {
     prompt: string,
     provider?: ProviderId,
     edit?: boolean,
-    group?: string
+    extra?: { group?: string; leadMessage?: string }
   ): JobRecord {
     const job: InternalJob = {
       id: randomUUID(),
@@ -144,7 +148,8 @@ export class Orchestrator {
       failedOver: [],
       chosen: false,
       ...(edit === true ? { edit: true } : {}),
-      ...(group !== undefined ? { group } : {})
+      ...(extra?.group !== undefined ? { group: extra.group } : {}),
+      ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -572,6 +577,7 @@ function copy(job: InternalJob): JobRecord {
   if (job.edit === true) record.edit = true
   if (job.change !== undefined) record.change = job.change
   if (job.group !== undefined) record.group = job.group
+  if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   return record
 }
 

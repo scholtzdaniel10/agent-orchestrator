@@ -288,6 +288,8 @@ function App(): React.JSX.Element {
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
+  const [showJob, setShowJob] = useState<{ id: string; nonce: number } | null>(null)
+  const showJobNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
@@ -571,7 +573,16 @@ function App(): React.JSX.Element {
         />
       </section>
       <section className="panel panel-lead" aria-labelledby="lead-heading">
-        <LeadChat messages={messages} plans={plans} onReset={resetLead} />
+        <LeadChat
+          messages={messages}
+          jobs={jobs}
+          plans={plans}
+          onReset={resetLead}
+          onShowJob={(id) => {
+            showJobNonce.current += 1
+            setShowJob({ id, nonce: showJobNonce.current })
+          }}
+        />
       </section>
       <section className="panel panel-workers" aria-labelledby="workers-heading">
         <Workers
@@ -582,6 +593,7 @@ function App(): React.JSX.Element {
           changes={changes}
           isRepo={project?.isRepo === true}
           bus={terminalBus}
+          showJob={showJob}
           onJob={(job) => {
             commitJobs(
               bag.current,

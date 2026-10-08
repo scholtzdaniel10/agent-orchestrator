@@ -294,6 +294,7 @@ function Workers({
   changes,
   isRepo,
   bus,
+  showJob,
   onJob,
   onTerminal
 }: {
@@ -304,6 +305,7 @@ function Workers({
   changes: ChangeSet[]
   isRepo: boolean
   bus: TerminalBus
+  showJob?: { id: string; nonce: number } | null
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
 }): React.JSX.Element {
@@ -328,6 +330,20 @@ function Workers({
   useEffect(() => {
     selectedRef.current = selectedId
   }, [selectedId])
+
+  useEffect(() => {
+    if (showJob == null) return
+    const previous = selectedRef.current
+    if (previous !== null) setRecentOther(previous)
+    selectedRef.current = null
+    setSelectedId(null)
+    setMainTab('jobs')
+    setSelectedJobId(showJob.id)
+    const id = showJob.id
+    requestAnimationFrame(() => {
+      document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [showJob])
 
   const newest = jobs.slice().reverse()
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null
@@ -631,6 +647,9 @@ function Workers({
                         <span className="chip">{job.type}</span>
                         {job.group !== undefined ? (
                           <span className="chip chip-compare">compare</span>
+                        ) : null}
+                        {job.leadMessage !== undefined ? (
+                          <span className="chip chip-from-lead">from lead</span>
                         ) : null}
                         {job.edit === true ? <span className="chip">edits</span> : null}
                         {job.reason ? (
