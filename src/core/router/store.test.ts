@@ -1,4 +1,9 @@
+import { DatabaseSync } from 'node:sqlite'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test } from 'vitest'
+import type { JobRecord } from './orchestrator'
 import { Store, type RunRow } from './store'
 
 function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>): RunRow {
@@ -11,6 +16,18 @@ function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>)
     utilization: null,
     outcome: 'ok',
     session_id: null,
+    ...partial
+  }
+}
+
+function job(partial: Partial<JobRecord> & Pick<JobRecord, 'id'>): JobRecord {
+  return {
+    type: 'planning',
+    prompt: 'go',
+    provider: 'claude',
+    status: 'done',
+    output: '',
+    failedOver: [],
     ...partial
   }
 }
@@ -112,4 +129,209 @@ test('resting is set, replaced, and cleared', async () => {
     store.clearResting('claude')
     expect(store.restingUntil('missing')).toBeNull()
   })
+})
+
+test('opens an old database, keeps its rows, and reaches the latest schema version', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-store-mig-'))
+  const path = join(root, 'old.sqlite')
+  try {
+    const legacy = new DatabaseSync(path)
+    legacy.exec(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        job_type TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        duration_ms INTEGER,
+        cost_usd REAL,
+        tokens INTEGER,
+        utilization REAL,
+        outcome TEXT NOT NULL,
+        session_id TEXT
+      );
+      CREATE TABLE IF NOT EXISTS resting (
+        provider TEXT PRIMARY KEY,
+        until INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS usage_windows (
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        utilization REAL NOT NULL,
+        resets_at INTEGER,
+        observed_at INTEGER NOT NULL,
+        PRIMARY KEY (provider, name)
+      );
+      PRAGMA user_version = 0;
+    `)
+    legacy
+      .prepare(
+        `INSERT INTO runs (
+           job_id, provider, job_type, started_at, duration_ms,
+           cost_usd, tokens, utilization, outcome, session_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('kept', 'claude', 'planning', 10, 1, null, null, null, 'ok', null)
+    legacy.prepare('INSERT INTO resting (provider, until) VALUES (?, ?)').run('claude', 99)
+    legacy.close()
+
+    const store = new Store(path)
+    expect(store.runs()).toHaveLength(1)
+    expect(store.runs()[0]).toMatchObject({ job_id: 'kept', provider: 'claude' })
+    expect(store.restingUntil('claude')).toBe(99)
+    store.saveChat({
+      id: 'c1',
+      project: '/p',
+      title: 'hi',
+      created_at: 1,
+      updated_at: 2,
+      session_id: null,
+      session_provider: null
+    })
+    expect(store.chats('/p')).toHaveLength(1)
+    store.close()
+
+    const again = new Store(path)
+    expect(again.runs()[0]?.job_id).toBe('kept')
+    expect(again.chats('/p')).toHaveLength(1)
+    again.close()
+
+    const check = new DatabaseSync(path)
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 })
+    check.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('opening a current database twice is a no-op for migrations', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-store-twice-'))
+  const path = join(root, 'db.sqlite')
+  try {
+    const first = new Store(path)
+    first.insertRun(row({ provider: 'claude', started_at: 1 }))
+    first.close()
+    const second = new Store(path)
+    expect(second.runs()).toHaveLength(1)
+    second.close()
+    const third = new Store(path)
+    expect(third.runs()).toHaveLength(1)
+    third.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('chats, messages, and jobs round-trip with order and upsert rules', async () => {
+  await withStore((store) => {
+    store.saveChat({
+      id: 'c1',
+      project: '/a',
+      title: 'first',
+      created_at: 10,
+      updated_at: 20,
+      session_id: 's1',
+      session_provider: 'claude'
+    })
+    store.saveChat({
+      id: 'c2',
+      project: '/a',
+      title: 'second',
+      created_at: 11,
+      updated_at: 30,
+      session_id: null,
+      session_provider: null
+    })
+    store.saveChat({
+      id: 'c3',
+      project: '/b',
+      title: 'other',
+      created_at: 12,
+      updated_at: 40,
+      session_id: null,
+      session_provider: null
+    })
+    expect(store.chats('/a').map((chat) => chat.id)).toEqual(['c2', 'c1'])
+    expect(store.chat('c1')).toMatchObject({
+      title: 'first',
+      session_id: 's1',
+      session_provider: 'claude'
+    })
+    store.saveChat({
+      id: 'c1',
+      project: '/a',
+      title: 'first updated',
+      created_at: 10,
+      updated_at: 50,
+      session_id: 's2',
+      session_provider: 'cursor'
+    })
+    expect(store.chat('c1')?.title).toBe('first updated')
+    expect(store.chats('/a').map((chat) => chat.id)).toEqual(['c1', 'c2'])
+
+    store.saveMessage('c1', 1, { id: 'm2', role: 'lead', text: 'b', status: 'done' })
+    store.saveMessage('c1', 0, { id: 'm1', role: 'user', text: 'a', status: 'done' })
+    expect(store.messages('c1').map((message) => message.id)).toEqual(['m1', 'm2'])
+    store.saveMessage('c1', 1, { id: 'm2', role: 'lead', text: 'b2', status: 'done' })
+    expect(store.messages('c1')[1]).toMatchObject({ id: 'm2', text: 'b2' })
+
+    store.saveJob('/a', 100, job({ id: 'j1', output: 'one' }))
+    store.saveJob('/a', 200, job({ id: 'j2', output: 'two' }))
+    store.saveJob('/a', 300, job({ id: 'j3', output: 'three' }))
+    store.saveJob('/b', 400, job({ id: 'j4', output: 'other' }))
+    expect(store.jobs('/a', 2).map((item) => item.id)).toEqual(['j2', 'j3'])
+    store.saveJob('/a', 200, job({ id: 'j2', output: 'two-again', status: 'failed' }))
+    expect(store.jobs('/a', 10).find((item) => item.id === 'j2')).toMatchObject({
+      output: 'two-again',
+      status: 'failed'
+    })
+  })
+})
+
+test('a corrupt data row is skipped', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-store-bad-'))
+  const path = join(root, 'db.sqlite')
+  try {
+    const store = new Store(path)
+    store.saveChat({
+      id: 'c1',
+      project: '/a',
+      title: 't',
+      created_at: 1,
+      updated_at: 1,
+      session_id: null,
+      session_provider: null
+    })
+    store.saveMessage('c1', 0, { id: 'm1', role: 'user', text: 'ok', status: 'done' })
+    store.saveJob('/a', 1, job({ id: 'j1', output: 'ok' }))
+    store.close()
+
+    const raw = new DatabaseSync(path)
+    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
+      'bad',
+      'c1',
+      1,
+      '{not-json'
+    )
+    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
+      'noid',
+      'c1',
+      2,
+      '{"text":"x"}'
+    )
+    raw.prepare(`INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)`).run(
+      'badj',
+      '/a',
+      2,
+      'nope'
+    )
+    raw.close()
+
+    const again = new Store(path)
+    expect(again.messages('c1').map((message) => message.id)).toEqual(['m1'])
+    expect(again.jobs('/a', 10).map((item) => item.id)).toEqual(['j1'])
+    again.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

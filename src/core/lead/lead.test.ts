@@ -135,6 +135,7 @@ async function withLead(
     now?: () => number
     prefer?: ProviderId | (() => ProviderId | undefined)
     modelFor?: (provider: ProviderId) => string | undefined
+    project?: () => string
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -145,6 +146,7 @@ async function withLead(
       rules: loadRules(),
       bridge,
       dir: DIR,
+      project: opts?.project ?? ((): string => '/project'),
       prefer: opts?.prefer,
       now: opts?.now,
       modelFor: opts?.modelFor
@@ -739,4 +741,118 @@ test('changing preference does not drop the session when the plan is unavailable
     },
     { now: () => now, prefer: () => prefer }
   )
+})
+
+test('messages and session survive a new Lead on the same store after openLatest', async () => {
+  const store = new Store(':memory:')
+  try {
+    const first = new FakeAdapter('cursor', [done('sess-keep', 'remembered')])
+    const lead = new Lead({
+      adapters: [first],
+      store,
+      rules: loadRules(),
+      bridge,
+      dir: DIR,
+      project: () => '/proj'
+    })
+    await lead.init()
+    await lead.send('keep this chat')
+    expect(lead.messages()).toHaveLength(2)
+    expect(lead.provider()).toBe('cursor')
+
+    const resumed = new FakeAdapter('cursor', [done('sess-keep', 'again')])
+    const again = new Lead({
+      adapters: [resumed],
+      store,
+      rules: loadRules(),
+      bridge,
+      dir: DIR,
+      project: () => '/proj'
+    })
+    await again.init()
+    again.openLatest()
+    expect(again.messages().map((message) => message.text)).toEqual([
+      'keep this chat',
+      'remembered'
+    ])
+    expect(again.provider()).toBe('cursor')
+    await again.send('continue')
+    expect(resumed.calls[0]?.opts?.resume).toBe('sess-keep')
+    expect(resumed.calls[0]?.job.prompt).toBe('continue')
+  } finally {
+    store.close()
+  }
+})
+
+test('reset then send creates a second chat; both are listed newest first', async () => {
+  let t = 1000
+  const cursor = new FakeAdapter('cursor', [done('s1', 'one'), done('s2', 'two')])
+  await withLead(
+    [cursor],
+    async (lead) => {
+      await lead.send('first chat topic')
+      const firstId = lead.chats()[0]?.id
+      expect(firstId).toBeDefined()
+      lead.reset()
+      expect(lead.messages()).toEqual([])
+      expect(lead.provider()).toBeNull()
+      await lead.send('second chat topic')
+      const listed = lead.chats()
+      expect(listed).toHaveLength(2)
+      expect(listed.map((chat) => chat.title)).toEqual(['second chat topic', 'first chat topic'])
+      expect(listed[0]?.active).toBe(true)
+      expect(listed[1]?.active).toBe(false)
+      expect(listed[1]?.id).toBe(firstId)
+    },
+    { now: (): number => ((t += 1), t) }
+  )
+})
+
+test('chats of another project are not listed and cannot be opened', async () => {
+  const store = new Store(':memory:')
+  try {
+    let project = '/a'
+    const cursor = new FakeAdapter('cursor', [done('sa', 'a'), done('sb', 'b')])
+    const lead = new Lead({
+      adapters: [cursor],
+      store,
+      rules: loadRules(),
+      bridge,
+      dir: DIR,
+      project: () => project
+    })
+    await lead.init()
+    await lead.send('only in a')
+    const id = lead.chats()[0]?.id
+    expect(id).toBeDefined()
+    project = '/b'
+    expect(lead.chats()).toEqual([])
+    expect(() => lead.open(id!)).toThrow('unknown chat')
+    await lead.send('only in b')
+    expect(lead.chats().map((chat) => chat.title)).toEqual(['only in b'])
+  } finally {
+    store.close()
+  }
+})
+
+test('open while busy throws', async () => {
+  const held = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'init', sessionId: 's1' },
+        { kind: 'result', ok: true, text: 'ok', sessionId: 's1', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  await withLead([cursor], async (lead) => {
+    const pending = lead.send('hello')
+    const id = lead.chats()[0]?.id
+    expect(id).toBeDefined()
+    expect(() => lead.open(id!)).toThrow('lead is busy')
+    expect(() => lead.openLatest()).toThrow('lead is busy')
+    held.open()
+    await pending
+  })
 })
