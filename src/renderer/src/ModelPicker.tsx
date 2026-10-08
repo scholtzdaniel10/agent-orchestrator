@@ -13,19 +13,28 @@ function ModelField({
   plan,
   disabled,
   models,
-  onFocus
+  onFocus,
+  labelTitle
 }: {
   plan: PlanStatus
   disabled: boolean
   models: ModelOption[] | null
   onFocus: () => void
+  labelTitle?: string
 }): React.JSX.Element {
   const [value, setValue] = useState(plan.model ?? '')
   const [error, setError] = useState<string | null>(null)
   const inputId = `model-${plan.id}`
   const listId = `model-list-${plan.id}`
   const errorId = `model-error-${plan.id}`
+  const hintId = `model-hint-${plan.id}`
   const modelSet = plan.model !== null && plan.model !== ''
+  const describedBy = [
+    labelTitle !== undefined ? hintId : null,
+    error !== null ? errorId : null
+  ]
+    .filter((id): id is string => id !== null)
+    .join(' ')
 
   async function commit(raw: string): Promise<void> {
     if (disabled) return
@@ -71,7 +80,14 @@ function ModelField({
 
   return (
     <div className="model-picker">
-      <label htmlFor={inputId}>Model</label>
+      <label htmlFor={inputId} title={labelTitle}>
+        Model
+      </label>
+      {labelTitle !== undefined ? (
+        <span id={hintId} className="visually-hidden">
+          {labelTitle}
+        </span>
+      ) : null}
       <div className="model-row">
         <input
           id={inputId}
@@ -83,7 +99,7 @@ function ModelField({
           spellCheck={false}
           autoComplete="off"
           aria-invalid={error !== null ? true : undefined}
-          aria-describedby={error !== null ? errorId : undefined}
+          aria-describedby={describedBy === '' ? undefined : describedBy}
           onFocus={onFocus}
           onChange={(event) => {
             setValue(event.target.value)
@@ -127,10 +143,12 @@ function ModelField({
 
 function ModelPicker({
   plan,
-  disabled
+  disabled,
+  labelTitle
 }: {
   plan: PlanStatus
   disabled: boolean
+  labelTitle?: string
 }): React.JSX.Element {
   const started = useRef(false)
   const [models, setModels] = useState<ModelOption[] | null>(null)
@@ -155,6 +173,7 @@ function ModelPicker({
       disabled={disabled}
       models={models}
       onFocus={onFocus}
+      labelTitle={labelTitle}
     />
   )
 }

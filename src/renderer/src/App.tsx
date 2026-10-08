@@ -245,6 +245,36 @@ function summaryLine(ready: number, running: number, queued: number): string {
   return `${plans} · ${running} running · ${queued} queued`
 }
 
+function AppSummary({
+  ready,
+  running,
+  queued
+}: {
+  ready: number
+  running: number
+  queued: number
+}): React.JSX.Element {
+  return (
+    <p className="app-summary" aria-label={summaryLine(ready, running, queued)}>
+      <span className={`app-stat${ready === 0 ? ' is-zero' : ''}`} aria-hidden="true">
+        <span className="app-stat-dot app-stat-dot-ok" />
+        <span className="app-stat-count">{ready}</span>
+        <span className="app-stat-label">plans ready</span>
+      </span>
+      <span className={`app-stat${running === 0 ? ' is-zero' : ''}`} aria-hidden="true">
+        <span className="app-stat-dot app-stat-dot-run" />
+        <span className="app-stat-count">{running}</span>
+        <span className="app-stat-label">running</span>
+      </span>
+      <span className={`app-stat${queued === 0 ? ' is-zero' : ''}`} aria-hidden="true">
+        <span className="app-stat-dot app-stat-dot-queued" />
+        <span className="app-stat-count">{queued}</span>
+        <span className="app-stat-label">queued</span>
+      </span>
+    </p>
+  )
+}
+
 function App(): React.JSX.Element {
   const [messages, setMessages] = useState<LeadMessage[]>([])
   const [jobs, setJobs] = useState<JobRecord[]>([])
@@ -501,7 +531,23 @@ function App(): React.JSX.Element {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="app-name">agent-orchestrator</div>
+        <div className="app-brand">
+          <span className="app-mark" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" focusable="false">
+              <circle cx="5.5" cy="5.5" r="1.6" fill="currentColor" />
+              <circle cx="14.5" cy="5.5" r="1.6" fill="currentColor" />
+              <circle cx="10" cy="14.5" r="1.6" fill="currentColor" />
+              <path
+                d="M5.5 5.5h9M5.5 5.5 10 14.5M14.5 5.5 10 14.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <div className="app-name">agent-orchestrator</div>
+        </div>
         <ProjectBar
           project={project}
           error={projectError === null ? null : projectError.text}
@@ -509,7 +555,7 @@ function App(): React.JSX.Element {
             void changeProject()
           }}
         />
-        <p className="app-summary">{summaryLine(ready, running, queued)}</p>
+        <AppSummary ready={ready} running={running} queued={queued} />
       </header>
       <section className="panel panel-flow" aria-labelledby="flow-heading">
         <FlowView

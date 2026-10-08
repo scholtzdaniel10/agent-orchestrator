@@ -4,6 +4,7 @@ import ModelPicker from './ModelPicker'
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
 const MINUTE_MS = 60_000
+const CURSOR_MODEL_HINT = 'Cursor keeps the last model used as its own default.'
 
 type PlanWord = 'not signed in' | 'resting' | 'busy' | 'ready'
 
@@ -64,6 +65,25 @@ function windowLabel(name: string): string {
   if (name === 'five_hour') return '5-hour'
   if (name === 'seven_day') return 'weekly'
   return name
+}
+
+function WarnGlyph(): React.JSX.Element {
+  return (
+    <svg
+      className="usage-risk-mark"
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M8 1.5 15 14H1L8 1.5ZM7.25 6h1.5v4.2h-1.5V6Zm0 5.4h1.5V13h-1.5v-1.6Z"
+      />
+    </svg>
+  )
 }
 
 function UsageHeading(): React.JSX.Element {
@@ -148,9 +168,12 @@ function UsageMeter({
                           slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
                         return (
                           <div key={`${slot.name}-${index}`} className="usage-window">
-                            <span className="usage-window-label" title={slotLabel}>
-                              {slotLabel}
-                            </span>
+                            <div className="usage-window-top">
+                              <span className="usage-window-label" title={slotLabel}>
+                                {slotLabel}
+                              </span>
+                              <span className="usage-window-left">{slotLeft}% left</span>
+                            </div>
                             <div
                               className="meter meter-thin"
                               role="meter"
@@ -164,10 +187,11 @@ function UsageMeter({
                                 style={{ width: `${slotLeft}%` }}
                               />
                             </div>
-                            <span className="usage-window-left">{slotLeft}% left</span>
-                            <span className="usage-window-reset" title={slotReset ?? undefined}>
-                              {slotReset ?? ''}
-                            </span>
+                            {slotReset !== null ? (
+                              <span className="usage-window-reset" title={slotReset}>
+                                {slotReset}
+                              </span>
+                            ) : null}
                           </div>
                         )
                       })}
@@ -183,24 +207,23 @@ function UsageMeter({
                     {showQueued ? <p className="usage-detail">{plan.queued} queued</p> : null}
                     {plan.atRisk ? (
                       <p className="usage-risk">
-                        <span className="usage-risk-mark" aria-hidden="true">
-                          !
-                        </span>
+                        <WarnGlyph />
                         Unused allowance expires soon
                       </p>
                     ) : null}
                   </div>
                 ) : null}
-                <ModelPicker plan={plan} disabled={word === 'not signed in'} />
-                {plan.id === 'cursor' ? (
-                  <p className="hint">Cursor keeps the last model used as its own default.</p>
-                ) : null}
+                <ModelPicker
+                  plan={plan}
+                  disabled={word === 'not signed in'}
+                  labelTitle={plan.id === 'cursor' ? CURSOR_MODEL_HINT : undefined}
+                />
               </div>
             </div>
           )
         })}
-        <p className="model-hint">A model applies to the next job or lead turn on that plan.</p>
       </div>
+      <p className="model-hint">A model applies to the next job or lead turn on that plan.</p>
     </div>
   )
 }

@@ -7,10 +7,44 @@ function folderName(path: string): string {
   return trimmed.slice(index + 1)
 }
 
-function repoNote(project: ProjectInfo): string | null {
-  if (!project.isRepo) return ' · not a git repository'
-  if (project.branch === null) return null
-  return ` · ${project.branch}`
+function FolderGlyph(): React.JSX.Element {
+  return (
+    <svg
+      className="project-folder"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M1.5 3.5h4.2l1.3 1.5H14.5v7.5H1.5V3.5zm1 1v7h11v-5.5H6.6L5.3 4.5H2.5z"
+      />
+    </svg>
+  )
+}
+
+function ChevronGlyph(): React.JSX.Element {
+  return (
+    <svg
+      className="project-chevron"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.25 4.5 6 7.25 8.75 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 function ProjectBar({
@@ -22,25 +56,28 @@ function ProjectBar({
   error: string | null
   onChange: () => void
 }): React.JSX.Element {
-  const note = project === null ? null : repoNote(project)
-
   return (
     <div className="project-bar">
-      {project === null ? null : (
-        <p className="project-line">
-          <span className="project-name" title={project.path}>
-            {folderName(project.path)}
-          </span>
-          {note !== null ? <span className="project-note">{note}</span> : null}
-        </p>
-      )}
       <button
         type="button"
-        className="btn btn-quiet"
+        className="project-chip"
         aria-label="Change project folder"
+        title={project === null ? undefined : project.path}
         onClick={onChange}
       >
-        Change…
+        <FolderGlyph />
+        {project === null ? null : (
+          <>
+            <span className="project-name">{folderName(project.path)}</span>
+            {project.isRepo && project.branch !== null ? (
+              <span className="project-branch">{project.branch}</span>
+            ) : null}
+            {!project.isRepo ? (
+              <span className="project-note">not a git repository</span>
+            ) : null}
+          </>
+        )}
+        <ChevronGlyph />
       </button>
       {error !== null ? (
         <p className="field-error project-error" role="alert">
