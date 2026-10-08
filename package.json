@@ -18,7 +18,8 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "test": "vitest run",
-    "gate": "vitest run --config vitest.gate.config.ts"
+    "gate": "vitest run --config vitest.gate.config.ts",
+    "shots": "electron-vite build && node scripts/shots.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
