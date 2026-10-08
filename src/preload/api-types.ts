@@ -50,7 +50,9 @@ export interface OrchestratorApi {
     prompt: string,
     provider?: ProviderId,
     /** Let the job edit files, in a git worktree of its own. */
-    edit?: boolean
+    edit?: boolean,
+    /** Shared id for jobs submitted together to compare plans. */
+    group?: string
   ): Promise<JobRecord>
   listJobs(): Promise<JobRecord[]>
   onJobUpdate(cb: (job: JobRecord) => void): () => void

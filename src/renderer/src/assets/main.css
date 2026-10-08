@@ -541,7 +541,7 @@ textarea {
 }
 
 .plan-choice {
-  width: 88px;
+  width: 132px;
 }
 
 .edit-toggle {
@@ -1079,6 +1079,10 @@ select {
   line-height: 18px;
 }
 
+.chip-compare {
+  background: var(--accent-soft);
+}
+
 .job-id {
   flex: none;
   color: var(--faint);
@@ -1273,9 +1277,46 @@ select {
   overflow-wrap: anywhere;
 }
 
-.output-pane > .output-error {
+.output-pane > .output-error,
+.compare-col > .output-error {
   margin: 0 12px 12px;
   border: none;
+}
+
+.compare-output {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-col + .compare-col {
+  border-left: 1px solid var(--border);
+}
+
+.compare-wait {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.compare-foot {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
 }
 
 .field-error {
@@ -1734,6 +1775,17 @@ select {
   .terminal-pane.is-right {
     grid-column: 1;
     grid-row: 3;
+  }
+}
+
+@container workers (max-width: 640px) {
+  .compare-output {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-col + .compare-col {
+    border-left: none;
+    border-top: 1px solid var(--border);
   }
 }
 

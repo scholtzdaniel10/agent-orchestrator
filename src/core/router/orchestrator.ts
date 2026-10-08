@@ -25,6 +25,8 @@ export interface JobRecord {
   edit?: boolean
   /** Id of the job's change set (see `ChangeSet`), once its worktree exists. */
   change?: string
+  /** Jobs submitted together to compare plans share this id. */
+  group?: string
   error?: string
 }
 
@@ -47,6 +49,8 @@ interface InternalJob {
   edit?: boolean
   /** Id of the job's change set, once its worktree exists. */
   change?: string
+  /** Jobs submitted together to compare plans share this id. */
+  group?: string
   error?: string
 }
 
@@ -122,7 +126,13 @@ export class Orchestrator {
     this.candidates = available
   }
 
-  submit(type: JobType, prompt: string, provider?: ProviderId, edit?: boolean): JobRecord {
+  submit(
+    type: JobType,
+    prompt: string,
+    provider?: ProviderId,
+    edit?: boolean,
+    group?: string
+  ): JobRecord {
     const job: InternalJob = {
       id: randomUUID(),
       type,
@@ -133,7 +143,8 @@ export class Orchestrator {
       output: '',
       failedOver: [],
       chosen: false,
-      ...(edit === true ? { edit: true } : {})
+      ...(edit === true ? { edit: true } : {}),
+      ...(group !== undefined ? { group } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -560,6 +571,7 @@ function copy(job: InternalJob): JobRecord {
   if (job.reason !== undefined) record.reason = job.reason
   if (job.edit === true) record.edit = true
   if (job.change !== undefined) record.change = job.change
+  if (job.group !== undefined) record.group = job.group
   return record
 }
 

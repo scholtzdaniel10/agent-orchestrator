@@ -716,6 +716,24 @@ test('submit with a provider runs on that plan even when the router would not', 
   })
 })
 
+test('jobs submitted with the same group keep it on submit and list', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  const cursor = new FakeAdapter('cursor', [ok('b')])
+  await withOrch([claude, cursor], async (orch) => {
+    const a = orch.submit('planning', 'same', 'claude', undefined, 'cmp-1')
+    const b = orch.submit('planning', 'same', 'cursor', undefined, 'cmp-1')
+    const plain = orch.submit('planning', 'alone', 'claude')
+    expect(a.group).toBe('cmp-1')
+    expect(b.group).toBe('cmp-1')
+    expect(plain).not.toHaveProperty('group')
+    const listed = orch.list()
+    expect(listed.find((job) => job.id === a.id)?.group).toBe('cmp-1')
+    expect(listed.find((job) => job.id === b.id)?.group).toBe('cmp-1')
+    expect(listed.find((job) => job.id === plain.id)).not.toHaveProperty('group')
+    await orch.idle()
+  })
+})
+
 test('a chosen plan that is not signed in or is resting fails the job', async () => {
   const now = 1_800_000_000_000
   const claude = new FakeAdapter('claude', [ok('no')])

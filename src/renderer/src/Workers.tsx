@@ -12,7 +12,7 @@ type JobType = Parameters<Window['api']['submitJob']>[0]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
-type PlanChoice = 'auto' | ProviderId
+type PlanChoice = 'auto' | ProviderId | 'both'
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
 
@@ -23,8 +23,14 @@ function errorText(err: unknown): string {
 }
 
 function asPlanChoice(value: string): PlanChoice {
-  if (value === 'claude' || value === 'cursor') return value
+  if (value === 'claude' || value === 'cursor' || value === 'both') return value
   return 'auto'
+}
+
+function planRank(provider: JobRecord['provider']): number {
+  if (provider === 'claude') return 0
+  if (provider === 'cursor') return 1
+  return 2
 }
 
 function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boolean {
@@ -161,6 +167,125 @@ function placementFor(
   return 'hidden'
 }
 
+function CompareOutput({
+  groupJobs,
+  changes,
+  onViewChange
+}: {
+  groupJobs: JobRecord[]
+  changes: readonly ChangeSet[]
+  onViewChange: (id: string) => void
+}): React.JSX.Element {
+  const [merging, setMerging] = useState(false)
+  const [messages, setMessages] = useState<Record<string, string>>({})
+  const mergingRef = useRef(false)
+  const ordered = groupJobs.slice().sort((a, b) => planRank(a.provider) - planRank(b.provider))
+  const eitherBusy = ordered.some((job) => job.status === 'queued' || job.status === 'running')
+
+  async function mergeThis(job: JobRecord): Promise<void> {
+    const changeId = visibleChange(job, changes)
+    if (changeId === null || mergingRef.current || eitherBusy) return
+    mergingRef.current = true
+    setMerging(true)
+    try {
+      const result = await window.api.mergeChange(changeId)
+      if (!result.ok) {
+        setMessages((prev) => ({ ...prev, [job.id]: result.message }))
+        return
+      }
+      setMessages((prev) => {
+        const next = { ...prev }
+        delete next[job.id]
+        return next
+      })
+      for (const other of ordered) {
+        if (other.id === job.id) continue
+        const otherChange = visibleChange(other, changes)
+        if (otherChange !== null) await window.api.discardChange(otherChange)
+      }
+    } catch (err: unknown) {
+      setMessages((prev) => ({ ...prev, [job.id]: errorText(err) }))
+    } finally {
+      mergingRef.current = false
+      setMerging(false)
+    }
+  }
+
+  return (
+    <div className="compare-output">
+      {ordered.map((job) => {
+        const changeId = visibleChange(job, changes)
+        const change =
+          changeId === null ? undefined : changes.find((item) => item.id === changeId)
+        const waiting =
+          job.output === '' && (job.status === 'queued' || job.status === 'running')
+        const mergeTitle = eitherBusy ? 'Wait for both to finish' : undefined
+        const message = messages[job.id]
+        return (
+          <div key={job.id} className="compare-col">
+            <div className="output-head">
+              {job.provider !== null ? (
+                <BotAvatar
+                  bot={job.provider}
+                  state={jobAvatarState(job.status)}
+                  size={20}
+                  title={job.provider}
+                />
+              ) : null}
+              <span>
+                {job.provider ?? '—'}
+                {job.model ? ` · ${job.model}` : ''}
+              </span>
+              <span className={`status status-${job.status}`}>
+                <span className="status-dot" aria-hidden="true" />
+                {job.status}
+              </span>
+            </div>
+            <div className="output-body">
+              {waiting ? (
+                <p className="compare-wait">
+                  {job.status === 'queued' ? 'Waiting…' : 'Working…'}
+                </p>
+              ) : (
+                <RichText text={job.output} />
+              )}
+            </div>
+            {job.error ? <pre className="output-error">{job.error}</pre> : null}
+            {message !== undefined ? <pre className="output-error">{message}</pre> : null}
+            {change !== undefined ? (
+              <div className="compare-foot">
+                <span className="change-stats">
+                  {`${change.files.length === 1 ? '1 file' : `${String(change.files.length)} files`} · `}
+                  <span className="stat-add">{`+${String(change.insertions)}`}</span>{' '}
+                  <span className="stat-del">{`−${String(change.deletions)}`}</span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-compact"
+                  onClick={() => onViewChange(change.id)}
+                >
+                  View change
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  disabled={merging || eitherBusy}
+                  title={mergeTitle}
+                  onClick={() => {
+                    void mergeThis(job)
+                  }}
+                >
+                  Merge this, discard the other
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function Workers({
   jobs,
   plans,
@@ -273,6 +398,28 @@ function Workers({
     if (text.trim() === '' || sending.current) return
     sending.current = true
     try {
+      if (worker === 'both') {
+        const group = crypto.randomUUID()
+        const edit = isRepo && editFiles
+        const results: JobRecord[] = []
+        let submitError: string | null = null
+        for (const provider of ['claude', 'cursor'] as const) {
+          try {
+            const job = await window.api.submitJob(jobType, text, provider, edit, group)
+            results.push(job)
+            onJob(job)
+          } catch (err: unknown) {
+            submitError = errorText(err)
+          }
+        }
+        if (results.length > 0) {
+          setPrompt('')
+          setSelectedJobId(results[0].id)
+        }
+        if (submitError !== null) setOpenError(submitError)
+        else setOpenError(null)
+        return
+      }
       const provider = worker === 'auto' ? undefined : worker
       const job = await window.api.submitJob(jobType, text, provider, isRepo && editFiles)
       setPrompt('')
@@ -406,6 +553,14 @@ function Workers({
                     <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
                       cursor
                     </option>
+                    <option
+                      value="both"
+                      disabled={
+                        !planAvailable(plans, 'claude') || !planAvailable(plans, 'cursor')
+                      }
+                    >
+                      both (compare)
+                    </option>
                   </select>
                   <label
                     className="edit-toggle"
@@ -474,6 +629,9 @@ function Workers({
                       </div>
                       <div className="job-meta">
                         <span className="chip">{job.type}</span>
+                        {job.group !== undefined ? (
+                          <span className="chip chip-compare">compare</span>
+                        ) : null}
                         {job.edit === true ? <span className="chip">edits</span> : null}
                         {job.reason ? (
                           <span className="job-reason" title={job.reason}>
@@ -530,6 +688,13 @@ function Workers({
                 title="No job selected"
                 guidance="Select a job to see its output."
                 glyph="output"
+              />
+            ) : selectedJob.group !== undefined &&
+              jobs.some((job) => job.group === selectedJob.group && job.id !== selectedJob.id) ? (
+              <CompareOutput
+                groupJobs={jobs.filter((job) => job.group === selectedJob.group)}
+                changes={changes}
+                onViewChange={viewChange}
               />
             ) : (
               <>

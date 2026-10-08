@@ -174,7 +174,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'jobs:submit',
-    (_event, type: JobType, prompt: string, provider?: unknown, edit?: unknown) => {
+    (
+      _event,
+      type: JobType,
+      prompt: string,
+      provider?: unknown,
+      edit?: unknown,
+      group?: unknown
+    ) => {
       if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
         throw new Error('unknown job type')
       }
@@ -192,7 +199,9 @@ app.whenReady().then(async () => {
       }
       const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
       const editing = typeof edit === 'boolean' ? edit : undefined
-      return orch.submit(type, prompt, chosen, editing)
+      const grouping =
+        typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
+      return orch.submit(type, prompt, chosen, editing, grouping)
     }
   )
   ipcMain.handle('jobs:list', () => orch.list())

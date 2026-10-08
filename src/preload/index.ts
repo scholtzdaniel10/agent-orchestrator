@@ -17,9 +17,10 @@ const api: OrchestratorApi = {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    edit?: boolean
+    edit?: boolean,
+    group?: string
   ): Promise<JobRecord> {
-    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, edit)
+    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, edit, group)
   },
   listJobs(): Promise<JobRecord[]> {
     return ipcRenderer.invoke('jobs:list')
