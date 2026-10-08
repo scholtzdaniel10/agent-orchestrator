@@ -46,6 +46,7 @@
           failedOver: [],
           model: 'gpt-5',
           reason: 'first choice',
+          leadMessage: 'm2',
           edit: true,
           change: 'a1b2c3d4'
         },
@@ -58,7 +59,8 @@
           output: 'Reading `src/core/pty/host.ts`…',
           failedOver: [],
           model: 'claude-opus-5-5',
-          reason: 'first choice'
+          reason: 'first choice',
+          leadMessage: 'm2'
         },
         {
           id: 'c3d4e5f6-0000',

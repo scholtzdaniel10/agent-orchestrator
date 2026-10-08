@@ -138,7 +138,7 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(540px, 1.7fr) 230px;
+  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.7fr) 230px;
   grid-template-rows: 40px min(190px, 30vh) minmax(0, 1fr);
   grid-template-areas:
     'header header header'
@@ -149,6 +149,12 @@ textarea {
   gap: 12px;
   padding: 12px;
   overflow: hidden;
+}
+
+@media (max-width: 1099px) {
+  .app {
+    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.7fr) 200px;
+  }
 }
 
 .app-header {
@@ -196,6 +202,7 @@ textarea {
 .app-summary {
   display: flex;
   flex: none;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -263,12 +270,14 @@ textarea {
 
 .project-chip {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
   max-width: 100%;
   height: 30px;
   padding: 0 8px 0 10px;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--raised);
@@ -332,6 +341,22 @@ textarea {
 
 .panel-lead {
   grid-area: lead;
+  container-name: lead;
+  container-type: inline-size;
+}
+
+@container lead (max-width: 339px) {
+  .head-actions label[for='lead-plan'] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 .panel-workers {
@@ -342,6 +367,7 @@ textarea {
 
 .panel-usage {
   grid-area: usage;
+  overflow: auto;
 }
 
 .panel {
@@ -368,9 +394,14 @@ textarea {
 
 .panel-title {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.panel-lead .panel-title {
+  min-width: max-content;
 }
 
 .head-actions {
@@ -379,6 +410,10 @@ textarea {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.head-actions .plan-choice {
+  width: 88px;
 }
 
 .head-actions label {
@@ -521,6 +556,12 @@ textarea {
 
 .composer textarea::placeholder {
   color: var(--faint);
+}
+
+@media (max-height: 759px) {
+  .workers-jobs .composer textarea {
+    height: calc(2 * 1.5em + 16px);
+  }
 }
 
 .composer-foot {
@@ -993,11 +1034,11 @@ select {
 
 .jobs {
   display: flex;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 8px;
-  max-height: 45%;
-  min-height: 0;
+  max-height: 55%;
+  min-height: 120px;
   overflow: hidden;
 }
 
@@ -1017,12 +1058,13 @@ select {
   flex: 1;
   flex-direction: column;
   gap: 2px;
-  min-height: 0;
+  min-height: 120px;
   overflow: auto;
 }
 
 .job-row {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
@@ -1831,7 +1873,7 @@ select {
   }
 }
 
-@media (max-width: 999px) {
+@media (max-width: 899px) {
   .app {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     grid-template-rows: 40px min(190px, 30vh) fit-content(280px) minmax(0, 1fr);
@@ -2215,13 +2257,14 @@ select {
 
 .flow-plan-row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 36px auto;
+  grid-template-columns: 56px minmax(48px, 1fr) 36px auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
 }
 
 .flow-plan-row .meter {
+  min-width: 48px;
   background: var(--bg);
 }
 
@@ -2334,7 +2377,7 @@ select {
   }
 }
 
-@container flow (max-width: 899px) {
+@container flow (max-width: 1099px) {
   .flow-log {
     display: none;
   }
