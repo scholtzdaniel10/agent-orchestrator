@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import { formatHoursMinutes, type FlowEvent, type FlowSnapshot } from './flow-events'
 
@@ -496,6 +497,7 @@ function FlowView({
     <div className="flow">
       <div className="panel-head">
         <div className="panel-title">
+          <Star size={12} />
           <h2 id="flow-heading">Flow</h2>
           <span className="flow-live">
             <span className="flow-live-dot" aria-hidden="true" />

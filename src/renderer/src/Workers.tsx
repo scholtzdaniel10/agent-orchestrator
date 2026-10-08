@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ChangesTab from './ChangesTab'
 import RichText from './RichText'
@@ -81,58 +82,36 @@ function FailoverArrow(): React.JSX.Element {
   )
 }
 
+function metaLine(parts: ReactNode[]): React.JSX.Element {
+  const nodes: ReactNode[] = []
+  parts.forEach((part, index) => {
+    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
+  })
+  return <>{nodes}</>
+}
+
+function jobMetaParts(job: JobRecord): ReactNode[] {
+  const parts: ReactNode[] = [job.type]
+  if (job.group !== undefined) parts.push('compare')
+  if (job.leadMessage !== undefined) parts.push('from lead')
+  if (job.edit === true) parts.push('edits')
+  if (job.reason) parts.push(<span className="job-reason-mono">{job.reason}</span>)
+  if (job.model) parts.push(<span className="job-model">{job.model}</span>)
+  parts.push(<span className="job-id">{job.id.slice(0, 8)}</span>)
+  return parts
+}
+
 function EmptyState({
   title,
-  guidance,
-  glyph
+  guidance
 }: {
   title: string
   guidance: string
-  glyph: 'jobs' | 'output'
 }): React.JSX.Element {
   return (
     <div className="empty-state">
-      {glyph === 'jobs' ? (
-        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-          <rect
-            x="8"
-            y="10"
-            width="24"
-            height="20"
-            rx="3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-          <path
-            d="M14 16h12M14 20h12M14 24h8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      ) : (
-        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-          <rect
-            x="11"
-            y="8"
-            width="18"
-            height="24"
-            rx="2.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-          <path
-            d="M16 16h8M16 20h8M16 24h5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      )}
+      <RayBurst />
       <p className="empty-state-title">{title}</p>
       <p className="empty-state-guidance">{guidance}</p>
     </div>
@@ -488,7 +467,10 @@ function Workers({
   return (
     <div className="workers">
       <div className="panel-head">
-        <h2 id="workers-heading">Workers</h2>
+        <div className="panel-title">
+          <Star size={12} />
+          <h2 id="workers-heading">Workers</h2>
+        </div>
       </div>
       <TerminalTabs
         terminals={terminals}
@@ -606,7 +588,6 @@ function Workers({
               <EmptyState
                 title="No jobs yet"
                 guidance="Jobs you submit, and jobs the lead hands out, appear here."
-                glyph="jobs"
               />
             ) : (
               <div role="listbox" aria-label="Jobs" className="job-list">
@@ -644,27 +625,7 @@ function Workers({
                         </span>
                       </div>
                       <div className="job-meta">
-                        <span className="chip">{job.type}</span>
-                        {job.group !== undefined ? (
-                          <span className="chip chip-compare">compare</span>
-                        ) : null}
-                        {job.leadMessage !== undefined ? (
-                          <span className="chip chip-from-lead">from lead</span>
-                        ) : null}
-                        {job.edit === true ? <span className="chip">edits</span> : null}
-                        {job.reason ? (
-                          <span className="job-reason" title={job.reason}>
-                            {job.reason}
-                          </span>
-                        ) : null}
-                        {job.model ? (
-                          <span className="job-model" title={job.model}>
-                            {job.model}
-                          </span>
-                        ) : null}
-                        <span className="job-id" title={job.id}>
-                          {job.id.slice(0, 8)}
-                        </span>
+                        {metaLine(jobMetaParts(job))}
                         {visibleChange(job, changes) !== null ? (
                           <button
                             type="button"
@@ -706,7 +667,6 @@ function Workers({
               <EmptyState
                 title="No job selected"
                 guidance="Select a job to see its output."
-                glyph="output"
               />
             ) : selectedJob.group !== undefined &&
               jobs.some((job) => job.group === selectedJob.group && job.id !== selectedJob.id) ? (

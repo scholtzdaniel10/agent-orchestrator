@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import RichText from './RichText'
 
@@ -42,16 +43,26 @@ function leadMeta(message: LeadMessage): string {
   return parts.join(' · ')
 }
 
-function leadAvatarState(status: LeadMessage['status']): 'idle' | 'working' | 'error' {
-  if (status === 'streaming') return 'working'
-  if (status === 'error') return 'error'
-  return 'idle'
+function messageClass(message: LeadMessage): string {
+  if (message.status === 'error') return 'lead-msg lead-msg-error'
+  if (message.role === 'user') return 'lead-msg lead-msg-user'
+  return 'lead-msg'
 }
 
-function bubbleClass(message: LeadMessage): string {
-  if (message.status === 'error') return 'lead-bubble lead-bubble-error'
-  if (message.role === 'user') return 'lead-bubble lead-bubble-user'
-  return 'lead-bubble'
+function metaLine(parts: ReactNode[]): React.JSX.Element {
+  const nodes: ReactNode[] = []
+  parts.forEach((part, index) => {
+    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
+  })
+  return <>{nodes}</>
+}
+
+function delegatedMeta(job: JobRecord): ReactNode[] {
+  const parts: ReactNode[] = [job.type]
+  if (job.edit === true) parts.push('edits')
+  if (job.reason) parts.push(job.reason)
+  return parts
 }
 
 function StreamingDots(): React.JSX.Element {
@@ -174,6 +185,7 @@ function LeadChat({
     <div className="lead-chat">
       <div className="panel-head">
         <div className="panel-title">
+          <Star size={12} />
           <BotAvatar bot="lead" state={leadStreaming ? 'working' : 'idle'} size={20} />
           <h2 id="lead-heading">Lead</h2>
         </div>
@@ -219,6 +231,7 @@ function LeadChat({
       <div ref={logRef} className="lead-log" role="log" aria-live="polite">
         {messages.length === 0 ? (
           <div className="empty">
+            <RayBurst />
             <BotAvatar bot="lead" state="idle" size={40} />
             <p className="hint">
               Ask the lead for something and it will split the work across your plans.
@@ -231,11 +244,10 @@ function LeadChat({
             const delegated = isUser ? [] : jobsForMessage(jobs, message.id)
             return (
               <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
-                {isUser ? null : (
-                  <BotAvatar bot="lead" state={leadAvatarState(message.status)} size={28} />
-                )}
-                <div className={bubbleClass(message)}>
-                  {isUser ? null : <span className="lead-meta">{leadMeta(message)}</span>}
+                <div className={messageClass(message)}>
+                  <span className="lead-meta">
+                    {isUser ? 'You' : leadMeta(message)}
+                  </span>
                   <div className="lead-body">
                     {isUser ? (
                       message.text
@@ -277,13 +289,7 @@ function LeadChat({
                                 </span>
                               </div>
                               <div className="lead-job-card-meta">
-                                <span className="chip">{job.type}</span>
-                                {job.edit === true ? <span className="chip">edits</span> : null}
-                                {job.reason ? (
-                                  <span className="lead-job-reason" title={job.reason}>
-                                    {job.reason}
-                                  </span>
-                                ) : null}
+                                {metaLine(delegatedMeta(job))}
                               </div>
                               <p className="lead-job-prompt" title={job.prompt}>
                                 {job.prompt}

@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import FlowView from './FlowView'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
+import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
+
+export { RayBurst, Star } from './Star'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
@@ -534,19 +537,9 @@ function App(): React.JSX.Element {
     <div className="app">
       <header className="app-header">
         <div className="app-brand">
+          <RayBurst />
           <span className="app-mark" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 20 20" focusable="false">
-              <circle cx="5.5" cy="5.5" r="1.6" fill="currentColor" />
-              <circle cx="14.5" cy="5.5" r="1.6" fill="currentColor" />
-              <circle cx="10" cy="14.5" r="1.6" fill="currentColor" />
-              <path
-                d="M5.5 5.5h9M5.5 5.5 10 14.5M14.5 5.5 10 14.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              />
-            </svg>
+            <Star size={16} />
           </span>
           <div className="app-name">agent-orchestrator</div>
         </div>
@@ -560,6 +553,7 @@ function App(): React.JSX.Element {
         <AppSummary ready={ready} running={running} queued={queued} />
       </header>
       <section className="panel panel-flow" aria-labelledby="flow-heading">
+        <RayBurst />
         <FlowView
           jobs={jobs}
           plans={plans ?? EMPTY_PLANS}

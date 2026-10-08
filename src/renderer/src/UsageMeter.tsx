@@ -1,3 +1,4 @@
+import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
 
@@ -89,7 +90,10 @@ function WarnGlyph(): React.JSX.Element {
 function UsageHeading(): React.JSX.Element {
   return (
     <div className="panel-head">
-      <h2 id="usage-heading">Usage</h2>
+      <div className="panel-title">
+        <Star size={12} />
+        <h2 id="usage-heading">Usage</h2>
+      </div>
     </div>
   )
 }

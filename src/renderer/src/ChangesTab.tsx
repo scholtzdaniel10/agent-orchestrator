@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { RayBurst } from './Star'
 import { parseDiff } from './diff-lines'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
@@ -226,9 +227,12 @@ function ChangesTab({
         </p>
       ) : null}
       {changes.length === 0 || selected === null ? (
-        <p className="hint">
-          {'No changes waiting. Tick "Let it edit files" on a job to get one.'}
-        </p>
+        <div className="changes-empty">
+          <RayBurst />
+          <p className="hint">
+            {'No changes waiting. Tick "Let it edit files" on a job to get one.'}
+          </p>
+        </div>
       ) : (
         <div className="changes">
           <div role="listbox" aria-label="Changes" className="change-list">
