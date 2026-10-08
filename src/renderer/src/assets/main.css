@@ -403,6 +403,7 @@ label {
   font-size: 11px;
 }
 
+.sr-only,
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -508,6 +509,10 @@ textarea {
   background: transparent;
 }
 
+.composer textarea::placeholder {
+  color: var(--faint);
+}
+
 .composer-foot {
   display: flex;
   align-items: center;
@@ -523,6 +528,12 @@ textarea {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.composer-tools > label:not(.edit-toggle) {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .job-type {
@@ -953,7 +964,6 @@ select {
 
 .rich-text code,
 .job-id,
-.failover,
 .model-input {
   font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   font-size: 12px;
@@ -971,21 +981,32 @@ select {
   font-weight: 600;
 }
 
-.jobs,
-.output-pane {
+.jobs {
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   gap: 8px;
+  max-height: 45%;
   min-height: 0;
   overflow: hidden;
+}
+
+.output-pane {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
 }
 
 .job-list {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-height: 0;
   overflow: auto;
 }
@@ -994,8 +1015,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px;
-  border-left: 2px solid transparent;
+  padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -1005,10 +1025,8 @@ select {
 }
 
 .job-row.is-selected {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left-color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .job-row.is-selected:hover {
@@ -1022,9 +1040,32 @@ select {
   min-width: 0;
 }
 
-.job-grow {
+.job-avatar-slot {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.job-title {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 28px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .chip {
@@ -1033,8 +1074,9 @@ select {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--raised);
-  font-size: 12px;
-  line-height: 20px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
 }
 
 .job-id {
@@ -1042,22 +1084,13 @@ select {
   color: var(--faint);
 }
 
-.job-reason {
-  min-width: 0;
-  max-width: 40%;
-  overflow: hidden;
-  color: var(--faint);
-  font-size: 11px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
+.job-reason,
 .job-model {
   min-width: 0;
   max-width: 40%;
   overflow: hidden;
-  color: var(--faint);
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1102,6 +1135,23 @@ select {
   color: var(--warn);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .status-running .status-dot {
+    animation: status-dot-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes status-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .usage .status {
   gap: 5px;
   height: 20px;
@@ -1128,7 +1178,60 @@ select {
 }
 
 .failover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-left: 28px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.failover-label {
   color: var(--warn);
+}
+
+.failover-hop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.failover-arrow {
+  flex: none;
+  color: var(--faint);
+}
+
+.empty-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 16px;
+  text-align: center;
+}
+
+.empty-state svg {
+  flex: none;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.empty-state-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.empty-state-guidance {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .output-head {
@@ -1137,6 +1240,8 @@ select {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 12px;
 }
@@ -1151,6 +1256,7 @@ select {
 .output-body {
   flex: 1;
   min-height: 0;
+  padding: 12px;
   overflow: auto;
 }
 
@@ -1165,6 +1271,11 @@ select {
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.output-pane > .output-error {
+  margin: 0 12px 12px;
+  border: none;
 }
 
 .field-error {

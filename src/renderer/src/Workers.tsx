@@ -53,6 +53,86 @@ function visibleChange(job: JobRecord, changes: readonly ChangeSet[]): string | 
   return changes.some((item) => item.id === id) ? id : null
 }
 
+function FailoverArrow(): React.JSX.Element {
+  return (
+    <svg
+      className="failover-arrow"
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M1.5 5h5.5M5 2.5 7.5 5 5 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function EmptyState({
+  title,
+  guidance,
+  glyph
+}: {
+  title: string
+  guidance: string
+  glyph: 'jobs' | 'output'
+}): React.JSX.Element {
+  return (
+    <div className="empty-state">
+      {glyph === 'jobs' ? (
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+          <rect
+            x="8"
+            y="10"
+            width="24"
+            height="20"
+            rx="3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+          <path
+            d="M14 16h12M14 20h12M14 24h8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      ) : (
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+          <rect
+            x="11"
+            y="8"
+            width="18"
+            height="24"
+            rx="2.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+          <path
+            d="M16 16h8M16 20h8M16 24h5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+      <p className="empty-state-title">{title}</p>
+      <p className="empty-state-guidance">{guidance}</p>
+    </div>
+  )
+}
+
 function splitPartner(
   terminals: readonly TerminalInfo[],
   selectedId: string,
@@ -278,7 +358,6 @@ function Workers({
           className={showJobs ? 'workers-jobs' : 'workers-jobs is-hidden'}
           inert={showJobs ? undefined : true}
         >
-          <p className="hint">Hand a job straight to a worker.</p>
           <form
             className="composer"
             onSubmit={(event) => {
@@ -286,12 +365,15 @@ function Workers({
               void submit()
             }}
           >
-            <label htmlFor="prompt">Prompt</label>
+            <label className="sr-only" htmlFor="prompt">
+              Prompt
+            </label>
             <div className="composer-box">
               <textarea
                 id="prompt"
                 rows={3}
                 value={prompt}
+                placeholder="Hand a job straight to a worker."
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={onPromptKeyDown}
               />
@@ -350,11 +432,16 @@ function Workers({
 
           <section className="jobs" aria-label="Jobs">
             {newest.length === 0 ? (
-              <p className="hint">No jobs yet.</p>
+              <EmptyState
+                title="No jobs yet"
+                guidance="Jobs you submit, and jobs the lead hands out, appear here."
+                glyph="jobs"
+              />
             ) : (
               <div role="listbox" aria-label="Jobs" className="job-list">
                 {newest.map((job, index) => {
                   const isSelected = job.id === selectedJobId
+                  const failoverChain = [...job.failedOver, job.provider ?? '—']
                   return (
                     <div
                       key={job.id}
@@ -374,9 +461,33 @@ function Workers({
                             size={20}
                             title={job.provider}
                           />
-                        ) : null}
+                        ) : (
+                          <span className="job-avatar-slot" aria-hidden="true" />
+                        )}
+                        <span className="job-title" title={job.prompt}>
+                          {job.prompt}
+                        </span>
+                        <span className={`status status-${job.status}`}>
+                          <span className="status-dot" aria-hidden="true" />
+                          {job.status}
+                        </span>
+                      </div>
+                      <div className="job-meta">
                         <span className="chip">{job.type}</span>
                         {job.edit === true ? <span className="chip">edits</span> : null}
+                        {job.reason ? (
+                          <span className="job-reason" title={job.reason}>
+                            {job.reason}
+                          </span>
+                        ) : null}
+                        {job.model ? (
+                          <span className="job-model" title={job.model}>
+                            {job.model}
+                          </span>
+                        ) : null}
+                        <span className="job-id" title={job.id}>
+                          {job.id.slice(0, 8)}
+                        </span>
                         {visibleChange(job, changes) !== null ? (
                           <button
                             type="button"
@@ -391,29 +502,20 @@ function Workers({
                             View change
                           </button>
                         ) : null}
-                        {job.reason ? (
-                          <span className="job-reason" title={job.reason}>
-                            {job.reason}
-                          </span>
-                        ) : null}
-                        <span className="job-id" title={job.id}>
-                          {job.id.slice(0, 8)}
-                        </span>
-                        <span className="job-grow" />
-                        {job.model ? (
-                          <span className="job-model" title={job.model}>
-                            {job.model}
-                          </span>
-                        ) : null}
-                        <span className={`status status-${job.status}`}>
-                          <span className="status-dot" aria-hidden="true" />
-                          {job.status}
-                        </span>
                       </div>
                       {job.failedOver.length > 0 ? (
-                        <span className="failover">
-                          ↪ {[...job.failedOver, job.provider ?? '—'].join('→')}
-                        </span>
+                        <div
+                          className="failover"
+                          aria-label={`Failed over from ${failoverChain[0]} to ${failoverChain[failoverChain.length - 1]}`}
+                        >
+                          <span className="failover-label">Failover</span>
+                          {failoverChain.map((name, hop) => (
+                            <span key={`${job.id}-failover-${hop}-${name}`} className="failover-hop">
+                              {hop > 0 ? <FailoverArrow /> : null}
+                              <span>{name}</span>
+                            </span>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   )
@@ -424,7 +526,11 @@ function Workers({
 
           <section className="output-pane" aria-label="Output">
             {selectedJob === null ? (
-              <p className="hint">Select a job to see its output.</p>
+              <EmptyState
+                title="No job selected"
+                guidance="Select a job to see its output."
+                glyph="output"
+              />
             ) : (
               <>
                 <div className="output-head">
