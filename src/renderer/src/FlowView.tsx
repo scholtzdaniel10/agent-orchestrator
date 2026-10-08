@@ -172,6 +172,38 @@ function findBox(root: HTMLElement, name: string): HTMLElement | null {
   return el instanceof HTMLElement ? el : null
 }
 
+function WarnMark(): React.JSX.Element {
+  return (
+    <span className="flow-risk" title="Unused allowance expires soon">
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path
+          fill="currentColor"
+          fillRule="evenodd"
+          d="M8 1.5 15 14H1L8 1.5ZM7.25 6h1.5v4.2h-1.5V6Zm0 5.4h1.5V13h-1.5v-1.6Z"
+        />
+      </svg>
+    </span>
+  )
+}
+
+function YouGlyph(): React.JSX.Element {
+  return (
+    <svg
+      className="flow-you-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 1.5c-2.67 0-8 1.34-8 4V15h16v-1.5c0-2.66-5.33-4-8-4Z"
+      />
+    </svg>
+  )
+}
+
 function EventLog({ events }: { events: FlowEvent[] }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -189,19 +221,22 @@ function EventLog({ events }: { events: FlowEvent[] }): React.JSX.Element {
   }, [events])
 
   return (
-    <div className="flow-log" role="log" aria-live="off" ref={ref} onScroll={onScroll}>
-      {events.length === 0 ? (
-        <p className="flow-empty">Nothing yet. Events appear here as work happens.</p>
-      ) : (
-        events.map((event) => (
-          <div key={event.id} className="flow-event">
-            <span className="flow-time">{formatLogTime(event.at)}</span>
-            <span className={`flow-actor flow-actor-${event.actor}`}>{event.actor}</span>
-            <span className="flow-text">{event.text}</span>
-            <span className={resultClass(event.tone)}>{event.result ?? ''}</span>
-          </div>
-        ))
-      )}
+    <div className="flow-log">
+      <div className="flow-log-head">Activity</div>
+      <div className="flow-log-body" role="log" aria-live="off" ref={ref} onScroll={onScroll}>
+        {events.length === 0 ? (
+          <p className="flow-empty">No activity yet. Events appear here as work happens.</p>
+        ) : (
+          events.map((event) => (
+            <div key={event.id} className="flow-event">
+              <span className="flow-time">{formatLogTime(event.at)}</span>
+              <span className={`flow-actor flow-actor-${event.actor}`}>{event.actor}</span>
+              <span className="flow-text">{event.text}</span>
+              <span className={resultClass(event.tone)}>{event.result ?? ''}</span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
@@ -323,7 +358,8 @@ function Topology({
         )}
       </div>
       <div className="flow-box topo-you" data-flow="you">
-        you
+        <YouGlyph />
+        <span className="flow-name">you</span>
       </div>
       <div
         className={`topo-lead ${boxClass(state === 'idle' ? null : 'lead', false)}`}
@@ -353,7 +389,7 @@ function Topology({
             <div key={plan.id} className="flow-plan-row">
               <span className={`flow-plan-name is-${plan.id}`}>{plan.id}</span>
               <div
-                className="flow-bar"
+                className="meter meter-thin"
                 role="meter"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -362,18 +398,12 @@ function Topology({
               >
                 <div className={fillClass(plan.id, left)} style={{ width: `${left}%` }} />
               </div>
-              <span className="flow-pct">
-                <span>{left}%</span>
-                <span className="flow-risk">
-                  {plan.atRisk ? (
-                    <span className="usage-risk-mark" title="Unused allowance expires soon">
-                      !
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-              <span className="flow-queued">
-                {plan.queued > 0 ? ` · ${plan.queued} queued` : ''}
+              <span className="flow-pct">{left}%</span>
+              <span className="flow-plan-trail">
+                {plan.queued > 0 ? (
+                  <span className="flow-queued">{`${plan.queued} queued`}</span>
+                ) : null}
+                {plan.atRisk ? <WarnMark /> : null}
               </span>
             </div>
           )
@@ -467,7 +497,10 @@ function FlowView({
       <div className="panel-head">
         <div className="panel-title">
           <h2 id="flow-heading">Flow</h2>
-          <span className="flow-live">live</span>
+          <span className="flow-live">
+            <span className="flow-live-dot" aria-hidden="true" />
+            live
+          </span>
         </div>
       </div>
       <div className="flow-body">

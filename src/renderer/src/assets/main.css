@@ -27,6 +27,10 @@
   --bot-cursor: #3cc6a0;
   --bot-you: #8a8a96;
   --bot-eye: #17171c;
+  --bot-lead-soft: rgba(139, 124, 246, 0.22);
+  --bot-claude-soft: rgba(240, 138, 93, 0.22);
+  --bot-cursor-soft: rgba(60, 198, 160, 0.22);
+  --bot-you-soft: rgba(138, 138, 150, 0.22);
 }
 
 @media (prefers-color-scheme: light) {
@@ -59,6 +63,10 @@
     --bot-cursor: #128a6b;
     --bot-you: #77777f;
     --bot-eye: #ffffff;
+    --bot-lead-soft: rgba(109, 91, 208, 0.18);
+    --bot-claude-soft: rgba(210, 99, 47, 0.18);
+    --bot-cursor-soft: rgba(18, 138, 107, 0.18);
+    --bot-you-soft: rgba(119, 119, 127, 0.18);
   }
 }
 
@@ -318,6 +326,8 @@ textarea {
 
 .panel-flow {
   grid-area: flow;
+  container-name: flow;
+  container-type: inline-size;
 }
 
 .panel-lead {
@@ -1880,54 +1890,93 @@ select {
   gap: 6px;
   min-width: 0;
   min-height: 0;
-  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   font-size: 12px;
-  font-variant-ligatures: none;
-}
-
-.flow h2 {
-  font-family: inherit;
 }
 
 .flow-live {
-  color: var(--faint);
-  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.flow-live-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ok);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .flow-live-dot {
+    animation: status-dot-pulse 1.4s ease-in-out infinite;
+  }
 }
 
 .flow-body {
   display: flex;
   flex: 1;
+  gap: 10px;
   min-width: 0;
   min-height: 0;
 }
 
 .flow-topology {
-  flex: 62 1 0;
+  display: flex;
+  flex: none;
+  align-items: center;
   min-width: 0;
   min-height: 0;
-  padding-right: 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .flow-log {
-  flex: 38 1 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
   min-height: 0;
-  padding-left: 8px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.flow-log-head {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.flow-log-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   overflow: auto;
-  border-left: 1px solid var(--border);
   scrollbar-gutter: stable;
 }
 
 .flow-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
   margin: 0;
-  height: 16px;
-  overflow: hidden;
-  color: var(--faint);
-  line-height: 16px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  color: var(--muted);
+  text-align: center;
 }
 
 .flow-event {
@@ -1935,12 +1984,14 @@ select {
   grid-template-columns: 8.5ch 7ch minmax(0, 1fr) auto;
   column-gap: 8px;
   align-items: baseline;
-  height: 16px;
-  line-height: 16px;
+  min-height: 18px;
+  line-height: 18px;
 }
 
 .flow-time {
   color: var(--faint);
+  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1987,9 +2038,10 @@ select {
 .topo {
   position: relative;
   display: grid;
-  grid-template-columns: auto 28px minmax(0, 1fr) 28px minmax(0, 1.15fr) 36px minmax(0, 1.15fr);
+  grid-template-columns: auto 28px auto 28px auto 36px auto;
   align-items: center;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
   min-height: 100%;
 }
@@ -2004,9 +2056,20 @@ select {
 }
 
 .topo-you {
+  display: inline-flex;
   grid-column: 1;
   grid-row: 1;
+  align-items: center;
+  gap: 6px;
   justify-self: start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.flow-you-icon {
+  flex: none;
+  color: var(--bot-you);
 }
 
 .topo-lead {
@@ -2017,6 +2080,7 @@ select {
 .topo-router {
   grid-column: 5;
   grid-row: 1;
+  min-width: 220px;
 }
 
 .topo-workers {
@@ -2034,22 +2098,26 @@ select {
   z-index: 1;
   min-width: 0;
   max-width: 100%;
-  padding: 6px 10px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--raised);
+  box-shadow: var(--shadow);
 }
 
 .flow-box.is-lead {
   border-color: var(--bot-lead);
+  box-shadow: 0 0 0 3px var(--bot-lead-soft);
 }
 
 .flow-box.is-claude {
   border-color: var(--bot-claude);
+  box-shadow: 0 0 0 3px var(--bot-claude-soft);
 }
 
 .flow-box.is-cursor {
   border-color: var(--bot-cursor);
+  box-shadow: 0 0 0 3px var(--bot-cursor-soft);
 }
 
 .flow-box.is-flash {
@@ -2060,6 +2128,7 @@ select {
   0%,
   100% {
     border-color: var(--warn);
+    box-shadow: 0 0 0 3px var(--warn-soft);
   }
 }
 
@@ -2081,9 +2150,18 @@ select {
 
 .flow-name,
 .flow-plan-name,
-.flow-keep,
 .flow-router-label {
   flex: none;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.flow-keep {
+  flex: none;
+}
+
+.flow-router-label {
+  margin-bottom: 4px;
 }
 
 .flow-name.is-lead {
@@ -2104,6 +2182,8 @@ select {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
+  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  font-variant-ligatures: none;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -2128,44 +2208,58 @@ select {
 .flow-elapsed {
   flex: none;
   width: 8ch;
+  font-family: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
 
 .flow-plan-row {
   display: grid;
-  grid-template-columns: auto minmax(24px, 1fr) 6ch 11ch;
+  grid-template-columns: 56px minmax(0, 1fr) 36px auto;
   gap: 6px;
   align-items: center;
   min-width: 0;
 }
 
-.flow-bar {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
+.flow-plan-row .meter {
   background: var(--bg);
 }
 
 .flow-pct {
-  display: flex;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flow-plan-trail {
+  display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  gap: 4px;
+  min-width: 0;
 }
 
 .flow-risk {
+  display: inline-flex;
   flex: none;
-  width: 1ch;
-  text-align: center;
+  align-items: center;
+  color: var(--warn);
 }
 
 .flow-queued {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
   overflow: hidden;
+  border-radius: 6px;
+  background: var(--panel);
   color: var(--muted);
+  font-size: 11px;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .flow-wires {
@@ -2179,8 +2273,9 @@ select {
 .flow-wire {
   fill: none;
   stroke: var(--border-strong);
-  stroke-dasharray: 4 3;
-  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .flow-wire.is-lead {
@@ -2239,36 +2334,18 @@ select {
   }
 }
 
-@media (max-width: 999px) {
-  .flow-body {
-    flex-direction: column;
-  }
-
-  .flow-topology {
-    flex: 1 1 auto;
-    padding-right: 0;
-  }
-
+@container flow (max-width: 899px) {
   .flow-log {
-    flex: none;
-    height: 48px;
-    padding-top: 4px;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: none;
-  }
-}
-
-@media (max-width: 699px) {
-  .flow-topology {
     display: none;
   }
 
-  .flow-log {
-    flex: 1 1 auto;
-    height: auto;
-    padding-top: 0;
-    border-top: none;
+  .flow-topology {
+    flex: 1;
+    width: 100%;
+  }
+
+  .topo {
+    width: 100%;
   }
 }
 
