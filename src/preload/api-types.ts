@@ -26,6 +26,8 @@ export interface PlanStatus {
   atRisk: boolean
   /** A job is running on it. */
   busy: boolean
+  /** Jobs running on it now. */
+  running: number
   /** Jobs waiting in its queue. */
   queued: number
   /** Model the person chose for this plan; null means the CLI's own default. */

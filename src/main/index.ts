@@ -161,6 +161,7 @@ app.whenReady().then(async () => {
       model: settings.model(worker.id) ?? null,
       windows: worker.windows,
       busy: worker.busy,
+      running: worker.running,
       queued: worker.queued
     }))
   }

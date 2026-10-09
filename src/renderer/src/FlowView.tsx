@@ -82,6 +82,14 @@ function runningJob(jobs: readonly JobRecord[], id: PlanStatus['id']): JobRecord
   return undefined
 }
 
+function runningCount(jobs: readonly JobRecord[], id: PlanStatus['id']): number {
+  let count = 0
+  for (const job of jobs) {
+    if (job.provider === id && job.status === 'running') count += 1
+  }
+  return count
+}
+
 function workerAvatar(
   plan: PlanStatus,
   jobs: readonly JobRecord[],
@@ -401,6 +409,9 @@ function Topology({
               </div>
               <span className="flow-pct">{left}%</span>
               <span className="flow-plan-trail">
+                {plan.running > 1 ? (
+                  <span className="flow-queued">{`${plan.running} running`}</span>
+                ) : null}
                 {plan.queued > 0 ? (
                   <span className="flow-queued">{`${plan.queued} queued`}</span>
                 ) : null}
@@ -414,6 +425,7 @@ function Topology({
         {plans.map((plan) => {
           const avatar = workerAvatar(plan, jobs, now)
           const running = runningJob(jobs, plan.id)
+          const parallel = Math.max(plan.running, runningCount(jobs, plan.id))
           const suffix = terminalSuffix(terminals, plan.id)
           const waiting = changeSuffix(changes, jobs, plan.id)
           const extra = `${suffix}${waiting}`
@@ -426,7 +438,11 @@ function Topology({
             text = `resting until ${formatHoursMinutes(plan.restingUntil)}${extra}`
           } else if (running !== undefined) {
             const started = starts[running.id] ?? elapsedNow
-            text = `${running.type} · running · `
+            const more = parallel - 1
+            text =
+              more > 0
+                ? `${running.type} · +${more} more · `
+                : `${running.type} · running · `
             elapsed = formatElapsed(elapsedNow - started)
           }
           return (

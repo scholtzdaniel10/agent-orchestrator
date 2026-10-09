@@ -12,6 +12,7 @@
       resetsAt: now + 2.4 * H,
       atRisk: false,
       busy: !empty,
+      running: empty ? 0 : 2,
       queued: empty ? 0 : 1,
       model: null,
       windows: [
@@ -27,6 +28,7 @@
       resetsAt: now + 400 * H,
       atRisk: true,
       busy: false,
+      running: 0,
       queued: 0,
       model: 'gpt-5',
       windows: []
@@ -57,6 +59,18 @@
           provider: 'claude',
           status: 'running',
           output: 'Reading `src/core/pty/host.ts`…',
+          failedOver: [],
+          model: 'claude-opus-5-5',
+          reason: 'first choice',
+          leadMessage: 'm2'
+        },
+        {
+          id: 'b2c3d4e5-0001',
+          type: 'planning',
+          prompt: 'Sketch how parallel jobs share a plan without starving the queue',
+          provider: 'claude',
+          status: 'running',
+          output: 'Comparing queue depth to maxParallel…',
           failedOver: [],
           model: 'claude-opus-5-5',
           reason: 'first choice',

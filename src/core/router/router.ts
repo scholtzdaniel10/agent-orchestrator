@@ -18,6 +18,11 @@ export const DEFAULT_PACE: PaceRules = {
   atRiskLeft: 0.15
 }
 
+/** Jobs one plan may run at once when rules omit or mis-set maxParallel. */
+export const DEFAULT_MAX_PARALLEL = 3
+const MAX_PARALLEL_MIN = 1
+const MAX_PARALLEL_MAX = 8
+
 /** Bundled copy of rules.json. `loadRules()` with no path returns this. */
 export const defaultRules: RouterRules = validate(rulesJson)
 
@@ -183,9 +188,10 @@ export function pickProvider(
   store: Store,
   rules: RouterRules,
   now: number,
-  exclude: ProviderId[] = []
+  exclude: ProviderId[] = [],
+  running: Partial<Record<ProviderId, number>> = {}
 ): ProviderId | null {
-  return pickWithReason(type, candidates, store, rules, now, exclude)?.provider ?? null
+  return pickWithReason(type, candidates, store, rules, now, exclude, running)?.provider ?? null
 }
 
 /** Same choice as `pickProvider`, plus why that plan won. */
@@ -195,7 +201,9 @@ export function pickWithReason(
   store: Store,
   rules: RouterRules,
   now: number,
-  exclude: ProviderId[] = []
+  exclude: ProviderId[] = [],
+  /** Jobs already running on each plan; used to skip a plan at its parallel limit. */
+  running: Partial<Record<ProviderId, number>> = {}
 ): { provider: ProviderId; reason: string } | null {
   const scores = scoreProviders(type, candidates, store, rules, now, exclude)
   let best: Score | null = null
@@ -203,15 +211,32 @@ export function pickWithReason(
     if (row.score > (best?.score ?? 0)) best = row
   }
   if (!best) return null
-  const winner = best
-  const another = scores.some((row) => row.provider !== winner.provider && row.score > 0)
-  if (!another) return { provider: winner.provider, reason: 'only plan available' }
-  if (winner.atRisk) return { provider: winner.provider, reason: 'allowance expiring' }
-  if (winner.provider === rules.rules[type][0]) {
-    return { provider: winner.provider, reason: 'first choice' }
+  let winner = best
+  const limit = rules.maxParallel
+  if ((running[winner.provider] ?? 0) >= limit) {
+    for (const row of scores) {
+      if (row.provider === winner.provider || row.score <= 0) continue
+      if ((running[row.provider] ?? 0) >= limit) continue
+      if (row.headroom <= 0) continue
+      winner = row
+      break
+    }
   }
-  if (winner.paceFactor > 1.05) return { provider: winner.provider, reason: 'behind pace' }
-  return { provider: winner.provider, reason: 'more headroom' }
+  return { provider: winner.provider, reason: pickReason(type, winner, scores, rules) }
+}
+
+function pickReason(
+  type: JobType,
+  winner: Score,
+  scores: Score[],
+  rules: RouterRules
+): string {
+  const another = scores.some((row) => row.provider !== winner.provider && row.score > 0)
+  if (!another) return 'only plan available'
+  if (winner.atRisk) return 'allowance expiring'
+  if (winner.provider === rules.rules[type][0]) return 'first choice'
+  if (winner.paceFactor > 1.05) return 'behind pace'
+  return 'more headroom'
 }
 
 function toWindow(row: StoredWindow, now: number): WindowState {
@@ -271,7 +296,16 @@ function validate(raw: unknown): RouterRules {
     }
   }
   if (body.pace !== undefined) validatePace(body.pace)
-  return raw as RouterRules
+  const maxParallel = readMaxParallel(body.maxParallel)
+  return { ...(raw as RouterRules), maxParallel }
+}
+
+function readMaxParallel(value: unknown): number {
+  if (value === undefined) return DEFAULT_MAX_PARALLEL
+  if (typeof value !== 'number' || !Number.isInteger(value)) return DEFAULT_MAX_PARALLEL
+  if (value < MAX_PARALLEL_MIN) return MAX_PARALLEL_MIN
+  if (value > MAX_PARALLEL_MAX) return MAX_PARALLEL_MAX
+  return value
 }
 
 function validatePace(pace: unknown): void {

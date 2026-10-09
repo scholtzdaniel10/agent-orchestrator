@@ -5,15 +5,15 @@ Ordered. The top item is the next one to build.
 ## Done
 
 - Saved chats and jobs, per project, with past chats listed in the sidebar.
+- Parallel jobs per plan (`maxParallel` in `rules.json`).
 
 ## Next
 
-1. **Parallel jobs per plan.** A plan runs one job at a time today; a second job waits as "queued". Let each plan run up to three at once (a number in `rules.json`). Editing jobs already have their own worktree.
-2. **Keep talking to the lead while its jobs run.** The lead's turn lasts until every job it handed out has finished, and the Lead box is locked for all of it. Have the lead hand out its jobs and end the turn, then prompt it again with the results when they are in.
-3. **First-run check.** Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app must work with only one of them.
-4. **Stop a job.** A button to cancel a running or queued job.
-5. **GitHub through `gh`.** Add a project by picking one of your repos to clone; open a pull request from a merged change. Hidden when `gh` is not installed.
-6. **Delete and rename chats.**
+1. **Keep talking to the lead while its jobs run.** The lead's turn lasts until every job it handed out has finished, and the Lead box is locked for all of it. Have the lead hand out its jobs and end the turn, then prompt it again with the results when they are in.
+2. **First-run check.** Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app must work with only one of them.
+3. **Stop a job.** A button to cancel a running or queued job.
+4. **GitHub through `gh`.** Add a project by picking one of your repos to clone; open a pull request from a merged change. Hidden when `gh` is not installed.
+5. **Delete and rename chats.**
 
 ## Before a release
 

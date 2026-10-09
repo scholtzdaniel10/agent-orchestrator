@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import type { AgentEvent, ProviderAdapter, ProviderId, RunHandle } from '../types'
 import type { Worktrees } from '../worktrees'
+import type { RouterRules } from '../types'
 import { loadRules, Orchestrator, Store } from '../router'
 import { createOrchestratorTools, startBridge, type BridgeTool } from './index'
 
@@ -75,13 +76,14 @@ function gate(): { promise: Promise<void>; open: () => void } {
 async function withOrch(
   adapters: ProviderAdapter[],
   fn: (orch: Orchestrator, store: Store) => Promise<void>,
-  now?: () => number
+  now?: () => number,
+  rules?: RouterRules
 ): Promise<void> {
   const store = new Store(':memory:')
   const orch = new Orchestrator({
     adapters,
     store,
-    rules: loadRules(),
+    rules: rules ?? loadRules(),
     cwd: '.',
     now
   })
@@ -125,36 +127,41 @@ test('send_job passes leadMessage when leadTurn returns an id', async () => {
 test('send_job returns the job id and provider and rejects bad input', async () => {
   const held = gate()
   const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('done') }, ok('next')])
-  await withOrch([claude], async (orch) => {
-    const send = tool(createOrchestratorTools(orch), 'send_job')
-    await expect(send.handler({ type: 'ship', prompt: 'x' })).rejects.toThrow(/type/)
-    await expect(send.handler({ type: 'planning', prompt: '   ' })).rejects.toThrow(/prompt/)
-    await expect(send.handler({ type: 'planning', prompt: '' })).rejects.toThrow(/prompt/)
-    await expect(send.handler({ type: 'planning', prompt: 'x'.repeat(20_001) })).rejects.toThrow(
-      /20000/
-    )
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const send = tool(createOrchestratorTools(orch), 'send_job')
+      await expect(send.handler({ type: 'ship', prompt: 'x' })).rejects.toThrow(/type/)
+      await expect(send.handler({ type: 'planning', prompt: '   ' })).rejects.toThrow(/prompt/)
+      await expect(send.handler({ type: 'planning', prompt: '' })).rejects.toThrow(/prompt/)
+      await expect(send.handler({ type: 'planning', prompt: 'x'.repeat(20_001) })).rejects.toThrow(
+        /20000/
+      )
 
-    try {
-      const first = (await send.handler({ type: 'planning', prompt: 'hello' })) as {
-        id: string
-        provider: string
-        status: string
-      }
-      expect(first).toMatchObject({ provider: 'claude', status: 'running' })
-      expect(first.id).toEqual(expect.any(String))
-      expect(Object.keys(first).sort()).toEqual(['id', 'provider', 'status'])
-      expect(orch.get(first.id)?.prompt).toBe('hello')
+      try {
+        const first = (await send.handler({ type: 'planning', prompt: 'hello' })) as {
+          id: string
+          provider: string
+          status: string
+        }
+        expect(first).toMatchObject({ provider: 'claude', status: 'running' })
+        expect(first.id).toEqual(expect.any(String))
+        expect(Object.keys(first).sort()).toEqual(['id', 'provider', 'status'])
+        expect(orch.get(first.id)?.prompt).toBe('hello')
 
-      const second = (await send.handler({ type: 'planning', prompt: 'queued-job' })) as {
-        status: string
-        provider: string
+        const second = (await send.handler({ type: 'planning', prompt: 'queued-job' })) as {
+          status: string
+          provider: string
+        }
+        expect(second).toMatchObject({ provider: 'claude', status: 'queued' })
+      } finally {
+        held.open()
+        await orch.idle()
       }
-      expect(second).toMatchObject({ provider: 'claude', status: 'queued' })
-    } finally {
-      held.open()
-      await orch.idle()
-    }
-  })
+    },
+    undefined,
+    { ...loadRules(), maxParallel: 1 }
+  )
 })
 
 test('get_status lists jobs oldest first without output, and throws for an unknown id', async () => {
@@ -329,7 +336,8 @@ test('list_workers reports availability, headroom, rest, busy, and queued', asyn
         await orch.idle()
       }
     },
-    () => now
+    () => now,
+    { ...loadRules(), maxParallel: 1 }
   )
 })
 

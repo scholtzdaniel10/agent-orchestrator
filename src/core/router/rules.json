@@ -12,6 +12,7 @@
     "cursor": { "windowHours": 720, "units": 20000000 }
   },
   "defaultRestHours": 5,
+  "maxParallel": 3,
   "pace": {
     "weight": 1.5,
     "min": 0.5,

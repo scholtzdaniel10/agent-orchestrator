@@ -75,6 +75,8 @@ export interface WorkerInfo {
   restingUntil: number | null
   /** A job is running on this provider. */
   busy: boolean
+  /** Jobs running on this provider now. */
+  running: number
   /** Jobs waiting in this provider's queue. */
   queued: number
   /** Epoch ms the worst window resets, when known. */
@@ -98,7 +100,11 @@ export class Orchestrator {
   private readonly jobs: InternalJob[] = []
   private readonly byJob = new Map<string, InternalJob>()
   private readonly queues = new Map<ProviderId, string[]>()
-  private readonly running = new Set<ProviderId>()
+  /** Job ids currently executing on each provider. */
+  private readonly running = new Map<ProviderId, Set<string>>()
+  private readonly handles = new Map<string, ReturnType<ProviderAdapter['run']>>()
+  /** Jobs killed because another job on the same plan hit a limit. */
+  private readonly abandoning = new Set<string>()
   private readonly listeners = new Set<(job: JobRecord) => void>()
   private idleWaiters: Array<() => void> = []
 
@@ -177,7 +183,15 @@ export class Orchestrator {
       return copy(job)
     }
 
-    const pick = pickWithReason(type, this.candidates, this.store, this.rules, this.now())
+    const pick = pickWithReason(
+      type,
+      this.candidates,
+      this.store,
+      this.rules,
+      this.now(),
+      [],
+      this.runningCounts()
+    )
     if (!pick) return this.failNow(job, 'no provider available')
 
     job.provider = pick.provider
@@ -228,7 +242,8 @@ export class Orchestrator {
         available: this.candidates.includes(adapter.id),
         headroom: headroom(adapter.id, this.store, this.rules, now),
         restingUntil: until !== null && until > now ? until : null,
-        busy: this.running.has(adapter.id),
+        busy: this.runningCount(adapter.id) > 0,
+        running: this.runningCount(adapter.id),
         queued: queue?.length ?? 0,
         resetsAt: usage.resetsAt,
         atRisk: usage.atRisk,
@@ -271,35 +286,61 @@ export class Orchestrator {
     else this.queues.set(provider, [id])
   }
 
-  /** Start the next queued job for `provider` when it is free. */
-  private pump(provider: ProviderId): void {
-    if (this.running.has(provider)) return
-    const queue = this.queues.get(provider)
-    if (!queue?.length) return
-    const id = queue.shift()
-    if (id === undefined) return
-    const job = this.byJob.get(id)
-    if (!job || job.status !== 'queued') {
-      this.pump(provider)
-      return
+  private runningCount(provider: ProviderId): number {
+    return this.running.get(provider)?.size ?? 0
+  }
+
+  private runningCounts(): Partial<Record<ProviderId, number>> {
+    const counts: Partial<Record<ProviderId, number>> = {}
+    for (const [provider, ids] of this.running) {
+      counts[provider] = ids.size
     }
-    this.running.add(provider)
-    job.status = 'running'
-    job.provider = provider
-    this.emitStatus(job)
-    void this.execute(job, provider)
-      .catch((err: unknown) => {
-        if (job.status === 'running') {
-          job.status = 'failed'
-          job.error = err instanceof Error ? err.message : String(err)
-          this.emitStatus(job)
-        }
-      })
-      .finally(() => {
-        this.running.delete(provider)
-        this.pump(provider)
-        this.resolveIdle()
-      })
+    return counts
+  }
+
+  private addRunning(provider: ProviderId, id: string): void {
+    const set = this.running.get(provider)
+    if (set) set.add(id)
+    else this.running.set(provider, new Set([id]))
+  }
+
+  private removeRunning(provider: ProviderId, id: string): void {
+    const set = this.running.get(provider)
+    if (!set) return
+    set.delete(id)
+    if (set.size === 0) this.running.delete(provider)
+  }
+
+  /** Start queued jobs for `provider` while it has free parallel slots. */
+  private pump(provider: ProviderId): void {
+    const limit = this.rules.maxParallel
+    while (this.runningCount(provider) < limit) {
+      const queue = this.queues.get(provider)
+      if (!queue?.length) return
+      const id = queue.shift()
+      if (id === undefined) return
+      const job = this.byJob.get(id)
+      if (!job || job.status !== 'queued') continue
+      this.addRunning(provider, id)
+      job.status = 'running'
+      job.provider = provider
+      this.emitStatus(job)
+      void this.execute(job, provider)
+        .catch((err: unknown) => {
+          if (job.status === 'running') {
+            job.status = 'failed'
+            job.error = err instanceof Error ? err.message : String(err)
+            this.emitStatus(job)
+          }
+        })
+        .finally(() => {
+          this.removeRunning(provider, id)
+          this.handles.delete(id)
+          this.abandoning.delete(id)
+          this.pump(provider)
+          this.resolveIdle()
+        })
+    }
   }
 
   private workingDir(): string {
@@ -345,7 +386,9 @@ export class Orchestrator {
         model: this.modelFor?.(provider),
         ...(job.edit ? { edit: true } : {})
       })
+      this.handles.set(job.id, handle)
       for await (const event of handle.events) {
+        if (this.abandoning.has(job.id)) break
         if (event.kind === 'init') {
           if (event.model !== undefined) {
             job.model = event.model
@@ -378,16 +421,17 @@ export class Orchestrator {
         }
       }
       // Kill before waiting for exit so a limit stops the process.
-      if (limitEv) safeKill(handle)
+      if (limitEv || this.abandoning.has(job.id)) safeKill(handle)
       let exit: { code: number | null; stderr: string }
       try {
         exit = await handle.exit
       } catch (err) {
-        if (!limitEv) throw err
+        if (!limitEv && !this.abandoning.has(job.id)) throw err
         const message = err instanceof Error ? err.message : String(err)
         exit = { code: null, stderr: message }
       }
       const duration = Date.now() - t0
+      if (this.finishAbandoned(job, provider)) return
       const limited = limitEv !== null || (exit.code !== 0 && adapter.isLimitError(exit.stderr))
       if (limited) {
         if (!limitEv) safeKill(handle)
@@ -396,11 +440,26 @@ export class Orchestrator {
       }
       this.complete(job, provider, result, exit.stderr, startedAt, duration, utilization)
     } catch (err) {
+      if (this.finishAbandoned(job, provider)) return
       safeKill(handle)
       this.failThrown(job, provider, err, startedAt, Date.now() - t0, utilization, result)
     } finally {
       if (started && job.edit) this.onChanges?.()
     }
+  }
+
+  /** Finish a job that was killed because its plan hit a limit. */
+  private finishAbandoned(job: InternalJob, provider: ProviderId): boolean {
+    if (!this.abandoning.delete(job.id)) return false
+    if (job.status !== 'running') return true
+    if (job.chosen) {
+      job.status = 'failed'
+      job.error = `${provider} hit its usage limit`
+      this.emitStatus(job)
+      return true
+    }
+    this.requeue(job, provider, true, job.output)
+    return true
   }
 
   private appendText(job: InternalJob, text: string): void {
@@ -444,6 +503,7 @@ export class Orchestrator {
       : now + this.rules.defaultRestHours * 3600_000
     this.store.setResting(provider, until)
     this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'limit')
+    this.abandonOthers(provider, job.id)
     if (job.chosen) {
       job.status = 'failed'
       job.error = `${provider} hit its usage limit`
@@ -454,6 +514,17 @@ export class Orchestrator {
     const output = job.output
     this.requeue(job, provider, true, output)
     this.rerouteQueued(provider)
+  }
+
+  /** Kill every other running job on a plan that just hit its limit. */
+  private abandonOthers(provider: ProviderId, exceptId: string): void {
+    const ids = this.running.get(provider)
+    if (!ids) return
+    for (const id of ids) {
+      if (id === exceptId) continue
+      this.abandoning.add(id)
+      safeKill(this.handles.get(id))
+    }
   }
 
   /** Move jobs still queued on a provider that just went to rest. */
@@ -492,7 +563,8 @@ export class Orchestrator {
       this.store,
       this.rules,
       this.now(),
-      job.failedOver
+      job.failedOver,
+      this.runningCounts()
     )
     if (!next) {
       job.status = 'failed'

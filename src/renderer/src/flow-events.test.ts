@@ -18,6 +18,7 @@ function plan(partial: Partial<PlanStatus> & Pick<PlanStatus, 'id'>): PlanStatus
     resetsAt: null,
     atRisk: false,
     busy: false,
+    running: 0,
     queued: 0,
     model: null,
     windows: [],

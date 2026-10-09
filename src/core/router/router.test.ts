@@ -48,11 +48,38 @@ test('loadRules() parses the bundled file and covers every job type', () => {
   const rules = loadRules()
   expect(rules.fallbackFit).toBe(0.5)
   expect(rules.defaultRestHours).toBe(5)
+  expect(rules.maxParallel).toBe(3)
   expect(rules.allowance.claude).toEqual({ windowHours: 5, units: 15 })
   expect(rules.allowance.cursor).toEqual({ windowHours: 720, units: 20_000_000 })
   expect(rules.pace).toEqual(DEFAULT_PACE)
   for (const type of JOB_TYPES) {
     expect(rules.rules[type]?.length).toBeGreaterThan(0)
+  }
+})
+
+test('loadRules defaults and clamps maxParallel', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'router-max-parallel-'))
+  try {
+    const path = join(dir, 'rules.json')
+    const bundled = loadRules()
+    const without = { ...bundled }
+    delete (without as { maxParallel?: number }).maxParallel
+    writeFileSync(path, JSON.stringify(without))
+    expect(loadRules(path).maxParallel).toBe(3)
+
+    writeFileSync(path, JSON.stringify({ ...bundled, maxParallel: 0 }))
+    expect(loadRules(path).maxParallel).toBe(1)
+    writeFileSync(path, JSON.stringify({ ...bundled, maxParallel: 99 }))
+    expect(loadRules(path).maxParallel).toBe(8)
+    writeFileSync(path, JSON.stringify({ ...bundled, maxParallel: 2 }))
+    expect(loadRules(path).maxParallel).toBe(2)
+
+    for (const bad of [1.5, '3', null, true, Number.NaN]) {
+      writeFileSync(path, JSON.stringify({ ...bundled, maxParallel: bad }))
+      expect(loadRules(path).maxParallel).toBe(3)
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 

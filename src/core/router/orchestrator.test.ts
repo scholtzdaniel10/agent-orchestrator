@@ -1,5 +1,13 @@
 import { expect, test } from 'vitest'
-import type { AgentEvent, Job, ProviderAdapter, ProviderId, RunHandle, RunOptions } from '../types'
+import type {
+  AgentEvent,
+  Job,
+  ProviderAdapter,
+  ProviderId,
+  RouterRules,
+  RunHandle,
+  RunOptions
+} from '../types'
 import type { Worktrees } from '../worktrees'
 import { Orchestrator, type JobRecord } from './orchestrator'
 import { headroom, loadRules } from './router'
@@ -49,8 +57,12 @@ class FakeAdapter implements ProviderAdapter {
     script.onStart?.()
     if (script.throwOnRun) throw new Error('adapter exploded')
     let killed = false
+    let wake: (() => void) | undefined
+    const killedWait = new Promise<void>((resolve) => {
+      wake = resolve
+    })
     const events = (async function* (): AsyncGenerator<AgentEvent> {
-      if (script.gate) await script.gate
+      if (script.gate) await Promise.race([script.gate, killedWait])
       if (killed) return
       let paused = false
       for (const event of script.events ?? []) {
@@ -58,7 +70,8 @@ class FakeAdapter implements ProviderAdapter {
         yield event
         if (!paused && script.pause) {
           paused = true
-          await script.pause
+          await Promise.race([script.pause, killedWait])
+          if (killed) return
         }
       }
     })()
@@ -70,6 +83,7 @@ class FakeAdapter implements ProviderAdapter {
       }),
       kill(): void {
         killed = true
+        wake?.()
       }
     }
   }
@@ -115,6 +129,7 @@ async function withOrch(
     cwd?: string | (() => string)
     worktrees?: Worktrees
     onChanges?: () => void
+    rules?: RouterRules
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -122,7 +137,7 @@ async function withOrch(
     const orch = new Orchestrator({
       adapters,
       store,
-      rules: loadRules(),
+      rules: extra?.rules ?? loadRules(),
       cwd: extra?.cwd ?? CWD,
       now,
       modelFor,
@@ -134,6 +149,10 @@ async function withOrch(
   } finally {
     store.close()
   }
+}
+
+function rulesWith(maxParallel: number): RouterRules {
+  return { ...loadRules(), maxParallel }
 }
 
 test('routes a job to the provider listed first for its type', async () => {
@@ -151,13 +170,12 @@ test('routes a job to the provider listed first for its type', async () => {
   })
 })
 
-test('runs one job per provider and lets providers run concurrently', async () => {
+test('runs up to maxParallel jobs per provider and lets providers run concurrently', async () => {
   const claudeHold = gate()
   const cursorHold = gate()
-  const secondStarted = gate()
   const claude = new FakeAdapter('claude', [
     { gate: claudeHold.promise, ...ok('a') },
-    { onStart: () => secondStarted.open(), ...ok('b') }
+    { gate: claudeHold.promise, ...ok('b') }
   ])
   const cursor = new FakeAdapter('cursor', [{ gate: cursorHold.promise, ...ok('c') }])
 
@@ -166,15 +184,12 @@ test('runs one job per provider and lets providers run concurrently', async () =
     orch.submit('refactor', 'r1')
     orch.submit('planning', 'c2')
 
-    expect(claude.received.map((job) => job.prompt)).toEqual(['c1'])
+    expect(claude.received.map((job) => job.prompt)).toEqual(['c1', 'c2'])
     expect(cursor.received.map((job) => job.prompt)).toEqual(['r1'])
-    expect(orch.list()[2]).toMatchObject({ prompt: 'c2', status: 'queued', provider: 'claude' })
+    expect(orch.list()[2]).toMatchObject({ prompt: 'c2', status: 'running', provider: 'claude' })
+    expect(orch.workers()[0]).toMatchObject({ busy: true, running: 2, queued: 0 })
 
     claudeHold.open()
-    await secondStarted.promise
-    expect(claude.received.map((job) => job.prompt)).toEqual(['c1', 'c2'])
-    expect(orch.list().find((job) => job.prompt === 'r1')?.status).toBe('running')
-
     cursorHold.open()
     await orch.idle()
     expect(orch.list().map((job) => job.status)).toEqual(['done', 'done', 'done'])
@@ -311,26 +326,35 @@ test('queued jobs of a resting provider are re-picked too', async () => {
     }
   ])
   const cursor = new FakeAdapter('cursor', [ok('one'), ok('two')])
+  cursor.signedIn = false
 
-  await withOrch([claude, cursor], async (orch) => {
-    orch.submit('planning', 'alpha')
-    expect(claude.received).toHaveLength(1)
-    const second = orch.submit('planning', 'beta')
-    expect(second).toMatchObject({ status: 'queued', provider: 'claude' })
-    expect(cursor.received).toHaveLength(0)
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      orch.submit('planning', 'alpha')
+      expect(claude.received).toHaveLength(1)
+      const second = orch.submit('planning', 'beta')
+      expect(second).toMatchObject({ status: 'queued', provider: 'claude' })
+      expect(cursor.received).toHaveLength(0)
 
-    held.open()
-    await orch.idle()
+      cursor.signedIn = true
+      await orch.init()
+      held.open()
+      await orch.idle()
 
-    expect(claude.received).toHaveLength(1)
-    expect(cursor.received.map((job) => job.prompt)[0]).toContain(
-      '[Handoff: a previous attempt on claude stopped at its usage limit. Its output so far:]\npartial'
-    )
-    expect(cursor.received[1].prompt).toBe('beta')
-    expect(orch.list().map((job) => job.status)).toEqual(['done', 'done'])
-    expect(orch.list()[0].failedOver).toEqual(['claude'])
-    expect(orch.list()[1].failedOver).toEqual([])
-  })
+      expect(claude.received).toHaveLength(1)
+      expect(cursor.received.map((job) => job.prompt)[0]).toContain(
+        '[Handoff: a previous attempt on claude stopped at its usage limit. Its output so far:]\npartial'
+      )
+      expect(cursor.received[1].prompt).toBe('beta')
+      expect(orch.list().map((job) => job.status)).toEqual(['done', 'done'])
+      expect(orch.list()[0].failedOver).toEqual(['claude'])
+      expect(orch.list()[1].failedOver).toEqual([])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(1) }
+  )
 })
 
 test('both providers limited fails the job', async () => {
@@ -495,7 +519,10 @@ test('no signed-in provider fails the job; init can be called again', async () =
 test('workers reports availability, rest, headroom, busy work, and queue depth', async () => {
   const now = 1_700_000_000_000
   const held = gate()
-  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }, ok('b')])
+  const claude = new FakeAdapter('claude', [
+    { gate: held.promise, ...ok('a') },
+    { gate: held.promise, ...ok('b') }
+  ])
   const cursor = new FakeAdapter('cursor', [])
   cursor.signedIn = false
   await withOrch(
@@ -512,7 +539,8 @@ test('workers reports availability, rest, headroom, busy work, and queue depth',
         available: true,
         restingUntil: null,
         busy: true,
-        queued: 1,
+        running: 2,
+        queued: 0,
         resetsAt: null,
         atRisk: false,
         windows: []
@@ -521,6 +549,7 @@ test('workers reports availability, rest, headroom, busy work, and queue depth',
         available: false,
         restingUntil: now + 60_000,
         busy: false,
+        running: 0,
         queued: 0
       })
       expect(workers[0].headroom).toBe(headroom('claude', store, rules, now))
@@ -528,7 +557,7 @@ test('workers reports availability, rest, headroom, busy work, and queue depth',
       expect(workers[1].headroom).toBe(0)
       held.open()
       await orch.idle()
-      expect(orch.workers()[0]).toMatchObject({ busy: false, queued: 0 })
+      expect(orch.workers()[0]).toMatchObject({ busy: false, running: 0, queued: 0 })
     },
     () => now
   )
@@ -772,9 +801,10 @@ test('a chosen plan that is not signed in or is resting fails the job', async ()
   )
 })
 
-test('a chosen job that hits its limit fails, and an unchosen queued sibling fails over', async () => {
+test('a chosen job that hits its limit fails, and an unchosen sibling fails over', async () => {
   const now = 1_800_000_000_000
   const held = gate()
+  const stuck = gate()
   const claude = new FakeAdapter('claude', [
     {
       gate: held.promise,
@@ -782,6 +812,11 @@ test('a chosen job that hits its limit fails, and an unchosen queued sibling fai
         { kind: 'text', text: 'partial' },
         { kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }
       ]
+    },
+    {
+      gate: held.promise,
+      pause: stuck.promise,
+      events: [{ kind: 'text', text: 'sibling-partial' }]
     }
   ])
   const cursor = new FakeAdapter('cursor', [ok('moved')])
@@ -792,7 +827,7 @@ test('a chosen job that hits its limit fails, and an unchosen queued sibling fai
       expect(chosen.reason).toBe('chosen')
       const sibling = orch.submit('planning', 'sibling')
       expect(sibling).toMatchObject({
-        status: 'queued',
+        status: 'running',
         provider: 'claude',
         reason: 'first choice'
       })
@@ -808,10 +843,12 @@ test('a chosen job that hits its limit fails, and an unchosen queued sibling fai
         status: 'done',
         provider: 'cursor',
         reason: 'failover',
-        output: 'moved'
+        output: 'moved',
+        failedOver: ['claude']
       })
-      expect(cursor.received.map((job) => job.prompt)).toEqual(['sibling'])
-      expect(claude.received).toHaveLength(1)
+      expect(cursor.received).toHaveLength(1)
+      expect(cursor.received[0]?.prompt).toContain('sibling')
+      expect(claude.received).toHaveLength(2)
       expect(store.restingUntil('claude')).toBe(1_900_000_000_000)
       expect(store.runs('claude')[0]).toMatchObject({ outcome: 'limit' })
     },
@@ -819,9 +856,10 @@ test('a chosen job that hits its limit fails, and an unchosen queued sibling fai
   )
 })
 
-test('a chosen job waiting on a plan that hits its limit fails instead of moving', async () => {
+test('a chosen job on a plan that hits its limit fails instead of moving', async () => {
   const now = 1_800_000_000_000
   const held = gate()
+  const stuck = gate()
   const claude = new FakeAdapter('claude', [
     {
       gate: held.promise,
@@ -829,6 +867,11 @@ test('a chosen job waiting on a plan that hits its limit fails instead of moving
         { kind: 'text', text: 'partial' },
         { kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }
       ]
+    },
+    {
+      gate: held.promise,
+      pause: stuck.promise,
+      events: [{ kind: 'text', text: 'chosen-partial' }]
     }
   ])
   const cursor = new FakeAdapter('cursor', [ok('moved')])
@@ -837,7 +880,7 @@ test('a chosen job waiting on a plan that hits its limit fails instead of moving
     async (orch) => {
       const runner = orch.submit('planning', 'runner')
       const chosen = orch.submit('planning', 'pinned', 'claude')
-      expect(chosen).toMatchObject({ status: 'queued', provider: 'claude', reason: 'chosen' })
+      expect(chosen).toMatchObject({ status: 'running', provider: 'claude', reason: 'chosen' })
       held.open()
       await orch.idle()
       expect(orch.get(chosen.id)).toMatchObject({
@@ -1181,4 +1224,162 @@ test('restore while busy throws', async () => {
     held.open()
     await orch.idle()
   })
+})
+
+test('maxParallel 2 runs two jobs and queues the third until a slot frees', async () => {
+  const hold = gate()
+  const thirdStarted = gate()
+  const claude = new FakeAdapter('claude', [
+    { gate: hold.promise, ...ok('a') },
+    { gate: hold.promise, ...ok('b') },
+    { onStart: () => thirdStarted.open(), ...ok('c') }
+  ])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'first')
+      orch.submit('planning', 'second')
+      orch.submit('planning', 'third')
+      expect(claude.received.map((job) => job.prompt)).toEqual(['first', 'second'])
+      expect(orch.list().map((job) => job.status)).toEqual(['running', 'running', 'queued'])
+      expect(orch.workers()[0]).toMatchObject({ running: 2, queued: 1, busy: true })
+      hold.open()
+      await thirdStarted.promise
+      expect(claude.received.map((job) => job.prompt)).toEqual(['first', 'second', 'third'])
+      await orch.idle()
+      expect(orch.list().map((job) => job.status)).toEqual(['done', 'done', 'done'])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(2) }
+  )
+})
+
+test('jobs start in submission order when a parallel slot frees', async () => {
+  const hold = gate()
+  const started: string[] = []
+  const claude = new FakeAdapter('claude', [
+    {
+      gate: hold.promise,
+      onStart: () => started.push('a'),
+      ...ok('a')
+    },
+    {
+      gate: hold.promise,
+      onStart: () => started.push('b'),
+      ...ok('b')
+    },
+    { onStart: () => started.push('c'), ...ok('c') },
+    { onStart: () => started.push('d'), ...ok('d') }
+  ])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'a')
+      orch.submit('planning', 'b')
+      orch.submit('planning', 'c')
+      orch.submit('planning', 'd')
+      expect(started).toEqual(['a', 'b'])
+      hold.open()
+      await orch.idle()
+      expect(started).toEqual(['a', 'b', 'c', 'd'])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(2) }
+  )
+})
+
+test('a limit with two running jobs fails over both, once each', async () => {
+  const now = 1_800_000_000_000
+  const held = gate()
+  const stuck = gate()
+  const claude = new FakeAdapter('claude', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'text', text: 'one' },
+        { kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }
+      ]
+    },
+    {
+      gate: held.promise,
+      pause: stuck.promise,
+      events: [{ kind: 'text', text: 'two' }]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('moved-a'), ok('moved-b')])
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      const first = orch.submit('planning', 'alpha')
+      const second = orch.submit('planning', 'beta')
+      expect(orch.workers()[0]?.running).toBe(2)
+      held.open()
+      await orch.idle()
+      expect(orch.get(first.id)).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        reason: 'failover',
+        failedOver: ['claude']
+      })
+      expect(orch.get(second.id)).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        reason: 'failover',
+        failedOver: ['claude']
+      })
+      expect(cursor.received).toHaveLength(2)
+    },
+    () => now,
+    undefined,
+    { rules: rulesWith(2) }
+  )
+})
+
+test('maxParallel 1 queues a second job on the same plan', async () => {
+  const held = gate()
+  const secondStarted = gate()
+  const claude = new FakeAdapter('claude', [
+    { gate: held.promise, ...ok('a') },
+    { onStart: () => secondStarted.open(), ...ok('b') }
+  ])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'one')
+      orch.submit('planning', 'two')
+      expect(claude.received.map((job) => job.prompt)).toEqual(['one'])
+      expect(orch.list()[1]).toMatchObject({ prompt: 'two', status: 'queued', provider: 'claude' })
+      expect(orch.workers()[0]).toMatchObject({ running: 1, queued: 1 })
+      held.open()
+      await secondStarted.promise
+      expect(claude.received.map((job) => job.prompt)).toEqual(['one', 'two'])
+      await orch.idle()
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(1) }
+  )
+})
+
+test('auto routing skips a plan at its parallel limit when the other has a free slot', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }])
+  const cursor = new FakeAdapter('cursor', [ok('b'), ok('c')])
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      orch.submit('planning', 'first')
+      expect(orch.list()[0]).toMatchObject({ provider: 'claude', status: 'running' })
+      const second = orch.submit('planning', 'second')
+      expect(second).toMatchObject({ provider: 'cursor', reason: 'more headroom' })
+      held.open()
+      await orch.idle()
+      expect(cursor.received.map((job) => job.prompt)).toEqual(['second'])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(1) }
+  )
 })

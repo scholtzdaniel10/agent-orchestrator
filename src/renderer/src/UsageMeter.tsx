@@ -20,8 +20,13 @@ function headroomPercent(used: number): number {
 function planWord(plan: PlanStatus, now: number): PlanWord {
   if (!plan.available) return 'not signed in'
   if (plan.restingUntil !== null && plan.restingUntil > now) return 'resting'
-  if (plan.busy) return 'busy'
+  if (plan.busy || plan.running > 0) return 'busy'
   return 'ready'
+}
+
+function planStatusLabel(plan: PlanStatus, word: PlanWord): string {
+  if (word === 'busy' && plan.running > 1) return `${plan.running} running`
+  return word
 }
 
 function clock(ms: number): string {
@@ -51,8 +56,9 @@ function usageAvatarState(word: PlanWord): 'idle' | 'working' | 'resting' {
   return 'idle'
 }
 
-function statusClass(word: PlanWord): string {
+function statusClass(word: PlanWord, running: number): string {
   if (word === 'not signed in') return 'status status-out'
+  if (word === 'busy' && running > 1) return 'status status-running'
   return `status status-${word}`
 }
 
@@ -136,16 +142,18 @@ function UsageMeter({
             hasWindows || plan.resetsAt === null ? null : resetPhrase(plan.resetsAt, now)
           const showResting = word === 'resting' && restingUntil !== null
           const showQueued = plan.queued > 0
-          const hasDetails = showResting || reset !== null || showQueued || plan.atRisk
+          const showRunning = plan.running > 1
+          const hasDetails =
+            showResting || reset !== null || showQueued || showRunning || plan.atRisk
           return (
             <div key={plan.id} className="usage-card-wrap">
               <div className="usage-card">
                 <div className="usage-head">
                   <BotAvatar bot={plan.id} state={usageAvatarState(word)} size={32} />
                   <span className="usage-name">{plan.id}</span>
-                  <span className={statusClass(word)}>
+                  <span className={statusClass(word, plan.running)}>
                     <span className="status-dot" aria-hidden="true" />
-                    {word}
+                    {planStatusLabel(plan, word)}
                   </span>
                 </div>
                 <div className="usage-readout">
@@ -208,6 +216,7 @@ function UsageMeter({
                       <p className="usage-detail">resting until {clock(restingUntil)}</p>
                     ) : null}
                     {reset !== null ? <p className="usage-detail">{reset}</p> : null}
+                    {showRunning ? <p className="usage-detail">{plan.running} running</p> : null}
                     {showQueued ? <p className="usage-detail">{plan.queued} queued</p> : null}
                     {plan.atRisk ? (
                       <p className="usage-risk">

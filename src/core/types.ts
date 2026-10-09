@@ -97,6 +97,8 @@ export interface RouterRules {
   defaultRestHours: number
   /** How routing leans toward a plan that is behind an even-usage pace. Defaults apply when absent. */
   pace?: PaceRules
+  /** How many jobs one plan may run at once. Default 3; clamped to 1..8. */
+  maxParallel: number
 }
 
 export interface PaceRules {
