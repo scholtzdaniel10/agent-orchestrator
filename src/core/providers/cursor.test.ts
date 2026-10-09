@@ -60,7 +60,7 @@ test('cursor-plain parses init, text, and result', () => {
   expect(events).toEqual([
     {
       kind: 'init',
-      sessionId: 'f7be1458-1eb0-461c-a896-c2dca9092f79',
+      sessionId: '00000000-0000-4000-8000-00000000011c',
       model: 'Grok 4.7 256K Extra High'
     },
     { kind: 'text', text: 'ok' },
@@ -68,7 +68,7 @@ test('cursor-plain parses init, text, and result', () => {
       kind: 'result',
       ok: true,
       text: 'ok',
-      sessionId: 'f7be1458-1eb0-461c-a896-c2dca9092f79',
+      sessionId: '00000000-0000-4000-8000-00000000011c',
       durationMs: 14224,
       tokens: 10406
     }

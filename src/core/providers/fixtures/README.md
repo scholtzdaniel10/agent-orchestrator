@@ -1,6 +1,6 @@
 # Fixtures
 
-Captured from the real CLIs (`claude -p --output-format stream-json --verbose` and `agent -p --output-format stream-json`), then scrubbed: local paths, hook output, command/skill/plugin lists and extra thinking deltas removed. Event shapes are otherwise unchanged. Capture versions: claude 2.1.280, agent 2026.09.26.
+Captured from the real CLIs (`claude -p --output-format stream-json --verbose` and `agent -p --output-format stream-json`), then scrubbed: every session, message, request and tool id replaced with a made-up value, and local paths, hook output, command/skill/plugin lists and extra thinking deltas removed. Event shapes are otherwise unchanged. Capture versions: claude 2.1.280, agent 2026.09.26.
 
 | File | Source |
 | --- | --- |

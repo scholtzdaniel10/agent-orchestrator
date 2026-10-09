@@ -60,7 +60,7 @@ test('claude-plain parses init, text, usage, and result', () => {
   expect(events).toEqual([
     {
       kind: 'init',
-      sessionId: '622ae2ea-0710-4c62-b456-dbab99f57d85',
+      sessionId: '00000000-0000-4000-8000-000000000103',
       model: 'claude-opus-5-5'
     },
     { kind: 'text', text: 'ok' },
@@ -77,7 +77,7 @@ test('claude-plain parses init, text, usage, and result', () => {
       kind: 'result',
       ok: true,
       text: 'ok',
-      sessionId: '622ae2ea-0710-4c62-b456-dbab99f57d85',
+      sessionId: '00000000-0000-4000-8000-000000000103',
       durationMs: 6515,
       costUsd: 0.1355346,
       tokens: 6
@@ -94,7 +94,7 @@ test('claude-tool skips tool-only assistant output', () => {
   expect(eventsFromFixture(adapter, 'claude-tool.ndjson')).toEqual([
     {
       kind: 'init',
-      sessionId: '3c3cd804-ea6e-4395-9d68-7031b3e29180',
+      sessionId: '00000000-0000-4000-8000-00000000010d',
       model: 'claude-opus-5-5'
     },
     {
@@ -111,7 +111,7 @@ test('claude-tool skips tool-only assistant output', () => {
       kind: 'result',
       ok: true,
       text: 'It says "hello fixture".',
-      sessionId: '3c3cd804-ea6e-4395-9d68-7031b3e29180',
+      sessionId: '00000000-0000-4000-8000-00000000010d',
       durationMs: 5780,
       costUsd: 0.16763240000000001,
       tokens: 137
