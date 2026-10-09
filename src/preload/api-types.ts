@@ -11,11 +11,16 @@ import type {
 } from '../core/types'
 import type { JobRecord } from '../core/router'
 
+/** Why a plan cannot be used. */
+export type PlanProblem = 'not-installed' | 'signed-out'
+
 /** One subscription plan as the sidebar shows it. */
 export interface PlanStatus {
   id: ProviderId
   /** Installed and signed in. */
   available: boolean
+  /** Why the plan is unusable; absent when available. */
+  problem?: PlanProblem
   /** Fraction of the current allowance already used, 0..1. */
   used: number
   /** Epoch ms the plan rests until after a limit error, or null. */
@@ -60,9 +65,13 @@ export interface OrchestratorApi {
   ): Promise<JobRecord>
   listJobs(): Promise<JobRecord[]>
   onJobUpdate(cb: (job: JobRecord) => void): () => void
+  /** Stop a queued or running job. */
+  cancelJob(id: string): Promise<JobRecord>
 
   listPlans(): Promise<PlanStatus[]>
   onPlansUpdate(cb: (plans: PlanStatus[]) => void): () => void
+  /** Re-check which CLIs are installed and signed in. Safe while jobs run. */
+  recheckPlans(): Promise<PlanStatus[]>
 
   /** Models the plan's CLI offers. May be empty; any model name can still be typed. */
   listModels(provider: ProviderId): Promise<ModelOption[]>

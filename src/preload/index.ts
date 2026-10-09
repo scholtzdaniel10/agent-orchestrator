@@ -36,6 +36,9 @@ const api: OrchestratorApi = {
       ipcRenderer.removeListener('jobs:update', listener)
     }
   },
+  cancelJob(id: string): Promise<JobRecord> {
+    return ipcRenderer.invoke('jobs:cancel', id)
+  },
   listPlans(): Promise<PlanStatus[]> {
     return ipcRenderer.invoke('plans:list')
   },
@@ -47,6 +50,9 @@ const api: OrchestratorApi = {
     return () => {
       ipcRenderer.removeListener('plans:update', listener)
     }
+  },
+  recheckPlans(): Promise<PlanStatus[]> {
+    return ipcRenderer.invoke('plans:recheck')
   },
   listModels(provider: ProviderId): Promise<ModelOption[]> {
     return ipcRenderer.invoke('models:list', provider)

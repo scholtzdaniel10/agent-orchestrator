@@ -146,14 +146,22 @@ function placementFor(
   return 'hidden'
 }
 
+function canStop(job: JobRecord): boolean {
+  return job.status === 'queued' || job.status === 'running'
+}
+
 function CompareOutput({
   groupJobs,
   changes,
-  onViewChange
+  onViewChange,
+  stoppingId,
+  onStop
 }: {
   groupJobs: JobRecord[]
   changes: readonly ChangeSet[]
   onViewChange: (id: string) => void
+  stoppingId: string | null
+  onStop: (id: string) => void
 }): React.JSX.Element {
   const [merging, setMerging] = useState(false)
   const [messages, setMessages] = useState<Record<string, string>>({})
@@ -219,6 +227,16 @@ function CompareOutput({
                 <span className="status-dot" aria-hidden="true" />
                 {job.status}
               </span>
+              {canStop(job) ? (
+                <button
+                  type="button"
+                  className="btn btn-compact"
+                  disabled={stoppingId === job.id}
+                  onClick={() => onStop(job.id)}
+                >
+                  Stop
+                </button>
+              ) : null}
             </div>
             <div className="output-body">
               {waiting ? (
@@ -302,8 +320,10 @@ function Workers({
   const [openError, setOpenError] = useState<string | null>(null)
   const [focusTermId, setFocusTermId] = useState<string | null>(null)
   const [focusTick, setFocusTick] = useState(0)
+  const [stoppingId, setStoppingId] = useState<string | null>(null)
   const sending = useRef(false)
   const openingRef = useRef(false)
+  const stoppingRef = useRef(false)
   const selectedRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -327,6 +347,15 @@ function Workers({
   const newest = jobs.slice().reverse()
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null
   const promptEmpty = prompt.trim() === ''
+  const claudeReady = planAvailable(plans, 'claude')
+  const cursorReady = planAvailable(plans, 'cursor')
+  const bothReady = claudeReady && cursorReady
+  const noPlanReady = plans !== null && !claudeReady && !cursorReady
+  const choiceBlocked =
+    (worker === 'claude' && !claudeReady) ||
+    (worker === 'cursor' && !cursorReady) ||
+    (worker === 'both' && !bothReady)
+  const submitDisabled = promptEmpty || noPlanReady || choiceBlocked
   const shownId =
     selectedId !== null && terminals.some((info) => info.id === selectedId) ? selectedId : null
   const partnerId =
@@ -334,6 +363,22 @@ function Workers({
       ? splitPartner(terminals, shownId, recentOther)
       : null
   const splitOn = partnerId !== null
+
+  async function stopJob(id: string): Promise<void> {
+    if (stoppingRef.current) return
+    stoppingRef.current = true
+    setStoppingId(id)
+    try {
+      const job = await window.api.cancelJob(id)
+      onJob(job)
+      setOpenError(null)
+    } catch (err: unknown) {
+      setOpenError(errorText(err))
+    } finally {
+      stoppingRef.current = false
+      setStoppingId(null)
+    }
+  }
 
   function requestFocus(id: string): void {
     setFocusTermId(id)
@@ -545,16 +590,19 @@ function Workers({
                     onChange={(event) => setWorker(asPlanChoice(event.target.value))}
                   >
                     <option value="auto">auto</option>
-                    <option value="claude" disabled={!planAvailable(plans, 'claude')}>
+                    <option value="claude" disabled={!claudeReady}>
                       claude
                     </option>
-                    <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
+                    <option value="cursor" disabled={!cursorReady}>
                       cursor
                     </option>
                     <option
                       value="both"
-                      disabled={
-                        !planAvailable(plans, 'claude') || !planAvailable(plans, 'cursor')
+                      disabled={!bothReady}
+                      title={
+                        bothReady
+                          ? undefined
+                          : 'Both Claude and Cursor need to be ready to compare.'
                       }
                     >
                       both (compare)
@@ -576,11 +624,14 @@ function Workers({
                     Let it edit files
                   </label>
                 </div>
-                <button className="btn btn-primary" type="submit" disabled={promptEmpty}>
+                <button className="btn btn-primary" type="submit" disabled={submitDisabled}>
                   Submit
                 </button>
               </div>
             </div>
+            {noPlanReady ? (
+              <p className="hint">No plan is ready. See Usage on the right.</p>
+            ) : null}
           </form>
 
           <section className="jobs" aria-label="Jobs">
@@ -674,6 +725,10 @@ function Workers({
                 groupJobs={jobs.filter((job) => job.group === selectedJob.group)}
                 changes={changes}
                 onViewChange={viewChange}
+                stoppingId={stoppingId}
+                onStop={(id) => {
+                  void stopJob(id)
+                }}
               />
             ) : (
               <>
@@ -686,6 +741,18 @@ function Workers({
                     />
                   ) : null}
                   <span title={outputTitle(selectedJob)}>{outputTitle(selectedJob)}</span>
+                  {canStop(selectedJob) ? (
+                    <button
+                      type="button"
+                      className="btn btn-compact"
+                      disabled={stoppingId === selectedJob.id}
+                      onClick={() => {
+                        void stopJob(selectedJob.id)
+                      }}
+                    >
+                      Stop
+                    </button>
+                  ) : null}
                 </div>
                 <div className="output-body">
                   <RichText text={selectedJob.output} />

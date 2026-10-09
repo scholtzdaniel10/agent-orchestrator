@@ -147,7 +147,9 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
-  const sendDisabled = draftEmpty || leadStreaming
+  const noPlanReady =
+    plans !== null && !plans.some((plan) => plan.available)
+  const sendDisabled = draftEmpty || leadStreaming || noPlanReady
 
   async function send(): Promise<void> {
     const text = draft
@@ -237,7 +239,9 @@ function LeadChat({
             <RayBurst />
             <BotAvatar bot="lead" state="idle" size={40} />
             <p className="hint">
-              Ask the lead for something and it will split the work across your plans.
+              {noPlanReady
+                ? 'No plan is ready. See Usage on the right.'
+                : 'Ask the lead for something and it will split the work across your plans.'}
             </p>
           </div>
         ) : (

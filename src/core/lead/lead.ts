@@ -110,6 +110,11 @@ export class Lead {
 
   /** Providers that are installed and signed in become the candidate set. */
   async init(): Promise<void> {
+    await this.recheck()
+  }
+
+  /** Re-run installed/signed-in checks so a plan fixed while the app is open becomes usable. */
+  async recheck(): Promise<void> {
     const available: ProviderId[] = []
     for (const adapter of this.adapters) {
       if ((await adapter.isInstalled()) && (await adapter.isSignedIn())) available.push(adapter.id)

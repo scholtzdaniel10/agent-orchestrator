@@ -154,19 +154,23 @@ app.whenReady().then(async () => {
   }
 
   function plans(): PlanStatus[] {
-    return orch.workers().map((worker) => ({
-      id: worker.id,
-      available: worker.available,
-      used: clamp01(1 - worker.headroom),
-      restingUntil: worker.restingUntil,
-      resetsAt: worker.resetsAt,
-      atRisk: worker.atRisk,
-      model: settings.model(worker.id) ?? null,
-      windows: worker.windows,
-      busy: worker.busy,
-      running: worker.running,
-      queued: worker.queued
-    }))
+    return orch.workers().map((worker) => {
+      const status: PlanStatus = {
+        id: worker.id,
+        available: worker.available,
+        used: clamp01(1 - worker.headroom),
+        restingUntil: worker.restingUntil,
+        resetsAt: worker.resetsAt,
+        atRisk: worker.atRisk,
+        model: settings.model(worker.id) ?? null,
+        windows: worker.windows,
+        busy: worker.busy,
+        running: worker.running,
+        queued: worker.queued
+      }
+      if (worker.problem !== undefined) status.problem = worker.problem
+      return status
+    })
   }
 
   function publishPlans(): void {
@@ -231,7 +235,18 @@ app.whenReady().then(async () => {
     }
   )
   ipcMain.handle('jobs:list', () => orch.list())
+  ipcMain.handle('jobs:cancel', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
+    return orch.cancel(id)
+  })
   ipcMain.handle('plans:list', () => plans())
+  ipcMain.handle('plans:recheck', async () => {
+    await orch.recheck()
+    await lead.recheck()
+    const list = plans()
+    publishPlans()
+    return list
+  })
   ipcMain.handle('models:list', (_event, provider: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
     return provider === 'claude' ? claude.listModels() : cursor.listModels()

@@ -65,10 +65,14 @@ interface InternalJob {
 type ResultEvent = Extract<AgentEvent, { kind: 'result' }>
 type LimitEvent = Extract<AgentEvent, { kind: 'limit' }>
 
+export type PlanProblem = 'not-installed' | 'signed-out'
+
 export interface WorkerInfo {
   id: ProviderId
   /** Installed and signed in: present in the candidate set. */
   available: boolean
+  /** Why the plan is unusable; absent when available. */
+  problem?: PlanProblem
   /** Fraction of allowance left, 0..1. */
   headroom: number
   /** Epoch milliseconds, only while that instant is still ahead. */
@@ -97,6 +101,7 @@ export class Orchestrator {
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private candidates: ProviderId[] = []
+  private readonly problems = new Map<ProviderId, PlanProblem>()
   private readonly jobs: InternalJob[] = []
   private readonly byJob = new Map<string, InternalJob>()
   private readonly queues = new Map<ProviderId, string[]>()
@@ -105,6 +110,8 @@ export class Orchestrator {
   private readonly handles = new Map<string, ReturnType<ProviderAdapter['run']>>()
   /** Jobs killed because another job on the same plan hit a limit. */
   private readonly abandoning = new Set<string>()
+  /** Jobs stopped by cancel(); they fail with error 'stopped' and never fail over. */
+  private readonly cancelling = new Set<string>()
   private readonly listeners = new Set<(job: JobRecord) => void>()
   private idleWaiters: Array<() => void> = []
 
@@ -131,11 +138,26 @@ export class Orchestrator {
 
   /** Providers that are installed and signed in become the candidate set. */
   async init(): Promise<void> {
+    await this.recheck()
+  }
+
+  /**
+   * Re-run installed/signed-in checks. Only adds or removes candidates; running
+   * and queued jobs are left alone.
+   */
+  async recheck(): Promise<void> {
     const available: ProviderId[] = []
+    this.problems.clear()
     for (const adapter of this.adapters) {
-      if ((await adapter.isInstalled()) && (await adapter.isSignedIn())) {
-        available.push(adapter.id)
+      if (!(await adapter.isInstalled())) {
+        this.problems.set(adapter.id, 'not-installed')
+        continue
       }
+      if (!(await adapter.isSignedIn())) {
+        this.problems.set(adapter.id, 'signed-out')
+        continue
+      }
+      available.push(adapter.id)
     }
     this.candidates = available
   }
@@ -237,7 +259,8 @@ export class Orchestrator {
       const until = this.store.restingUntil(adapter.id)
       const queue = this.queues.get(adapter.id)
       const usage = planUsage(adapter.id, this.store, this.rules, now)
-      return {
+      const problem = this.problems.get(adapter.id)
+      const info: WorkerInfo = {
         id: adapter.id,
         available: this.candidates.includes(adapter.id),
         headroom: headroom(adapter.id, this.store, this.rules, now),
@@ -253,7 +276,35 @@ export class Orchestrator {
           resetsAt: window.resetsAt
         }))
       }
+      if (problem !== undefined) info.problem = problem
+      return info
     })
+  }
+
+  /** Stop a queued or running job. Finished or unknown ids throw. */
+  cancel(id: string): JobRecord {
+    const job = this.byJob.get(id)
+    if (!job || (job.status !== 'queued' && job.status !== 'running')) {
+      throw new Error('job is not running')
+    }
+    if (job.status === 'queued') {
+      const provider = job.provider
+      if (provider !== null) {
+        const queue = this.queues.get(provider)
+        if (queue) {
+          const index = queue.indexOf(id)
+          if (index >= 0) queue.splice(index, 1)
+        }
+      }
+      job.status = 'failed'
+      job.error = 'stopped'
+      this.emitStatus(job)
+      this.resolveIdle()
+      return copy(job)
+    }
+    this.cancelling.add(id)
+    safeKill(this.handles.get(id))
+    return copy(job)
   }
 
   onUpdate(cb: (job: JobRecord) => void): () => void {
@@ -337,6 +388,7 @@ export class Orchestrator {
           this.removeRunning(provider, id)
           this.handles.delete(id)
           this.abandoning.delete(id)
+          this.cancelling.delete(id)
           this.pump(provider)
           this.resolveIdle()
         })
@@ -379,6 +431,9 @@ export class Orchestrator {
         if (!folder) return
         runCwd = folder
       }
+      if (this.finishCancelled(job, provider, startedAt, Date.now() - t0, utilization, result)) {
+        return
+      }
       const adapter = this.byId.get(provider)
       if (!adapter) throw new Error(`no adapter for ${provider}`)
       started = true
@@ -387,8 +442,9 @@ export class Orchestrator {
         ...(job.edit ? { edit: true } : {})
       })
       this.handles.set(job.id, handle)
+      if (this.cancelling.has(job.id)) safeKill(handle)
       for await (const event of handle.events) {
-        if (this.abandoning.has(job.id)) break
+        if (this.abandoning.has(job.id) || this.cancelling.has(job.id)) break
         if (event.kind === 'init') {
           if (event.model !== undefined) {
             job.model = event.model
@@ -420,17 +476,18 @@ export class Orchestrator {
           break
         }
       }
-      // Kill before waiting for exit so a limit stops the process.
-      if (limitEv || this.abandoning.has(job.id)) safeKill(handle)
+      // Kill before waiting for exit so a limit or cancel stops the process.
+      if (limitEv || this.abandoning.has(job.id) || this.cancelling.has(job.id)) safeKill(handle)
       let exit: { code: number | null; stderr: string }
       try {
         exit = await handle.exit
       } catch (err) {
-        if (!limitEv && !this.abandoning.has(job.id)) throw err
+        if (!limitEv && !this.abandoning.has(job.id) && !this.cancelling.has(job.id)) throw err
         const message = err instanceof Error ? err.message : String(err)
         exit = { code: null, stderr: message }
       }
       const duration = Date.now() - t0
+      if (this.finishCancelled(job, provider, startedAt, duration, utilization, result)) return
       if (this.finishAbandoned(job, provider)) return
       const limited = limitEv !== null || (exit.code !== 0 && adapter.isLimitError(exit.stderr))
       if (limited) {
@@ -440,12 +497,33 @@ export class Orchestrator {
       }
       this.complete(job, provider, result, exit.stderr, startedAt, duration, utilization)
     } catch (err) {
+      if (this.finishCancelled(job, provider, startedAt, Date.now() - t0, utilization, result)) {
+        return
+      }
       if (this.finishAbandoned(job, provider)) return
       safeKill(handle)
       this.failThrown(job, provider, err, startedAt, Date.now() - t0, utilization, result)
     } finally {
       if (started && job.edit) this.onChanges?.()
     }
+  }
+
+  /** Finish a job that was stopped by cancel(). */
+  private finishCancelled(
+    job: InternalJob,
+    provider: ProviderId,
+    startedAt: number,
+    durationMs: number,
+    utilization: number | null,
+    result: ResultEvent | null
+  ): boolean {
+    if (!this.cancelling.delete(job.id)) return false
+    if (job.status !== 'running') return true
+    this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'error')
+    job.status = 'failed'
+    job.error = 'stopped'
+    this.emitStatus(job)
+    return true
   }
 
   /** Finish a job that was killed because its plan hit a limit. */

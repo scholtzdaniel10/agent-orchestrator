@@ -2,38 +2,71 @@
 ;(() => {
   const now = Date.now()
   const H = 3600_000
-  const empty = new URLSearchParams(location.search).has('empty')
-  const plans = [
-    {
-      id: 'claude',
-      available: true,
-      used: 0.62,
-      restingUntil: null,
-      resetsAt: now + 2.4 * H,
-      atRisk: false,
-      busy: !empty,
-      running: empty ? 0 : 2,
-      queued: empty ? 0 : 1,
-      model: null,
-      windows: [
-        { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
-        { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
+  const params = new URLSearchParams(location.search)
+  const empty = params.has('empty')
+  const noplans = params.has('noplans')
+  const plans = noplans
+    ? [
+        {
+          id: 'claude',
+          available: false,
+          problem: 'not-installed',
+          used: 0,
+          restingUntil: null,
+          resetsAt: null,
+          atRisk: false,
+          busy: false,
+          running: 0,
+          queued: 0,
+          model: null,
+          windows: []
+        },
+        {
+          id: 'cursor',
+          available: false,
+          problem: 'signed-out',
+          used: 0,
+          restingUntil: null,
+          resetsAt: null,
+          atRisk: false,
+          busy: false,
+          running: 0,
+          queued: 0,
+          model: null,
+          windows: []
+        }
       ]
-    },
-    {
-      id: 'cursor',
-      available: true,
-      used: 0.18,
-      restingUntil: null,
-      resetsAt: now + 400 * H,
-      atRisk: true,
-      busy: false,
-      running: 0,
-      queued: 0,
-      model: 'gpt-5',
-      windows: []
-    }
-  ]
+    : [
+        {
+          id: 'claude',
+          available: true,
+          used: 0.62,
+          restingUntil: null,
+          resetsAt: now + 2.4 * H,
+          atRisk: false,
+          busy: !empty,
+          running: empty ? 0 : 2,
+          queued: empty ? 0 : 1,
+          model: null,
+          windows: [
+            { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
+            { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
+          ]
+        },
+        {
+          id: 'cursor',
+          available: true,
+          used: 0.18,
+          restingUntil: null,
+          resetsAt: now + 400 * H,
+          atRisk: true,
+          busy: false,
+          running: 0,
+          queued: 0,
+          model: 'gpt-5',
+          windows: []
+        }
+      ]
   const jobs = empty
     ? []
     : [
@@ -175,7 +208,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
 +import { JobQueue } from './queue'
  export class Orchestrator {}
 `
-  if (new URLSearchParams(location.search).has('compare')) {
+  if (params.has('compare')) {
     const base = {
       type: 'refactor',
       prompt: 'Extract the usage maths out of router.ts',
@@ -279,8 +312,16 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }),
     listJobs: ok(jobs),
     onJobUpdate: off,
+    cancelJob: (id) => {
+      const job = jobs.find((item) => item.id === id)
+      if (job === undefined) return Promise.reject(new Error('job is not running'))
+      job.status = 'failed'
+      job.error = 'stopped'
+      return Promise.resolve({ ...job })
+    },
     listPlans: ok(plans),
     onPlansUpdate: off,
+    recheckPlans: ok(plans),
     listModels: ok([
       { id: 'gpt-5', label: 'GPT-5' },
       { id: 'sonnet-5', label: 'Sonnet 5' }

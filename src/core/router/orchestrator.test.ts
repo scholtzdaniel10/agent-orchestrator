@@ -1383,3 +1383,169 @@ test('auto routing skips a plan at its parallel limit when the other has a free 
     { rules: rulesWith(1) }
   )
 })
+
+test('workers report not-installed and signed-out problems', async () => {
+  const claude = new FakeAdapter('claude', [])
+  const cursor = new FakeAdapter('cursor', [])
+  claude.installed = false
+  cursor.signedIn = false
+  await withOrch([claude, cursor], async (orch) => {
+    expect(orch.workers()[0]).toMatchObject({
+      id: 'claude',
+      available: false,
+      problem: 'not-installed'
+    })
+    expect(orch.workers()[1]).toMatchObject({
+      id: 'cursor',
+      available: false,
+      problem: 'signed-out'
+    })
+  })
+})
+
+test('recheck picks up and drops plans without disturbing a running job', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }])
+  const cursor = new FakeAdapter('cursor', [ok('b')])
+  cursor.signedIn = false
+  await withOrch([claude, cursor], async (orch) => {
+    const running = orch.submit('planning', 'keep going')
+    expect(running).toMatchObject({ status: 'running', provider: 'claude' })
+    expect(orch.workers().map((worker) => [worker.id, worker.available, worker.problem])).toEqual([
+      ['claude', true, undefined],
+      ['cursor', false, 'signed-out']
+    ])
+
+    claude.signedIn = false
+    cursor.signedIn = true
+    await orch.recheck()
+    expect(orch.get(running.id)).toMatchObject({ status: 'running', provider: 'claude' })
+    expect(claude.received.map((job) => job.prompt)).toEqual(['keep going'])
+    expect(orch.workers().map((worker) => [worker.id, worker.available, worker.problem])).toEqual([
+      ['claude', false, 'signed-out'],
+      ['cursor', true, undefined]
+    ])
+
+    const rejected = orch.submit('planning', 'needs claude', 'claude')
+    expect(rejected).toMatchObject({ status: 'failed', error: 'claude is not signed in' })
+
+    const onCursor = orch.submit('planning', 'now cursor', 'cursor')
+    expect(onCursor).toMatchObject({ provider: 'cursor' })
+    expect(['queued', 'running']).toContain(onCursor.status)
+
+    held.open()
+    await orch.idle()
+    expect(orch.get(running.id)).toMatchObject({ status: 'done', provider: 'claude' })
+    expect(orch.get(onCursor.id)).toMatchObject({ status: 'done', provider: 'cursor' })
+  })
+})
+
+test('submit to a plan with a problem fails with a readable message', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  const cursor = new FakeAdapter('cursor', [])
+  cursor.installed = false
+  await withOrch([claude, cursor], async (orch) => {
+    const missing = orch.submit('planning', 'cursor please', 'cursor')
+    expect(missing).toMatchObject({
+      status: 'failed',
+      error: 'cursor is not signed in',
+      provider: 'cursor'
+    })
+    expect(cursor.received).toHaveLength(0)
+    await orch.idle()
+  })
+})
+
+test('cancel removes a queued job and marks it stopped', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'first')
+      const queued = orch.submit('planning', 'second')
+      expect(queued).toMatchObject({ status: 'queued', provider: 'claude' })
+      const stopped = orch.cancel(queued.id)
+      expect(stopped).toMatchObject({ status: 'failed', error: 'stopped', id: queued.id })
+      expect(orch.get(queued.id)).toMatchObject({ status: 'failed', error: 'stopped' })
+      expect(orch.workers()[0]).toMatchObject({ running: 1, queued: 0 })
+      held.open()
+      await orch.idle()
+      expect(claude.received.map((job) => job.prompt)).toEqual(['first'])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(1) }
+  )
+})
+
+test('cancel kills a running job without failover or resting the plan', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [
+    {
+      gate: held.promise,
+      events: [{ kind: 'text', text: 'partial' }, { kind: 'limit', message: 'should not apply' }]
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('failover')])
+  await withOrch([claude, cursor], async (orch, store) => {
+    const job = orch.submit('planning', 'stop me')
+    expect(job).toMatchObject({ status: 'running', provider: 'claude' })
+    orch.cancel(job.id)
+    // Kill must wake the hung run; the gate is never opened.
+    await waitFor(() => orch.get(job.id)?.status === 'failed')
+    expect(orch.get(job.id)).toMatchObject({
+      status: 'failed',
+      error: 'stopped',
+      provider: 'claude',
+      failedOver: []
+    })
+    expect(store.restingUntil('claude')).toBeNull()
+    expect(store.runs().map((run) => run.outcome)).toEqual(['error'])
+    expect(cursor.received).toHaveLength(0)
+    await orch.idle()
+  })
+})
+
+test('cancel of one running job with maxParallel 2 starts the next queued job', async () => {
+  const hold = gate()
+  const thirdStarted = gate()
+  const claude = new FakeAdapter('claude', [
+    { gate: hold.promise, ...ok('a') },
+    { gate: hold.promise, ...ok('b') },
+    { onStart: () => thirdStarted.open(), ...ok('c') }
+  ])
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const first = orch.submit('planning', 'one')
+      const second = orch.submit('planning', 'two')
+      const queued = orch.submit('planning', 'three')
+      expect(first).toMatchObject({ status: 'running' })
+      expect(second).toMatchObject({ status: 'running' })
+      expect(queued).toMatchObject({ status: 'queued' })
+      orch.cancel(first.id)
+      await thirdStarted.promise
+      expect(orch.get(queued.id)).toMatchObject({ status: 'running', prompt: 'three' })
+      await waitFor(() => orch.get(first.id)?.status === 'failed')
+      expect(orch.get(first.id)).toMatchObject({ error: 'stopped' })
+      hold.open()
+      await orch.idle()
+      expect(claude.received.map((job) => job.prompt)).toEqual(['one', 'two', 'three'])
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(2) }
+  )
+})
+
+test('cancel of a finished or unknown job throws', async () => {
+  const claude = new FakeAdapter('claude', [ok('a')])
+  await withOrch([claude], async (orch) => {
+    const job = orch.submit('planning', 'done soon')
+    await orch.idle()
+    expect(orch.get(job.id)?.status).toBe('done')
+    expect(() => orch.cancel(job.id)).toThrow('job is not running')
+    expect(() => orch.cancel('missing-id')).toThrow('job is not running')
+  })
+})

@@ -432,8 +432,10 @@ function Topology({
           const tone = avatar === 'working' || avatar === 'error' ? plan.id : null
           let text = `idle${extra}`
           let elapsed: string | null = null
-          if (!plan.available) {
-            text = `not signed in${extra}`
+          if (plan.problem === 'not-installed') {
+            text = `not installed${extra}`
+          } else if (plan.problem === 'signed-out' || !plan.available) {
+            text = `signed out${extra}`
           } else if (plan.restingUntil !== null && plan.restingUntil > now) {
             text = `resting until ${formatHoursMinutes(plan.restingUntil)}${extra}`
           } else if (running !== undefined) {

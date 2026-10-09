@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
@@ -7,7 +8,7 @@ type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 const MINUTE_MS = 60_000
 const CURSOR_MODEL_HINT = 'Cursor keeps the last model used as its own default.'
 
-type PlanWord = 'not signed in' | 'resting' | 'busy' | 'ready'
+type PlanWord = 'not installed' | 'signed out' | 'resting' | 'busy' | 'ready'
 
 function headroomPercent(used: number): number {
   const raw = Math.round((1 - used) * 100)
@@ -18,7 +19,8 @@ function headroomPercent(used: number): number {
 }
 
 function planWord(plan: PlanStatus, now: number): PlanWord {
-  if (!plan.available) return 'not signed in'
+  if (plan.problem === 'not-installed') return 'not installed'
+  if (plan.problem === 'signed-out' || !plan.available) return 'signed out'
   if (plan.restingUntil !== null && plan.restingUntil > now) return 'resting'
   if (plan.busy || plan.running > 0) return 'busy'
   return 'ready'
@@ -27,6 +29,20 @@ function planWord(plan: PlanStatus, now: number): PlanWord {
 function planStatusLabel(plan: PlanStatus, word: PlanWord): string {
   if (word === 'busy' && plan.running > 1) return `${plan.running} running`
   return word
+}
+
+function problemNotice(plan: PlanStatus): string | null {
+  if (plan.problem === 'not-installed') {
+    return plan.id === 'claude'
+      ? 'Claude Code is not installed. Install it, then run `claude` once in a terminal to sign in.'
+      : 'The Cursor CLI is not installed. Install it, then run `agent login` in a terminal.'
+  }
+  if (plan.problem === 'signed-out') {
+    return plan.id === 'claude'
+      ? 'Claude Code is signed out. Run `claude` in a terminal and sign in.'
+      : 'The Cursor CLI is signed out. Run `agent login` in a terminal.'
+  }
+  return null
 }
 
 function clock(ms: number): string {
@@ -51,15 +67,19 @@ function resetPhrase(resetsAt: number, now: number): string | null {
 }
 
 function usageAvatarState(word: PlanWord): 'idle' | 'working' | 'resting' {
-  if (word === 'not signed in' || word === 'resting') return 'resting'
+  if (word === 'not installed' || word === 'signed out' || word === 'resting') return 'resting'
   if (word === 'busy') return 'working'
   return 'idle'
 }
 
 function statusClass(word: PlanWord, running: number): string {
-  if (word === 'not signed in') return 'status status-out'
+  if (word === 'not installed' || word === 'signed out') return 'status status-out'
   if (word === 'busy' && running > 1) return 'status status-running'
   return `status status-${word}`
+}
+
+function planUnusable(word: PlanWord): boolean {
+  return word === 'not installed' || word === 'signed out'
 }
 
 function meterFillClass(id: PlanStatus['id'], left: number): string {
@@ -111,6 +131,21 @@ function UsageMeter({
   plans: PlanStatus[] | null
   now: number
 }): React.JSX.Element {
+  const [checking, setChecking] = useState(false)
+  const checkingRef = useRef(false)
+
+  async function checkAgain(): Promise<void> {
+    if (checkingRef.current) return
+    checkingRef.current = true
+    setChecking(true)
+    try {
+      await window.api.recheckPlans()
+    } finally {
+      checkingRef.current = false
+      setChecking(false)
+    }
+  }
+
   if (plans === null) {
     return (
       <div className="usage">
@@ -135,6 +170,7 @@ function UsageMeter({
       <div className="usage-list">
         {plans.map((plan) => {
           const word = planWord(plan, now)
+          const notice = problemNotice(plan)
           const left = headroomPercent(plan.used)
           const restingUntil = plan.restingUntil
           const hasWindows = plan.windows.length > 0
@@ -156,79 +192,102 @@ function UsageMeter({
                     {planStatusLabel(plan, word)}
                   </span>
                 </div>
-                <div className="usage-readout">
-                  <div className="usage-figure">
-                    <span className="usage-percent">{left}%</span>
-                    <span className="usage-left-word">left</span>
+                {notice !== null ? (
+                  <div className="usage-problem">
+                    <p className="hint">{notice}</p>
+                    <button
+                      type="button"
+                      className="btn btn-compact"
+                      disabled={checking}
+                      onClick={() => {
+                        void checkAgain()
+                      }}
+                    >
+                      Check again
+                    </button>
                   </div>
-                  <div
-                    className="meter"
-                    role="meter"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={left}
-                    aria-label={`${plan.id} allowance left`}
-                  >
-                    <div className={meterFillClass(plan.id, left)} style={{ width: `${left}%` }} />
-                  </div>
-                  {hasWindows ? (
-                    <div className="usage-windows">
-                      {plan.windows.map((slot, index) => {
-                        const slotLeft = headroomPercent(slot.used)
-                        const slotLabel = windowLabel(slot.name)
-                        const slotReset =
-                          slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
-                        return (
-                          <div key={`${slot.name}-${index}`} className="usage-window">
-                            <div className="usage-window-top">
-                              <span className="usage-window-label" title={slotLabel}>
-                                {slotLabel}
-                              </span>
-                              <span className="usage-window-left">{slotLeft}% left</span>
-                            </div>
-                            <div
-                              className="meter meter-thin"
-                              role="meter"
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={slotLeft}
-                              aria-label={`${plan.id} ${slotLabel} allowance left`}
-                            >
-                              <div
-                                className={meterFillClass(plan.id, slotLeft)}
-                                style={{ width: `${slotLeft}%` }}
-                              />
-                            </div>
-                            {slotReset !== null ? (
-                              <span className="usage-window-reset" title={slotReset}>
-                                {slotReset}
-                              </span>
-                            ) : null}
-                          </div>
-                        )
-                      })}
+                ) : (
+                  <>
+                    <div className="usage-readout">
+                      <div className="usage-figure">
+                        <span className="usage-percent">{left}%</span>
+                        <span className="usage-left-word">left</span>
+                      </div>
+                      <div
+                        className="meter"
+                        role="meter"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={left}
+                        aria-label={`${plan.id} allowance left`}
+                      >
+                        <div
+                          className={meterFillClass(plan.id, left)}
+                          style={{ width: `${left}%` }}
+                        />
+                      </div>
+                      {hasWindows ? (
+                        <div className="usage-windows">
+                          {plan.windows.map((slot, index) => {
+                            const slotLeft = headroomPercent(slot.used)
+                            const slotLabel = windowLabel(slot.name)
+                            const slotReset =
+                              slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
+                            return (
+                              <div key={`${slot.name}-${index}`} className="usage-window">
+                                <div className="usage-window-top">
+                                  <span className="usage-window-label" title={slotLabel}>
+                                    {slotLabel}
+                                  </span>
+                                  <span className="usage-window-left">{slotLeft}% left</span>
+                                </div>
+                                <div
+                                  className="meter meter-thin"
+                                  role="meter"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={slotLeft}
+                                  aria-label={`${plan.id} ${slotLabel} allowance left`}
+                                >
+                                  <div
+                                    className={meterFillClass(plan.id, slotLeft)}
+                                    style={{ width: `${slotLeft}%` }}
+                                  />
+                                </div>
+                                {slotReset !== null ? (
+                                  <span className="usage-window-reset" title={slotReset}>
+                                    {slotReset}
+                                  </span>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-                {hasDetails ? (
-                  <div className="usage-details">
-                    {showResting && restingUntil !== null ? (
-                      <p className="usage-detail">resting until {clock(restingUntil)}</p>
+                    {hasDetails ? (
+                      <div className="usage-details">
+                        {showResting && restingUntil !== null ? (
+                          <p className="usage-detail">resting until {clock(restingUntil)}</p>
+                        ) : null}
+                        {reset !== null ? <p className="usage-detail">{reset}</p> : null}
+                        {showRunning ? (
+                          <p className="usage-detail">{plan.running} running</p>
+                        ) : null}
+                        {showQueued ? <p className="usage-detail">{plan.queued} queued</p> : null}
+                        {plan.atRisk ? (
+                          <p className="usage-risk">
+                            <WarnGlyph />
+                            Unused allowance expires soon
+                          </p>
+                        ) : null}
+                      </div>
                     ) : null}
-                    {reset !== null ? <p className="usage-detail">{reset}</p> : null}
-                    {showRunning ? <p className="usage-detail">{plan.running} running</p> : null}
-                    {showQueued ? <p className="usage-detail">{plan.queued} queued</p> : null}
-                    {plan.atRisk ? (
-                      <p className="usage-risk">
-                        <WarnGlyph />
-                        Unused allowance expires soon
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                  </>
+                )}
                 <ModelPicker
                   plan={plan}
-                  disabled={word === 'not signed in'}
+                  disabled={planUnusable(word)}
                   labelTitle={plan.id === 'cursor' ? CURSOR_MODEL_HINT : undefined}
                 />
               </div>

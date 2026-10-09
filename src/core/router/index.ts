@@ -1,5 +1,5 @@
 export { Orchestrator } from './orchestrator'
-export type { JobRecord, JobStatus, WorkerInfo } from './orchestrator'
+export type { JobRecord, JobStatus, PlanProblem, WorkerInfo } from './orchestrator'
 export {
   DEFAULT_PACE,
   defaultRules,

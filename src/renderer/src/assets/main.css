@@ -2158,6 +2158,17 @@ select {
   gap: 8px;
 }
 
+.usage-problem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.output-head > .btn {
+  margin-left: auto;
+}
+
 .usage-name {
   flex: 1;
   min-width: 0;
