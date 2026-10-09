@@ -32,6 +32,8 @@ export interface ChatRow {
   updated_at: number
   session_id: string | null
   session_provider: string | null
+  /** Plan this chat talks to directly; null or absent for a lead chat. */
+  direct?: string | null
 }
 
 const MIGRATIONS: string[] = [
@@ -87,7 +89,8 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX jobs_project ON jobs (project, created_at);
-    `
+    `,
+  'ALTER TABLE chats ADD COLUMN direct TEXT;'
 ]
 
 /**
@@ -229,15 +232,16 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO chats (
-           id, project, title, created_at, updated_at, session_id, session_provider
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           id, project, title, created_at, updated_at, session_id, session_provider, direct
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            project = excluded.project,
            title = excluded.title,
            created_at = excluded.created_at,
            updated_at = excluded.updated_at,
            session_id = excluded.session_id,
-           session_provider = excluded.session_provider`
+           session_provider = excluded.session_provider,
+           direct = excluded.direct`
       )
       .run(
         row.id,
@@ -246,20 +250,21 @@ export class Store {
         row.created_at,
         row.updated_at,
         row.session_id,
-        row.session_provider
+        row.session_provider,
+        row.direct ?? null
       )
   }
 
-  /** Newest first. */
   chatCount(project: string): number {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM chats WHERE project = ?').get(project)
     return Number(row?.n ?? 0)
   }
 
+  /** Newest first. */
   chats(project: string): ChatRow[] {
     const rows = this.db
       .prepare(
-        `SELECT id, project, title, created_at, updated_at, session_id, session_provider
+        `SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct
          FROM chats WHERE project = ? ORDER BY updated_at DESC`
       )
       .all(project)
@@ -269,7 +274,7 @@ export class Store {
   chat(id: string): ChatRow | null {
     const row = this.db
       .prepare(
-        `SELECT id, project, title, created_at, updated_at, session_id, session_provider
+        `SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct
          FROM chats WHERE id = ?`
       )
       .get(id)
@@ -390,7 +395,8 @@ function mapChat(row: Row): ChatRow {
     session_provider:
       row.session_provider === null || row.session_provider === undefined
         ? null
-        : String(row.session_provider)
+        : String(row.session_provider),
+    direct: row.direct === null || row.direct === undefined ? null : String(row.direct)
   }
 }
 

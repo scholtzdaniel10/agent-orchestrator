@@ -197,7 +197,7 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 })
     check.close()
   } finally {
     rmSync(root, { recursive: true, force: true })
