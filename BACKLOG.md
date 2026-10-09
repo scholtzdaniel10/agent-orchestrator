@@ -9,11 +9,10 @@ Ordered. The top item is the next one to build.
 
 ## Next
 
-1. **Keep talking to the lead while its jobs run.** The lead's turn lasts until every job it handed out has finished, and the Lead box is locked for all of it. Have the lead hand out its jobs and end the turn, then prompt it again with the results when they are in.
-2. **First-run check.** Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app must work with only one of them.
-3. **Stop a job.** A button to cancel a running or queued job.
-4. **GitHub through `gh`.** Add a project by picking one of your repos to clone; open a pull request from a merged change. Hidden when `gh` is not installed.
-5. **Delete and rename chats.**
+1. **First-run check.** Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app must work with only one of them.
+2. **Stop a job.** A button to cancel a running or queued job.
+3. **GitHub through `gh`.** Add a project by picking one of your repos to clone; open a pull request from a merged change. Hidden when `gh` is not installed.
+4. **Delete and rename chats.**
 
 ## Before a release
 

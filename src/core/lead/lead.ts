@@ -9,14 +9,17 @@ import type {
   RouterRules,
   RunHandle
 } from '../types'
+import type { JobRecord, Orchestrator } from '../router/orchestrator'
 import { headroom } from '../router/router'
 import type { Store } from '../router/store'
 
 export const LEAD_INSTRUCTIONS: string = [
-  "You are the lead of a small team of coding agents. Do not do the work yourself: split the user's request into independent jobs and hand each one to a worker with the send_job tool of the orchestrator MCP server. Pick the job type that fits (planning, debugging, review, refactor or boilerplate); the router chooses which worker runs it. Each job prompt must be self-contained, because the worker sees nothing else. A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves. Use edit: true only when the request asks for code or files to be changed, and say in your report which jobs left a change waiting for review.",
-  'Send every job first, then collect each one with get_result, which waits for the job to finish. If get_result says a job is still queued or running, call it again. Use get_status to see the whole job board, including jobs the user started directly, and list_workers only if you need to know who is available.',
-  'When every result is in, report to the user in a few lines: for each job, which worker ran it and what it answered. Keep it short and do not repeat full outputs. If the request is a simple question you can answer in one sentence without a worker, just answer it.'
+  "You are the lead of a small team of coding agents. Do not do the work yourself: split the user's request into independent jobs and hand each one to a worker with the send_job tool of the orchestrator MCP server. Pick the job type that fits (planning, debugging, review, refactor or boilerplate); the router chooses which worker runs it. Each job prompt must be self-contained, because the worker sees nothing else. A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves. Use edit: true only when the request asks for code or files to be changed.",
+  'Send every job with send_job, then stop. Do not wait for results: never call get_result to block until a job finishes. You may use get_status to inspect the board, including jobs the user started directly, and list_workers only if you need to know who is available. After sending, tell the user in one or two lines what you sent and to whom.',
+  'If the request is a simple question you can answer in one sentence without a worker, just answer it. The app will prompt you again later with worker results when you need to report them.'
 ].join('\n\n')
+
+const REPORT_OUTPUT_MAX = 4000
 
 const NO_PLAN = 'No plan is available for the lead right now.'
 
@@ -30,6 +33,21 @@ interface Plan {
   prompt: string
 }
 
+interface ChatContext {
+  chatId: string | null
+  history: LeadMessage[]
+  sessionId: string | undefined
+  sessionProvider: ProviderId | null
+  chatTitle: string
+  chatCreatedAt: number
+}
+
+interface PendingFollowUp {
+  chatId: string
+  leadMessageId: string
+  order: number
+}
+
 export class Lead {
   private readonly adapters: ProviderAdapter[]
   private readonly byId: Map<ProviderId, ProviderAdapter>
@@ -41,18 +59,29 @@ export class Lead {
   private readonly prefer?: ProviderId | (() => ProviderId | undefined)
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
+  private readonly listJobs: () => JobRecord[]
   private available: ProviderId[] = []
   private history: LeadMessage[] = []
-  private readonly listeners = new Set<(message: LeadMessage) => void>()
+  private readonly listeners = new Set<(message: LeadMessage, chatId: string | null) => void>()
   private sessionId: string | undefined
   private sessionProvider: ProviderId | null = null
   private busy = false
+  private drainingFollowUps = false
   /** Id of the lead message whose turn is running, or null. */
   private turnId: string | null = null
   /** Id of the chat currently shown, or null before the first message. */
   private chatId: string | null = null
+  /** Chat the user is viewing; unchanged while a report runs on another chat. */
+  private viewChatId: string | null = null
   private chatTitle = ''
   private chatCreatedAt = 0
+  private unsubJobs: (() => void) | null = null
+  private pendingFollowUps: PendingFollowUp[] = []
+  private followUpScheduled = new Set<string>()
+  private readonly skipFollowUp = new Set<string>()
+  private followUpOrder = 0
+  /** Lead message id to the chat that owns it. */
+  private readonly turnChat = new Map<string, string>()
 
   constructor(opts: {
     adapters: ProviderAdapter[]
@@ -64,6 +93,7 @@ export class Lead {
     prefer?: ProviderId | (() => ProviderId | undefined)
     now?: () => number
     modelFor?: (provider: ProviderId) => string | undefined
+    listJobs?: () => JobRecord[]
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -75,6 +105,7 @@ export class Lead {
     this.prefer = opts.prefer
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
+    this.listJobs = opts.listJobs ?? ((): JobRecord[] => [])
   }
 
   /** Providers that are installed and signed in become the candidate set. */
@@ -95,6 +126,7 @@ export class Lead {
     this.ensureChat(text)
     this.history.push(user, lead)
     this.turnId = lead.id
+    if (this.chatId !== null) this.turnChat.set(lead.id, this.chatId)
     try {
       this.persistMessage(user, this.history.length - 2)
       this.emit(user)
@@ -111,8 +143,43 @@ export class Lead {
     } finally {
       this.busy = false
       this.turnId = null
+      void this.drainFollowUps()
     }
     return copyMessage(lead)
+  }
+
+  /** Chat the user has open in the UI. */
+  viewChat(): string | null {
+    return this.viewChatId
+  }
+
+  attachOrchestrator(orch: Orchestrator): void {
+    this.unsubJobs?.()
+    this.unsubJobs = orch.onUpdate((job) => {
+      this.onJobUpdate(job)
+    })
+  }
+
+  /** After restore, do not follow up for turns whose jobs were interrupted. */
+  noteRestoredJobs(jobs: JobRecord[]): void {
+    for (const job of jobs) {
+      if (job.leadMessage === undefined) continue
+      if (job.error === 'interrupted when the app closed') {
+        this.skipFollowUp.add(job.leadMessage)
+      }
+    }
+  }
+
+  /** Wait until the lead and any queued report turns are idle. For tests. */
+  async whenQuiet(): Promise<void> {
+    while (this.busy || this.drainingFollowUps || this.pendingFollowUps.length > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      if (!this.busy && !this.drainingFollowUps && this.pendingFollowUps.length > 0) {
+        void this.drainFollowUps()
+      }
+    }
   }
 
   /** Id of the lead message whose turn is running right now, or null. */
@@ -130,7 +197,8 @@ export class Lead {
       id: row.id,
       title: row.title,
       updatedAt: row.updated_at,
-      active: row.id === active
+      active: row.id === active,
+      ...(this.chatHasPendingWork(row.id) ? { pending: true } : {})
     }))
   }
 
@@ -139,9 +207,11 @@ export class Lead {
     const row = this.store.chat(id)
     if (row === null || row.project !== this.project()) throw new Error('unknown chat')
     this.chatId = row.id
+    this.viewChatId = row.id
     this.chatTitle = row.title
     this.chatCreatedAt = row.created_at
     this.history = this.store.messages(id).map((message) => copyMessage(message))
+    this.indexTurnChats(id)
     this.sessionId = row.session_id ?? undefined
     this.sessionProvider = isProviderId(row.session_provider) ? row.session_provider : null
   }
@@ -154,6 +224,7 @@ export class Lead {
       this.sessionId = undefined
       this.sessionProvider = null
       this.chatId = null
+      this.viewChatId = null
       this.chatTitle = ''
       this.chatCreatedAt = 0
       return
@@ -161,7 +232,7 @@ export class Lead {
     this.open(newest.id)
   }
 
-  onUpdate(cb: (message: LeadMessage) => void): () => void {
+  onUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void {
     this.listeners.add(cb)
     return (): void => {
       this.listeners.delete(cb)
@@ -178,6 +249,7 @@ export class Lead {
     this.sessionId = undefined
     this.sessionProvider = null
     this.chatId = null
+    this.viewChatId = null
     this.chatTitle = ''
     this.chatCreatedAt = 0
   }
@@ -191,6 +263,7 @@ export class Lead {
       this.sessionId = undefined
       this.sessionProvider = null
       this.chatId = null
+      this.viewChatId = null
       this.chatTitle = ''
       this.chatCreatedAt = 0
     }
@@ -198,6 +271,7 @@ export class Lead {
     const title = chatTitle(text)
     const now = this.now()
     this.chatId = id
+    this.viewChatId = id
     this.chatTitle = title
     this.chatCreatedAt = now
     this.persistChat()
@@ -438,7 +512,137 @@ export class Lead {
       if (seq >= 0) this.persistMessage(message, seq)
     }
     const snap = copyMessage(message)
-    for (const cb of this.listeners) cb(snap)
+    for (const cb of this.listeners) cb(snap, this.chatId)
+  }
+
+  private onJobUpdate(job: JobRecord): void {
+    const leadMessageId = job.leadMessage
+    if (leadMessageId === undefined) return
+    if (this.skipFollowUp.has(leadMessageId)) return
+    if (this.followUpScheduled.has(leadMessageId)) return
+    const group = this.jobsForLeadMessage(leadMessageId)
+    if (group.length === 0) return
+    if (!group.every((item) => item.status === 'done' || item.status === 'failed')) return
+    const chatId = this.turnChat.get(leadMessageId) ?? this.store.chatForMessage(leadMessageId)
+    if (chatId === null) return
+    this.followUpScheduled.add(leadMessageId)
+    this.pendingFollowUps.push({ chatId, leadMessageId, order: this.followUpOrder++ })
+    this.pendingFollowUps.sort((a, b) => a.order - b.order)
+    void this.drainFollowUps()
+  }
+
+  private jobsForLeadMessage(leadMessageId: string): JobRecord[] {
+    return this.listJobs().filter((item) => item.leadMessage === leadMessageId)
+  }
+
+  private async drainFollowUps(): Promise<void> {
+    if (this.drainingFollowUps || this.busy) return
+    this.drainingFollowUps = true
+    try {
+      while (this.pendingFollowUps.length > 0 && !this.busy) {
+        const next = this.pendingFollowUps.shift()
+        if (!next) break
+        await this.runReportTurn(next.chatId, next.leadMessageId)
+      }
+    } finally {
+      this.drainingFollowUps = false
+      if (this.pendingFollowUps.length > 0 && !this.busy) void this.drainFollowUps()
+    }
+  }
+
+  private async runReportTurn(chatId: string, sourceLeadMessageId: string): Promise<void> {
+    const jobs = this.jobsForLeadMessage(sourceLeadMessageId)
+    if (jobs.length === 0) return
+    const saved = this.saveChatContext()
+    this.busy = true
+    const lead: LeadMessage = {
+      id: randomUUID(),
+      role: 'lead',
+      kind: 'report',
+      text: '',
+      status: 'streaming'
+    }
+    try {
+      this.loadChat(chatId)
+      this.history.push(lead)
+      this.turnId = lead.id
+      this.turnChat.set(lead.id, chatId)
+      this.emit(lead)
+      await this.turn(lead, buildReportPrompt(jobs))
+    } catch (err) {
+      lead.status = 'error'
+      if (lead.text === '') lead.text = errorText(err)
+      try {
+        this.emit(lead)
+      } catch (emitErr) {
+        console.error(emitErr)
+      }
+    } finally {
+      this.busy = false
+      this.turnId = null
+      if (saved.chatId === chatId) {
+        this.loadChat(chatId)
+      } else {
+        this.restoreChatContext(saved)
+      }
+      void this.drainFollowUps()
+    }
+  }
+
+  private loadChat(id: string): void {
+    const row = this.store.chat(id)
+    if (row === null || row.project !== this.project()) throw new Error('unknown chat')
+    this.chatId = row.id
+    this.chatTitle = row.title
+    this.chatCreatedAt = row.created_at
+    this.history = this.store.messages(id).map((message) => copyMessage(message))
+    this.indexTurnChats(id)
+    this.sessionId = row.session_id ?? undefined
+    this.sessionProvider = isProviderId(row.session_provider) ? row.session_provider : null
+  }
+
+  private indexTurnChats(chatId: string): void {
+    for (const message of this.store.messages(chatId)) {
+      if (message.role === 'lead') this.turnChat.set(message.id, chatId)
+    }
+  }
+
+  private saveChatContext(): ChatContext {
+    return {
+      chatId: this.chatId,
+      history: this.history,
+      sessionId: this.sessionId,
+      sessionProvider: this.sessionProvider,
+      chatTitle: this.chatTitle,
+      chatCreatedAt: this.chatCreatedAt
+    }
+  }
+
+  private restoreChatContext(ctx: ChatContext): void {
+    this.chatId = ctx.chatId
+    this.history = ctx.history
+    this.sessionId = ctx.sessionId
+    this.sessionProvider = ctx.sessionProvider
+    this.chatTitle = ctx.chatTitle
+    this.chatCreatedAt = ctx.chatCreatedAt
+  }
+
+  private chatHasPendingWork(chatId: string): boolean {
+    if (this.busy && this.chatId === chatId) return true
+    if (this.pendingFollowUps.some((item) => item.chatId === chatId)) return true
+    const leadIds = new Set(
+      this.store
+        .messages(chatId)
+        .filter((message) => message.role === 'lead')
+        .map((message) => message.id)
+    )
+    return this.listJobs().some(
+      (job) =>
+        job.leadMessage !== undefined &&
+        leadIds.has(job.leadMessage) &&
+        job.status !== 'done' &&
+        job.status !== 'failed'
+    )
   }
 
   private persistMessage(message: LeadMessage, seq: number): void {
@@ -496,7 +700,37 @@ function copyMessage(message: LeadMessage): LeadMessage {
   }
   if (message.provider !== undefined) copy.provider = message.provider
   if (message.model !== undefined) copy.model = message.model
+  if (message.kind !== undefined) copy.kind = message.kind
   return copy
+}
+
+function buildReportPrompt(jobs: JobRecord[]): string {
+  const lines = [
+    'Worker jobs from an earlier turn have finished. Report to the user in a few lines.',
+    ''
+  ]
+  for (const job of jobs) {
+    lines.push(
+      `Job ${job.id} · type ${job.type} · worker ${job.provider ?? 'none'} · status ${job.status}`
+    )
+    if (job.error !== undefined) lines.push(`Error: ${job.error}`)
+    if (job.edit === true && job.change !== undefined) {
+      lines.push('This job left a change waiting for review.')
+    }
+    const output = job.output
+    if (output !== '') {
+      if (output.length > REPORT_OUTPUT_MAX) {
+        lines.push(`Output (cut to ${REPORT_OUTPUT_MAX} characters):`)
+        lines.push(output.slice(-REPORT_OUTPUT_MAX))
+      } else {
+        lines.push('Output:')
+        lines.push(output)
+      }
+    }
+    lines.push('')
+  }
+  lines.push('Summarize for the user; keep it short.')
+  return lines.join('\n')
 }
 
 function stderrTail(stderr: string): string {

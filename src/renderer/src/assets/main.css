@@ -1,20 +1,20 @@
 :root {
   color-scheme: dark;
   --bg: rgb(4, 4, 8);
-  --blue: rgb(40, 56, 220);
-  --inset: color-mix(in srgb, var(--blue) 10%, var(--bg));
-  --deep: color-mix(in srgb, var(--blue) 17%, var(--bg));
-  --raised: color-mix(in srgb, var(--blue) 26%, var(--bg));
-  --selected: color-mix(in srgb, var(--blue) 40%, var(--bg));
+  --brand: rgb(214, 38, 46);
+  --inset: color-mix(in srgb, var(--brand) 10%, var(--bg));
+  --deep: color-mix(in srgb, var(--brand) 17%, var(--bg));
+  --raised: color-mix(in srgb, var(--brand) 26%, var(--bg));
+  --selected: color-mix(in srgb, var(--brand) 40%, var(--bg));
   --panel: var(--bg);
   --text: rgb(242, 242, 242);
-  --muted: color-mix(in srgb, var(--text) 62%, var(--blue));
-  --faint: color-mix(in srgb, var(--text) 42%, var(--blue));
-  --border: color-mix(in srgb, var(--blue) 62%, var(--bg));
-  --border-strong: var(--blue);
-  --frame: var(--blue);
-  --ray: rgb(150, 165, 255);
-  --accent: var(--blue);
+  --muted: color-mix(in srgb, var(--text) 62%, var(--brand));
+  --faint: color-mix(in srgb, var(--text) 42%, var(--brand));
+  --border: color-mix(in srgb, var(--brand) 62%, var(--bg));
+  --border-strong: var(--brand);
+  --frame: var(--brand);
+  --ray: rgb(255, 150, 150);
+  --accent: var(--brand);
   --on-accent: rgb(242, 242, 242);
   --signal: rgb(255, 230, 0);
   --bad: rgb(255, 150, 140);
@@ -38,20 +38,20 @@
   :root {
     color-scheme: light;
     --bg: rgb(242, 242, 242);
-    --blue: rgb(40, 56, 220);
-    --ray: var(--blue);
-    --inset: rgb(228, 228, 232);
-    --deep: rgb(214, 214, 222);
-    --raised: color-mix(in srgb, var(--blue) 8%, var(--bg));
-    --selected: color-mix(in srgb, var(--blue) 14%, var(--bg));
+    --brand: rgb(214, 38, 46);
+    --ray: var(--brand);
+    --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
+    --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
+    --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
+    --selected: color-mix(in srgb, var(--brand) 14%, var(--bg));
     --panel: var(--bg);
-    --text: var(--blue);
+    --text: var(--brand);
     --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
     --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
     --border: color-mix(in srgb, var(--text) 28%, var(--bg));
     --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
     --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
-    --accent: var(--blue);
+    --accent: var(--brand);
     --on-accent: rgb(242, 242, 242);
     --signal: rgb(180, 120, 0);
     --bad: rgb(180, 50, 40);
@@ -552,12 +552,27 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.project-chat-meta {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.project-chat-run {
+  font-size: 10px;
+}
+
 .project-chat-age {
   flex: none;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-ligatures: none;
+}
+
+.lead-wait {
+  margin: 6px 0 0;
 }
 
 @media (max-width: 1099px) {
@@ -2333,15 +2348,15 @@ select {
 }
 
 .bot-lead .bot-body {
-  fill: var(--bot-lead);
+  fill: var(--brand);
 }
 
 .bot-claude .bot-body {
-  fill: var(--bot-claude);
+  fill: var(--brand);
 }
 
 .bot-cursor .bot-body {
-  fill: var(--bot-cursor);
+  fill: var(--brand);
 }
 
 .bot-eye,
@@ -2424,7 +2439,7 @@ select {
   }
 }
 
-@container workers (max-width: 640px) {
+@container workers (max-width: 479px) {
   .compare-output {
     grid-template-columns: 1fr;
   }
@@ -2700,8 +2715,9 @@ select {
   top: 50%;
   left: 50%;
   z-index: 0;
-  width: 180px;
-  height: 180px;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
   pointer-events: none;
   transform: translate(-50%, -50%);
   background: repeating-conic-gradient(

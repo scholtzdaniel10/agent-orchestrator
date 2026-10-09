@@ -9,6 +9,8 @@ import type {
   RunHandle,
   RunOptions
 } from '../types'
+import { createOrchestratorTools, startBridge, type Bridge } from '../bridge'
+import { Orchestrator } from '../router/orchestrator'
 import { headroom, loadRules } from '../router/router'
 import { Store } from '../router/store'
 import { Lead, LEAD_INSTRUCTIONS } from './lead'
@@ -136,6 +138,7 @@ async function withLead(
     prefer?: ProviderId | (() => ProviderId | undefined)
     modelFor?: (provider: ProviderId) => string | undefined
     project?: () => string
+    listJobs?: () => import('../router/orchestrator').JobRecord[]
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -149,7 +152,8 @@ async function withLead(
       project: opts?.project ?? ((): string => '/project'),
       prefer: opts?.prefer,
       now: opts?.now,
-      modelFor: opts?.modelFor
+      modelFor: opts?.modelFor,
+      listJobs: opts?.listJobs
     })
     await lead.init()
     await fn(lead, store)
@@ -158,10 +162,78 @@ async function withLead(
   }
 }
 
-test('instructions tell the lead when a worker may edit', () => {
+async function withLeadOrch(
+  adapters: ProviderAdapter[],
+  fn: (lead: Lead, orch: Orchestrator, store: Store) => Promise<void>,
+  opts?: {
+    now?: () => number
+    prefer?: ProviderId | (() => ProviderId | undefined)
+    project?: () => string
+  }
+): Promise<void> {
+  const store = new Store(':memory:')
+  let bridgeHandle: Bridge | undefined
+  try {
+    const rules = loadRules()
+    const orch = new Orchestrator({
+      adapters,
+      store,
+      rules,
+      cwd: opts?.project?.() ?? '/project',
+      now: opts?.now
+    })
+    await orch.init()
+    const leadRef: { current: Lead | null } = { current: null }
+    bridgeHandle = await startBridge(
+      createOrchestratorTools(orch, (): string | null => leadRef.current?.currentTurn() ?? null)
+    )
+    const lead = new Lead({
+      adapters,
+      store,
+      rules,
+      bridge: bridgeHandle.info,
+      dir: DIR,
+      project: opts?.project ?? ((): string => '/project'),
+      prefer: opts?.prefer,
+      now: opts?.now,
+      listJobs: (): import('../router/orchestrator').JobRecord[] => orch.list()
+    })
+    leadRef.current = lead
+    await lead.init()
+    lead.attachOrchestrator(orch)
+    await fn(lead, orch, store)
+  } finally {
+    try {
+      if (bridgeHandle) await bridgeHandle.close()
+    } finally {
+      store.close()
+    }
+  }
+}
+
+function waitUntil(check: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now()
+    const tick = (): void => {
+      if (check()) {
+        resolve()
+        return
+      }
+      if (Date.now() - start > 5000) {
+        reject(new Error('timeout'))
+        return
+      }
+      setTimeout(tick, 5)
+    }
+    tick()
+  })
+}
+
+test('instructions tell the lead when a worker may edit and not to wait on jobs', () => {
   expect(LEAD_INSTRUCTIONS).toContain(
-    'A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves. Use edit: true only when the request asks for code or files to be changed, and say in your report which jobs left a change waiting for review.'
+    'A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves.'
   )
+  expect(LEAD_INSTRUCTIONS).toContain('Do not wait for results')
   expect(LEAD_INSTRUCTIONS).not.toContain('read-only for now')
 })
 
@@ -833,6 +905,237 @@ test('chats of another project are not listed and cannot be opened', async () =>
   } finally {
     store.close()
   }
+})
+
+test('a turn that sends two jobs ends without waiting', async () => {
+  const leadHeld = gate()
+  const workerHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: leadHeld.promise,
+      events: [
+        { kind: 'init', sessionId: 'lead-s' },
+        { kind: 'result', ok: true, text: 'handed off', sessionId: 'lead-s', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      gate: workerHeld.promise,
+      events: [
+        { kind: 'result', ok: true, text: 'worker-one', sessionId: 'w1', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      gate: workerHeld.promise,
+      events: [
+        { kind: 'result', ok: true, text: 'worker-two', sessionId: 'w2', costUsd: 0, tokens: 0 }
+      ]
+    },
+    done('lead-s', 'both finished')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const pending = lead.send('split this')
+    await waitUntil(() => lead.currentTurn() !== null)
+    const turn = lead.currentTurn()
+    expect(turn).toBeTruthy()
+    orch.submit('planning', 'job one', undefined, undefined, { leadMessage: turn! })
+    orch.submit('review', 'job two', undefined, undefined, { leadMessage: turn! })
+    leadHeld.open()
+    const msg = await pending
+    expect(msg.status).toBe('done')
+    expect(orch.list().some((job) => job.status === 'running' || job.status === 'queued')).toBe(
+      true
+    )
+    workerHeld.open()
+    await orch.idle()
+    await lead.whenQuiet()
+    const reports = lead.messages().filter((message) => message.kind === 'report')
+    expect(reports).toHaveLength(1)
+    expect(reports[0]?.status).toBe('done')
+    expect(cursor.calls).toHaveLength(4)
+  })
+})
+
+test('when both jobs finish exactly one follow-up runs and its prompt contains both outputs', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('lead-s', 'sent'),
+    {
+      events: [
+        { kind: 'result', ok: true, text: 'alpha output', sessionId: 'w1', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      events: [
+        { kind: 'result', ok: true, text: 'beta output', sessionId: 'w2', costUsd: 0, tokens: 0 }
+      ]
+    },
+    done('lead-s', 'summary')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const turn = await lead.send('two jobs')
+    orch.submit('planning', 'a', undefined, undefined, { leadMessage: turn.id })
+    orch.submit('planning', 'b', undefined, undefined, { leadMessage: turn.id })
+    await orch.idle()
+    await lead.whenQuiet()
+    expect(cursor.calls).toHaveLength(4)
+    const reportCall = cursor.calls[3]
+    expect(reportCall?.job.prompt).toContain('alpha output')
+    expect(reportCall?.job.prompt).toContain('beta output')
+    expect(reportCall?.opts?.resume).toBe('lead-s')
+    expect(lead.messages().filter((message) => message.kind === 'report')).toHaveLength(1)
+  })
+})
+
+test('a failed job is reported as failed in the follow-up prompt', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('s', 'go'),
+    { events: [{ kind: 'result', ok: false, text: 'bad', costUsd: 0, tokens: 0 }], exitCode: 1 },
+    done('s', 'report')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const turn = await lead.send('one job')
+    orch.submit('debugging', 'fail me', undefined, undefined, { leadMessage: turn.id })
+    await orch.idle()
+    await lead.whenQuiet()
+    expect(cursor.calls[2]?.job.prompt).toContain('status failed')
+  })
+})
+
+test('follow-up outputs are cut in the prompt', async () => {
+  const long = 'z'.repeat(5000)
+  const cursor = new FakeAdapter('cursor', [
+    done('s', 'go'),
+    { events: [{ kind: 'result', ok: true, text: long, sessionId: 'w', costUsd: 0, tokens: 0 }] },
+    done('s', 'report')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const turn = await lead.send('one job')
+    orch.submit('planning', 'long', undefined, undefined, { leadMessage: turn.id })
+    await orch.idle()
+    await lead.whenQuiet()
+    const prompt = cursor.calls[2]?.job.prompt ?? ''
+    expect(prompt).toContain('cut to 4000 characters')
+    expect(prompt.length).toBeLessThan(long.length + 500)
+  })
+})
+
+test('a follow-up waits for a busy lead', async () => {
+  const leadHeld = gate()
+  const workerHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: leadHeld.promise,
+      events: [
+        { kind: 'init', sessionId: 's1' },
+        { kind: 'result', ok: true, text: 'first', sessionId: 's1', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      gate: workerHeld.promise,
+      events: [{ kind: 'result', ok: true, text: 'job out', sessionId: 'w', costUsd: 0, tokens: 0 }]
+    },
+    done('s1', 'report')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const pending = lead.send('hold')
+    await waitUntil(() => lead.currentTurn() !== null)
+    const turn = lead.currentTurn()!
+    orch.submit('planning', 'quick', undefined, undefined, { leadMessage: turn })
+    workerHeld.open()
+    await orch.idle()
+    expect(lead.messages().some((message) => message.kind === 'report')).toBe(false)
+    leadHeld.open()
+    await pending
+    await lead.whenQuiet()
+    expect(lead.messages().some((message) => message.kind === 'report')).toBe(true)
+    expect(cursor.calls).toHaveLength(3)
+  })
+})
+
+test('a follow-up that sends no jobs causes no further turns', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('s', 'go'),
+    { events: [{ kind: 'result', ok: true, text: 'done', sessionId: 'w', costUsd: 0, tokens: 0 }] },
+    done('s', 'report only')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const turn = await lead.send('one job')
+    orch.submit('planning', 'solo', undefined, undefined, { leadMessage: turn.id })
+    await orch.idle()
+    await lead.whenQuiet()
+    expect(cursor.calls).toHaveLength(3)
+  })
+})
+
+test('a report is saved to the chat that owns the jobs when another chat is open', async () => {
+  const workerHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    done('s1', 'chat a'),
+    {
+      gate: workerHeld.promise,
+      events: [{ kind: 'result', ok: true, text: 'worker', sessionId: 'w', costUsd: 0, tokens: 0 }]
+    },
+    done('s1', 'report for a'),
+    done('s2', 'chat b reply')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch, store) => {
+    const turnA = await lead.send('work in chat a')
+    const chatA = lead.chats().find((chat) => chat.active)?.id
+    expect(chatA).toBeDefined()
+    orch.submit('planning', 'job', undefined, undefined, { leadMessage: turnA.id })
+    lead.reset()
+    await lead.send('chat b')
+    expect(lead.chats()).toHaveLength(2)
+    const chatB = lead.chats().find((chat) => chat.active)?.id
+    expect(chatB).toBeDefined()
+    expect(chatB).not.toBe(chatA)
+    workerHeld.open()
+    await orch.idle()
+    await lead.whenQuiet()
+    const messagesA = store.messages(chatA!)
+    expect(messagesA.some((message) => message.kind === 'report')).toBe(true)
+    expect(lead.messages().some((message) => message.kind === 'report')).toBe(false)
+  })
+})
+
+test('restore skips follow-ups for interrupted jobs', async () => {
+  const cursor = new FakeAdapter('cursor', [done('s', 'first')])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const turn = await lead.send('before restart')
+    lead.noteRestoredJobs([
+      {
+        id: 'job-old',
+        type: 'planning',
+        prompt: 'stale',
+        provider: 'cursor',
+        status: 'failed',
+        output: '',
+        failedOver: [],
+        leadMessage: turn.id,
+        error: 'interrupted when the app closed'
+      }
+    ])
+    orch.submit('planning', 'after restore', 'cursor', undefined, { leadMessage: turn.id })
+    await orch.idle()
+    await lead.whenQuiet()
+    expect(cursor.calls).toHaveLength(2)
+    expect(lead.messages().some((message) => message.kind === 'report')).toBe(false)
+  })
 })
 
 test('open while busy throws', async () => {

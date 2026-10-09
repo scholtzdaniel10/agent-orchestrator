@@ -35,12 +35,16 @@ function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boo
   return plans !== null && plans.some((plan) => plan.id === id && plan.available)
 }
 
-function leadMeta(message: LeadMessage): string {
-  const parts = ['Lead']
+function leadMeta(message: LeadMessage): ReactNode[] {
+  const parts: ReactNode[] = []
+  if (message.kind === 'report') {
+    parts.push('Report')
+  }
+  parts.push('Lead')
   if (message.provider) parts.push(message.provider)
   if (message.model) parts.push(message.model)
   if (message.status === 'streaming') parts.push('working…')
-  return parts.join(' · ')
+  return parts
 }
 
 function messageClass(message: LeadMessage): string {
@@ -143,7 +147,6 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
-  const anyStreaming = messages.some((message) => message.status === 'streaming')
   const sendDisabled = draftEmpty || leadStreaming
 
   async function send(): Promise<void> {
@@ -163,7 +166,7 @@ function LeadChat({
   }
 
   async function newChat(): Promise<void> {
-    if (anyStreaming || resetting.current) return
+    if (leadStreaming || resetting.current) return
     resetting.current = true
     try {
       await onReset()
@@ -214,7 +217,7 @@ function LeadChat({
           <button
             type="button"
             className="btn btn-quiet"
-            disabled={anyStreaming}
+            disabled={leadStreaming}
             onClick={() => {
               void newChat()
             }}
@@ -242,11 +245,14 @@ function LeadChat({
             const isUser = message.role === 'user'
             const showDots = !isUser && message.status === 'streaming' && message.text === ''
             const delegated = isUser ? [] : jobsForMessage(jobs, message.id)
+            const waitingJobs = delegated.filter(
+              (job) => job.status === 'queued' || job.status === 'running'
+            ).length
             return (
               <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
                 <div className={messageClass(message)}>
                   <span className="lead-meta">
-                    {isUser ? 'You' : leadMeta(message)}
+                    {isUser ? 'You' : metaLine(leadMeta(message))}
                   </span>
                   <div className="lead-body">
                     {isUser ? (
@@ -257,6 +263,12 @@ function LeadChat({
                       <RichText text={message.text} />
                     )}
                   </div>
+                  {!isUser && waitingJobs > 0 && message.status !== 'streaming' ? (
+                    <p className="lead-wait hint">
+                      Waiting for {String(waitingJobs)} job{waitingJobs === 1 ? '' : 's'}. The lead
+                      will report when they finish.
+                    </p>
+                  ) : null}
                   {delegated.length > 0 ? (
                     <div className="lead-delegated">
                       <h3 className="lead-delegated-title">Delegated</h3>

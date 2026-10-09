@@ -272,6 +272,14 @@ export class Store {
     return mapChat(row as Row)
   }
 
+  /** Which chat owns a message, or null when the id is unknown. */
+  chatForMessage(messageId: string): string | null {
+    const row = this.db.prepare(`SELECT chat_id FROM messages WHERE id = ?`).get(messageId)
+    if (!row) return null
+    const chatId = (row as Row).chat_id
+    return typeof chatId === 'string' ? chatId : null
+  }
+
   saveMessage(chatId: string, seq: number, message: LeadMessage): void {
     this.db
       .prepare(

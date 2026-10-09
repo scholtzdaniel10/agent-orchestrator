@@ -34,7 +34,10 @@ test('the lead splits a two-part request across both plans', async () => {
     const rules = loadRules()
     const orch = new Orchestrator({ adapters, store, rules, cwd })
     await orch.init()
-    bridge = await startBridge(createOrchestratorTools(orch))
+    const leadRef: { current: Lead | null } = { current: null }
+    bridge = await startBridge(
+      createOrchestratorTools(orch, () => leadRef.current?.currentTurn() ?? null)
+    )
 
     const gateLead = process.env.GATE_LEAD
     const prefer: ProviderId | undefined =
@@ -46,17 +49,22 @@ test('the lead splits a two-part request across both plans', async () => {
       bridge: bridge.info,
       dir: leadDir,
       project: () => cwd,
-      prefer
+      prefer,
+      listJobs: (): JobRecord[] => orch.list()
     })
+    leadRef.current = lead
     await lead.init()
+    lead.attachOrchestrator(orch)
 
     const starting = new Map(orch.workers().map((worker) => [worker.id, worker.headroom]))
     const turn1 = await lead.send(TURN_1)
     await orch.idle()
+    await lead.whenQuiet()
 
     const providerBefore = lead.provider()
     const jobsBefore = orch.list().map((job) => job.id)
     const turn2 = await lead.send(TURN_2)
+    await lead.whenQuiet()
 
     const board = orch.list()
     const runs = store.runs()
@@ -86,7 +94,7 @@ test('the lead splits a two-part request across both plans', async () => {
     expect(board.map((job) => job.id)).toEqual(jobsBefore)
 
     const leadRuns = runs.filter((row) => row.job_type === 'lead')
-    expect(leadRuns).toHaveLength(2)
+    expect(leadRuns.length).toBeGreaterThanOrEqual(2)
     for (const row of leadRuns) expect(row.outcome).toBe('ok')
     const otherOk = runs.filter((row) => row.job_type !== 'lead' && row.outcome === 'ok')
     expect(otherOk.length).toBeGreaterThanOrEqual(2)

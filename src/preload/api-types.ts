@@ -99,7 +99,7 @@ export interface OrchestratorApi {
   listLeadChats(): Promise<LeadChat[]>
   openLeadChat(id: string): Promise<LeadMessage[]>
   resetLead(): Promise<void>
-  onLeadUpdate(cb: (message: LeadMessage) => void): () => void
+  onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void
 
   /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
   openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo>

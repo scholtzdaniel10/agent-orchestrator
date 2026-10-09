@@ -300,10 +300,12 @@ function App(): React.JSX.Element {
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
+  const viewChatId = useRef<string | null>(null)
 
   function refreshChats(): void {
     void window.api.listLeadChats().then(
       (list) => {
+        viewChatId.current = list.find((chat) => chat.active)?.id ?? null
         setChats(list)
       },
       () => {}
@@ -313,7 +315,11 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let active = true
     const state = bag.current
-    const unsubscribe = window.api.onLeadUpdate((message) => {
+    const unsubscribe = window.api.onLeadUpdate((message, chatId) => {
+      if (chatId !== null && chatId !== viewChatId.current) {
+        if (message.status !== 'streaming') refreshChats()
+        return
+      }
       const next = mergeMessage(state.lead, message)
       state.lead = next
       setMessages(next)

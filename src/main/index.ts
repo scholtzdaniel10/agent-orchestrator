@@ -134,14 +134,17 @@ app.whenReady().then(async () => {
     dir: join(app.getPath('userData'), 'lead'),
     project: projectDir,
     prefer: () => settings.leadPlan() ?? envPrefer,
-    modelFor
+    modelFor,
+    listJobs: (): JobRecord[] => orch.list()
   })
   leadRef.current = lead
   await lead.init()
+  lead.attachOrchestrator(orch)
 
   function reloadProjectState(): void {
     lead.openLatest()
     orch.restore(projectDir())
+    lead.noteRestoredJobs(orch.list())
   }
 
   try {
@@ -182,10 +185,10 @@ app.whenReady().then(async () => {
     setTimeout(publishPlans, 0)
   }
 
-  function publishLead(message: LeadMessage): void {
+  function publishLead(message: LeadMessage, chatId: string | null): void {
     if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
       return
-    mainWindow.webContents.send('lead:update', message)
+    mainWindow.webContents.send('lead:update', message, chatId)
     if (message.status !== 'streaming') mainWindow.webContents.send('plans:update', plans())
   }
 

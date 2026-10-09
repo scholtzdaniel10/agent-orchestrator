@@ -111,9 +111,13 @@ const api: OrchestratorApi = {
   resetLead(): Promise<void> {
     return ipcRenderer.invoke('lead:reset')
   },
-  onLeadUpdate(cb: (message: LeadMessage) => void): () => void {
-    const listener = (_event: IpcRendererEvent, message: LeadMessage): void => {
-      cb(message)
+  onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void {
+    const listener = (
+      _event: IpcRendererEvent,
+      message: LeadMessage,
+      chatId: string | null
+    ): void => {
+      cb(message, chatId)
     }
     ipcRenderer.on('lead:update', listener)
     return () => {

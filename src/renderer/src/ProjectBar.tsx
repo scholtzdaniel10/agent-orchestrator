@@ -167,8 +167,16 @@ function ProjectBar({
                           }}
                         >
                           <span className="project-chat-title">{chat.title}</span>
-                          <span className="project-chat-age">
-                            {relativeAge(chat.updatedAt, now)}
+                          <span className="project-chat-meta">
+                            {chat.pending === true ? (
+                              <span className="status status-running project-chat-run">
+                                <span className="status-dot" aria-hidden="true" />
+                                running
+                              </span>
+                            ) : null}
+                            <span className="project-chat-age">
+                              {relativeAge(chat.updatedAt, now)}
+                            </span>
                           </span>
                         </button>
                       </li>

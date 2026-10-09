@@ -123,6 +123,8 @@ export interface LeadMessage {
   /** Model that answered, as the CLI reported it. */
   model?: string
   status: 'streaming' | 'done' | 'error'
+  /** Automatic follow-up after delegated jobs finish; no user message before it. */
+  kind?: 'report'
 }
 
 export interface LeadChat {
@@ -132,6 +134,8 @@ export interface LeadChat {
   updatedAt: number
   /** True for the chat currently shown. */
   active: boolean
+  /** Jobs or a report turn still in progress for this chat. */
+  pending?: boolean
 }
 
 /** One interactive CLI session, shown as a terminal tab. */
