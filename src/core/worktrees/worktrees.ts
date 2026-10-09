@@ -17,7 +17,7 @@ interface ListedWorktree {
 }
 
 export class Worktrees {
-  private readonly root: string
+  readonly root: string
 
   constructor(opts: { root: string }) {
     this.root = opts.root
@@ -39,6 +39,29 @@ export class Worktrees {
     } catch {
       return { path: project, isRepo: true, branch: null }
     }
+  }
+
+  /** Uncommitted files and distance from upstream. Never throws; zeros for a non-repo. */
+  async status(project: string): Promise<{ dirty: number; ahead: number; behind: number }> {
+    const result = { dirty: 0, ahead: 0, behind: 0 }
+    let out: string
+    try {
+      out = await git(['status', '--porcelain=v2', '--branch'], project)
+    } catch {
+      return result
+    }
+    for (const line of out.split('\n')) {
+      if (line.startsWith('# branch.ab ')) {
+        const match = /^# branch\.ab \+(\d+) -(\d+)/.exec(line)
+        if (match) {
+          result.ahead = Number(match[1])
+          result.behind = Number(match[2])
+        }
+      } else if (line !== '' && !line.startsWith('#')) {
+        result.dirty += 1
+      }
+    }
+    return result
   }
 
   async create(

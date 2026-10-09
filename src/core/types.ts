@@ -187,6 +187,38 @@ export interface ProjectEntry extends ProjectInfo {
   active: boolean
   /** Changes waiting for review in this project. */
   changes: number
+  /** Lines added and removed across those waiting changes. */
+  insertions: number
+  deletions: number
+  /** Files with uncommitted edits in the project folder itself. */
+  dirty: number
+  /** Commits ahead of and behind the upstream branch; 0 when there is none. */
+  ahead: number
+  behind: number
+  /** Saved lead chats for this project. */
+  chats: number
+}
+
+/** Preferences set on the Settings page. */
+export interface Prefs {
+  theme: 'system' | 'dark' | 'light'
+  /** Jobs one plan may run at once, 1..8; null uses the rules file. */
+  maxParallel: number | null
+  /** Terminal text size in pixels, 10..22. */
+  terminalFontSize: number
+  /** Desktop notification when a job ends while the window is in the background. */
+  notify: boolean
+  /** Folder GitHub clones go into; null asks every time. */
+  cloneDir: string | null
+}
+
+/** Read-only facts for the Settings page. */
+export interface AppInfo {
+  version: string
+  dataDir: string
+  worktreesDir: string
+  /** Jobs per plan the rules file asks for. */
+  rulesMaxParallel: number
 }
 
 /** One repository from `gh repo list`. */

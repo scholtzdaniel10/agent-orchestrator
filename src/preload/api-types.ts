@@ -1,10 +1,12 @@
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobType,
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
@@ -89,6 +91,19 @@ export interface OrchestratorApi {
   /** Forget a folder from the list. Refused for the active project. */
   removeProject(path: string): Promise<void>
 
+  /** Open a listed project folder in the file manager. */
+  revealProject(path: string): Promise<void>
+
+  getPrefs(): Promise<Prefs>
+  /** Change some preferences; resolves the full, validated set. */
+  setPrefs(patch: Partial<Prefs>): Promise<Prefs>
+  /** Folder picker for where GitHub clones go. Resolves null when cancelled. */
+  chooseCloneDir(): Promise<Prefs | null>
+  onPrefsUpdate(cb: (prefs: Prefs) => void): () => void
+  getAppInfo(): Promise<AppInfo>
+  /** Open the folder holding settings and saved chats in the file manager. */
+  openDataDir(): Promise<void>
+
   /** True when the GitHub CLI is installed and signed in. */
   githubAvailable(): Promise<boolean>
   /** Repositories from `gh repo list`. */
@@ -141,6 +156,7 @@ export interface OrchestratorApi {
 }
 
 export type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobRecord,
@@ -148,6 +164,7 @@ export type {
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,

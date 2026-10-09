@@ -1,12 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobType,
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
@@ -74,6 +76,33 @@ const api: OrchestratorApi = {
   },
   removeProject(path: string): Promise<void> {
     return ipcRenderer.invoke('project:remove', path)
+  },
+  revealProject(path: string): Promise<void> {
+    return ipcRenderer.invoke('project:reveal', path)
+  },
+  getPrefs(): Promise<Prefs> {
+    return ipcRenderer.invoke('prefs:get')
+  },
+  setPrefs(patch: Partial<Prefs>): Promise<Prefs> {
+    return ipcRenderer.invoke('prefs:set', patch)
+  },
+  chooseCloneDir(): Promise<Prefs | null> {
+    return ipcRenderer.invoke('prefs:chooseCloneDir')
+  },
+  onPrefsUpdate(cb: (prefs: Prefs) => void): () => void {
+    const listener = (_event: IpcRendererEvent, prefs: Prefs): void => {
+      cb(prefs)
+    }
+    ipcRenderer.on('prefs:update', listener)
+    return () => {
+      ipcRenderer.removeListener('prefs:update', listener)
+    }
+  },
+  getAppInfo(): Promise<AppInfo> {
+    return ipcRenderer.invoke('app:info')
+  },
+  openDataDir(): Promise<void> {
+    return ipcRenderer.invoke('app:openDataDir')
   },
   githubAvailable(): Promise<boolean> {
     return ipcRenderer.invoke('github:available')
