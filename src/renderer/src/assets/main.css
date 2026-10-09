@@ -2179,8 +2179,20 @@ select {
   fill: var(--bot-cursor);
 }
 
-.bot-eye {
+.bot-eye,
+.bot-solid {
   fill: var(--bot-eye);
+}
+
+.bot-line {
+  fill: none;
+  stroke: var(--bot-eye);
+  stroke-width: 1.1;
+  stroke-linecap: square;
+}
+
+.bot-line-thin {
+  stroke-width: 0.6;
 }
 
 .bot-error {
