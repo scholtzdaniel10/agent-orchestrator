@@ -6,26 +6,27 @@ A desktop app (Electron + TypeScript) that spreads your coding jobs across the A
 
 ![The main window: projects, the flow strip, the lead chat with the jobs it delegated, the job list and plan usage](docs/screenshot.png)
 
-| Compare two plans side by side                                                  | Light mode                                                          |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| ![One prompt sent to Claude and Cursor, results side by side](docs/compare.png) | ![The same window in light mode, blue ink on paper](docs/light.png) |
+| Compare two plans side by side                                                  | Light mode                                                         |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| ![One prompt sent to Claude and Cursor, results side by side](docs/compare.png) | ![The same window in light mode, red ink on paper](docs/light.png) |
 
 The screenshots use fake data and are made with `pnpm shots`.
 
-**Status:** early. The router and the lead bot work: provider adapters, job queue, routing rules, usage log, failover, a local MCP bridge, a lead chat, terminals, and a git worktree per editing job with diff, merge and discard. Saved sessions come next.
+**Status:** early, and not yet released. The pieces below are built and unit-tested; they have had little use against the real CLIs so far. See [BACKLOG.md](BACKLOG.md) for what is next.
 
 ## How it works
 
-- **Lead chat.** You talk to one lead bot. It splits your request into jobs, hands them to workers, and reports back. The lead is an ordinary CLI session that can only call the app's own tools.
+- **Lead chat.** You talk to one lead bot. It splits your request into jobs and hands them to workers, and you can keep talking to it while they run. When they finish it reports back. The lead is an ordinary CLI session that can only call the app's own tools.
   Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
-- **Projects.** A sidebar lists the folders you work in. One is active at a time; jobs and the lead run there.
-- **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate).
+- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
+- **Projects.** A sidebar lists the folders you work in. One is active at a time; jobs and the lead run there. If the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
+- **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate). Each plan runs up to three jobs at once, and a job can be stopped.
 - **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
 - **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it.
 - **Router.** A rule table plus how much allowance each plan has left picks the provider. Claude's headroom comes from the usage figure its CLI reports.
 - **Adapters.** The app spawns each provider's official CLI headless (`claude -p`, `agent -p`) and reads its `stream-json` output.
 - **Failover.** If a plan reports a limit error, it is marked resting and its queued jobs move to the other plan.
-- **Usage meter.** The window shows how much allowance each plan has left.
+- **Usage meter.** The window shows how much allowance each plan has left, and says what to run when a CLI is missing or signed out. The app works with only one of the two plans.
 
 Everything runs locally, per person. There is no server.
 
@@ -41,6 +42,14 @@ The lead reaches the app through a small MCP server inside the main process, wit
 - Jobs are started by a person, not on a timer.
 
 You are responsible for staying within each provider's terms.
+
+## Security
+
+- Everyone uses their own plans. The app has no accounts, no server and no way to reach anyone else's login.
+- The window is sandboxed, cannot navigate away from the app, and reaches the main process only through a fixed list of functions.
+- A worker reads files only, unless you tick "Let it edit files"; then it edits inside its own git worktree and still cannot run shell commands.
+- Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.
+- The terminals are full CLI sessions; what they may do is whatever you approve inside them.
 
 ## Develop
 
