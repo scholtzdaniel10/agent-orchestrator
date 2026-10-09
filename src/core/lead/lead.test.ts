@@ -1159,3 +1159,63 @@ test('open while busy throws', async () => {
     await pending
   })
 })
+
+test('rename validates title and project; remove current chat resets to empty', async () => {
+  let project = '/a'
+  const cursor = new FakeAdapter('cursor', [done('s1', 'a'), done('s2', 'b')])
+  await withLead(
+    [cursor],
+    async (lead, store) => {
+      await lead.send('first topic')
+      const id = lead.chats()[0]?.id
+      expect(id).toBeDefined()
+      expect(() => lead.rename(id!, '')).toThrow('invalid title')
+      expect(() => lead.rename(id!, '   ')).toThrow('invalid title')
+      expect(() => lead.rename(id!, 'x'.repeat(81))).toThrow('invalid title')
+      lead.rename(id!, '  Renamed chat  ')
+      expect(lead.chats()[0]?.title).toBe('Renamed chat')
+      expect(store.chat(id!)?.title).toBe('Renamed chat')
+
+      project = '/b'
+      expect(() => lead.rename(id!, 'nope')).toThrow('unknown chat')
+      expect(() => lead.remove(id!)).toThrow('unknown chat')
+      project = '/a'
+      lead.open(id!)
+      lead.remove(id!)
+      expect(lead.messages()).toEqual([])
+      expect(lead.chats()).toEqual([])
+      expect(store.chat(id!)).toBeNull()
+    },
+    { project: (): string => project }
+  )
+})
+
+test('remove while its turn runs throws; other chats stay', async () => {
+  const held = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: held.promise,
+      events: [
+        { kind: 'init', sessionId: 's1' },
+        { kind: 'result', ok: true, text: 'ok', sessionId: 's1', costUsd: 1, tokens: 1 }
+      ]
+    },
+    done('s2', 'kept')
+  ])
+  await withLead([cursor], async (lead, store) => {
+    const pending = lead.send('busy chat')
+    const busyId = lead.chats()[0]?.id
+    expect(busyId).toBeDefined()
+    expect(() => lead.remove(busyId!)).toThrow('lead is busy')
+    held.open()
+    await pending
+    lead.reset()
+    await lead.send('keep me')
+    const keepId = lead.chats()[0]?.id
+    expect(keepId).toBeDefined()
+    lead.open(busyId!)
+    lead.remove(busyId!)
+    expect(store.chat(busyId!)).toBeNull()
+    expect(lead.chats().map((chat) => chat.id)).toEqual([keepId])
+  })
+})

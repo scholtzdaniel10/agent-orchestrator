@@ -288,6 +288,41 @@ test('chats, messages, and jobs round-trip with order and upsert rules', async (
   })
 })
 
+test('deleteChat removes messages and keeps other chats and jobs', async () => {
+  await withStore((store) => {
+    store.saveChat({
+      id: 'c1',
+      project: '/a',
+      title: 'one',
+      created_at: 1,
+      updated_at: 1,
+      session_id: null,
+      session_provider: null
+    })
+    store.saveChat({
+      id: 'c2',
+      project: '/a',
+      title: 'two',
+      created_at: 2,
+      updated_at: 2,
+      session_id: null,
+      session_provider: null
+    })
+    store.saveMessage('c1', 0, { id: 'm1', role: 'user', text: 'hi', status: 'done' })
+    store.saveMessage('c1', 1, { id: 'm2', role: 'lead', text: 'yo', status: 'done' })
+    store.saveMessage('c2', 0, { id: 'm3', role: 'user', text: 'other', status: 'done' })
+    store.saveJob('/a', 1, job({ id: 'j1', leadMessage: 'm2' }))
+    store.deleteChat('c1')
+    expect(store.chat('c1')).toBeNull()
+    expect(store.messages('c1')).toEqual([])
+    expect(store.chats('/a').map((chat) => chat.id)).toEqual(['c2'])
+    expect(store.messages('c2').map((message) => message.id)).toEqual(['m3'])
+    expect(store.jobs('/a', 10).map((item) => item.id)).toEqual(['j1'])
+    store.renameChat('c2', 'renamed')
+    expect(store.chat('c2')?.title).toBe('renamed')
+  })
+})
+
 test('a corrupt data row is skipped', () => {
   const root = mkdtempSync(join(tmpdir(), 'ao-store-bad-'))
   const path = join(root, 'db.sqlite')

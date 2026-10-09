@@ -309,7 +309,8 @@ textarea {
   font-size: 16px;
 }
 
-.project-add-glyph {
+.project-add-glyph,
+.project-github-glyph {
   display: none;
 }
 
@@ -510,11 +511,19 @@ textarea {
   list-style: none;
 }
 
+.project-chat-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
 .project-chat-row {
   display: flex;
+  flex: 1;
   align-items: baseline;
   gap: 8px;
-  width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 6px 10px 6px 20px;
   border: 0;
@@ -571,6 +580,214 @@ textarea {
   font-variant-ligatures: none;
 }
 
+.project-chat-actions {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.project-chat-item:hover .project-chat-actions,
+.project-chat-item:focus-within .project-chat-actions {
+  display: flex;
+}
+
+.project-chat-item:hover .project-chat-row,
+.project-chat-item:focus-within .project-chat-row {
+  padding-right: 52px;
+}
+
+.project-chat-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-chat-action:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.project-chat-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.project-chat-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px 6px 20px;
+  border: 0;
+  border-left: 2px solid var(--signal);
+  border-radius: 0;
+  background: var(--selected);
+  color: var(--text);
+  font: inherit;
+}
+
+.project-chat-rename:focus {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+
+.project-chat-confirm {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px 6px 20px;
+  border-left: 2px solid var(--signal);
+  background: var(--selected);
+}
+
+.project-chat-confirm-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.github-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-height: 40%;
+  margin: 0 0 4px;
+  padding: 0 10px 8px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.github-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.github-filter-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.github-filter {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+}
+
+.github-filter:focus {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.github-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.github-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.github-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.github-row:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.github-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.github-row-name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.github-name {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-ligatures: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.github-lock {
+  flex: none;
+  color: var(--muted);
+}
+
+.github-row-meta {
+  flex: none;
+}
+
+.github-updated,
+.github-cloning {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-ligatures: none;
+}
+
 .lead-wait {
   margin: 6px 0 0;
 }
@@ -591,16 +808,19 @@ textarea {
     display: none;
   }
 
-  .project-add {
+  .project-add,
+  .project-github {
     width: 28px;
     padding: 0;
   }
 
-  .project-add-label {
+  .project-add-label,
+  .project-github-label {
     display: none;
   }
 
-  .project-add-glyph {
+  .project-add-glyph,
+  .project-github-glyph {
     display: inline;
   }
 
@@ -649,18 +869,33 @@ textarea {
   }
 
   .project-bar:hover .project-add,
-  .project-bar:focus-within .project-add {
+  .project-bar:focus-within .project-add,
+  .project-bar:hover .project-github,
+  .project-bar:focus-within .project-github {
     width: auto;
     padding: 0 8px;
   }
 
   .project-bar:hover .project-add-label,
-  .project-bar:focus-within .project-add-label {
+  .project-bar:focus-within .project-add-label,
+  .project-bar:hover .project-github-label,
+  .project-bar:focus-within .project-github-label {
     display: inline;
   }
 
   .project-bar:hover .project-add-glyph,
-  .project-bar:focus-within .project-add-glyph {
+  .project-bar:focus-within .project-add-glyph,
+  .project-bar:hover .project-github-glyph,
+  .project-bar:focus-within .project-github-glyph {
+    display: none;
+  }
+
+  .project-bar:hover .github-panel,
+  .project-bar:focus-within .github-panel {
+    display: flex;
+  }
+
+  .github-panel {
     display: none;
   }
 
@@ -3135,4 +3370,15 @@ select {
   line-height: 1.2;
   text-align: center;
   text-transform: uppercase;
+}
+
+/* The sidebar header is narrow: its two buttons are always glyphs, named by title and aria-label. */
+.project-bar .project-add-label,
+.project-bar .project-github-label {
+  display: none !important;
+}
+
+.project-bar .project-add-glyph,
+.project-bar .project-github-glyph {
+  display: inline !important;
 }

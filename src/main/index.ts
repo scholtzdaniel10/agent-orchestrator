@@ -1,16 +1,26 @@
+import { execFile } from 'node:child_process'
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
+import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import type { JobType, LeadChat, LeadMessage, ProjectEntry, ProviderId } from '../core/types'
+import type {
+  GithubRepo,
+  JobType,
+  LeadChat,
+  LeadMessage,
+  ProjectEntry,
+  ProjectInfo,
+  ProviderId
+} from '../core/types'
 import { Worktrees } from '../core/worktrees'
 import type { PlanStatus } from '../preload/api-types'
 
@@ -30,7 +40,10 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false
     }
   })
   mainWindow = win
@@ -43,9 +56,18 @@ function createWindow(): void {
     publishChanges()
   })
 
+  // The window only ever shows the app itself. Web links open in the browser; nothing else opens.
   win.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    const web = details.url.startsWith('https://') || details.url.startsWith('http://')
+    if (web) void shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    // A reload of the app's own page is fine (dev server); anything else is refused.
+    if (url !== win.webContents.getURL()) event.preventDefault()
+  })
+  win.webContents.session.setPermissionRequestHandler((_contents, _permission, allow) => {
+    allow(false)
   })
 
   // HMR for renderer base on electron-vite cli.
@@ -81,6 +103,7 @@ app.whenReady().then(async () => {
   const worktrees = new Worktrees({
     root: process.env.ORCH_WORKTREES ?? join(app.getPath('home'), '.orchestrator', 'wt')
   })
+  const github = new Github(runGh)
 
   function pushChanges(): void {
     void worktrees
@@ -278,6 +301,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('lead:reset', () => {
     lead.reset()
   })
+  ipcMain.handle('lead:rename', (_event, id: unknown, title: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid chat id')
+    if (typeof title !== 'string' || title.length > 80) throw new Error('invalid title')
+    lead.rename(id, title)
+  })
+  ipcMain.handle('lead:remove', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid chat id')
+    lead.remove(id)
+  })
 
   function publishProjectLists(): void {
     if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
@@ -308,11 +340,11 @@ app.whenReady().then(async () => {
     return terms.open(provider, cols as number, rows as number)
   })
   ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
-    if (typeof id !== 'string') return
-    terms.write(id, data as string)
+    if (typeof id !== 'string' || typeof data !== 'string') return
+    terms.write(id, data)
   })
   ipcMain.on('terminals:resize', (_event, id: unknown, cols: unknown, rows: unknown) => {
-    if (typeof id !== 'string') return
+    if (typeof id !== 'string' || !Number.isInteger(cols) || !Number.isInteger(rows)) return
     terms.resize(id, cols as number, rows as number)
   })
   ipcMain.handle('terminals:close', (_event, id: unknown) => {
@@ -361,6 +393,18 @@ app.whenReady().then(async () => {
     }
     return entries
   })
+  async function activateProject(path: string): Promise<ProjectInfo> {
+    settings.setProject(path)
+    try {
+      reloadProjectState()
+    } catch (err: unknown) {
+      console.error(err)
+    }
+    pushChanges()
+    publishProjectLists()
+    return worktrees.info(path)
+  }
+
   ipcMain.handle('project:choose', async () => {
     assertProjectIdle()
     if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
@@ -371,34 +415,39 @@ app.whenReady().then(async () => {
     if (picked.canceled || picked.filePaths.length === 0) return null
     const path = picked.filePaths[0]
     if (path === undefined) return null
-    settings.setProject(path)
-    try {
-      reloadProjectState()
-    } catch (err: unknown) {
-      console.error(err)
-    }
-    pushChanges()
-    publishProjectLists()
-    return worktrees.info(path)
+    return activateProject(path)
   })
   ipcMain.handle('project:switch', async (_event, path: unknown) => {
     if (typeof path !== 'string' || !settings.projects().includes(path) || !isFolder(path)) {
       throw new Error('unknown project')
     }
     assertProjectIdle()
-    settings.setProject(path)
-    try {
-      reloadProjectState()
-    } catch (err: unknown) {
-      console.error(err)
-    }
-    pushChanges()
-    publishProjectLists()
-    return worktrees.info(path)
+    return activateProject(path)
   })
   ipcMain.handle('project:remove', (_event, path: unknown) => {
     if (typeof path !== 'string') throw new Error('unknown project')
     settings.removeProject(path)
+  })
+  ipcMain.handle('github:available', () => github.available())
+  ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
+  ipcMain.handle('github:clone', async (_event, nameWithOwner: unknown) => {
+    if (typeof nameWithOwner !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)) {
+      throw new Error('invalid repository name')
+    }
+    if (nameWithOwner.startsWith('-') || nameWithOwner.includes('/-')) {
+      throw new Error('invalid repository name')
+    }
+    assertProjectIdle()
+    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      defaultPath: projectDir()
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    const parent = picked.filePaths[0]
+    if (parent === undefined) return null
+    const path = await github.clone(nameWithOwner, parent)
+    return activateProject(path)
   })
   ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {
@@ -452,6 +501,39 @@ function isFolder(path: string): boolean {
   } catch {
     return false
   }
+}
+
+function runGh(
+  command: string,
+  args: string[],
+  cwd?: string
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      command,
+      args,
+      {
+        cwd,
+        windowsHide: true,
+        timeout: 600_000,
+        maxBuffer: 32 * 1024 * 1024,
+        encoding: 'utf8'
+      },
+      (err, stdout, stderr) => {
+        const code =
+          err === null
+            ? 0
+            : typeof err.code === 'number'
+              ? err.code
+              : 1
+        resolve({
+          code,
+          stdout: String(stdout ?? ''),
+          stderr: String(stderr ?? (err !== null ? err.message : ''))
+        })
+      }
+    )
+  })
 }
 
 function requireChangeId(id: unknown): string {

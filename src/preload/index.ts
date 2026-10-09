@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import type { JobRecord } from '../core/router'
 import type {
   ChangeSet,
+  GithubRepo,
   JobType,
   LeadChat,
   LeadMessage,
@@ -75,6 +75,15 @@ const api: OrchestratorApi = {
   removeProject(path: string): Promise<void> {
     return ipcRenderer.invoke('project:remove', path)
   },
+  githubAvailable(): Promise<boolean> {
+    return ipcRenderer.invoke('github:available')
+  },
+  githubRepos(): Promise<GithubRepo[]> {
+    return ipcRenderer.invoke('github:repos')
+  },
+  githubClone(nameWithOwner: string): Promise<ProjectInfo | null> {
+    return ipcRenderer.invoke('github:clone', nameWithOwner)
+  },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
   },
@@ -116,6 +125,12 @@ const api: OrchestratorApi = {
   },
   resetLead(): Promise<void> {
     return ipcRenderer.invoke('lead:reset')
+  },
+  renameLeadChat(id: string, title: string): Promise<void> {
+    return ipcRenderer.invoke('lead:rename', id, title)
+  },
+  removeLeadChat(id: string): Promise<void> {
+    return ipcRenderer.invoke('lead:remove', id)
   },
   onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void {
     const listener = (
@@ -170,14 +185,11 @@ const api: OrchestratorApi = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

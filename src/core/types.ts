@@ -188,3 +188,11 @@ export interface ProjectEntry extends ProjectInfo {
   /** Changes waiting for review in this project. */
   changes: number
 }
+
+/** One repository from `gh repo list`. */
+export interface GithubRepo {
+  nameWithOwner: string
+  description: string
+  isPrivate: boolean
+  updatedAt: string
+}

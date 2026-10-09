@@ -272,6 +272,23 @@ export class Store {
     return mapChat(row as Row)
   }
 
+  renameChat(id: string, title: string): void {
+    this.db.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title, id)
+  }
+
+  /** Deletes the chat and its messages. Jobs are kept. */
+  deleteChat(id: string): void {
+    this.db.exec('BEGIN')
+    try {
+      this.db.prepare('DELETE FROM messages WHERE chat_id = ?').run(id)
+      this.db.prepare('DELETE FROM chats WHERE id = ?').run(id)
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      throw err
+    }
+  }
+
   /** Which chat owns a message, or null when the id is unknown. */
   chatForMessage(messageId: string): string | null {
     const row = this.db.prepare(`SELECT chat_id FROM messages WHERE id = ?`).get(messageId)

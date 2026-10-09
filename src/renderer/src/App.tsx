@@ -290,6 +290,7 @@ function App(): React.JSX.Element {
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
+  const [githubAvailable, setGithubAvailable] = useState(false)
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [events, setEvents] = useState<FlowEvent[]>([])
@@ -498,6 +499,16 @@ function App(): React.JSX.Element {
       },
       () => {}
     )
+    void window.api.githubAvailable().then(
+      (ok) => {
+        if (!active) return
+        setGithubAvailable(ok)
+      },
+      () => {
+        if (!active) return
+        setGithubAvailable(false)
+      }
+    )
     return () => {
       active = false
     }
@@ -591,6 +602,22 @@ function App(): React.JSX.Element {
     }
   }
 
+  async function cloneFromGithub(nameWithOwner: string): Promise<boolean> {
+    if (choosing.current) return false
+    choosing.current = true
+    try {
+      const next = await window.api.githubClone(nameWithOwner)
+      if (next === null) return false
+      await adoptProject(next)
+      return true
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+      return false
+    } finally {
+      choosing.current = false
+    }
+  }
+
   async function resetLead(): Promise<void> {
     await window.api.resetLead()
     acceptList.current = false
@@ -609,6 +636,33 @@ function App(): React.JSX.Element {
     setMessages(list)
     publish(state, setEvents)
     refreshChats()
+  }
+
+  async function renameLeadChat(id: string, title: string): Promise<void> {
+    try {
+      await window.api.renameLeadChat(id, title)
+      refreshChats()
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
+  async function removeLeadChat(id: string): Promise<void> {
+    try {
+      const wasShown = viewChatId.current === id
+      await window.api.removeLeadChat(id)
+      if (wasShown) {
+        acceptList.current = false
+        const state = bag.current
+        const list = await window.api.listLeadMessages()
+        state.lead = list
+        setMessages(list)
+        publish(state, setEvents)
+      }
+      refreshChats()
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
   }
 
   const ready = readyPlans(plans ?? EMPTY_PLANS, now)
@@ -635,9 +689,11 @@ function App(): React.JSX.Element {
         leadBusy={leadBusy}
         now={now}
         error={projectError === null ? null : projectError.text}
+        githubAvailable={githubAvailable}
         onAdd={() => {
           void changeProject()
         }}
+        onGithubClone={cloneFromGithub}
         onSwitch={(path) => {
           void switchProject(path)
         }}
@@ -649,6 +705,12 @@ function App(): React.JSX.Element {
         }}
         onNewChat={() => {
           void resetLead()
+        }}
+        onRenameChat={(id, title) => {
+          void renameLeadChat(id, title)
+        }}
+        onRemoveChat={(id) => {
+          void removeLeadChat(id)
         }}
       />
       <section className="panel panel-flow" aria-labelledby="flow-heading">

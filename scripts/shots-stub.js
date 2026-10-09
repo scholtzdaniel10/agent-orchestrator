@@ -340,6 +340,34 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       return Promise.resolve({ path: entry.path, isRepo: entry.isRepo, branch: entry.branch })
     },
     removeProject: ok(undefined),
+    githubAvailable: ok(true),
+    githubRepos: ok([
+      {
+        nameWithOwner: 'acme/agent-orchestrator',
+        description: 'Local multi-agent desk',
+        isPrivate: false,
+        updatedAt: new Date(now - 2 * H).toISOString()
+      },
+      {
+        nameWithOwner: 'acme/estate-agents',
+        description: 'Search UI',
+        isPrivate: true,
+        updatedAt: new Date(now - 26 * H).toISOString()
+      },
+      {
+        nameWithOwner: 'acme/notes',
+        description: '',
+        isPrivate: false,
+        updatedAt: new Date(now - 5 * 24 * H).toISOString()
+      },
+      {
+        nameWithOwner: 'acme/private-ops',
+        description: 'Internal tooling',
+        isPrivate: true,
+        updatedAt: new Date(now - 40 * 24 * H).toISOString()
+      }
+    ]),
+    githubClone: ok(null),
     listChanges: ok(changes),
     onChangesUpdate: off,
     changeDiff: ok(diff),
@@ -352,6 +380,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listLeadChats: ok(chats),
     openLeadChat: ok(lead),
     resetLead: ok(undefined),
+    renameLeadChat: ok(undefined),
+    removeLeadChat: ok(undefined),
     onLeadUpdate: off,
     openTerminal: (provider) =>
       Promise.resolve({

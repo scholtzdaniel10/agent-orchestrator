@@ -1,5 +1,6 @@
 import type {
   ChangeSet,
+  GithubRepo,
   JobType,
   LeadChat,
   LeadMessage,
@@ -88,6 +89,16 @@ export interface OrchestratorApi {
   /** Forget a folder from the list. Refused for the active project. */
   removeProject(path: string): Promise<void>
 
+  /** True when the GitHub CLI is installed and signed in. */
+  githubAvailable(): Promise<boolean>
+  /** Repositories from `gh repo list`. */
+  githubRepos(): Promise<GithubRepo[]>
+  /**
+   * Asks for a parent folder, clones the repo with `gh`, adds it as a project, and switches to it.
+   * Resolves null when the folder picker is cancelled. Refused while work is running.
+   */
+  githubClone(nameWithOwner: string): Promise<ProjectInfo | null>
+
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
   onChangesUpdate(cb: (changes: ChangeSet[]) => void): () => void
@@ -108,6 +119,10 @@ export interface OrchestratorApi {
   listLeadChats(): Promise<LeadChat[]>
   openLeadChat(id: string): Promise<LeadMessage[]>
   resetLead(): Promise<void>
+  /** Rename a chat of the active project. Title is trimmed to 1..80 characters. */
+  renameLeadChat(id: string, title: string): Promise<void>
+  /** Delete a chat of the active project. Refused while that chat's turn or report is pending. */
+  removeLeadChat(id: string): Promise<void>
   onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void
 
   /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
@@ -127,6 +142,7 @@ export interface OrchestratorApi {
 
 export type {
   ChangeSet,
+  GithubRepo,
   JobRecord,
   JobType,
   LeadChat,

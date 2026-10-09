@@ -250,6 +250,30 @@ export class Lead {
 
   reset(): void {
     if (this.busy) throw new Error('lead is busy')
+    this.clearOpenChat()
+  }
+
+  rename(id: string, title: string): void {
+    const trimmed = title.trim()
+    if (trimmed.length < 1 || trimmed.length > 80) throw new Error('invalid title')
+    const row = this.store.chat(id)
+    if (row === null || row.project !== this.project()) throw new Error('unknown chat')
+    this.store.renameChat(id, trimmed)
+    if (this.chatId === id) this.chatTitle = trimmed
+  }
+
+  remove(id: string): void {
+    const row = this.store.chat(id)
+    if (row === null || row.project !== this.project()) throw new Error('unknown chat')
+    if (this.busy && this.chatId === id) throw new Error('lead is busy')
+    if (this.pendingFollowUps.some((item) => item.chatId === id)) {
+      throw new Error('lead is busy')
+    }
+    this.store.deleteChat(id)
+    if (this.chatId === id) this.clearOpenChat()
+  }
+
+  private clearOpenChat(): void {
     this.history = []
     this.sessionId = undefined
     this.sessionProvider = null

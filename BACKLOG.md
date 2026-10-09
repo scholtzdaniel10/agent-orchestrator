@@ -8,11 +8,12 @@ Ordered. The top item is the next one to build.
 - Parallel jobs per plan (`maxParallel` in `rules.json`).
 - First-run check. Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app works with only one of them.
 - Stop a job. A button to cancel a running or queued job.
+- GitHub through `gh`: clone a repo into the projects list (hidden when `gh` is missing or signed out).
+- Delete and rename chats.
 
 ## Next
 
-1. **GitHub through `gh`.** Add a project by picking one of your repos to clone; open a pull request from a merged change. Hidden when `gh` is not installed.
-2. **Delete and rename chats.**
+1. **Open a pull request from a merged change** via `gh` (clone already ships; `createPr` is ready in core).
 
 ## Before a release
 
