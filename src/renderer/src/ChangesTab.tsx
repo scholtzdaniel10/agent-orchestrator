@@ -9,7 +9,10 @@ type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 const DIFF_LINE_CAP = 5000
 
 function errorText(err: unknown): string {
-  if (err instanceof Error) return err.message
+  if (err instanceof Error) {
+    // Electron prefixes errors from the main process; show only the message itself.
+    return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+  }
   if (typeof err === 'string') return err
   return 'Request failed'
 }

@@ -357,8 +357,9 @@ app.whenReady().then(async () => {
     return terms.snapshot(id)
   })
   function assertProjectIdle(): void {
-    if (orch.busy() || terms.list().some((term) => term.status === 'running')) {
-      throw new Error('finish or close running work first')
+    // Open terminals keep the folder they started in, so only jobs block a project change.
+    if (orch.busy()) {
+      throw new Error('Wait for running jobs to finish, or stop them, before changing project.')
     }
   }
 

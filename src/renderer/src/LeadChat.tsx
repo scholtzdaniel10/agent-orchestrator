@@ -21,7 +21,10 @@ function jobsForMessage(jobs: readonly JobRecord[], messageId: string): JobRecor
 }
 
 function errorText(err: unknown): string {
-  if (err instanceof Error) return err.message
+  if (err instanceof Error) {
+    // Electron prefixes errors from the main process; show only the message itself.
+    return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+  }
   if (typeof err === 'string') return err
   return 'Request failed'
 }
@@ -219,7 +222,7 @@ function LeadChat({
           <button
             type="button"
             className="btn btn-quiet"
-            disabled={leadStreaming}
+            disabled={leadStreaming || messages.length === 0}
             onClick={() => {
               void newChat()
             }}

@@ -20,10 +20,10 @@ function terminalTheme(): {
   selectionBackground: string
 } {
   return {
-    background: cssColor('--deep'),
+    background: cssColor('--bg'),
     foreground: cssColor('--text'),
     cursor: cssColor('--signal'),
-    selectionBackground: cssColor('--selected')
+    selectionBackground: cssColor('--brand')
   }
 }
 

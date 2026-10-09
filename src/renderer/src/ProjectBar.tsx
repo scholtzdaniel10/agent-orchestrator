@@ -515,7 +515,7 @@ function ProjectBar({
                     <button
                       type="button"
                       className="btn btn-quiet btn-compact"
-                      disabled={leadBusy}
+                      disabled={leadBusy || !chats.some((chat) => chat.active)}
                       onClick={onNewChat}
                     >
                       New chat
