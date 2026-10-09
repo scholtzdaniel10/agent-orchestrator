@@ -432,9 +432,13 @@ app.whenReady().then(async () => {
     lead.open(id)
     return lead.messages()
   })
-  ipcMain.handle('lead:reset', () => {
-    lead.reset()
+  ipcMain.handle('lead:reset', (_event, direct: unknown) => {
+    if (direct !== undefined && direct !== null && direct !== 'claude' && direct !== 'cursor') {
+      throw new Error('unknown plan')
+    }
+    lead.reset(direct ?? null)
   })
+  ipcMain.handle('lead:mode', (): ProviderId | null => lead.mode())
   ipcMain.handle('lead:rename', (_event, id: unknown, title: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid chat id')
     if (typeof title !== 'string' || title.length > 80) throw new Error('invalid title')

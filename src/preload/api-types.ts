@@ -196,7 +196,13 @@ export interface OrchestratorApi {
   listLeadMessages(): Promise<LeadMessage[]>
   listLeadChats(): Promise<LeadChat[]>
   openLeadChat(id: string): Promise<LeadMessage[]>
-  resetLead(): Promise<void>
+  /**
+   * Start a new chat. With `direct`, it talks straight to that plan in the project folder
+   * (read-only): no lead, no delegation.
+   */
+  resetLead(direct?: ProviderId): Promise<void>
+  /** Plan the open chat talks to directly; null for a lead chat. */
+  getLeadMode(): Promise<ProviderId | null>
   /** Rename a chat of the active project. Title is trimmed to 1..80 characters. */
   renameLeadChat(id: string, title: string): Promise<void>
   /** Delete a chat of the active project. Refused while that chat's turn or report is pending. */

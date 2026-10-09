@@ -181,6 +181,8 @@ export interface LeadChat {
   active: boolean
   /** Jobs or a report turn still in progress for this chat. */
   pending?: boolean
+  /** Set when the chat talks straight to one plan instead of the lead. */
+  direct?: ProviderId
 }
 
 /** One interactive CLI session, shown as a terminal tab. */

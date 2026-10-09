@@ -208,8 +208,11 @@ const api: OrchestratorApi = {
   openLeadChat(id: string): Promise<LeadMessage[]> {
     return ipcRenderer.invoke('lead:open', id)
   },
-  resetLead(): Promise<void> {
-    return ipcRenderer.invoke('lead:reset')
+  resetLead(direct?: ProviderId): Promise<void> {
+    return ipcRenderer.invoke('lead:reset', direct)
+  },
+  getLeadMode(): Promise<ProviderId | null> {
+    return ipcRenderer.invoke('lead:mode')
   },
   renameLeadChat(id: string, title: string): Promise<void> {
     return ipcRenderer.invoke('lead:rename', id, title)
