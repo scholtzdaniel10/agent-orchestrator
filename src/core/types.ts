@@ -123,6 +123,15 @@ export interface LeadMessage {
   status: 'streaming' | 'done' | 'error'
 }
 
+export interface LeadChat {
+  id: string
+  title: string
+  /** Epoch ms of the last message. */
+  updatedAt: number
+  /** True for the chat currently shown. */
+  active: boolean
+}
+
 /** One interactive CLI session, shown as a terminal tab. */
 export interface TerminalInfo {
   id: string

@@ -2,9 +2,9 @@
 
 Ordered. The top item is the next one to build.
 
-## In progress
+## Done
 
-- **Saved chats and jobs.** Keep the lead's conversations and the job list in SQLite, per project, and list past chats under the active project in the sidebar.
+- Saved chats and jobs, per project, with past chats listed in the sidebar.
 
 ## Next
 

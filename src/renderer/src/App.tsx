@@ -11,6 +11,7 @@ import { createTerminalBus, type TerminalBus } from './terminal-bus'
 export { RayBurst, Star } from './Star'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
+type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
@@ -281,6 +282,7 @@ function AppSummary({
 
 function App(): React.JSX.Element {
   const [messages, setMessages] = useState<LeadMessage[]>([])
+  const [chats, setChats] = useState<LeadChat[]>([])
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [plans, setPlans] = useState<PlanStatus[] | null>(null)
   const [terminals, setTerminals] = useState<TerminalInfo[]>([])
@@ -299,6 +301,15 @@ function App(): React.JSX.Element {
   const choosing = useRef(false)
   const bag = useRef(createBag())
 
+  function refreshChats(): void {
+    void window.api.listLeadChats().then(
+      (list) => {
+        setChats(list)
+      },
+      () => {}
+    )
+  }
+
   useEffect(() => {
     let active = true
     const state = bag.current
@@ -307,6 +318,7 @@ function App(): React.JSX.Element {
       state.lead = next
       setMessages(next)
       publish(state, setEvents)
+      if (message.status !== 'streaming') refreshChats()
     })
     void window.api.listLeadMessages().then(
       (list) => {
@@ -327,6 +339,7 @@ function App(): React.JSX.Element {
         publish(state, setEvents)
       }
     )
+    refreshChats()
     return () => {
       active = false
       unsubscribe()
@@ -522,9 +535,18 @@ function App(): React.JSX.Element {
 
   async function adoptProject(next: ProjectInfo): Promise<void> {
     setProject(next)
+    acceptList.current = false
+    const state = bag.current
     const list = await window.api.listChanges()
-    commitChanges(bag.current, list, setChanges, setEvents)
+    commitChanges(state, list, setChanges, setEvents)
+    const leadList = await window.api.listLeadMessages()
+    state.lead = leadList
+    setMessages(leadList)
+    const jobList = await window.api.listJobs()
+    commitJobs(state, jobList, setJobs, setStarts, setFlashes, setEvents)
+    setChats(await window.api.listLeadChats())
     setProjects(await window.api.listProjects())
+    publish(state, setEvents)
   }
 
   async function changeProject(): Promise<void> {
@@ -570,11 +592,23 @@ function App(): React.JSX.Element {
     state.lead = []
     setMessages([])
     publish(state, setEvents)
+    refreshChats()
+  }
+
+  async function openLeadChat(id: string): Promise<void> {
+    const list = await window.api.openLeadChat(id)
+    acceptList.current = false
+    const state = bag.current
+    state.lead = list
+    setMessages(list)
+    publish(state, setEvents)
+    refreshChats()
   }
 
   const ready = readyPlans(plans ?? EMPTY_PLANS, now)
   const running = jobs.filter((job) => job.status === 'running').length
   const queued = jobs.filter((job) => job.status === 'queued').length
+  const leadBusy = messages.some((message) => message.status === 'streaming')
 
   return (
     <div className="app">
@@ -590,7 +624,10 @@ function App(): React.JSX.Element {
       </header>
       <ProjectBar
         projects={projects}
+        chats={chats}
         busy={running > 0 || queued > 0}
+        leadBusy={leadBusy}
+        now={now}
         error={projectError === null ? null : projectError.text}
         onAdd={() => {
           void changeProject()
@@ -600,6 +637,12 @@ function App(): React.JSX.Element {
         }}
         onRemove={(path) => {
           void removeProject(path)
+        }}
+        onOpenChat={(id) => {
+          void openLeadChat(id)
+        }}
+        onNewChat={() => {
+          void resetLead()
         }}
       />
       <section className="panel panel-flow" aria-labelledby="flow-heading">

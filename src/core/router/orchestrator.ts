@@ -56,6 +56,10 @@ interface InternalJob {
   /** Id of the lead chat message whose turn created this job. */
   leadMessage?: string
   error?: string
+  /** Project folder when the job was submitted. */
+  project: string
+  /** Epoch ms when the job was submitted. */
+  createdAt: number
 }
 
 type ResultEvent = Extract<AgentEvent, { kind: 'result' }>
@@ -147,6 +151,8 @@ export class Orchestrator {
       output: '',
       failedOver: [],
       chosen: false,
+      project: this.workingDir(),
+      createdAt: this.now(),
       ...(edit === true ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {})
@@ -166,7 +172,7 @@ export class Orchestrator {
       job.chosen = true
       job.reason = 'chosen'
       this.enqueue(provider, job.id)
-      this.emit(job)
+      this.emitStatus(job)
       this.pump(provider)
       return copy(job)
     }
@@ -177,9 +183,28 @@ export class Orchestrator {
     job.provider = pick.provider
     job.reason = pick.reason
     this.enqueue(pick.provider, job.id)
-    this.emit(job)
+    this.emitStatus(job)
     this.pump(pick.provider)
     return copy(job)
+  }
+
+  /** Replace the in-memory job list with the newest stored jobs for `project`. */
+  restore(project: string): void {
+    if (this.busy()) throw new Error('orchestrator is busy')
+    this.jobs.length = 0
+    this.byJob.clear()
+    this.queues.clear()
+    this.running.clear()
+    for (const record of this.store.jobs(project, 200)) {
+      const job = fromRecord(record, project, this.now())
+      if (job.status === 'queued' || job.status === 'running') {
+        job.status = 'failed'
+        job.error = 'interrupted when the app closed'
+        this.persist(job)
+      }
+      this.jobs.push(job)
+      this.byJob.set(job.id, job)
+    }
   }
 
   list(): JobRecord[] {
@@ -261,13 +286,13 @@ export class Orchestrator {
     this.running.add(provider)
     job.status = 'running'
     job.provider = provider
-    this.emit(job)
+    this.emitStatus(job)
     void this.execute(job, provider)
       .catch((err: unknown) => {
         if (job.status === 'running') {
           job.status = 'failed'
           job.error = err instanceof Error ? err.message : String(err)
-          this.emit(job)
+          this.emitStatus(job)
         }
       })
       .finally(() => {
@@ -292,7 +317,7 @@ export class Orchestrator {
       const message = err instanceof Error ? err.message : String(err)
       job.status = 'failed'
       job.error = `cannot edit here: ${message}`
-      this.emit(job)
+      this.emitStatus(job)
       return null
     }
   }
@@ -401,7 +426,7 @@ export class Orchestrator {
       job.status = 'failed'
       job.error = failureMessage(result?.text, stderr)
     }
-    this.emit(job)
+    this.emitStatus(job)
   }
 
   private applyLimit(
@@ -422,7 +447,7 @@ export class Orchestrator {
     if (job.chosen) {
       job.status = 'failed'
       job.error = `${provider} hit its usage limit`
-      this.emit(job)
+      this.emitStatus(job)
       this.rerouteQueued(provider)
       return
     }
@@ -441,7 +466,7 @@ export class Orchestrator {
       if (job.chosen) {
         job.status = 'failed'
         job.error = `${provider} hit its usage limit`
-        this.emit(job)
+        this.emitStatus(job)
         continue
       }
       this.requeue(job, provider, false, '')
@@ -473,7 +498,7 @@ export class Orchestrator {
       job.status = 'failed'
       job.provider = null
       job.error = 'all providers are at their limit'
-      this.emit(job)
+      this.emitStatus(job)
       return
     }
     if (recordFailure) {
@@ -496,7 +521,7 @@ export class Orchestrator {
     delete job.model
     delete job.error
     this.enqueue(next, job.id)
-    this.emit(job)
+    this.emitStatus(job)
     this.pump(next)
   }
 
@@ -512,7 +537,7 @@ export class Orchestrator {
     this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'error')
     job.status = 'failed'
     job.error = err instanceof Error ? err.message : String(err)
-    this.emit(job)
+    this.emitStatus(job)
   }
 
   private insertRun(
@@ -541,9 +566,22 @@ export class Orchestrator {
   private failNow(job: InternalJob, error: string): JobRecord {
     job.status = 'failed'
     job.error = error
-    this.emit(job)
+    this.emitStatus(job)
     this.resolveIdle()
     return copy(job)
+  }
+
+  private emitStatus(job: InternalJob): void {
+    this.persist(job)
+    this.emit(job)
+  }
+
+  private persist(job: InternalJob): void {
+    try {
+      this.store.saveJob(job.project, job.createdAt, copy(job))
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   private emit(job: InternalJob): void {
@@ -579,6 +617,29 @@ function copy(job: InternalJob): JobRecord {
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   return record
+}
+
+function fromRecord(record: JobRecord, project: string, createdAt: number): InternalJob {
+  return {
+    id: record.id,
+    type: record.type,
+    originalPrompt: record.prompt,
+    prompt: record.prompt,
+    provider: record.provider,
+    status: record.status,
+    output: record.output,
+    failedOver: [...record.failedOver],
+    chosen: record.reason === 'chosen',
+    project,
+    createdAt,
+    ...(record.error !== undefined ? { error: record.error } : {}),
+    ...(record.model !== undefined ? { model: record.model } : {}),
+    ...(record.reason !== undefined ? { reason: record.reason } : {}),
+    ...(record.edit === true ? { edit: true } : {}),
+    ...(record.change !== undefined ? { change: record.change } : {}),
+    ...(record.group !== undefined ? { group: record.group } : {}),
+    ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {})
+  }
 }
 
 function failureMessage(resultText: string | undefined, stderr: string): string {

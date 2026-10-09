@@ -1,12 +1,22 @@
 import { Star } from './Star'
 
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
+type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
 
 function folderName(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, '')
   const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
   if (index === -1) return trimmed
   return trimmed.slice(index + 1)
+}
+
+function relativeAge(updatedAt: number, now: number): string {
+  const delta = Math.max(0, now - updatedAt)
+  const minutes = Math.floor(delta / 60_000)
+  if (minutes < 60) return `${String(Math.max(minutes, 0))}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${String(hours)}h`
+  return `${String(Math.floor(hours / 24))}d`
 }
 
 function FolderGlyph(): React.JSX.Element {
@@ -29,19 +39,30 @@ function FolderGlyph(): React.JSX.Element {
 
 function ProjectBar({
   projects,
+  chats,
   busy,
+  leadBusy,
+  now,
   error,
   onAdd,
   onSwitch,
-  onRemove
+  onRemove,
+  onOpenChat,
+  onNewChat
 }: {
   projects: ProjectEntry[]
+  chats: LeadChat[]
   busy: boolean
+  leadBusy: boolean
+  now: number
   error: string | null
   onAdd: () => void
   onSwitch: (path: string) => void
   onRemove: (path: string) => void
+  onOpenChat: (id: string) => void
+  onNewChat: () => void
 }): React.JSX.Element {
+  const shown = chats.slice(0, 30)
   return (
     <aside className="project-bar" aria-labelledby="projects-heading">
       <div className="panel-head">
@@ -118,6 +139,42 @@ function ProjectBar({
                 >
                   ×
                 </button>
+              ) : null}
+              {active ? (
+                <div className="project-chats">
+                  <div className="project-chats-head">
+                    <span className="project-chats-label">Chats</span>
+                    <button
+                      type="button"
+                      className="btn btn-quiet btn-compact"
+                      disabled={leadBusy}
+                      onClick={onNewChat}
+                    >
+                      New chat
+                    </button>
+                  </div>
+                  <ul className="project-chat-list">
+                    {shown.map((chat) => (
+                      <li key={chat.id}>
+                        <button
+                          type="button"
+                          className={`project-chat-row${chat.active ? ' is-selected' : ''}`}
+                          title={chat.title}
+                          aria-current={chat.active ? 'true' : undefined}
+                          disabled={leadBusy}
+                          onClick={() => {
+                            onOpenChat(chat.id)
+                          }}
+                        >
+                          <span className="project-chat-title">{chat.title}</span>
+                          <span className="project-chat-age">
+                            {relativeAge(chat.updatedAt, now)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </li>
           )

@@ -4,6 +4,7 @@ import type { JobRecord } from '../core/router'
 import type {
   ChangeSet,
   JobType,
+  LeadChat,
   LeadMessage,
   ModelOption,
   ProjectEntry,
@@ -100,6 +101,12 @@ const api: OrchestratorApi = {
   },
   listLeadMessages(): Promise<LeadMessage[]> {
     return ipcRenderer.invoke('lead:messages')
+  },
+  listLeadChats(): Promise<LeadChat[]> {
+    return ipcRenderer.invoke('lead:chats')
+  },
+  openLeadChat(id: string): Promise<LeadMessage[]> {
+    return ipcRenderer.invoke('lead:open', id)
   },
   resetLead(): Promise<void> {
     return ipcRenderer.invoke('lead:reset')

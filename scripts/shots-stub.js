@@ -102,6 +102,28 @@
           text: 'I split that into two jobs:\n\n1. **Refactor** the router — sent to Cursor.\n2. **Debug** the pty host — sent to Claude.\n\nI will report back when both finish.'
         }
       ]
+  const chats = empty
+    ? []
+    : [
+        {
+          id: 'c1',
+          title: 'Tidy the router and check the pty host',
+          updatedAt: now - 2 * H,
+          active: true
+        },
+        {
+          id: 'c2',
+          title: 'Why is the usage window off by an hour?',
+          updatedAt: now - 3 * 24 * H,
+          active: false
+        },
+        {
+          id: 'c3',
+          title: 'Plan the Codex adapter',
+          updatedAt: now - 5 * 24 * H,
+          active: false
+        }
+      ]
   const changes = empty
     ? []
     : [
@@ -272,6 +294,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     setLeadPlan: ok(undefined),
     sendLead: (text) => Promise.resolve({ id: 'x', role: 'user', text, status: 'done' }),
     listLeadMessages: ok(lead),
+    listLeadChats: ok(chats),
+    openLeadChat: ok(lead),
     resetLead: ok(undefined),
     onLeadUpdate: off,
     openTerminal: (provider) =>

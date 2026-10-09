@@ -1,6 +1,7 @@
 import type {
   ChangeSet,
   JobType,
+  LeadChat,
   LeadMessage,
   ModelOption,
   ProjectEntry,
@@ -93,6 +94,8 @@ export interface OrchestratorApi {
 
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>
+  listLeadChats(): Promise<LeadChat[]>
+  openLeadChat(id: string): Promise<LeadMessage[]>
   resetLead(): Promise<void>
   onLeadUpdate(cb: (message: LeadMessage) => void): () => void
 
@@ -115,6 +118,7 @@ export type {
   ChangeSet,
   JobRecord,
   JobType,
+  LeadChat,
   LeadMessage,
   ModelOption,
   ProjectEntry,

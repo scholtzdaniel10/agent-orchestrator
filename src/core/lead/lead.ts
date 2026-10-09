@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type {
   AgentEvent,
   BridgeInfo,
+  LeadChat,
   LeadMessage,
   ProviderAdapter,
   ProviderId,
@@ -36,6 +37,7 @@ export class Lead {
   private readonly rules: RouterRules
   private readonly bridge: BridgeInfo
   private readonly dir: string
+  private readonly project: () => string
   private readonly prefer?: ProviderId | (() => ProviderId | undefined)
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
@@ -47,6 +49,10 @@ export class Lead {
   private busy = false
   /** Id of the lead message whose turn is running, or null. */
   private turnId: string | null = null
+  /** Id of the chat currently shown, or null before the first message. */
+  private chatId: string | null = null
+  private chatTitle = ''
+  private chatCreatedAt = 0
 
   constructor(opts: {
     adapters: ProviderAdapter[]
@@ -54,6 +60,7 @@ export class Lead {
     rules: RouterRules
     bridge: BridgeInfo
     dir: string
+    project: () => string
     prefer?: ProviderId | (() => ProviderId | undefined)
     now?: () => number
     modelFor?: (provider: ProviderId) => string | undefined
@@ -64,6 +71,7 @@ export class Lead {
     this.rules = opts.rules
     this.bridge = opts.bridge
     this.dir = opts.dir
+    this.project = opts.project
     this.prefer = opts.prefer
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
@@ -84,9 +92,11 @@ export class Lead {
     this.busy = true
     const user: LeadMessage = { id: randomUUID(), role: 'user', text, status: 'done' }
     const lead: LeadMessage = { id: randomUUID(), role: 'lead', text: '', status: 'streaming' }
+    this.ensureChat(text)
     this.history.push(user, lead)
     this.turnId = lead.id
     try {
+      this.persistMessage(user, this.history.length - 2)
       this.emit(user)
       this.emit(lead)
       await this.turn(lead, text)
@@ -114,6 +124,43 @@ export class Lead {
     return this.history.map((message) => copyMessage(message))
   }
 
+  chats(): LeadChat[] {
+    const active = this.chatId
+    return this.store.chats(this.project()).map((row) => ({
+      id: row.id,
+      title: row.title,
+      updatedAt: row.updated_at,
+      active: row.id === active
+    }))
+  }
+
+  open(id: string): void {
+    if (this.busy) throw new Error('lead is busy')
+    const row = this.store.chat(id)
+    if (row === null || row.project !== this.project()) throw new Error('unknown chat')
+    this.chatId = row.id
+    this.chatTitle = row.title
+    this.chatCreatedAt = row.created_at
+    this.history = this.store.messages(id).map((message) => copyMessage(message))
+    this.sessionId = row.session_id ?? undefined
+    this.sessionProvider = isProviderId(row.session_provider) ? row.session_provider : null
+  }
+
+  openLatest(): void {
+    if (this.busy) throw new Error('lead is busy')
+    const newest = this.store.chats(this.project())[0]
+    if (newest === undefined) {
+      this.history = []
+      this.sessionId = undefined
+      this.sessionProvider = null
+      this.chatId = null
+      this.chatTitle = ''
+      this.chatCreatedAt = 0
+      return
+    }
+    this.open(newest.id)
+  }
+
   onUpdate(cb: (message: LeadMessage) => void): () => void {
     this.listeners.add(cb)
     return (): void => {
@@ -130,6 +177,30 @@ export class Lead {
     this.history = []
     this.sessionId = undefined
     this.sessionProvider = null
+    this.chatId = null
+    this.chatTitle = ''
+    this.chatCreatedAt = 0
+  }
+
+  private ensureChat(text: string): void {
+    if (this.chatId !== null) {
+      const row = this.store.chat(this.chatId)
+      if (row !== null && row.project === this.project()) return
+      // Active project changed while a chat was still open — start a new one.
+      this.history = []
+      this.sessionId = undefined
+      this.sessionProvider = null
+      this.chatId = null
+      this.chatTitle = ''
+      this.chatCreatedAt = 0
+    }
+    const id = randomUUID()
+    const title = chatTitle(text)
+    const now = this.now()
+    this.chatId = id
+    this.chatTitle = title
+    this.chatCreatedAt = now
+    this.persistChat()
   }
 
   private preferredPlan(): ProviderId | undefined {
@@ -149,6 +220,7 @@ export class Lead {
     if (headroom(prefer, this.store, this.rules, this.now()) <= 0) return
     this.sessionId = undefined
     this.sessionProvider = null
+    this.persistChat()
   }
 
   private planFor(text: string): Plan | null {
@@ -245,6 +317,7 @@ export class Lead {
           sessionId = event.sessionId
           this.sessionId = event.sessionId
           this.sessionProvider = provider
+          this.persistChat()
           if (event.model !== undefined) {
             lead.model = event.model
             this.emit(lead)
@@ -270,6 +343,7 @@ export class Lead {
             sessionId = event.sessionId
             this.sessionId = event.sessionId
             this.sessionProvider = provider
+            this.persistChat()
           }
           if (event.costUsd !== undefined) costUsd = event.costUsd
           if (event.tokens !== undefined) tokens = event.tokens
@@ -338,6 +412,7 @@ export class Lead {
     lead.text = lead.text === '' ? notice : `${lead.text}\n${notice}`
     this.sessionId = undefined
     this.sessionProvider = null
+    this.persistChat()
     this.emit(lead)
   }
 
@@ -349,6 +424,7 @@ export class Lead {
       this.sessionId = undefined
       this.sessionProvider = null
     }
+    this.persistChat()
   }
 
   private append(lead: LeadMessage, text: string): void {
@@ -357,8 +433,39 @@ export class Lead {
   }
 
   private emit(message: LeadMessage): void {
+    if (message.status !== 'streaming') {
+      const seq = this.history.findIndex((item) => item.id === message.id)
+      if (seq >= 0) this.persistMessage(message, seq)
+    }
     const snap = copyMessage(message)
     for (const cb of this.listeners) cb(snap)
+  }
+
+  private persistMessage(message: LeadMessage, seq: number): void {
+    if (this.chatId === null) return
+    try {
+      this.store.saveMessage(this.chatId, seq, copyMessage(message))
+      this.persistChat()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  private persistChat(): void {
+    if (this.chatId === null) return
+    try {
+      this.store.saveChat({
+        id: this.chatId,
+        project: this.project(),
+        title: this.chatTitle,
+        created_at: this.chatCreatedAt,
+        updated_at: this.now(),
+        session_id: this.sessionId ?? null,
+        session_provider: this.sessionProvider
+      })
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   private kill(handle: RunHandle | undefined): void {
@@ -369,6 +476,15 @@ export class Lead {
       console.error(err)
     }
   }
+}
+
+function chatTitle(text: string): string {
+  const line = text.split(/\r?\n/, 1)[0] ?? ''
+  return line.trim().slice(0, 60)
+}
+
+function isProviderId(value: string | null): value is ProviderId {
+  return value === 'claude' || value === 'cursor'
 }
 
 function copyMessage(message: LeadMessage): LeadMessage {

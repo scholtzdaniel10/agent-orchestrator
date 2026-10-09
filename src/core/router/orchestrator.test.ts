@@ -1084,3 +1084,101 @@ test('busy is true while any job is queued or running', async () => {
     expect(orch.busy()).toBe(false)
   })
 })
+
+test('a finished job is saved and listed after restore on a new Orchestrator', async () => {
+  const store = new Store(':memory:')
+  try {
+    const claude = new FakeAdapter('claude', [ok('saved output')])
+    const orch = new Orchestrator({
+      adapters: [claude],
+      store,
+      rules: loadRules(),
+      cwd: '/proj'
+    })
+    await orch.init()
+    orch.submit('planning', 'remember me')
+    await orch.idle()
+    const saved = store.jobs('/proj', 10)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({
+      status: 'done',
+      output: 'saved output',
+      prompt: 'remember me'
+    })
+
+    const again = new Orchestrator({
+      adapters: [new FakeAdapter('claude', [])],
+      store,
+      rules: loadRules(),
+      cwd: '/proj'
+    })
+    await again.init()
+    again.restore('/proj')
+    expect(again.list()).toHaveLength(1)
+    expect(again.list()[0]).toMatchObject({
+      status: 'done',
+      output: 'saved output',
+      prompt: 'remember me'
+    })
+  } finally {
+    store.close()
+  }
+})
+
+test('a job stored as running comes back failed after restore', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/proj', 100, {
+      id: 'cut-off',
+      type: 'planning',
+      prompt: 'halfway',
+      provider: 'claude',
+      status: 'running',
+      output: 'partial',
+      failedOver: []
+    })
+    orch.restore('/proj')
+    expect(orch.list()).toEqual([
+      expect.objectContaining({
+        id: 'cut-off',
+        status: 'failed',
+        error: 'interrupted when the app closed',
+        output: 'partial'
+      })
+    ])
+    expect(store.jobs('/proj', 10)[0]).toMatchObject({
+      id: 'cut-off',
+      status: 'failed',
+      error: 'interrupted when the app closed'
+    })
+  })
+})
+
+test('restore for another project does not show its jobs', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/a', 100, {
+      id: 'only-a',
+      type: 'planning',
+      prompt: 'a',
+      provider: 'claude',
+      status: 'done',
+      output: 'ok',
+      failedOver: []
+    })
+    orch.restore('/b')
+    expect(orch.list()).toEqual([])
+    orch.restore('/a')
+    expect(orch.list().map((job) => job.id)).toEqual(['only-a'])
+  })
+})
+
+test('restore while busy throws', async () => {
+  const held = gate()
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'one')
+    expect(orch.busy()).toBe(true)
+    expect(() => orch.restore(CWD)).toThrow('orchestrator is busy')
+    held.open()
+    await orch.idle()
+  })
+})

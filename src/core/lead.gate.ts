@@ -45,6 +45,7 @@ test('the lead splits a two-part request across both plans', async () => {
       rules,
       bridge: bridge.info,
       dir: leadDir,
+      project: () => cwd,
       prefer
     })
     await lead.init()

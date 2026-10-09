@@ -328,6 +328,7 @@ textarea {
 .project-item {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   min-width: 0;
 }
@@ -472,8 +473,97 @@ textarea {
   line-height: 1.35;
 }
 
+.project-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-chats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px 4px;
+}
+
+.project-chats-label {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.project-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+
+.project-chat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px 6px 20px;
+  border: 0;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-chat-row:hover {
+  background: var(--raised);
+}
+
+.project-chat-row.is-selected {
+  background: var(--selected);
+  border-left-color: var(--signal);
+}
+
+.project-chat-row.is-selected:hover {
+  background: var(--selected);
+}
+
+.project-chat-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.project-chat-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-chat-age {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-ligatures: none;
+}
+
 @media (max-width: 1099px) {
   .project-bar {
+    position: relative;
+    z-index: 5;
     padding: 8px 0;
   }
 
@@ -509,7 +599,8 @@ textarea {
   .project-remove,
   .project-item:hover .project-remove,
   .project-item:focus-within .project-remove,
-  .project-remove:focus-visible {
+  .project-remove:focus-visible,
+  .project-chats {
     display: none;
   }
 
@@ -519,6 +610,80 @@ textarea {
 
   .project-folder {
     margin-top: 0;
+  }
+
+  .project-bar:hover,
+  .project-bar:focus-within {
+    width: 200px;
+    z-index: 30;
+    padding: 10px 0;
+    overflow: auto;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .project-bar:hover .panel-head,
+  .project-bar:focus-within .panel-head {
+    justify-content: space-between;
+    padding: 0 10px;
+  }
+
+  .project-bar:hover .panel-title,
+  .project-bar:focus-within .panel-title {
+    display: flex;
+  }
+
+  .project-bar:hover .project-add,
+  .project-bar:focus-within .project-add {
+    width: auto;
+    padding: 0 8px;
+  }
+
+  .project-bar:hover .project-add-label,
+  .project-bar:focus-within .project-add-label {
+    display: inline;
+  }
+
+  .project-bar:hover .project-add-glyph,
+  .project-bar:focus-within .project-add-glyph {
+    display: none;
+  }
+
+  .project-bar:hover .project-row,
+  .project-bar:focus-within .project-row {
+    justify-content: flex-start;
+    padding: 8px 10px;
+  }
+
+  .project-bar:hover .project-row-body,
+  .project-bar:focus-within .project-row-body,
+  .project-bar:hover .project-chats,
+  .project-bar:focus-within .project-chats {
+    display: flex;
+  }
+
+  .project-bar:hover .project-row-changes,
+  .project-bar:focus-within .project-row-changes {
+    display: inline;
+  }
+
+  .project-bar:hover .project-item:hover .project-remove,
+  .project-bar:focus-within .project-item:hover .project-remove,
+  .project-bar:hover .project-item:focus-within .project-remove,
+  .project-bar:focus-within .project-item:focus-within .project-remove,
+  .project-bar:hover .project-remove:focus-visible,
+  .project-bar:focus-within .project-remove:focus-visible {
+    display: inline-flex;
+  }
+
+  .project-bar:hover .project-error,
+  .project-bar:focus-within .project-error {
+    display: block;
+  }
+
+  .project-bar:hover .project-folder,
+  .project-bar:focus-within .project-folder {
+    margin-top: 2px;
   }
 }
 

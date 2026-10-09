@@ -10,7 +10,7 @@ import { CursorAdapter } from '../core/providers/cursor'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import type { JobType, LeadMessage, ProjectEntry, ProviderId } from '../core/types'
+import type { JobType, LeadChat, LeadMessage, ProjectEntry, ProviderId } from '../core/types'
 import { Worktrees } from '../core/worktrees'
 import type { PlanStatus } from '../preload/api-types'
 
@@ -132,11 +132,23 @@ app.whenReady().then(async () => {
     rules,
     bridge: started.info,
     dir: join(app.getPath('userData'), 'lead'),
+    project: projectDir,
     prefer: () => settings.leadPlan() ?? envPrefer,
     modelFor
   })
   leadRef.current = lead
   await lead.init()
+
+  function reloadProjectState(): void {
+    lead.openLatest()
+    orch.restore(projectDir())
+  }
+
+  try {
+    reloadProjectState()
+  } catch (err: unknown) {
+    console.error(err)
+  }
 
   function plans(): PlanStatus[] {
     return orch.workers().map((worker) => ({
@@ -238,9 +250,27 @@ app.whenReady().then(async () => {
     return lead.send(text)
   })
   ipcMain.handle('lead:messages', () => lead.messages())
+  ipcMain.handle('lead:chats', (): LeadChat[] => lead.chats())
+  ipcMain.handle('lead:open', (_event, id: unknown): LeadMessage[] => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid chat id')
+    lead.open(id)
+    return lead.messages()
+  })
   ipcMain.handle('lead:reset', () => {
     lead.reset()
   })
+
+  function publishProjectLists(): void {
+    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
+      return
+    for (const job of orch.list()) {
+      mainWindow.webContents.send('jobs:update', job)
+    }
+    for (const message of lead.messages()) {
+      mainWindow.webContents.send('lead:update', message)
+    }
+    publishPlans()
+  }
   const terms = new PtyHost({
     launch: (provider, model) =>
       provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
@@ -323,7 +353,13 @@ app.whenReady().then(async () => {
     const path = picked.filePaths[0]
     if (path === undefined) return null
     settings.setProject(path)
+    try {
+      reloadProjectState()
+    } catch (err: unknown) {
+      console.error(err)
+    }
     pushChanges()
+    publishProjectLists()
     return worktrees.info(path)
   })
   ipcMain.handle('project:switch', async (_event, path: unknown) => {
@@ -332,7 +368,13 @@ app.whenReady().then(async () => {
     }
     assertProjectIdle()
     settings.setProject(path)
+    try {
+      reloadProjectState()
+    } catch (err: unknown) {
+      console.error(err)
+    }
     pushChanges()
+    publishProjectLists()
     return worktrees.info(path)
   })
   ipcMain.handle('project:remove', (_event, path: unknown) => {
