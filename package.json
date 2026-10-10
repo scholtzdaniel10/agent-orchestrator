@@ -1,9 +1,21 @@
 {
   "name": "agent-orchestrator",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Desktop app that routes coding jobs across your own Claude Code and Cursor subscriptions",
   "main": "./out/main/index.js",
   "author": "scholtzdaniel10",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scholtzdaniel10/agent-orchestrator.git"
+  },
+  "homepage": "https://github.com/scholtzdaniel10/agent-orchestrator",
+  "bugs": {
+    "url": "https://github.com/scholtzdaniel10/agent-orchestrator/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@12.10.1",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -15,8 +27,8 @@
     "build": "npm run typecheck && electron-vite build",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux",
     "test": "vitest run",
     "gate": "vitest run --config vitest.gate.config.ts",
     "shots": "electron-vite build && node scripts/shots.mjs"
@@ -24,6 +36,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "electron-updater": "^6.8.9",
     "node-pty": "1.1.0"
   },
   "devDependencies": {

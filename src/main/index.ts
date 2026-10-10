@@ -4,6 +4,7 @@ import { statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { startAutoUpdate } from './updater'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
@@ -480,6 +481,7 @@ app.whenReady().then(async () => {
   lead.onUpdate(publishLead)
 
   createWindow()
+  startAutoUpdate({ isPackaged: app.isPackaged, log: console.log })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
