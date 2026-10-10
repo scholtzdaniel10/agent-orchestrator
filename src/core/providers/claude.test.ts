@@ -13,8 +13,7 @@ function eventsFromFixture(adapter: ClaudeAdapter, name: string): AgentEvent[] {
   const raw = readFileSync(join(fixtureDir, name), 'utf8')
   const events: AgentEvent[] = []
   for (const line of raw.split('\n')) {
-    const event = adapter.parseEvent(line.trim())
-    if (event) events.push(event)
+    events.push(...adapter.parseEvents(line.trim()))
   }
   return events
 }
@@ -66,6 +65,14 @@ test('claude-plain parses init, text, usage, and result', () => {
     },
     { kind: 'text', text: 'ok' },
     {
+      kind: 'step',
+      id: 'msg_fixture0109',
+      phase: 'end',
+      tool: 'say',
+      title: 'ok',
+      detail: 'ok'
+    },
+    {
       kind: 'usage',
       utilization: 0.41,
       resetsAt: 1791118800,
@@ -86,17 +93,29 @@ test('claude-plain parses init, text, usage, and result', () => {
   ])
 })
 
-test('claude-tool skips tool-only assistant output', () => {
+test('claude-tool yields ordered read steps then the answer', () => {
   const adapter = new ClaudeAdapter()
   const raw = readFileSync(join(fixtureDir, 'claude-tool.ndjson'), 'utf8')
   const toolLine = raw.split('\n').find((line) => line.includes('"tool_use"'))
   expect(toolLine).toBeTruthy()
-  expect(adapter.parseEvent(toolLine ?? '')).toBeNull()
+  expect(adapter.parseEvent(toolLine ?? '')).toMatchObject({
+    kind: 'step',
+    phase: 'start',
+    tool: 'read',
+    title: 'Read /work/example/hello.txt'
+  })
   expect(eventsFromFixture(adapter, 'claude-tool.ndjson')).toEqual([
     {
       kind: 'init',
       sessionId: '00000000-0000-4000-8000-00000000010d',
       model: 'claude-opus-5-5'
+    },
+    {
+      kind: 'step',
+      id: 'toolu_fixture0118',
+      phase: 'start',
+      tool: 'read',
+      title: 'Read hello.txt'
     },
     {
       kind: 'usage',
@@ -107,7 +126,24 @@ test('claude-tool skips tool-only assistant output', () => {
         { name: 'seven_day', utilization: 0.41, resetsAt: 1791118800 }
       ]
     },
+    {
+      kind: 'step',
+      id: 'toolu_fixture0118',
+      phase: 'end',
+      tool: 'read',
+      title: 'Read hello.txt',
+      ok: true,
+      detail: '1\thello fixture\n2\t'
+    },
     { kind: 'text', text: 'It says "hello fixture".' },
+    {
+      kind: 'step',
+      id: 'msg_fixture011a',
+      phase: 'end',
+      tool: 'say',
+      title: 'It says "hello fixture".',
+      detail: 'It says "hello fixture".'
+    },
     {
       kind: 'result',
       ok: true,
@@ -116,6 +152,89 @@ test('claude-tool skips tool-only assistant output', () => {
       durationMs: 5780,
       costUsd: 0.16763240000000001,
       tokens: 137
+    }
+  ])
+})
+
+test('claude Edit and Write steps count lines from the tool input', () => {
+  const adapter = new ClaudeAdapter()
+  adapter.parseEvents(
+    JSON.stringify({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'sess-edit',
+      cwd: '/work/example',
+      model: 'claude-opus-5-5'
+    })
+  )
+  const editStart = adapter.parseEvents(
+    JSON.stringify({
+      type: 'assistant',
+      session_id: 'sess-edit',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_edit',
+            name: 'Edit',
+            input: {
+              file_path: '/work/example/src/app.ts',
+              old_string: 'a\n',
+              new_string: 'a\nb\nc\n'
+            }
+          }
+        ]
+      }
+    })
+  )
+  expect(editStart).toEqual([
+    {
+      kind: 'step',
+      id: 'toolu_edit',
+      phase: 'start',
+      tool: 'edit',
+      title: 'Edited src/app.ts',
+      edit: { path: 'src/app.ts', added: 3, removed: 1 }
+    }
+  ])
+  const writeStart = adapter.parseEvents(
+    JSON.stringify({
+      type: 'assistant',
+      session_id: 'sess-edit',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_write',
+            name: 'Write',
+            input: { file_path: '/work/example/notes.txt', content: 'one\ntwo\n' }
+          }
+        ]
+      }
+    })
+  )
+  expect(writeStart[0]).toMatchObject({
+    kind: 'step',
+    tool: 'edit',
+    title: 'Edited notes.txt',
+    edit: { path: 'notes.txt', added: 2, removed: 0 }
+  })
+  const unknown = adapter.parseEvents(
+    JSON.stringify({
+      type: 'assistant',
+      session_id: 'sess-edit',
+      message: {
+        content: [{ type: 'tool_use', id: 'toolu_x', name: 'MysteryTool', input: {} }]
+      }
+    })
+  )
+  expect(unknown).toEqual([
+    {
+      kind: 'step',
+      id: 'toolu_x',
+      phase: 'start',
+      tool: 'other',
+      title: 'MysteryTool'
     }
   ])
 })

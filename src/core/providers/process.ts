@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import type { AgentEvent, RunHandle } from '../types'
 
-/** A parsed NDJSON line: an event, a known type the adapter skips, or unrecognised. */
-export type LineParse = AgentEvent | 'ignored' | null
+/** A parsed NDJSON line: an event (or several), a known type the adapter skips, or unrecognised. */
+export type LineParse = AgentEvent | AgentEvent[] | 'ignored' | null
 
 /** Executable to spawn. Extra args are placed before the per-call args. */
 export interface Bin {
@@ -111,8 +111,11 @@ export function spawnCli(
     if (!trimmed) return
     const parsed = parse(trimmed)
     if (parsed === null || parsed === 'ignored') return
-    if (parsed.kind === 'result') hadResult = true
-    queue.push(parsed)
+    const events = Array.isArray(parsed) ? parsed : [parsed]
+    for (const event of events) {
+      if (event.kind === 'result') hadResult = true
+      queue.push(event)
+    }
   }
 
   const flush = (): void => {

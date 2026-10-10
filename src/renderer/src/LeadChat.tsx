@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
+import { editedFilesSummary, latestStepTitle } from './job-steps'
 import RichText from './RichText'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
@@ -347,6 +348,8 @@ function LeadChat({
                       <div className="lead-delegated-list">
                         {delegated.map((job) => {
                           const label = `Show job: ${job.prompt.slice(0, 60)}`
+                          const stepTitle = latestStepTitle(job)
+                          const edits = editedFilesSummary(job)
                           return (
                             <button
                               key={job.id}
@@ -375,6 +378,18 @@ function LeadChat({
                               <div className="lead-job-card-meta">
                                 {metaLine(delegatedMeta(job))}
                               </div>
+                              {job.status === 'running' && stepTitle !== undefined ? (
+                                <p className="lead-job-step" title={stepTitle}>
+                                  {stepTitle}
+                                </p>
+                              ) : null}
+                              {edits !== null ? (
+                                <p className="lead-job-edits">
+                                  {`Edited ${edits.files === 1 ? '1 file' : `${String(edits.files)} files`} `}
+                                  <span className="stat-add">{`+${String(edits.added)}`}</span>{' '}
+                                  <span className="stat-del">{`−${String(edits.removed)}`}</span>
+                                </p>
+                              ) : null}
                               <p className="lead-job-prompt" title={job.prompt}>
                                 {job.prompt}
                               </p>

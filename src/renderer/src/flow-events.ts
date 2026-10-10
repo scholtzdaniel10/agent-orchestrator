@@ -184,6 +184,7 @@ function diffWorkers(prev: FlowSnapshot, next: FlowSnapshot, now: number): FlowC
       if (job.status === 'running' && (before === undefined || before.status !== 'running')) {
         events.push(change(now, planId, `${job.type} running`))
       }
+      events.push(...diffJobSteps(before, job, now))
       if (job.status === 'done' && (before === undefined || before.status !== 'done')) {
         events.push(change(now, planId, `${job.type} done`, 'ok', 'ok'))
       }
@@ -211,6 +212,41 @@ function diffWorkers(prev: FlowSnapshot, next: FlowSnapshot, now: number): FlowC
     }
   }
 
+  return events
+}
+
+const STEP_LOG_CAP = 40
+
+function eligibleSteps(job: JobRecord): NonNullable<JobRecord['steps']> {
+  const steps = job.steps ?? []
+  return steps.filter(
+    (step) => step.status !== 'running' && step.tool !== 'say' && step.tool !== 'think'
+  )
+}
+
+function stepLogText(job: JobRecord, step: NonNullable<JobRecord['steps']>[number]): string {
+  const who = (job.provider ?? 'router').toUpperCase()
+  let body: string
+  if (step.edit !== undefined) {
+    body = `edited ${step.edit.path} +${String(step.edit.added)} −${String(step.edit.removed)}`
+  } else {
+    const title = step.title
+    body = title.length === 0 ? title : title.charAt(0).toLowerCase() + title.slice(1)
+  }
+  return `${who}  ${body}`
+}
+
+function diffJobSteps(before: JobRecord | undefined, job: JobRecord, now: number): FlowChange[] {
+  if (job.provider === null) return []
+  const prevN = Math.min(STEP_LOG_CAP, before === undefined ? 0 : eligibleSteps(before).length)
+  const next = eligibleSteps(job)
+  const nextN = Math.min(STEP_LOG_CAP, next.length)
+  const events: FlowChange[] = []
+  for (let index = prevN; index < nextN; index++) {
+    const item = next[index]
+    if (item === undefined) continue
+    events.push(change(now, job.provider, stepLogText(job, item)))
+  }
   return events
 }
 
