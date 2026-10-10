@@ -3,7 +3,18 @@ import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ChangesTab from './ChangesTab'
 import RichText from './RichText'
-import TerminalPane, { type PanePlacement } from './TerminalPane'
+import {
+  assignTabToPane,
+  dropMissingTerminals,
+  emptyPaneForTerminal,
+  emptySlots,
+  fillPanes,
+  placeNewTerminal,
+  placeTerminalInPane,
+  requestLayoutFit,
+  type PaneLayoutId
+} from './layout'
+import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
 
@@ -152,32 +163,12 @@ function EmptyState({ title, guidance }: { title: string; guidance: string }): R
   )
 }
 
-function splitPartner(
-  terminals: readonly TerminalInfo[],
-  selectedId: string,
-  recentId: string | null
-): string | null {
-  if (
-    recentId !== null &&
-    recentId !== selectedId &&
-    terminals.some((info) => info.id === recentId)
-  ) {
-    return recentId
+function worktreeFlag(): 'new' | undefined {
+  try {
+    return localStorage.getItem('orch.newWorktree') === '1' ? 'new' : undefined
+  } catch {
+    return undefined
   }
-  const other = terminals.find((info) => info.id !== selectedId)
-  return other === undefined ? null : other.id
-}
-
-function placementFor(
-  id: string,
-  selectedId: string | null,
-  partnerId: string | null,
-  splitOn: boolean
-): PanePlacement {
-  if (!splitOn || selectedId === null) return id === selectedId ? 'only' : 'hidden'
-  if (id === selectedId) return 'left'
-  if (id === partnerId) return 'right'
-  return 'hidden'
 }
 
 function canStop(job: JobRecord): boolean {
@@ -323,6 +314,10 @@ function Workers({
   project,
   bus,
   showJob,
+  focusMode,
+  paneLayout,
+  onToggleFocus,
+  onPaneLayout,
   onJob,
   onTerminal
 }: {
@@ -335,6 +330,10 @@ function Workers({
   project: string
   bus: TerminalBus
   showJob?: { id: string; nonce: number } | null
+  focusMode: boolean
+  paneLayout: PaneLayoutId
+  onToggleFocus: () => void
+  onPaneLayout: (layout: PaneLayoutId) => void
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
 }): React.JSX.Element {
@@ -343,11 +342,10 @@ function Workers({
   const [jobType, setJobType] = useState<JobType>('planning')
   const [worker, setWorker] = useState<PlanChoice>('auto')
   const [access, setAccess] = useState<JobAccess>(loadAccess)
-  const [mainTab, setMainTab] = useState<'jobs' | 'changes'>('jobs')
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [recentOther, setRecentOther] = useState<string | null>(null)
-  const [split, setSplit] = useState(false)
+  const [stage, setStage] = useState<'jobs' | 'changes' | 'panes'>('jobs')
+  const [slots, setSlots] = useState(() => emptySlots(paneLayout))
+  const [focusedIndex, setFocusedIndex] = useState(0)
   const [opening, setOpening] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
   const [focusTermId, setFocusTermId] = useState<string | null>(null)
@@ -356,20 +354,20 @@ function Workers({
   const sending = useRef(false)
   const openingRef = useRef(false)
   const stoppingRef = useRef(false)
-  const selectedRef = useRef<string | null>(null)
+  const [seenShowJob, setSeenShowJob] = useState<number | null>(null)
 
-  useEffect(() => {
-    selectedRef.current = selectedId
-  }, [selectedId])
+  if (showJob != null && showJob.nonce !== seenShowJob) {
+    setSeenShowJob(showJob.nonce)
+    if (stage !== 'jobs') setStage('jobs')
+    if (selectedJobId !== showJob.id) setSelectedJobId(showJob.id)
+  }
+
+  const liveIds = new Set(terminals.map((info) => info.id))
+  const liveSlots = dropMissingTerminals(slots, liveIds)
+  if (liveSlots !== slots) setSlots(liveSlots)
 
   useEffect(() => {
     if (showJob == null) return
-    const previous = selectedRef.current
-    if (previous !== null) setRecentOther(previous)
-    selectedRef.current = null
-    setSelectedId(null)
-    setMainTab('jobs')
-    setSelectedJobId(showJob.id)
     const id = showJob.id
     requestAnimationFrame(() => {
       document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'nearest' })
@@ -388,13 +386,8 @@ function Workers({
     (worker === 'cursor' && !cursorReady) ||
     (worker === 'both' && !bothReady)
   const submitDisabled = promptEmpty || noPlanReady || choiceBlocked
-  const shownId =
-    selectedId !== null && terminals.some((info) => info.id === selectedId) ? selectedId : null
-  const partnerId =
-    split && shownId !== null && terminals.length >= 2
-      ? splitPartner(terminals, shownId, recentOther)
-      : null
-  const splitOn = partnerId !== null
+  const focusedId = slots[focusedIndex] ?? null
+  const tabActive = stage === 'panes' ? (focusedId ?? '') : stage === 'changes' ? 'changes' : 'jobs'
 
   async function stopJob(id: string): Promise<void> {
     if (stoppingRef.current) return
@@ -417,28 +410,21 @@ function Workers({
     setFocusTick((tick) => tick + 1)
   }
 
-  function selectTab(id: string | null, source: 'click' | 'arrow'): void {
-    const previous = selectedRef.current
-    if (previous !== null && previous !== id) setRecentOther(previous)
-    selectedRef.current = id
-    setSelectedId(id)
-    if (source === 'click' && id !== null) requestFocus(id)
+  function selectTab(id: string, source: 'click' | 'arrow'): void {
+    setStage('panes')
+    setSlots((current) => assignTabToPane(current, focusedIndex, id))
+    if (source === 'click') requestFocus(id)
   }
 
   function closeTerminal(id: string): void {
-    const index = terminals.findIndex((info) => info.id === id)
-    if (selectedRef.current === id) {
-      const left = index > 0 ? terminals[index - 1].id : null
-      selectedRef.current = left
-      setSelectedId(left)
-      if (left === null) {
-        setMainTab('jobs')
-        document.getElementById('worker-tab-jobs')?.focus()
-      } else {
-        requestFocus(left)
-      }
+    setSlots((current) => emptyPaneForTerminal(current, id))
+    const remaining = terminals.filter((info) => info.id !== id)
+    if (remaining.length === 0) {
+      setStage('jobs')
+      document.getElementById('worker-tab-jobs')?.focus()
+    } else if (focusedId === id) {
+      requestFocus(remaining[0].id)
     }
-    if (recentOther === id) setRecentOther(null)
     void window.api.closeTerminal(id).catch((err: unknown) => {
       setOpenError(errorText(err))
     })
@@ -447,7 +433,8 @@ function Workers({
   async function openProvider(
     provider: ProviderId,
     worktree?: 'new' | string,
-    size?: { cols: number; rows: number }
+    size?: { cols: number; rows: number },
+    paneIndex?: number
   ): Promise<void> {
     if (openingRef.current) return
     openingRef.current = true
@@ -457,10 +444,14 @@ function Workers({
       const rows = size?.rows ?? 30
       const info = await window.api.openTerminal(provider, cols, rows, worktree)
       onTerminal(info)
-      const previous = selectedRef.current
-      if (previous !== null && previous !== info.id) setRecentOther(previous)
-      selectedRef.current = info.id
-      setSelectedId(info.id)
+      setStage('panes')
+      const nextSlots =
+        paneIndex !== undefined
+          ? placeTerminalInPane(slots, paneIndex, info.id)
+          : placeNewTerminal(slots, focusedIndex, info.id)
+      setSlots(nextSlots)
+      const placed = nextSlots.indexOf(info.id)
+      if (placed >= 0) setFocusedIndex(placed)
       requestFocus(info.id)
       setOpenError(null)
     } catch (err: unknown) {
@@ -531,15 +522,20 @@ function Workers({
     document.getElementById(`job-${next.id}`)?.focus()
   }
 
-  const showJobs = shownId === null && mainTab === 'jobs'
-  const showChanges = shownId === null && mainTab === 'changes'
+  const showJobs = stage === 'jobs'
+  const showChanges = stage === 'changes'
 
   function showMain(tab: 'jobs' | 'changes'): void {
-    const previous = selectedRef.current
-    if (previous !== null) setRecentOther(previous)
-    selectedRef.current = null
-    setSelectedId(null)
-    setMainTab(tab)
+    setStage(tab)
+  }
+
+  function changePaneLayout(next: PaneLayoutId): void {
+    const ids = terminals.map((info) => info.id)
+    const active = focusedId ?? ids[0] ?? null
+    setSlots(fillPanes(next, ids, active))
+    setFocusedIndex(0)
+    onPaneLayout(next)
+    requestLayoutFit()
   }
 
   function viewChange(id: string): void {
@@ -554,13 +550,21 @@ function Workers({
           <Star size={12} />
           <h2 id="workers-heading">Workers</h2>
         </div>
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact workers-focus"
+          aria-pressed={focusMode}
+          onClick={onToggleFocus}
+        >
+          Focus
+        </button>
       </div>
       <TerminalTabs
         terminals={terminals}
         project={project}
-        active={shownId ?? mainTab}
+        active={tabActive}
         changeCount={changes.length}
-        split={split}
+        paneLayout={paneLayout}
         opening={opening}
         onSelect={(id, source) => {
           if (id === 'jobs' || id === 'changes') {
@@ -573,9 +577,7 @@ function Workers({
         onOpen={(provider, worktree) => {
           void openProvider(provider, worktree)
         }}
-        onToggleSplit={() => {
-          setSplit((value) => !value)
-        }}
+        onPaneLayout={changePaneLayout}
       />
       {openError !== null ? (
         <p className="field-error" role="alert">
@@ -829,30 +831,68 @@ function Workers({
         </div>
         <div
           className={
-            shownId === null
-              ? 'terminal-stage is-inactive'
-              : splitOn
-                ? 'terminal-stage is-split'
-                : 'terminal-stage'
+            stage === 'panes' ? `terminal-stage is-${paneLayout}` : 'terminal-stage is-inactive'
           }
-          inert={shownId === null ? true : undefined}
+          inert={stage === 'panes' ? undefined : true}
         >
-          {splitOn ? <div className="terminal-divider" aria-hidden="true" /> : null}
+          {slots.map((id, index) => {
+            if (id !== null) return null
+            return (
+              <div
+                key={`empty-${String(index)}`}
+                className={
+                  focusedIndex === index
+                    ? `pane-empty is-slot-${String(index)} is-focused`
+                    : `pane-empty is-slot-${String(index)}`
+                }
+                onMouseDown={() => {
+                  setFocusedIndex(index)
+                }}
+              >
+                <div className="pane-empty-actions">
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={opening}
+                    onClick={() => {
+                      void openProvider('claude', worktreeFlag(), undefined, index)
+                    }}
+                  >
+                    + Claude
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={opening}
+                    onClick={() => {
+                      void openProvider('cursor', worktreeFlag(), undefined, index)
+                    }}
+                  >
+                    + Cursor
+                  </button>
+                </div>
+              </div>
+            )
+          })}
           {initialTerminalIds === null
             ? null
             : terminals.map((info) => {
-                const placement = placementFor(info.id, shownId, partnerId, splitOn)
+                const placement = slots.indexOf(info.id)
                 return (
                   <TerminalPane
                     key={info.id}
                     info={info}
                     bus={bus}
                     restore={initialTerminalIds.has(info.id)}
-                    placement={placement}
+                    placement={placement >= 0 ? placement : 'hidden'}
+                    focused={placement >= 0 && placement === focusedIndex}
                     focusNonce={focusTermId === info.id ? focusTick : 0}
                     onActivate={() => {
-                      if (shownId === info.id) return
-                      selectTab(info.id, 'click')
+                      if (placement >= 0) setFocusedIndex(placement)
+                      requestFocus(info.id)
+                    }}
+                    onClose={() => {
+                      closeTerminal(info.id)
                     }}
                   />
                 )

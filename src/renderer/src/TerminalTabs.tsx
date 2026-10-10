@@ -1,5 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
+import { PANE_LAYOUT_IDS, PANE_LAYOUT_LABELS, isPaneLayout, type PaneLayoutId } from './layout'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
@@ -31,7 +32,8 @@ function tabElementId(active: string): string {
 }
 
 function firstPaneSize(): { cols: number; rows: number } {
-  const pane = document.querySelector('.workers-stage')
+  const host = document.querySelector('.terminal-pane:not(.is-hidden) .terminal-host')
+  const pane = host instanceof HTMLElement ? host : document.querySelector('.workers-stage')
   if (!(pane instanceof HTMLElement)) return { cols: 120, rows: 30 }
   const rect = pane.getBoundingClientRect()
   if (rect.width < 2 || rect.height < 2) return { cols: 120, rows: 30 }
@@ -46,12 +48,12 @@ function TerminalTabs({
   project,
   active,
   changeCount,
-  split,
+  paneLayout,
   opening,
   onSelect,
   onClose,
   onOpen,
-  onToggleSplit
+  onPaneLayout
 }: {
   terminals: readonly TerminalInfo[]
   /** Active project folder; restore runs when this changes. */
@@ -59,12 +61,12 @@ function TerminalTabs({
   /** `jobs`, `changes`, or a terminal id. */
   active: string
   changeCount: number
-  split: boolean
+  paneLayout: PaneLayoutId
   opening: boolean
   onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
   onOpen: (provider: ProviderId, worktree?: 'new') => void
-  onToggleSplit: () => void
+  onPaneLayout: (layout: PaneLayoutId) => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
   const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
@@ -201,14 +203,29 @@ function TerminalTabs({
         >
           Worktree
         </button>
-        <button
-          type="button"
-          className="btn btn-quiet tab-split"
-          aria-pressed={split}
-          onClick={onToggleSplit}
-        >
-          Split
-        </button>
+        <div className="pane-layout-picker">
+          <label htmlFor="pane-layout">
+            <span className="visually-hidden">Panes</span>
+            <span className="pane-layout-label" aria-hidden="true">
+              Panes
+            </span>
+          </label>
+          <select
+            id="pane-layout"
+            value={paneLayout}
+            onChange={(event) => {
+              const next = event.target.value
+              if (!isPaneLayout(next)) return
+              onPaneLayout(next)
+            }}
+          >
+            {PANE_LAYOUT_IDS.map((id) => (
+              <option key={id} value={id}>
+                {PANE_LAYOUT_LABELS[id]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   )
