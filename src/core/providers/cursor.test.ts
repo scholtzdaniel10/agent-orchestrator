@@ -350,16 +350,16 @@ test('isInstalled and version share one --version call', async () => {
 const file = ${JSON.stringify(counter)}
 const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
 writeFileSync(file, String(n + 1))
-process.stdout.write('2026.09.08-6caf4ff\\n')
+process.stdout.write('2026.10.01-e373342\\n')
 `
   )
   const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
   try {
     expect(await adapter.isInstalled()).toBe(true)
-    expect(await adapter.version()).toBe('2026.09.08-6caf4ff')
+    expect(await adapter.version()).toBe('2026.10.01-e373342')
     expect(readFileSync(counter, 'utf8')).toBe('1')
     expect(await adapter.isInstalled()).toBe(true)
-    expect(await adapter.version()).toBe('2026.09.08-6caf4ff')
+    expect(await adapter.version()).toBe('2026.10.01-e373342')
     expect(readFileSync(counter, 'utf8')).toBe('2')
   } finally {
     rmSync(dir, { recursive: true, force: true })

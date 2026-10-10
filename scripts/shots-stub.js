@@ -39,7 +39,7 @@
           windows: [],
           version: null,
           versionStatus: 'unknown',
-          testedVersion: '2026.09.08-6caf4ff'
+          testedVersion: '2026.10.01-e373342'
         }
       ]
     : [
@@ -74,9 +74,9 @@
           queued: 0,
           model: 'gpt-5',
           windows: [],
-          version: '2026.09.08-6caf4ff',
+          version: '2026.10.01-e373342',
           versionStatus: 'tested',
-          testedVersion: '2026.09.08-6caf4ff'
+          testedVersion: '2026.10.01-e373342'
         }
       ]
   const jobs = empty

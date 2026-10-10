@@ -3,12 +3,12 @@ import { compareToTested, parseCliVersion, TESTED_VERSIONS, unknownFormatMessage
 
 test('parseCliVersion reads the real --version strings', () => {
   expect(parseCliVersion('claude', '2.1.258 (Claude Code)')).toBe('2.1.258')
-  expect(parseCliVersion('cursor', '2026.09.08-6caf4ff')).toBe('2026.09.08-6caf4ff')
+  expect(parseCliVersion('cursor', '2026.10.01-e373342')).toBe('2026.10.01-e373342')
 })
 
 test('parseCliVersion takes the first token that starts with a digit', () => {
   expect(parseCliVersion('claude', '  warning 2.1.258 extra')).toBe('2.1.258')
-  expect(parseCliVersion('cursor', 'agent 2026.09.08-6caf4ff')).toBe('2026.09.08-6caf4ff')
+  expect(parseCliVersion('cursor', 'agent 2026.10.01-e373342')).toBe('2026.10.01-e373342')
 })
 
 test('parseCliVersion returns null for junk and empty output', () => {
@@ -35,11 +35,11 @@ test('compareToTested ranks Claude by numeric dot parts', () => {
 
 test('compareToTested ranks Cursor by the leading YYYY.MM.DD date', () => {
   expect(compareToTested('cursor', TESTED_VERSIONS.cursor)).toBe('tested')
-  expect(compareToTested('cursor', '2026.09.08')).toBe('tested')
-  expect(compareToTested('cursor', '2026.09.08-ffffff')).toBe('tested')
-  expect(compareToTested('cursor', '2026.09.09-abc')).toBe('newer')
-  expect(compareToTested('cursor', '2026.10.01-6caf4ff')).toBe('newer')
-  expect(compareToTested('cursor', '2026.09.07-6caf4ff')).toBe('older')
+  expect(compareToTested('cursor', '2026.10.01')).toBe('tested')
+  expect(compareToTested('cursor', '2026.10.01-ffffff')).toBe('tested')
+  expect(compareToTested('cursor', '2026.10.02-abc')).toBe('newer')
+  expect(compareToTested('cursor', '2026.11.01-6caf4ff')).toBe('newer')
+  expect(compareToTested('cursor', '2026.09.30-6caf4ff')).toBe('older')
   expect(compareToTested('cursor', '2025.12.31-zzzz')).toBe('older')
 })
 
@@ -59,6 +59,6 @@ test('unknownFormatMessage names the CLI and the tested version', () => {
   )
   expect(unknownFormatMessage('cursor', null)).toBe(
     'The Cursor CLI (version unknown) sent output this app does not understand. ' +
-      'This app was tested with 2026.09.08-6caf4ff. Update the app, or install the tested CLI version.'
+      'This app was tested with 2026.10.01-e373342. Update the app, or install the tested CLI version.'
   )
 })
