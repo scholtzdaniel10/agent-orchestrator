@@ -779,7 +779,7 @@ test('restored terminal that fails after probation stays exited', async () => {
     const id = putTerminal(store)
     const { host, ptys, calls } = makeHost({ store, now: () => now })
     host.restore('work', 80, 24)
-    now = 10_000
+    now = 22_000
     ptys[0].exit(1)
     expect(calls).toHaveLength(1)
     expect(host.list()[0]).toMatchObject({ id, status: 'exited', exitCode: 1 })
@@ -788,7 +788,8 @@ test('restored terminal that fails after probation stays exited', async () => {
   }
 })
 
-test('restored terminal that was typed into stays exited on failure', async () => {
+// xterm answers the CLI's terminal queries by itself, so input cannot mean a person is typing.
+test('input does not end probation: a restored terminal that got input still relaunches', async () => {
   const store = new Store(':memory:')
   try {
     let now = 1_000
@@ -798,9 +799,9 @@ test('restored terminal that was typed into stays exited on failure', async () =
     host.write(id, 'hi')
     now = 3_000
     ptys[0].exit(1)
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(ptys[0].written).toEqual(['hi'])
-    expect(host.list()[0]).toMatchObject({ id, status: 'exited', exitCode: 1 })
+    expect(host.list()[0]).toMatchObject({ id, status: 'running', exitCode: null })
   } finally {
     store.close()
   }

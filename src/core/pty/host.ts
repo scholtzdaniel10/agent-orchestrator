@@ -41,7 +41,8 @@ const WRITE_MAX = 65_536
 const DEFAULT_MAX_TERMINALS = 8
 const DEFAULT_COLS = 100
 const DEFAULT_ROWS = 30
-const PROBATION_MS = 8_000
+// A CLI that cannot resume says so and exits within a few seconds, even on a cold start.
+const PROBATION_MS = 20_000
 const RESTORE_MARK = '\r\n\x1b[2m— restored session —\x1b[0m\r\n'
 const FRESH_MARK = '\r\n\x1b[2m— could not resume; started a new session —\x1b[0m\r\n'
 
@@ -203,7 +204,6 @@ export class PtyHost {
     if (typeof data !== 'string' || data.length < 1 || data.length > WRITE_MAX) return
     const session = this.running(id)
     if (!session) return
-    session.onProbation = false
     session.proc.write(data)
   }
 
