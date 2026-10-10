@@ -1771,6 +1771,36 @@ test('a failed tool end marks the step failed; a still-running step follows the 
   })
 })
 
+test('thinking that arrives in fragments is one step until something else happens', async () => {
+  const think = (id: string, detail: string): Extract<AgentEvent, { kind: 'step' }> =>
+    step({ id, phase: 'end', tool: 'think', title: detail.trim(), detail })
+  const cursor = new FakeAdapter('cursor', [
+    {
+      events: [
+        think('t1', 'I need to append'),
+        think('t2', ' the line,'),
+        think('t3', '\nthen run git status.'),
+        step({ id: 'r1', phase: 'end', title: 'Read notes.txt' }),
+        think('t4', 'The file exists.'),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([cursor], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const steps = orch.list()[0].steps ?? []
+    expect(steps.map((item) => item.tool)).toEqual(['think', 'read', 'think'])
+    expect(steps[0]).toMatchObject({
+      id: 't1',
+      title: 'I need to append the line,',
+      detail: 'I need to append the line,\nthen run git status.',
+      status: 'done'
+    })
+    expect(steps[2]).toMatchObject({ id: 't4', title: 'The file exists.' })
+  })
+})
+
 test('a successful job marks a hanging step done', async () => {
   const claude = new FakeAdapter('claude', [
     {

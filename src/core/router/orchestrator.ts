@@ -808,6 +808,8 @@ export class Orchestrator {
         existing.endedAt = now
         if (event.detail !== undefined) existing.detail = event.detail
         if (event.edit !== undefined) existing.edit = { ...event.edit }
+      } else if (event.tool === 'think' && this.extendThinking(job, event, now)) {
+        // Joined onto the thinking step before it.
       } else {
         const step: JobStep = {
           id: event.id,
@@ -823,6 +825,25 @@ export class Orchestrator {
       }
     }
     this.pushStepUpdate(job)
+  }
+
+  /**
+   * A CLI streams its thinking a few words at a time. Shown as they arrive, one thought becomes
+   * a dozen steps, so a fragment joins the thinking step right before it.
+   */
+  private extendThinking(
+    job: InternalJob,
+    event: Extract<AgentEvent, { kind: 'step' }>,
+    now: number
+  ): boolean {
+    const last = job.steps[job.steps.length - 1]
+    if (last === undefined || last.tool !== 'think' || last.status !== 'done') return false
+    const text = `${last.detail ?? last.title}${event.detail ?? event.title}`.slice(-4000)
+    const firstLine = text.split(/\r?\n/).find((line) => line.trim() !== '') ?? ''
+    last.detail = text
+    last.title = firstLine.trim().slice(0, 120)
+    last.endedAt = now
+    return true
   }
 
   private pushStep(job: InternalJob, step: JobStep): void {
