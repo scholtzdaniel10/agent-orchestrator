@@ -13,3 +13,8 @@
 - Failover: a plan that hits a limit rests, and its queued jobs move to the other plan.
 - Usage meter in the window; a first-run check says what to do when a CLI is missing or signed out. The app works with only one of the two plans.
 - Delete and rename chats.
+- Terminal tabs with full Claude and Cursor sessions; open tabs come back after a restart.
+- Open a pull request from a merged change when `gh` is signed in.
+- Each plan shows its CLI version against the tested one; a job fails with a readable message when a CLI's output is not understood.
+- Claude workers are denied a shell and the person's MCP servers, whatever their own settings allow.
+- Windows installer, with updates from GitHub Releases installed on quit.

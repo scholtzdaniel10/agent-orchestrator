@@ -12,13 +12,14 @@ A desktop app (Electron + TypeScript) that spreads your coding jobs across the A
 
 The screenshots use fake data and are made with `pnpm shots`.
 
-**Status:** 1.0.0. Windows installer is on GitHub Releases. The pieces below are unit-tested; they have had little use against the real CLIs so far. See [BACKLOG.md](BACKLOG.md) for what is next.
+**Status:** 1.0.0, Windows only. Everything below is unit-tested. Checked against the real CLIs: an editing job on Cursor from start to merge, and the terminals on both plans. The lead chat and Claude jobs have had little real use so far. See [BACKLOG.md](BACKLOG.md) for what is next.
 
 ## How it works
 
 - **Lead chat.** You talk to one lead bot. It splits your request into jobs and hands them to workers, and you can keep talking to it while they run. When they finish it reports back. The lead is an ordinary CLI session that can only call the app's own tools.
   Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
-- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar. Direct Claude and Cursor terminal sessions come back after a restart.
+- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
+- **Terminals.** Open a full Claude or Cursor session in a tab and talk to it directly. Open tabs come back after a restart with their conversation; a tab that cannot resume starts a new session.
 - **Projects.** A sidebar lists the folders you work in. One is active at a time; jobs and the lead run there. If the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate). Each plan runs up to three jobs at once, and a job can be stopped.
 - **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
@@ -48,6 +49,8 @@ You are responsible for staying within each provider's terms.
 - Everyone uses their own plans. The app has no accounts, no server and no way to reach anyone else's login.
 - The window is sandboxed, cannot navigate away from the app, and reaches the main process only through a fixed list of functions.
 - A worker reads files only, unless you tick "Let it edit files"; then it edits inside its own git worktree and still cannot run shell commands.
+  - Claude workers are started with the shell tools denied, your own MCP servers switched off, and the edit tools denied unless the job may edit. This holds whatever your own Claude settings allow.
+  - Cursor workers are started without `--force`, and an editing job gets a permission file that denies the shell. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
 - Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.
 - The terminals are full CLI sessions; what they may do is whatever you approve inside them.
 
@@ -65,23 +68,26 @@ pnpm dev           # run the app
 pnpm test          # unit tests, no real CLIs
 pnpm build         # typecheck + build
 pnpm shots         # screenshots of the UI with fake data, in .orchestrator/shots/
+pnpm build:win     # the Windows installer, in dist/
 pnpm gate router   # acceptance: 10 real jobs + one forced failover
 pnpm gate lead     # acceptance: the lead splits a two-part request across both plans
+pnpm gate worktrees   # acceptance: an editing job merges cleanly (GATE_WORKERS=cursor for one plan)
 ```
 
-The two `gate` commands use your real plans and spend real allowance.
+The `gate` commands use your real plans and spend real allowance.
+
+| Variable         | Effect                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------ |
+| `ORCH_CWD`       | Folder the jobs run in (default: where the app was started)                          |
+| `ORCH_RULES`     | Path to your own edited copy of `src/core/router/rules.json`                         |
+| `ORCH_LEAD`      | `claude` or `cursor` to choose the lead's plan (default: the one with more headroom) |
+| `ORCH_NO_UPDATE` | `1` stops an installed build from checking GitHub Releases for updates               |
+
+Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild.
 
 ### Release
 
 Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds a draft GitHub Release with the Windows installer; publish the draft when you are ready.
-
-| Variable     | Effect                                                                               |
-| ------------ | ------------------------------------------------------------------------------------ |
-| `ORCH_CWD`   | Folder the jobs run in (default: where the app was started)                          |
-| `ORCH_RULES` | Path to your own edited copy of `src/core/router/rules.json`                         |
-| `ORCH_LEAD`  | `claude` or `cursor` to choose the lead's plan (default: the one with more headroom) |
-
-Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild.
 
 ## Tested with
 
