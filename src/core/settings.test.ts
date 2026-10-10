@@ -171,10 +171,7 @@ test('projects de-duplicates and keeps order', () => {
 test('projects ignores junk values', () => {
   const { root, path } = tempFile()
   try {
-    writeFileSync(
-      path,
-      JSON.stringify({ projects: ['/ok', '', 4, null, '  ', '/also', { x: 1 }] })
-    )
+    writeFileSync(path, JSON.stringify({ projects: ['/ok', '', 4, null, '  ', '/also', { x: 1 }] }))
     expect(new Settings(path).projects()).toEqual(['/ok', '/also'])
   } finally {
     rmSync(root, { recursive: true, force: true })

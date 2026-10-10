@@ -2,7 +2,8 @@ type BotName = 'lead' | 'claude' | 'cursor'
 type BotState = 'idle' | 'working' | 'resting' | 'error'
 
 // A statue head on a square tile, drawn on a 24-unit grid. Each bot wears something different.
-const HEAD = 'M7.5 11C7.5 7 9.4 5.2 12 5.2S16.5 7 16.5 11C16.5 15.4 14.6 19 12 19.6 9.4 19 7.5 15.4 7.5 11Z'
+const HEAD =
+  'M7.5 11C7.5 7 9.4 5.2 12 5.2S16.5 7 16.5 11C16.5 15.4 14.6 19 12 19.6 9.4 19 7.5 15.4 7.5 11Z'
 const NECK = 'M9.8 19V24M14.2 19V24'
 const BROW_AND_NOSE = 'M9 10.8H11.3V14.6H12.7M13.1 10.8H15'
 const MOUTH = 'M10.8 16.7H13.2'

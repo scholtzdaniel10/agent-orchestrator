@@ -342,24 +342,15 @@ test('a corrupt data row is skipped', () => {
     store.close()
 
     const raw = new DatabaseSync(path)
-    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
-      'bad',
-      'c1',
-      1,
-      '{not-json'
-    )
-    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
-      'noid',
-      'c1',
-      2,
-      '{"text":"x"}'
-    )
-    raw.prepare(`INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)`).run(
-      'badj',
-      '/a',
-      2,
-      'nope'
-    )
+    raw
+      .prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`)
+      .run('bad', 'c1', 1, '{not-json')
+    raw
+      .prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`)
+      .run('noid', 'c1', 2, '{"text":"x"}')
+    raw
+      .prepare(`INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)`)
+      .run('badj', '/a', 2, 'nope')
     raw.close()
 
     const again = new Store(path)

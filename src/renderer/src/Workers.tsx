@@ -88,7 +88,13 @@ function FailoverArrow(): React.JSX.Element {
 function metaLine(parts: ReactNode[]): React.JSX.Element {
   const nodes: ReactNode[] = []
   parts.forEach((part, index) => {
-    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    if (index > 0)
+      nodes.push(
+        <span key={`sep-${String(index)}`} className="meta-sep">
+          {' '}
+          /{' '}
+        </span>
+      )
     nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
   })
   return <>{nodes}</>
@@ -105,13 +111,7 @@ function jobMetaParts(job: JobRecord): ReactNode[] {
   return parts
 }
 
-function EmptyState({
-  title,
-  guidance
-}: {
-  title: string
-  guidance: string
-}): React.JSX.Element {
+function EmptyState({ title, guidance }: { title: string; guidance: string }): React.JSX.Element {
   return (
     <div className="empty-state">
       <RayBurst />
@@ -205,10 +205,8 @@ function CompareOutput({
     <div className="compare-output">
       {ordered.map((job) => {
         const changeId = visibleChange(job, changes)
-        const change =
-          changeId === null ? undefined : changes.find((item) => item.id === changeId)
-        const waiting =
-          job.output === '' && (job.status === 'queued' || job.status === 'running')
+        const change = changeId === null ? undefined : changes.find((item) => item.id === changeId)
+        const waiting = job.output === '' && (job.status === 'queued' || job.status === 'running')
         const mergeTitle = eitherBusy ? 'Wait for both to finish' : undefined
         const message = messages[job.id]
         return (
@@ -243,9 +241,7 @@ function CompareOutput({
             </div>
             <div className="output-body">
               {waiting ? (
-                <p className="compare-wait">
-                  {job.status === 'queued' ? 'Waiting…' : 'Working…'}
-                </p>
+                <p className="compare-wait">{job.status === 'queued' ? 'Waiting…' : 'Working…'}</p>
               ) : (
                 <RichText text={job.output} />
               )}
@@ -632,9 +628,7 @@ function Workers({
                 </button>
               </div>
             </div>
-            {noPlanReady ? (
-              <p className="hint">No plan is ready. See Usage on the right.</p>
-            ) : null}
+            {noPlanReady ? <p className="hint">No plan is ready. See Usage on the right.</p> : null}
           </form>
 
           <section className="jobs" aria-label="Jobs">
@@ -702,7 +696,10 @@ function Workers({
                         >
                           <span className="failover-label">Failover</span>
                           {failoverChain.map((name, hop) => (
-                            <span key={`${job.id}-failover-${hop}-${name}`} className="failover-hop">
+                            <span
+                              key={`${job.id}-failover-${hop}-${name}`}
+                              className="failover-hop"
+                            >
                               {hop > 0 ? <FailoverArrow /> : null}
                               <span>{name}</span>
                             </span>
@@ -718,10 +715,7 @@ function Workers({
 
           <section className="output-pane" aria-label="Output">
             {selectedJob === null ? (
-              <EmptyState
-                title="No job selected"
-                guidance="Select a job to see its output."
-              />
+              <EmptyState title="No job selected" guidance="Select a job to see its output." />
             ) : selectedJob.group !== undefined &&
               jobs.some((job) => job.group === selectedJob.group && job.id !== selectedJob.id) ? (
               <CompareOutput

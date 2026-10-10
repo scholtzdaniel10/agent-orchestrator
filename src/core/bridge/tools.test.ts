@@ -104,13 +104,19 @@ function tool(tools: BridgeTool[], name: string): BridgeTool {
 test('send_job passes leadMessage when leadTurn returns an id', async () => {
   const claude = new FakeAdapter('claude', [ok('done')])
   await withOrch([claude], async (orch) => {
-    const withTurn = tool(createOrchestratorTools(orch, () => 'm-turn'), 'send_job')
+    const withTurn = tool(
+      createOrchestratorTools(orch, () => 'm-turn'),
+      'send_job'
+    )
     const linked = (await withTurn.handler({ type: 'planning', prompt: 'delegated' })) as {
       id: string
     }
     expect(orch.get(linked.id)?.leadMessage).toBe('m-turn')
 
-    const nullTurn = tool(createOrchestratorTools(orch, () => null), 'send_job')
+    const nullTurn = tool(
+      createOrchestratorTools(orch, () => null),
+      'send_job'
+    )
     const omitted = (await nullTurn.handler({ type: 'planning', prompt: 'plain' })) as {
       id: string
     }

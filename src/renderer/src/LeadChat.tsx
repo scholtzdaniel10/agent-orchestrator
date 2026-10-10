@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode
+} from 'react'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import RichText from './RichText'
@@ -59,7 +66,13 @@ function messageClass(message: LeadMessage): string {
 function metaLine(parts: ReactNode[]): React.JSX.Element {
   const nodes: ReactNode[] = []
   parts.forEach((part, index) => {
-    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    if (index > 0)
+      nodes.push(
+        <span key={`sep-${String(index)}`} className="meta-sep">
+          {' '}
+          /{' '}
+        </span>
+      )
     nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
   })
   return <>{nodes}</>
@@ -150,8 +163,7 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
-  const noPlanReady =
-    plans !== null && !plans.some((plan) => plan.available)
+  const noPlanReady = plans !== null && !plans.some((plan) => plan.available)
   const sendDisabled = draftEmpty || leadStreaming || noPlanReady
 
   async function send(): Promise<void> {
@@ -258,9 +270,7 @@ function LeadChat({
             return (
               <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
                 <div className={messageClass(message)}>
-                  <span className="lead-meta">
-                    {isUser ? 'You' : metaLine(leadMeta(message))}
-                  </span>
+                  <span className="lead-meta">{isUser ? 'You' : metaLine(leadMeta(message))}</span>
                   <div className="lead-body">
                     {isUser ? (
                       message.text

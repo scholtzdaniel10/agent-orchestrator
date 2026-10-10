@@ -9,7 +9,9 @@ function fakeRun(
     command: string,
     args: string[],
     cwd?: string
-  ) => { code: number; stdout: string; stderr: string } | Promise<{ code: number; stdout: string; stderr: string }>
+  ) =>
+    | { code: number; stdout: string; stderr: string }
+    | Promise<{ code: number; stdout: string; stderr: string }>
 ): { run: GithubRun; calls: { command: string; args: string[]; cwd?: string }[] } {
   const calls: { command: string; args: string[]; cwd?: string }[] = []
   const run: GithubRun = async (command, args, cwd) => {

@@ -432,7 +432,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('github:available', () => github.available())
   ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
   ipcMain.handle('github:clone', async (_event, nameWithOwner: unknown) => {
-    if (typeof nameWithOwner !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)) {
+    if (
+      typeof nameWithOwner !== 'string' ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)
+    ) {
       throw new Error('invalid repository name')
     }
     if (nameWithOwner.startsWith('-') || nameWithOwner.includes('/-')) {
@@ -521,12 +524,7 @@ function runGh(
         encoding: 'utf8'
       },
       (err, stdout, stderr) => {
-        const code =
-          err === null
-            ? 0
-            : typeof err.code === 'number'
-              ? err.code
-              : 1
+        const code = err === null ? 0 : typeof err.code === 'number' ? err.code : 1
         resolve({
           code,
           stdout: String(stdout ?? ''),

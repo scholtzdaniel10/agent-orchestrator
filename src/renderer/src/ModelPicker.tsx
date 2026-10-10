@@ -32,10 +32,7 @@ function ModelField({
   const errorId = `model-error-${plan.id}`
   const hintId = `model-hint-${plan.id}`
   const modelSet = plan.model !== null && plan.model !== ''
-  const describedBy = [
-    labelTitle !== undefined ? hintId : null,
-    error !== null ? errorId : null
-  ]
+  const describedBy = [labelTitle !== undefined ? hintId : null, error !== null ? errorId : null]
     .filter((id): id is string => id !== null)
     .join(' ')
 

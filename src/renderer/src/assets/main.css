@@ -28,8 +28,8 @@
   --bot-lead: var(--text);
   --bot-you: var(--muted);
   --bot-eye: var(--bg);
-  --font-display: 'Bahnschrift', 'Avenir Next Condensed', 'Roboto Condensed', 'Arial Narrow',
-    sans-serif;
+  --font-display:
+    'Bahnschrift', 'Avenir Next Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif;
   --font-ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
 }
@@ -2824,20 +2824,10 @@ select {
   height: 240px;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  background: repeating-conic-gradient(
-    from 0deg,
-    var(--ray) 0deg 0.4deg,
-    transparent 0.4deg 5deg
-  );
+  background: repeating-conic-gradient(from 0deg, var(--ray) 0deg 0.4deg, transparent 0.4deg 5deg);
   opacity: 0.14;
   border-radius: 50%;
-  -webkit-mask-image: radial-gradient(
-    circle,
-    transparent 16%,
-    #000 17%,
-    #000 68%,
-    transparent 70%
-  );
+  -webkit-mask-image: radial-gradient(circle, transparent 16%, #000 17%, #000 68%, transparent 70%);
   mask-image: radial-gradient(circle, transparent 16%, #000 17%, #000 68%, transparent 70%);
 }
 
@@ -2966,20 +2956,10 @@ select {
   aspect-ratio: 1;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  background: repeating-conic-gradient(
-    from 0deg,
-    var(--text) 0deg 0.4deg,
-    transparent 0.4deg 5deg
-  );
+  background: repeating-conic-gradient(from 0deg, var(--text) 0deg 0.4deg, transparent 0.4deg 5deg);
   opacity: 0.14;
   border-radius: 50%;
-  -webkit-mask-image: radial-gradient(
-    circle,
-    transparent 16%,
-    #000 17%,
-    #000 68%,
-    transparent 70%
-  );
+  -webkit-mask-image: radial-gradient(circle, transparent 16%, #000 17%, #000 68%, transparent 70%);
   mask-image: radial-gradient(circle, transparent 16%, #000 17%, #000 68%, transparent 70%);
 }
 

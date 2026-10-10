@@ -1484,7 +1484,10 @@ test('cancel kills a running job without failover or resting the plan', async ()
   const claude = new FakeAdapter('claude', [
     {
       gate: held.promise,
-      events: [{ kind: 'text', text: 'partial' }, { kind: 'limit', message: 'should not apply' }]
+      events: [
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'should not apply' }
+      ]
     }
   ])
   const cursor = new FakeAdapter('cursor', [ok('failover')])

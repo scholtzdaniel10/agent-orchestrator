@@ -381,7 +381,8 @@ function mapChat(row: Row): ChatRow {
     title: String(row.title),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
-    session_id: row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
     session_provider:
       row.session_provider === null || row.session_provider === undefined
         ? null
