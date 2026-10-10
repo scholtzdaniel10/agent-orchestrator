@@ -22,8 +22,8 @@ function terminalTheme(): {
   return {
     background: cssColor('--bg'),
     foreground: cssColor('--text'),
-    cursor: cssColor('--signal'),
-    selectionBackground: cssColor('--brand')
+    cursor: cssColor('--brand'),
+    selectionBackground: cssColor('--selected')
   }
 }
 
@@ -177,6 +177,7 @@ function TerminalPane({
       term.options.theme = terminalTheme()
     }
     scheme.addEventListener('change', onScheme)
+    window.addEventListener('themechange', onScheme)
 
     return () => {
       cancelled = true
@@ -186,6 +187,7 @@ function TerminalPane({
       if (timer !== undefined) window.clearTimeout(timer)
       observer.disconnect()
       scheme.removeEventListener('change', onScheme)
+      window.removeEventListener('themechange', onScheme)
       onData.dispose()
       try {
         webgl?.dispose()

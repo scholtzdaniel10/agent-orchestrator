@@ -10,7 +10,7 @@ A desktop app (Electron + TypeScript) that spreads your coding jobs across the A
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | ![One prompt sent to Claude and Cursor, results side by side](docs/compare.png) | ![The same window in light mode, red ink on paper](docs/light.png) |
 
-The screenshots use fake data and are made with `pnpm shots`.
+The screenshots use fake data and are made with `pnpm shots`. The app has seven looks, chosen in the header.
 
 **Status:** 1.0.0, Windows only. Everything below is unit-tested. Checked against the real CLIs: an editing job on Cursor from start to merge, and the terminals on both plans. The lead chat and Claude jobs have had little real use so far. See [BACKLOG.md](BACKLOG.md) for what is next.
 

@@ -2,29 +2,29 @@
   color-scheme: dark;
   --bg: rgb(4, 4, 8);
   --brand: rgb(214, 38, 46);
+  --text: rgb(242, 242, 242);
+  --ray: rgb(255, 150, 150);
+  --on-accent: rgb(242, 242, 242);
+  --signal: rgb(255, 230, 0);
+  --bad: rgb(255, 150, 140);
+  --diff-add: rgb(140, 230, 180);
+  --diff-del: rgb(255, 150, 140);
+  --bot-claude: rgb(255, 160, 90);
+  --bot-cursor: rgb(80, 230, 170);
   --inset: color-mix(in srgb, var(--brand) 10%, var(--bg));
   --deep: color-mix(in srgb, var(--brand) 17%, var(--bg));
   --raised: color-mix(in srgb, var(--brand) 26%, var(--bg));
   --selected: color-mix(in srgb, var(--brand) 40%, var(--bg));
   --panel: var(--bg);
-  --text: rgb(242, 242, 242);
   --muted: color-mix(in srgb, var(--text) 62%, var(--brand));
   --faint: color-mix(in srgb, var(--text) 42%, var(--brand));
   --border: color-mix(in srgb, var(--brand) 62%, var(--bg));
   --border-strong: var(--brand);
   --frame: var(--brand);
-  --ray: rgb(255, 150, 150);
   --accent: var(--brand);
-  --on-accent: rgb(242, 242, 242);
-  --signal: rgb(255, 230, 0);
-  --bad: rgb(255, 150, 140);
   --ok: var(--muted);
   --run: var(--signal);
   --warn: var(--signal);
-  --diff-add: rgb(140, 230, 180);
-  --diff-del: rgb(255, 150, 140);
-  --bot-claude: rgb(255, 160, 90);
-  --bot-cursor: rgb(80, 230, 170);
   --bot-lead: var(--text);
   --bot-you: var(--muted);
   --bot-eye: var(--bg);
@@ -35,37 +35,128 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: light;
     --bg: rgb(242, 242, 242);
     --brand: rgb(214, 38, 46);
+    --text: var(--brand);
     --ray: var(--brand);
+    --on-accent: rgb(242, 242, 242);
+    --signal: rgb(180, 120, 0);
+    --bad: rgb(180, 50, 40);
+    --diff-add: rgb(0, 110, 55);
+    --diff-del: rgb(180, 50, 40);
+    --bot-claude: rgb(200, 90, 30);
+    --bot-cursor: rgb(0, 130, 95);
     --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
     --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
     --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
     --selected: color-mix(in srgb, var(--brand) 14%, var(--bg));
-    --panel: var(--bg);
-    --text: var(--brand);
     --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
     --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
     --border: color-mix(in srgb, var(--text) 28%, var(--bg));
     --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
     --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
-    --accent: var(--brand);
-    --on-accent: rgb(242, 242, 242);
-    --signal: rgb(180, 120, 0);
-    --bad: rgb(180, 50, 40);
-    --ok: var(--muted);
-    --run: var(--signal);
-    --warn: var(--signal);
-    --diff-add: rgb(0, 110, 55);
-    --diff-del: rgb(180, 50, 40);
-    --bot-claude: rgb(200, 90, 30);
-    --bot-cursor: rgb(0, 130, 95);
-    --bot-lead: var(--text);
-    --bot-you: var(--muted);
-    --bot-eye: var(--bg);
   }
+}
+
+:root[data-theme='ember'] {
+  color-scheme: dark;
+  --bg: rgb(4, 4, 8);
+  --brand: rgb(214, 38, 46);
+  --text: rgb(242, 242, 242);
+  --ray: rgb(255, 150, 150);
+  --on-accent: rgb(242, 242, 242);
+  --signal: rgb(255, 230, 0);
+  --bad: rgb(255, 150, 140);
+  --diff-add: rgb(140, 230, 180);
+  --diff-del: rgb(255, 150, 140);
+  --bot-claude: rgb(255, 160, 90);
+  --bot-cursor: rgb(80, 230, 170);
+}
+
+:root[data-theme='paper'] {
+  color-scheme: light;
+  --bg: rgb(242, 242, 242);
+  --brand: rgb(214, 38, 46);
+  --text: var(--brand);
+  --ray: var(--brand);
+  --on-accent: rgb(242, 242, 242);
+  --signal: rgb(180, 120, 0);
+  --bad: rgb(180, 50, 40);
+  --diff-add: rgb(0, 110, 55);
+  --diff-del: rgb(180, 50, 40);
+  --bot-claude: rgb(200, 90, 30);
+  --bot-cursor: rgb(0, 130, 95);
+  --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
+  --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
+  --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
+  --selected: color-mix(in srgb, var(--brand) 14%, var(--bg));
+  --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
+  --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
+  --border: color-mix(in srgb, var(--text) 28%, var(--bg));
+  --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
+  --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
+}
+
+:root[data-theme='ultramarine'] {
+  color-scheme: dark;
+  --bg: rgb(4, 8, 22);
+  --brand: rgb(40, 86, 230);
+  --text: rgb(236, 240, 255);
+  --ray: rgb(140, 170, 255);
+  --on-accent: rgb(242, 244, 255);
+  --signal: rgb(255, 210, 64);
+  --bad: rgb(255, 140, 150);
+  --diff-add: rgb(120, 220, 180);
+  --diff-del: rgb(255, 140, 150);
+  --bot-claude: rgb(255, 158, 80);
+  --bot-cursor: rgb(48, 214, 176);
+}
+
+:root[data-theme='phosphor'] {
+  color-scheme: dark;
+  --bg: rgb(2, 8, 4);
+  --brand: rgb(46, 214, 96);
+  --text: rgb(176, 245, 196);
+  --ray: rgb(140, 255, 170);
+  --on-accent: rgb(4, 16, 8);
+  --signal: rgb(220, 255, 80);
+  --bad: rgb(255, 110, 90);
+  --diff-add: rgb(140, 255, 170);
+  --diff-del: rgb(255, 110, 90);
+  --bot-claude: rgb(255, 168, 64);
+  --bot-cursor: rgb(80, 170, 255);
+}
+
+:root[data-theme='graphite'] {
+  color-scheme: dark;
+  --bg: rgb(18, 18, 18);
+  --brand: rgb(214, 212, 204);
+  --text: rgb(236, 236, 236);
+  --ray: rgb(236, 234, 226);
+  --on-accent: rgb(18, 18, 18);
+  --signal: rgb(214, 196, 80);
+  --bad: rgb(220, 150, 145);
+  --diff-add: rgb(160, 200, 175);
+  --diff-del: rgb(220, 150, 145);
+  --bot-claude: rgb(210, 140, 78);
+  --bot-cursor: rgb(86, 176, 154);
+}
+
+:root[data-theme='dusk'] {
+  color-scheme: dark;
+  --bg: rgb(16, 10, 32);
+  --brand: rgb(232, 156, 48);
+  --text: rgb(236, 232, 252);
+  --ray: rgb(255, 196, 110);
+  --on-accent: rgb(28, 16, 8);
+  --signal: rgb(255, 210, 90);
+  --bad: rgb(255, 130, 140);
+  --diff-add: rgb(120, 210, 170);
+  --diff-del: rgb(255, 130, 140);
+  --bot-claude: rgb(220, 130, 210);
+  --bot-cursor: rgb(64, 196, 210);
 }
 
 *,
@@ -3401,4 +3492,47 @@ select {
 .project-bar .project-add-glyph,
 .project-bar .project-github-glyph {
   display: inline !important;
+}
+
+.app-header-tools {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.theme-picker {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.theme-picker-label {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.theme-picker select {
+  width: 132px;
+}
+
+@media (max-width: 1099px) {
+  .theme-picker {
+    gap: 0;
+  }
+
+  .theme-picker-label {
+    display: none;
+  }
 }

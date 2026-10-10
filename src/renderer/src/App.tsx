@@ -7,6 +7,7 @@ import UsageMeter from './UsageMeter'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
+import { THEMES, applyTheme, isThemeId, loadTheme, type ThemeId } from './theme'
 
 export { RayBurst, Star } from './Star'
 
@@ -300,6 +301,7 @@ function App(): React.JSX.Element {
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
   const [showJob, setShowJob] = useState<{ id: string; nonce: number } | null>(null)
+  const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
   const showJobNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
@@ -683,7 +685,33 @@ function App(): React.JSX.Element {
           </span>
           <div className="app-name">agent-orchestrator</div>
         </div>
-        <AppSummary ready={ready} running={running} queued={queued} />
+        <div className="app-header-tools">
+          <div className="theme-picker">
+            <label htmlFor="app-theme">
+              <span className="visually-hidden">Theme</span>
+              <span className="theme-picker-label" aria-hidden="true">
+                Theme
+              </span>
+            </label>
+            <select
+              id="app-theme"
+              value={theme}
+              onChange={(event) => {
+                const next = event.target.value
+                if (!isThemeId(next)) return
+                applyTheme(next)
+                setTheme(next)
+              }}
+            >
+              {THEMES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <AppSummary ready={ready} running={running} queued={queued} />
+        </div>
       </header>
       <ProjectBar
         projects={projects}
