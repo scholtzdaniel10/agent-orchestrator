@@ -6,6 +6,7 @@ import type {
   ProviderAdapter,
   ProviderId,
   RouterRules,
+  StepTool,
   VersionStatus
 } from '../types'
 import { Worktrees } from '../worktrees'
@@ -13,6 +14,17 @@ import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export interface JobStep {
+  id: string
+  tool: StepTool
+  title: string
+  detail?: string
+  status: 'running' | 'done' | 'failed'
+  startedAt: number
+  endedAt?: number
+  edit?: { path: string; added: number; removed: number }
+}
 
 export interface JobRecord {
   id: string
@@ -25,6 +37,10 @@ export interface JobRecord {
   output: string
   /** Providers that hit a limit on this job, in order. */
   failedOver: ProviderId[]
+  /** Live tool calls; older jobs load with []. */
+  steps?: JobStep[]
+  /** How many steps were dropped after the 400 cap. */
+  stepsDropped?: number
   /** Model that ran the job, as the CLI reported it. */
   model?: string
   /** Why this plan got the job, e.g. "first choice", "allowance expiring", "chosen". */
@@ -68,6 +84,8 @@ interface InternalJob {
   project: string
   /** Epoch ms when the job was submitted. */
   createdAt: number
+  steps: JobStep[]
+  stepsDropped: number
 }
 
 type ResultEvent = Extract<AgentEvent, { kind: 'result' }>
@@ -126,6 +144,8 @@ export class Orchestrator {
   private readonly cancelling = new Set<string>()
   private readonly listeners = new Set<(job: JobRecord) => void>()
   private idleWaiters: Array<() => void> = []
+  private readonly stepFlushAt = new Map<string, number>()
+  private readonly stepTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(opts: {
     adapters: ProviderAdapter[]
@@ -196,6 +216,8 @@ export class Orchestrator {
       chosen: false,
       project: this.workingDir(),
       createdAt: this.now(),
+      steps: [],
+      stepsDropped: 0,
       ...(edit === true ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {})
@@ -489,6 +511,8 @@ export class Orchestrator {
             job.output = event.text
             this.emit(job)
           }
+        } else if (event.kind === 'step') {
+          this.applyStep(job, event)
         } else if (event.kind === 'limit') {
           limitEv = event
           break
@@ -747,8 +771,95 @@ export class Orchestrator {
   }
 
   private emitStatus(job: InternalJob): void {
+    this.clearStepTimer(job.id)
+    if (job.status !== 'running') this.closeRunningSteps(job, job.status === 'done')
     this.persist(job)
     this.emit(job)
+  }
+
+  private applyStep(job: InternalJob, event: Extract<AgentEvent, { kind: 'step' }>): void {
+    const now = this.now()
+    if (event.phase === 'start') {
+      const step: JobStep = {
+        id: event.id,
+        tool: event.tool,
+        title: event.title,
+        status: 'running',
+        startedAt: now
+      }
+      if (event.detail !== undefined) step.detail = event.detail
+      if (event.edit !== undefined) step.edit = { ...event.edit }
+      this.pushStep(job, step)
+    } else {
+      const existing = job.steps.find((step) => step.id === event.id)
+      if (existing !== undefined) {
+        existing.title = event.title
+        existing.tool = event.tool
+        existing.status = event.ok === false ? 'failed' : 'done'
+        existing.endedAt = now
+        if (event.detail !== undefined) existing.detail = event.detail
+        if (event.edit !== undefined) existing.edit = { ...event.edit }
+      } else {
+        const step: JobStep = {
+          id: event.id,
+          tool: event.tool,
+          title: event.title,
+          status: event.ok === false ? 'failed' : 'done',
+          startedAt: now,
+          endedAt: now
+        }
+        if (event.detail !== undefined) step.detail = event.detail
+        if (event.edit !== undefined) step.edit = { ...event.edit }
+        this.pushStep(job, step)
+      }
+    }
+    this.pushStepUpdate(job)
+  }
+
+  private pushStep(job: InternalJob, step: JobStep): void {
+    job.steps.push(step)
+    while (job.steps.length > 400) {
+      job.steps.shift()
+      job.stepsDropped += 1
+    }
+  }
+
+  private pushStepUpdate(job: InternalJob): void {
+    const now = this.now()
+    const last = this.stepFlushAt.get(job.id) ?? 0
+    if (now - last >= 200) {
+      this.stepFlushAt.set(job.id, now)
+      this.persist(job)
+      this.emit(job)
+      return
+    }
+    if (this.stepTimers.has(job.id)) return
+    const wait = Math.max(0, 200 - (now - last))
+    const timer = setTimeout(() => {
+      this.stepTimers.delete(job.id)
+      this.stepFlushAt.set(job.id, this.now())
+      this.persist(job)
+      this.emit(job)
+    }, wait)
+    this.stepTimers.set(job.id, timer)
+  }
+
+  private clearStepTimer(id: string): void {
+    const timer = this.stepTimers.get(id)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this.stepTimers.delete(id)
+    }
+    this.stepFlushAt.delete(id)
+  }
+
+  private closeRunningSteps(job: InternalJob, ok: boolean): void {
+    const now = this.now()
+    for (const step of job.steps) {
+      if (step.status !== 'running') continue
+      step.status = ok ? 'done' : 'failed'
+      step.endedAt = now
+    }
   }
 
   private persist(job: InternalJob): void {
@@ -782,7 +893,9 @@ function copy(job: InternalJob): JobRecord {
     provider: job.provider,
     status: job.status,
     output: job.output,
-    failedOver: [...job.failedOver]
+    failedOver: [...job.failedOver],
+    steps: job.steps.map(copyStep),
+    stepsDropped: job.stepsDropped
   }
   if (job.error !== undefined) record.error = job.error
   if (job.model !== undefined) record.model = job.model
@@ -792,6 +905,20 @@ function copy(job: InternalJob): JobRecord {
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   return record
+}
+
+function copyStep(step: JobStep): JobStep {
+  const copied: JobStep = {
+    id: step.id,
+    tool: step.tool,
+    title: step.title,
+    status: step.status,
+    startedAt: step.startedAt
+  }
+  if (step.detail !== undefined) copied.detail = step.detail
+  if (step.endedAt !== undefined) copied.endedAt = step.endedAt
+  if (step.edit !== undefined) copied.edit = { ...step.edit }
+  return copied
 }
 
 function fromRecord(record: JobRecord, project: string, createdAt: number): InternalJob {
@@ -807,6 +934,8 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     chosen: record.reason === 'chosen',
     project,
     createdAt,
+    steps: stepsFrom(record),
+    stepsDropped: typeof record.stepsDropped === 'number' ? record.stepsDropped : 0,
     ...(record.error !== undefined ? { error: record.error } : {}),
     ...(record.model !== undefined ? { model: record.model } : {}),
     ...(record.reason !== undefined ? { reason: record.reason } : {}),
@@ -815,6 +944,27 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     ...(record.group !== undefined ? { group: record.group } : {}),
     ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {})
   }
+}
+
+function stepsFrom(record: JobRecord): JobStep[] {
+  if (!Array.isArray(record.steps)) return []
+  const steps: JobStep[] = []
+  for (const item of record.steps) {
+    if (!isJobStep(item)) continue
+    steps.push(copyStep(item))
+  }
+  return steps
+}
+
+function isJobStep(value: unknown): value is JobStep {
+  if (typeof value !== 'object' || value === null) return false
+  const step = value as JobStep
+  if (typeof step.id !== 'string' || typeof step.title !== 'string') return false
+  if (typeof step.startedAt !== 'number') return false
+  if (step.status !== 'running' && step.status !== 'done' && step.status !== 'failed') {
+    return false
+  }
+  return typeof step.tool === 'string'
 }
 
 function failureMessage(resultText: string | undefined, stderr: string): string {

@@ -17,10 +17,28 @@ export interface UsageWindow {
   resetsAt?: number
 }
 
+export type StepTool =
+  'say' | 'think' | 'read' | 'edit' | 'shell' | 'search' | 'web' | 'mcp' | 'other'
+
 /** Provider-neutral view of one stream-json line. Lines that carry nothing we use parse to null. */
 export type AgentEvent =
   | { kind: 'init'; sessionId: string; model?: string }
   | { kind: 'text'; text: string }
+  | {
+      kind: 'step'
+      /** Stable per tool call, so 'start' and 'end' pair up. */
+      id: string
+      phase: 'start' | 'end'
+      tool: StepTool
+      /** Short and human: "Read src/app.ts", "Edited src/app.ts", "Ran pnpm test". */
+      title: string
+      /** More, when there is more: the command, the query, the output tail, the error. */
+      detail?: string
+      /** On 'end': false when the tool reported a failure. */
+      ok?: boolean
+      /** For edits and writes. Path relative to the job folder when it is inside it. */
+      edit?: { path: string; added: number; removed: number }
+    }
   /**
    * Fraction of the plan already used (0..1), the worst of its windows, plus each window
    * as the CLI reported it. Claude only.

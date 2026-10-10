@@ -1643,3 +1643,198 @@ test('cancel of a finished or unknown job throws', async () => {
     expect(() => orch.cancel('missing-id')).toThrow('job is not running')
   })
 })
+
+function step(
+  partial: Partial<Extract<AgentEvent, { kind: 'step' }>> &
+    Pick<Extract<AgentEvent, { kind: 'step' }>, 'id' | 'phase' | 'title'>
+): Extract<AgentEvent, { kind: 'step' }> {
+  return {
+    kind: 'step',
+    tool: 'read',
+    ...partial
+  }
+}
+
+test('step start and end pair on the job, and a lone end is stored finished', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'r1', phase: 'start', title: 'Read src/app.ts' }),
+        step({
+          id: 'r1',
+          phase: 'end',
+          title: 'Read src/app.ts',
+          ok: true,
+          detail: 'contents'
+        }),
+        step({ id: 'r2', phase: 'end', title: 'Read other.ts', ok: true }),
+        { kind: 'result', ok: true, text: 'done' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.steps).toEqual([
+      expect.objectContaining({
+        id: 'r1',
+        tool: 'read',
+        title: 'Read src/app.ts',
+        status: 'done',
+        detail: 'contents'
+      }),
+      expect.objectContaining({
+        id: 'r2',
+        title: 'Read other.ts',
+        status: 'done'
+      })
+    ])
+    expect(job.stepsDropped).toBe(0)
+  })
+})
+
+test('a failed tool end marks the step failed; a still-running step follows the job', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'ok', phase: 'start', title: 'Read a' }),
+        step({ id: 'ok', phase: 'end', title: 'Read a', ok: true }),
+        step({ id: 'bad', phase: 'start', title: 'Read b' }),
+        step({ id: 'bad', phase: 'end', title: 'Read b', ok: false, detail: 'nope' }),
+        step({ id: 'hang', phase: 'start', title: 'Read c' }),
+        { kind: 'result', ok: false, text: 'boom' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.status).toBe('failed')
+    expect(job.steps?.map((item) => `${item.id}:${item.status}`)).toEqual([
+      'ok:done',
+      'bad:failed',
+      'hang:failed'
+    ])
+  })
+})
+
+test('a successful job marks a hanging step done', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'hang', phase: 'start', title: 'Read c' }),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    expect(orch.list()[0].steps?.[0]).toMatchObject({ id: 'hang', status: 'done' })
+  })
+})
+
+test('keeps the last 400 steps and counts the dropped ones', async () => {
+  const events: AgentEvent[] = []
+  for (let i = 0; i < 405; i++) {
+    events.push(step({ id: `s${String(i)}`, phase: 'end', title: `Read ${String(i)}`, ok: true }))
+  }
+  events.push({ kind: 'result', ok: true, text: 'ok' })
+  const claude = new FakeAdapter('claude', [{ events }])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.steps).toHaveLength(400)
+    expect(job.stepsDropped).toBe(5)
+    expect(job.steps?.[0]?.id).toBe('s5')
+    expect(job.steps?.[399]?.id).toBe('s404')
+  })
+})
+
+test('old saved jobs without steps load with an empty list', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/proj', 100, {
+      id: 'old',
+      type: 'planning',
+      prompt: 'go',
+      provider: 'claude',
+      status: 'done',
+      output: 'ok',
+      failedOver: []
+    })
+    orch.restore('/proj')
+    expect(orch.list()[0]).toMatchObject({
+      id: 'old',
+      steps: [],
+      stepsDropped: 0
+    })
+  })
+})
+
+test('saved steps come back after restore', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({
+          id: 'e1',
+          phase: 'end',
+          tool: 'edit',
+          title: 'Edited src/app.ts',
+          ok: true,
+          edit: { path: 'src/app.ts', added: 4, removed: 1 }
+        }),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch, store) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const saved = store.jobs(CWD, 10)[0]
+    expect(saved.steps?.[0]).toMatchObject({
+      id: 'e1',
+      tool: 'edit',
+      title: 'Edited src/app.ts',
+      edit: { path: 'src/app.ts', added: 4, removed: 1 }
+    })
+    const again = new Orchestrator({
+      adapters: [new FakeAdapter('claude', [])],
+      store,
+      rules: loadRules(),
+      cwd: CWD
+    })
+    await again.init()
+    again.restore(CWD)
+    expect(again.list()[0].steps?.[0]).toMatchObject({
+      id: 'e1',
+      title: 'Edited src/app.ts',
+      edit: { path: 'src/app.ts', added: 4, removed: 1 }
+    })
+  })
+})
+
+test('step updates are batched to about five per second', async () => {
+  const events: AgentEvent[] = []
+  for (let i = 0; i < 20; i++) {
+    events.push(step({ id: `s${String(i)}`, phase: 'end', title: `Read ${String(i)}`, ok: true }))
+  }
+  events.push({ kind: 'result', ok: true, text: 'ok' })
+  const claude = new FakeAdapter('claude', [{ events }])
+  const now = 1_700_000_000_000
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const snaps: JobRecord[] = []
+      orch.onUpdate((job) => snaps.push(job))
+      orch.submit('planning', 'go')
+      await orch.idle()
+      const withSteps = snaps.filter((job) => (job.steps?.length ?? 0) > 0)
+      expect(withSteps.length).toBeLessThan(20)
+      expect(orch.list()[0].steps).toHaveLength(20)
+    },
+    () => now
+  )
+})

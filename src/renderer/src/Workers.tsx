@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ChangesTab from './ChangesTab'
+import JobSteps from './JobSteps'
+import { latestStepTitle } from './job-steps'
 import RichText from './RichText'
 import TerminalPane, { type PanePlacement } from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
@@ -240,6 +242,7 @@ function CompareOutput({
               ) : null}
             </div>
             <div className="output-body">
+              <JobSteps job={job} />
               {waiting ? (
                 <p className="compare-wait">{job.status === 'queued' ? 'Waiting…' : 'Working…'}</p>
               ) : (
@@ -645,6 +648,7 @@ function Workers({
                 {newest.map((job, index) => {
                   const isSelected = job.id === selectedJobId
                   const failoverChain = [...job.failedOver, job.provider ?? '—']
+                  const stepTitle = latestStepTitle(job)
                   return (
                     <div
                       key={job.id}
@@ -675,6 +679,11 @@ function Workers({
                           {job.status}
                         </span>
                       </div>
+                      {job.status === 'running' && stepTitle !== undefined ? (
+                        <p className="job-step-live" title={stepTitle}>
+                          {stepTitle}
+                        </p>
+                      ) : null}
                       <div className="job-meta">
                         {metaLine(jobMetaParts(job))}
                         {visibleChange(job, changes) !== null ? (
@@ -755,6 +764,7 @@ function Workers({
                   ) : null}
                 </div>
                 <div className="output-body">
+                  <JobSteps job={selectedJob} />
                   <RichText text={selectedJob.output} />
                 </div>
                 {selectedJob.error ? <pre className="output-error">{selectedJob.error}</pre> : null}
