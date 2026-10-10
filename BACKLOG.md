@@ -10,6 +10,7 @@ Ordered. The top item is the next one to build.
 - Stop a job. A button to cancel a running or queued job.
 - GitHub through `gh`: clone a repo into the projects list (hidden when `gh` is missing or signed out).
 - Delete and rename chats.
+- CI on pull requests; Windows installer and auto-update from GitHub Releases.
 
 ## Next
 
@@ -20,7 +21,6 @@ Ordered. The top item is the next one to build.
 - Run every feature against the real CLIs, on a clean clone.
 - Review what a worker may do when "Let it edit files" is on, and the Electron security settings.
 - State the tested CLI versions; fail with a readable message when their output changes.
-- CI on pull requests; installers and auto-update from GitHub Releases.
 
 ## Later
 

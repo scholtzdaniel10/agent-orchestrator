@@ -12,7 +12,7 @@ A desktop app (Electron + TypeScript) that spreads your coding jobs across the A
 
 The screenshots use fake data and are made with `pnpm shots`.
 
-**Status:** early, and not yet released. The pieces below are built and unit-tested; they have had little use against the real CLIs so far. See [BACKLOG.md](BACKLOG.md) for what is next.
+**Status:** 1.0.0. Windows installer is on GitHub Releases. The pieces below are unit-tested; they have had little use against the real CLIs so far. See [BACKLOG.md](BACKLOG.md) for what is next.
 
 ## How it works
 
@@ -51,6 +51,10 @@ You are responsible for staying within each provider's terms.
 - Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.
 - The terminals are full CLI sessions; what they may do is whatever you approve inside them.
 
+## Install
+
+Download the `-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**. You need the `claude` and/or Cursor `agent` CLI installed and signed in. Updates download in the background and install themselves when you quit.
+
 ## Develop
 
 Requires Node 22+ and pnpm.
@@ -66,6 +70,10 @@ pnpm gate lead     # acceptance: the lead splits a two-part request across both 
 ```
 
 The two `gate` commands use your real plans and spend real allowance.
+
+### Release
+
+Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds a draft GitHub Release with the Windows installer; publish the draft when you are ready.
 
 | Variable     | Effect                                                                               |
 | ------------ | ------------------------------------------------------------------------------------ |
