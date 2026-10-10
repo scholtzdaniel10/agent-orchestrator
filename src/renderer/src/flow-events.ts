@@ -224,8 +224,7 @@ function eligibleSteps(job: JobRecord): NonNullable<JobRecord['steps']> {
   )
 }
 
-function stepLogText(job: JobRecord, step: NonNullable<JobRecord['steps']>[number]): string {
-  const who = (job.provider ?? 'router').toUpperCase()
+function stepLogText(step: NonNullable<JobRecord['steps']>[number]): string {
   let body: string
   if (step.edit !== undefined) {
     body = `edited ${step.edit.path} +${String(step.edit.added)} −${String(step.edit.removed)}`
@@ -233,7 +232,7 @@ function stepLogText(job: JobRecord, step: NonNullable<JobRecord['steps']>[numbe
     const title = step.title
     body = title.length === 0 ? title : title.charAt(0).toLowerCase() + title.slice(1)
   }
-  return `${who}  ${body}`
+  return body
 }
 
 function diffJobSteps(before: JobRecord | undefined, job: JobRecord, now: number): FlowChange[] {
@@ -245,7 +244,7 @@ function diffJobSteps(before: JobRecord | undefined, job: JobRecord, now: number
   for (let index = prevN; index < nextN; index++) {
     const item = next[index]
     if (item === undefined) continue
-    events.push(change(now, job.provider, stepLogText(job, item)))
+    events.push(change(now, job.provider, stepLogText(item)))
   }
   return events
 }

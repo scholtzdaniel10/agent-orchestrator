@@ -521,8 +521,8 @@ test('finished steps that are not say or think appear in the activity log', () =
     ]
   })
   expect(diffFlow(snap({ jobs: [running] }), snap({ jobs: [withSteps] }), NOW)).toEqual([
-    { at: NOW, actor: 'cursor', text: 'CURSOR  edited src/app.ts +4 −1' },
-    { at: NOW, actor: 'cursor', text: 'CURSOR  read src/app.ts' }
+    { at: NOW, actor: 'cursor', text: 'edited src/app.ts +4 −1' },
+    { at: NOW, actor: 'cursor', text: 'read src/app.ts' }
   ])
 })
 
@@ -539,8 +539,8 @@ test('at most 40 step lines are kept per job', () => {
   const after = job({ id: 'j', status: 'running', provider: 'claude', steps })
   const lines = diffFlow(snap({ jobs: [before] }), snap({ jobs: [after] }), NOW)
   expect(lines).toHaveLength(30)
-  expect(lines[0]?.text).toBe('CLAUDE  read 10')
-  expect(lines[29]?.text).toBe('CLAUDE  read 39')
+  expect(lines[0]?.text).toBe('read 10')
+  expect(lines[29]?.text).toBe('read 39')
 })
 
 test('a job that is new and already running yields the router line and the running line', () => {
