@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { spawn as spawnPty } from 'node-pty'
+import { createRequire } from 'node:module'
+import type * as NodePty from 'node-pty'
 import { TERMINAL_SCROLLBACK_CAP, type Store } from '../router/store'
 import type { ProviderId, TerminalInfo } from '../types'
 
@@ -742,12 +743,20 @@ function withTimeout<T>(
   })
 }
 
+// Loaded on first use. The native module ships no Linux build, and tests never start a real terminal.
+let nodePty: typeof NodePty | null = null
+
+function loadNodePty(): typeof NodePty {
+  nodePty ??= createRequire(import.meta.url)('node-pty') as typeof NodePty
+  return nodePty
+}
+
 function defaultSpawn(
   command: string,
   args: string[],
   opts: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> }
 ): PtyProcess {
-  const proc = spawnPty(command, args, opts)
+  const proc = loadNodePty().spawn(command, args, opts)
   return {
     pid: proc.pid,
     onData: (cb) => proc.onData(cb),
