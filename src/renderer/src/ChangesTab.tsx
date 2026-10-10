@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { RayBurst } from './Star'
 import { parseDiff } from './diff-lines'
+import { worktreeLabel } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ChangedFile = ChangeSet['files'][number]
@@ -409,7 +410,7 @@ function ChangesTab({
                   onClick={() => onSelect(item.id)}
                   onKeyDown={(event) => onRowKeyDown(event, index)}
                 >
-                  <span className="change-id">{item.id}</span>
+                  <span className="change-id">{worktreeLabel(item)}</span>
                   <span className="change-origin">{jobTypeFor(jobs, item.id)}</span>
                   {item.files.length === 0 ? (
                     <span className="change-stats">No changes yet</span>
@@ -427,7 +428,7 @@ function ChangesTab({
           {selected === null ? null : (
             <div className="change-detail">
               <div className="change-head">
-                <span className="change-branch">{selected.branch}</span>
+                <span className="change-branch">{worktreeLabel(selected)}</span>
                 {selected.files.length === 0 ? (
                   <span className="change-stats">No changes yet</span>
                 ) : (

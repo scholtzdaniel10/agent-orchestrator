@@ -40,6 +40,7 @@ function layoutDragging(): boolean {
 
 function TerminalPane({
   info,
+  heading,
   bus,
   restore,
   placement,
@@ -49,6 +50,7 @@ function TerminalPane({
   onClose
 }: {
   info: TerminalInfo
+  heading?: string
   bus: TerminalBus
   restore: boolean
   placement: PanePlacement
@@ -66,6 +68,7 @@ function TerminalPane({
   const focusedTick = useRef(0)
   const visible = placement !== 'hidden'
   const exitLabel = info.exitCode === null ? '—' : String(info.exitCode)
+  const label = heading ?? info.title
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -239,11 +242,11 @@ function TerminalPane({
     >
       {visible ? (
         <div className="terminal-pane-head">
-          <span className="terminal-pane-title">{info.title}</span>
+          <span className="terminal-pane-title">{label}</span>
           <button
             type="button"
             className="tab-close"
-            aria-label={`Close ${info.title}`}
+            aria-label={`Close ${label}`}
             onClick={(event) => {
               event.stopPropagation()
               onClose()

@@ -48,6 +48,13 @@ export interface TerminalRow {
   change_id: string | null
 }
 
+export interface WorktreeNameRow {
+  id: string
+  project: string
+  name: string
+  created_at: number
+}
+
 export const TERMINAL_SCROLLBACK_CAP = 200_000
 
 const MIGRATIONS: string[] = [
@@ -121,6 +128,14 @@ const MIGRATIONS: string[] = [
   `
       ALTER TABLE terminals ADD COLUMN cwd TEXT;
       ALTER TABLE terminals ADD COLUMN change_id TEXT;
+    `,
+  `
+      CREATE TABLE worktree_names (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `
 ]
 
@@ -413,6 +428,33 @@ export class Store {
     this.db.prepare('DELETE FROM terminals WHERE id = ?').run(id)
   }
 
+  setWorktreeName(row: WorktreeNameRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO worktree_names (id, project, name, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           name = excluded.name`
+      )
+      .run(row.id, row.project, row.name, row.created_at)
+  }
+
+  /** Newest first. */
+  worktreeNames(project: string): WorktreeNameRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, name, created_at
+         FROM worktree_names WHERE project = ? ORDER BY created_at DESC`
+      )
+      .all(project)
+    return rows.map((row) => mapWorktreeName(row as Row))
+  }
+
+  deleteWorktreeName(id: string): void {
+    this.db.prepare('DELETE FROM worktree_names WHERE id = ?').run(id)
+  }
+
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
@@ -484,6 +526,15 @@ function mapTerminal(row: Row): TerminalRow {
     scrollback: String(row.scrollback ?? ''),
     cwd: row.cwd === null || row.cwd === undefined ? null : String(row.cwd),
     change_id: row.change_id === null || row.change_id === undefined ? null : String(row.change_id)
+  }
+}
+
+function mapWorktreeName(row: Row): WorktreeNameRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    name: String(row.name),
+    created_at: Number(row.created_at)
   }
 }
 

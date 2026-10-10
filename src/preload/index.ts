@@ -109,6 +109,12 @@ const api: OrchestratorApi = {
   discardChange(id: string): Promise<void> {
     return ipcRenderer.invoke('changes:discard', id)
   },
+  createWorktree(name?: string): Promise<ChangeSet> {
+    return ipcRenderer.invoke('worktrees:create', name)
+  },
+  renameWorktree(id: string, name: string): Promise<void> {
+    return ipcRenderer.invoke('worktrees:rename', id, name)
+  },
   getLeadPlan(): Promise<ProviderId | null> {
     return ipcRenderer.invoke('settings:getLeadPlan')
   },

@@ -196,7 +196,8 @@
             { path: 'src/core/router/orchestrator.ts', insertions: 12, deletions: 131 },
             { path: 'src/core/router/queue.ts', insertions: 84, deletions: 0 },
             { path: 'src/core/router/failover.ts', insertions: 52, deletions: 0 }
-          ]
+          ],
+          name: 'split router'
         }
       ]
   const diff = `diff --git a/src/core/router/queue.ts b/src/core/router/queue.ts
@@ -389,6 +390,17 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     changeDiff: ok(diff),
     mergeChange: ok({ ok: true, message: 'Merged' }),
     discardChange: ok(undefined),
+    createWorktree: (name) =>
+      Promise.resolve({
+        id: 'aabbccdd',
+        branch: 'orch/aabbccdd',
+        path: 'C:/tmp/orch/aabbccdd',
+        files: [],
+        insertions: 0,
+        deletions: 0,
+        name: typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+      }),
+    renameWorktree: ok(undefined),
     getLeadPlan: ok(null),
     setLeadPlan: ok(undefined),
     getLeadAccess: ok('read'),

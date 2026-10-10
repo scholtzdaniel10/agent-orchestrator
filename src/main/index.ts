@@ -116,22 +116,32 @@ app.whenReady().then(async () => {
     const listed = await worktrees.list(project)
     const byId = new Map(listed.map((change) => [change.id, change]))
     const ids = await worktrees.ids(project)
+    const named = shared.worktreeNames(project)
+    const nameById = new Map(named.map((row) => [row.id, row]))
     const merged: ChangeSet[] = []
     for (const id of ids) {
       const existing = byId.get(id)
-      if (existing !== undefined) {
-        merged.push(existing)
-        continue
-      }
-      merged.push({
-        id,
-        branch: `orch/${id}`,
-        path: worktrees.folder(id),
-        files: [],
-        insertions: 0,
-        deletions: 0
-      })
+      const row = nameById.get(id)
+      const entry: ChangeSet =
+        existing !== undefined
+          ? { ...existing }
+          : {
+              id,
+              branch: `orch/${id}`,
+              path: worktrees.folder(id),
+              files: [],
+              insertions: 0,
+              deletions: 0
+            }
+      if (row !== undefined && row.name !== '') entry.name = row.name
+      merged.push(entry)
     }
+    merged.sort((a, b) => {
+      const ta = nameById.get(a.id)?.created_at ?? 0
+      const tb = nameById.get(b.id)?.created_at ?? 0
+      if (ta !== tb) return tb - ta
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    })
     return merged
   }
 
@@ -392,6 +402,14 @@ app.whenReady().then(async () => {
             throw new Error('This folder is not a git repository, so it cannot have worktrees.')
           }
           const created = await worktrees.create(projectDir(), randomUUID())
+          if (!shared.worktreeNames(projectDir()).some((row) => row.id === created.id)) {
+            shared.setWorktreeName({
+              id: created.id,
+              project: projectDir(),
+              name: '',
+              created_at: Date.now()
+            })
+          }
           opts = { cwd: created.path, change: created.id }
         } else {
           const id = requireChangeId(worktree)
@@ -555,6 +573,7 @@ app.whenReady().then(async () => {
     const changeId = requireChangeId(id)
     await terms.closeChange(changeId)
     const result = await worktrees.merge(projectDir(), changeId)
+    if (result.ok) shared.deleteWorktreeName(changeId)
     pushChanges()
     return result
   })
@@ -562,6 +581,45 @@ app.whenReady().then(async () => {
     const changeId = requireChangeId(id)
     await terms.closeChange(changeId)
     await worktrees.discard(projectDir(), changeId)
+    shared.deleteWorktreeName(changeId)
+    pushChanges()
+  })
+  ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
+    const about = await worktrees.info(projectDir())
+    if (!about.isRepo) {
+      throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+    }
+    const label = parseWorktreeName(name, false) ?? ''
+    const created = await worktrees.create(projectDir(), randomUUID())
+    shared.setWorktreeName({
+      id: created.id,
+      project: projectDir(),
+      name: label,
+      created_at: Date.now()
+    })
+    const list = await listedChanges(projectDir())
+    pushChanges()
+    const entry = list.find((change) => change.id === created.id)
+    if (entry === undefined) {
+      throw new Error('The worktree was created, but it did not appear in the list. Try again.')
+    }
+    return entry
+  })
+  ipcMain.handle('worktrees:rename', async (_event, id: unknown, name: unknown) => {
+    const changeId = requireChangeId(id)
+    const label = parseWorktreeName(name, true)
+    if (label === undefined) throw new Error('Name must be 1 to 40 characters on one line.')
+    const folder = worktrees.folder(changeId)
+    if (!isFolder(folder)) {
+      throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+    }
+    const existing = shared.worktreeNames(projectDir()).find((row) => row.id === changeId)
+    shared.setWorktreeName({
+      id: changeId,
+      project: projectDir(),
+      name: label,
+      created_at: existing?.created_at ?? Date.now()
+    })
     pushChanges()
   })
 
@@ -664,6 +722,23 @@ function parseJobAccess(value: unknown): JobAccess | undefined {
 function requireChangeId(id: unknown): string {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
   return id
+}
+
+function parseWorktreeName(value: unknown, required: boolean): string | undefined {
+  if (value === undefined || value === null) {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (typeof value !== 'string' || /[\r\n]/.test(value)) {
+    throw new Error('Name must be 1 to 40 characters on one line.')
+  }
+  const trimmed = value.trim()
+  if (trimmed === '') {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (trimmed.length > 40) throw new Error('Name must be 1 to 40 characters on one line.')
+  return trimmed
 }
 
 function clamp01(value: number): number {

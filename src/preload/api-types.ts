@@ -120,6 +120,10 @@ export interface OrchestratorApi {
   mergeChange(id: string): Promise<{ ok: boolean; message: string }>
   /** Deletes the worktree and its branch. */
   discardChange(id: string): Promise<void>
+  /** Create an empty worktree of the active project. Name is optional. */
+  createWorktree(name?: string): Promise<ChangeSet>
+  /** Rename a worktree. Pushes the change list. */
+  renameWorktree(id: string, name: string): Promise<void>
 
   /** Plan the person chose to run the lead; null means the one with the most headroom. */
   getLeadPlan(): Promise<ProviderId | null>

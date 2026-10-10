@@ -1,8 +1,10 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
 import { PANE_LAYOUT_IDS, PANE_LAYOUT_LABELS, isPaneLayout, type PaneLayoutId } from './layout'
+import { terminalDisplayTitle } from './worktree-label'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 
 function terminalAvatarState(info: TerminalInfo): 'idle' | 'resting' | 'error' {
@@ -45,6 +47,7 @@ function firstPaneSize(): { cols: number; rows: number } {
 
 function TerminalTabs({
   terminals,
+  changes,
   project,
   active,
   changeCount,
@@ -56,6 +59,7 @@ function TerminalTabs({
   onPaneLayout
 }: {
   terminals: readonly TerminalInfo[]
+  changes: readonly ChangeSet[]
   /** Active project folder; restore runs when this changes. */
   project: string
   /** `jobs`, `changes`, or a terminal id. */
@@ -134,6 +138,7 @@ function TerminalTabs({
         {terminals.map((info, index) => {
           const selected = info.id === active
           const tabIndex = index + 2
+          const heading = terminalDisplayTitle(info, changes)
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
               <button
@@ -149,12 +154,12 @@ function TerminalTabs({
                 onKeyDown={(event) => onTabKeyDown(event, tabIndex)}
               >
                 <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
-                <span className="tab-label">{info.title}</span>
+                <span className="tab-label">{heading}</span>
               </button>
               <button
                 type="button"
                 className="tab-close"
-                aria-label={`Close ${info.title}`}
+                aria-label={`Close ${heading}`}
                 onClick={() => {
                   onClose(info.id)
                 }}

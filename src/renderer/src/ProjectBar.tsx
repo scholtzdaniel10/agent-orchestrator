@@ -1,9 +1,13 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Star } from './Star'
+import { worktreeLabel } from './worktree-label'
 
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
 type GithubRepo = Awaited<ReturnType<Window['api']['githubRepos']>>[number]
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
+type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 
 function folderName(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, '')
@@ -211,6 +215,399 @@ function ChatRow({
   )
 }
 
+function countTerminals(terminals: readonly TerminalInfo[], change: string | null): number {
+  let n = 0
+  for (const info of terminals) {
+    if (change === null) {
+      if (info.change === undefined) n += 1
+    } else if (info.change === change) {
+      n += 1
+    }
+  }
+  return n
+}
+
+function worktreeRowId(index: number, changes: readonly ChangeSet[]): string {
+  if (index === 0) return 'worktree-row-project'
+  const item = changes[index - 1]
+  return item === undefined ? 'worktree-row-project' : `worktree-row-${item.id}`
+}
+
+function WorktreeRow({
+  rowId,
+  selected,
+  title,
+  titleMono,
+  subtitle,
+  stats,
+  terminals,
+  claudeAvailable,
+  cursorAvailable,
+  canRename,
+  canDiscard,
+  currentName,
+  onSelect,
+  onKeyDown,
+  onOpen,
+  onRename,
+  onDiscard
+}: {
+  rowId: string
+  selected: boolean
+  title: string
+  titleMono: boolean
+  subtitle: string | null
+  stats: React.JSX.Element | null
+  terminals: number
+  claudeAvailable: boolean
+  cursorAvailable: boolean
+  canRename: boolean
+  canDiscard: boolean
+  currentName: string
+  onSelect: () => void
+  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
+  onOpen: (provider: ProviderId) => void
+  onRename?: (name: string) => void
+  onDiscard?: () => void
+}): React.JSX.Element {
+  const [mode, setMode] = useState<'idle' | 'rename' | 'confirm'>('idle')
+  const [draft, setDraft] = useState(currentName)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (mode !== 'rename') return
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [mode])
+
+  function saveRename(): void {
+    const next = draft.trim()
+    setMode('idle')
+    if (next === '' || next === currentName) {
+      setDraft(currentName)
+      return
+    }
+    onRename?.(next)
+  }
+
+  if (mode === 'confirm') {
+    return (
+      <li className="project-worktree-item">
+        <div className="project-chat-confirm" role="group" aria-label={`Discard ${title}?`}>
+          <span className="project-chat-confirm-text">Discard this worktree?</span>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact is-danger-label"
+            onClick={() => {
+              setMode('idle')
+              onDiscard?.()
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={() => {
+              setMode('idle')
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    )
+  }
+
+  if (mode === 'rename') {
+    return (
+      <li className="project-worktree-item">
+        <input
+          ref={inputRef}
+          className="project-worktree-rename"
+          value={draft}
+          aria-label={`Rename ${title}`}
+          maxLength={40}
+          onChange={(event) => {
+            setDraft(event.target.value)
+          }}
+          onBlur={() => {
+            saveRename()
+          }}
+          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              saveRename()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              setDraft(currentName)
+              setMode('idle')
+            }
+          }}
+        />
+      </li>
+    )
+  }
+
+  return (
+    <li className="project-worktree-item">
+      <button
+        id={rowId}
+        type="button"
+        className={`project-worktree-row${selected ? ' is-selected' : ''}`}
+        title={title}
+        aria-current={selected ? 'true' : undefined}
+        onClick={onSelect}
+        onKeyDown={onKeyDown}
+      >
+        <span className="project-worktree-body">
+          <span className={titleMono ? 'project-worktree-id' : 'project-worktree-name'}>
+            {title}
+          </span>
+          {subtitle !== null ? <span className="project-worktree-sub">{subtitle}</span> : null}
+          {stats !== null || terminals > 0 ? (
+            <span className="project-worktree-meta">
+              {stats}
+              {terminals > 0 ? (
+                <span className="project-worktree-terms">
+                  {terminals === 1 ? '1 terminal' : `${String(terminals)} terminals`}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+      </button>
+      <div className="project-worktree-actions">
+        {claudeAvailable ? (
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Open Claude here"
+            onClick={() => {
+              onOpen('claude')
+            }}
+          >
+            + Claude
+          </button>
+        ) : null}
+        {cursorAvailable ? (
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Open Cursor here"
+            onClick={() => {
+              onOpen('cursor')
+            }}
+          >
+            + Cursor
+          </button>
+        ) : null}
+        {canRename ? (
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Rename"
+            onClick={() => {
+              setDraft(currentName)
+              setMode('rename')
+            }}
+          >
+            Rename
+          </button>
+        ) : null}
+        {canDiscard ? (
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Discard"
+            onClick={() => {
+              setMode('confirm')
+            }}
+          >
+            Discard
+          </button>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+function WorktreesSection({
+  branch,
+  changes,
+  terminals,
+  selectedWorktree,
+  claudeAvailable,
+  cursorAvailable,
+  onSelect,
+  onCreate,
+  onRename,
+  onDiscard,
+  onOpen
+}: {
+  branch: string | null
+  changes: ChangeSet[]
+  terminals: readonly TerminalInfo[]
+  selectedWorktree: string | null
+  claudeAvailable: boolean
+  cursorAvailable: boolean
+  onSelect: (id: string | null) => void
+  onCreate: (name?: string) => void
+  onRename: (id: string, name: string) => void
+  onDiscard: (id: string) => void
+  onOpen: (provider: ProviderId, worktree: string | null) => void
+}): React.JSX.Element {
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState('')
+  const createRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!creating) return
+    createRef.current?.focus()
+  }, [creating])
+
+  function finishCreate(save: boolean): void {
+    const next = draft.trim()
+    setCreating(false)
+    setDraft('')
+    if (save) onCreate(next === '' ? undefined : next)
+  }
+
+  function onRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      onSelect(index === 0 ? null : (changes[index - 1]?.id ?? null))
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const next = event.key === 'ArrowDown' ? index + 1 : index - 1
+    if (next < 0 || next > changes.length) return
+    const element = document.getElementById(worktreeRowId(next, changes))
+    if (element instanceof HTMLButtonElement) element.focus()
+  }
+
+  const folderLabel = branch ?? 'HEAD'
+
+  return (
+    <div className="project-worktrees">
+      <div className="project-chats-head">
+        <span className="project-chats-label">Worktrees</span>
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact"
+          title="New worktree"
+          aria-label="New worktree"
+          onClick={() => {
+            setDraft('')
+            setCreating(true)
+          }}
+        >
+          +
+        </button>
+      </div>
+      {creating ? (
+        <input
+          ref={createRef}
+          className="project-worktree-rename"
+          value={draft}
+          aria-label="New worktree name"
+          placeholder="Name (optional)"
+          maxLength={40}
+          onChange={(event) => {
+            setDraft(event.target.value)
+          }}
+          onBlur={() => {
+            finishCreate(false)
+          }}
+          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              finishCreate(true)
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              finishCreate(false)
+            }
+          }}
+        />
+      ) : null}
+      <ul className="project-worktrees-list">
+        <WorktreeRow
+          rowId={worktreeRowId(0, changes)}
+          selected={selectedWorktree === null}
+          title={folderLabel}
+          titleMono={false}
+          subtitle="project folder"
+          stats={null}
+          terminals={countTerminals(terminals, null)}
+          claudeAvailable={claudeAvailable}
+          cursorAvailable={cursorAvailable}
+          canRename={false}
+          canDiscard={false}
+          currentName=""
+          onSelect={() => {
+            onSelect(null)
+          }}
+          onKeyDown={(event) => {
+            onRowKeyDown(event, 0)
+          }}
+          onOpen={(provider) => {
+            onSelect(null)
+            onOpen(provider, null)
+          }}
+        />
+        {changes.map((item, index) => {
+          const label = worktreeLabel(item)
+          const named = typeof item.name === 'string' && item.name !== ''
+          const noChanges = item.files.length === 0
+          return (
+            <WorktreeRow
+              key={item.id}
+              rowId={worktreeRowId(index + 1, changes)}
+              selected={selectedWorktree === item.id}
+              title={label}
+              titleMono={!named}
+              subtitle={null}
+              stats={
+                noChanges ? (
+                  <span>no changes yet</span>
+                ) : (
+                  <span>
+                    <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
+                    <span className="stat-del">{`−${String(item.deletions)}`}</span>
+                  </span>
+                )
+              }
+              terminals={countTerminals(terminals, item.id)}
+              claudeAvailable={claudeAvailable}
+              cursorAvailable={cursorAvailable}
+              canRename={true}
+              canDiscard={true}
+              currentName={named ? (item.name ?? '') : ''}
+              onSelect={() => {
+                onSelect(item.id)
+              }}
+              onKeyDown={(event) => {
+                onRowKeyDown(event, index + 1)
+              }}
+              onOpen={(provider) => {
+                onSelect(item.id)
+                onOpen(provider, item.id)
+              }}
+              onRename={(name) => {
+                onRename(item.id, name)
+              }}
+              onDiscard={() => {
+                onDiscard(item.id)
+              }}
+            />
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function GithubPanel({
   repos,
   loading,
@@ -329,6 +726,11 @@ function ProjectBar({
   now,
   error,
   githubAvailable,
+  changes,
+  terminals,
+  selectedWorktree,
+  claudeAvailable,
+  cursorAvailable,
   onAdd,
   onGithubClone,
   onSwitch,
@@ -336,7 +738,12 @@ function ProjectBar({
   onOpenChat,
   onNewChat,
   onRenameChat,
-  onRemoveChat
+  onRemoveChat,
+  onSelectWorktree,
+  onCreateWorktree,
+  onRenameWorktree,
+  onDiscardWorktree,
+  onOpenInWorktree
 }: {
   projects: ProjectEntry[]
   chats: LeadChat[]
@@ -345,6 +752,11 @@ function ProjectBar({
   now: number
   error: string | null
   githubAvailable: boolean
+  changes: ChangeSet[]
+  terminals: readonly TerminalInfo[]
+  selectedWorktree: string | null
+  claudeAvailable: boolean
+  cursorAvailable: boolean
   onAdd: () => void
   onGithubClone: (nameWithOwner: string) => Promise<boolean>
   onSwitch: (path: string) => void
@@ -353,6 +765,11 @@ function ProjectBar({
   onNewChat: () => void
   onRenameChat: (id: string, title: string) => void
   onRemoveChat: (id: string) => void
+  onSelectWorktree: (id: string | null) => void
+  onCreateWorktree: (name?: string) => void
+  onRenameWorktree: (id: string, name: string) => void
+  onDiscardWorktree: (id: string) => void
+  onOpenInWorktree: (provider: ProviderId, worktree: string | null) => void
 }): React.JSX.Element {
   const shown = chats.slice(0, 30)
   const [githubOpen, setGithubOpen] = useState(false)
@@ -507,6 +924,21 @@ function ProjectBar({
                 >
                   ×
                 </button>
+              ) : null}
+              {active && entry.isRepo ? (
+                <WorktreesSection
+                  branch={entry.branch}
+                  changes={changes}
+                  terminals={terminals}
+                  selectedWorktree={selectedWorktree}
+                  claudeAvailable={claudeAvailable}
+                  cursorAvailable={cursorAvailable}
+                  onSelect={onSelectWorktree}
+                  onCreate={onCreateWorktree}
+                  onRename={onRenameWorktree}
+                  onDiscard={onDiscardWorktree}
+                  onOpen={onOpenInWorktree}
+                />
               ) : null}
               {active ? (
                 <div className="project-chats">

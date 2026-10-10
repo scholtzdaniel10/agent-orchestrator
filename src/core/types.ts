@@ -207,6 +207,8 @@ export interface ChangeSet {
   files: ChangedFile[]
   insertions: number
   deletions: number
+  /** Saved display name; absent when the worktree was never named. */
+  name?: string
 }
 
 /** The folder jobs and terminals work in. */

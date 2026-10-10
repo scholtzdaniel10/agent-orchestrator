@@ -20,6 +20,7 @@ import {
 import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
+import { terminalDisplayTitle } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -314,6 +315,9 @@ function Workers({
   terminals,
   initialTerminalIds,
   changes,
+  selectedWorktree,
+  placeTerminal,
+  onSelectWorktree,
   isRepo,
   project,
   bus,
@@ -330,6 +334,9 @@ function Workers({
   terminals: TerminalInfo[]
   initialTerminalIds: ReadonlySet<string> | null
   changes: ChangeSet[]
+  selectedWorktree: string | null
+  placeTerminal: { id: string; nonce: number } | null
+  onSelectWorktree: (id: string | null) => void
   isRepo: boolean
   project: string
   bus: TerminalBus
@@ -359,6 +366,8 @@ function Workers({
   const openingRef = useRef(false)
   const stoppingRef = useRef(false)
   const [seenShowJob, setSeenShowJob] = useState<number | null>(null)
+  const [seenPlace, setSeenPlace] = useState<number | null>(null)
+  const [paneWorktree, setPaneWorktree] = useState(selectedWorktree)
 
   if (showJob != null && showJob.nonce !== seenShowJob) {
     setSeenShowJob(showJob.nonce)
@@ -366,13 +375,39 @@ function Workers({
     if (selectedJobId !== showJob.id) setSelectedJobId(showJob.id)
   }
 
-  const liveIds = new Set(terminals.map((info) => info.id))
-  // Seat the ones that arrived without a click: restored after a restart, or opened from Changes.
-  const liveSlots = seatUnplaced(
-    dropMissingTerminals(slots, liveIds),
-    terminals.map((info) => info.id)
+  const visibleTerminals = terminals.filter((info) =>
+    selectedWorktree === null ? info.change === undefined : info.change === selectedWorktree
   )
+  const visibleIds = visibleTerminals.map((info) => info.id)
+  const liveIds = new Set(visibleIds)
+  const selectionChanged = paneWorktree !== selectedWorktree
+  if (selectionChanged) {
+    setPaneWorktree(selectedWorktree)
+    setFocusedIndex(0)
+  }
+  const baseSlots = selectionChanged
+    ? fillPanes(paneLayout, visibleIds, visibleIds[0] ?? null)
+    : slots
+  // Seat the ones that arrived without a click: restored after a restart, or opened from Changes.
+  const liveSlots = seatUnplaced(dropMissingTerminals(baseSlots, liveIds), visibleIds)
   if (liveSlots !== slots) setSlots(liveSlots)
+
+  if (placeTerminal != null && placeTerminal.nonce !== seenPlace) {
+    setSeenPlace(placeTerminal.nonce)
+    setStage('panes')
+    setFocusTermId(placeTerminal.id)
+    setFocusTick((tick) => tick + 1)
+    const placed = liveSlots.indexOf(placeTerminal.id)
+    if (placed >= 0) setFocusedIndex(placed)
+  }
+
+  if (
+    selectedWorktree !== null &&
+    selectedChangeId !== selectedWorktree &&
+    changes.some((item) => item.id === selectedWorktree)
+  ) {
+    setSelectedChangeId(selectedWorktree)
+  }
 
   useEffect(() => {
     if (showJob == null) return
@@ -426,7 +461,7 @@ function Workers({
 
   function closeTerminal(id: string): void {
     setSlots((current) => emptyPaneForTerminal(current, id))
-    const remaining = terminals.filter((info) => info.id !== id)
+    const remaining = visibleTerminals.filter((info) => info.id !== id)
     if (remaining.length === 0) {
       setStage('jobs')
       document.getElementById('worker-tab-jobs')?.focus()
@@ -452,6 +487,7 @@ function Workers({
       const rows = size?.rows ?? 30
       const info = await window.api.openTerminal(provider, cols, rows, worktree)
       onTerminal(info)
+      if (worktree === 'new' && info.change !== undefined) onSelectWorktree(info.change)
       setStage('panes')
       const nextSlots =
         paneIndex !== undefined
@@ -538,7 +574,7 @@ function Workers({
   }
 
   function changePaneLayout(next: PaneLayoutId): void {
-    const ids = terminals.map((info) => info.id)
+    const ids = visibleIds
     const active = focusedId ?? ids[0] ?? null
     setSlots(fillPanes(next, ids, active))
     setFocusedIndex(0)
@@ -550,6 +586,8 @@ function Workers({
     setSelectedChangeId(id)
     showMain('changes')
   }
+
+  const openWorktree = selectedWorktree ?? worktreeFlag()
 
   return (
     <div className="workers">
@@ -568,7 +606,8 @@ function Workers({
         </button>
       </div>
       <TerminalTabs
-        terminals={terminals}
+        terminals={visibleTerminals}
+        changes={changes}
         project={project}
         active={tabActive}
         changeCount={changes.length}
@@ -583,7 +622,7 @@ function Workers({
         }}
         onClose={closeTerminal}
         onOpen={(provider, worktree) => {
-          void openProvider(provider, worktree)
+          void openProvider(provider, openWorktree ?? worktree)
         }}
         onPaneLayout={changePaneLayout}
       />
@@ -870,7 +909,7 @@ function Workers({
                     className="btn btn-quiet"
                     disabled={opening}
                     onClick={() => {
-                      void openProvider('claude', worktreeFlag(), undefined, index)
+                      void openProvider('claude', openWorktree, undefined, index)
                     }}
                   >
                     + Claude
@@ -880,7 +919,7 @@ function Workers({
                     className="btn btn-quiet"
                     disabled={opening}
                     onClick={() => {
-                      void openProvider('cursor', worktreeFlag(), undefined, index)
+                      void openProvider('cursor', openWorktree, undefined, index)
                     }}
                   >
                     + Cursor
@@ -897,6 +936,7 @@ function Workers({
                   <TerminalPane
                     key={info.id}
                     info={info}
+                    heading={terminalDisplayTitle(info, changes)}
                     bus={bus}
                     restore={initialTerminalIds.has(info.id)}
                     placement={placement >= 0 ? placement : 'hidden'}

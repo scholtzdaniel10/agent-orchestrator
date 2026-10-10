@@ -426,6 +426,8 @@ function App(): React.JSX.Element {
   const [plans, setPlans] = useState<PlanStatus[] | null>(null)
   const [terminals, setTerminals] = useState<TerminalInfo[]>([])
   const [changes, setChanges] = useState<ChangeSet[]>([])
+  const [selectedWorktree, setSelectedWorktree] = useState<string | null>(null)
+  const [placeTerminal, setPlaceTerminal] = useState<{ id: string; nonce: number } | null>(null)
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
@@ -448,6 +450,7 @@ function App(): React.JSX.Element {
     height: typeof window === 'undefined' ? 800 : window.innerHeight
   }))
   const showJobNonce = useRef(0)
+  const termNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
@@ -750,6 +753,7 @@ function App(): React.JSX.Element {
 
   async function adoptProject(next: ProjectInfo): Promise<void> {
     setProject(next)
+    setSelectedWorktree(null)
     acceptList.current = false
     const state = bag.current
     const list = await window.api.listChanges()
@@ -845,6 +849,62 @@ function App(): React.JSX.Element {
     }
   }
 
+  async function openInWorktree(
+    provider: TerminalInfo['provider'],
+    worktree: string | null
+  ): Promise<void> {
+    setSelectedWorktree(worktree)
+    let flag: 'new' | string | undefined
+    if (worktree === null) {
+      try {
+        flag = localStorage.getItem('orch.newWorktree') === '1' ? 'new' : undefined
+      } catch {
+        flag = undefined
+      }
+    } else {
+      flag = worktree
+    }
+    try {
+      const info = await window.api.openTerminal(provider, 100, 30, flag)
+      const state = bag.current
+      const next = applyTerminalUpdate(state.terminals, info, false)
+      state.terminals = next
+      setTerminals(next)
+      publish(state, setEvents)
+      if (flag === 'new' && info.change !== undefined) setSelectedWorktree(info.change)
+      termNonce.current += 1
+      setPlaceTerminal({ id: info.id, nonce: termNonce.current })
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
+  async function createWorktree(name?: string): Promise<void> {
+    try {
+      const created = await window.api.createWorktree(name)
+      setSelectedWorktree(created.id)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
+  async function renameWorktree(id: string, name: string): Promise<void> {
+    try {
+      await window.api.renameWorktree(id, name)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
+  async function discardWorktree(id: string): Promise<void> {
+    try {
+      await window.api.discardChange(id)
+      if (selectedWorktree === id) setSelectedWorktree(null)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
   async function removeLeadChat(id: string): Promise<void> {
     try {
       const wasShown = viewChatId.current === id
@@ -861,6 +921,10 @@ function App(): React.JSX.Element {
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
     }
+  }
+
+  if (selectedWorktree !== null && !changes.some((item) => item.id === selectedWorktree)) {
+    setSelectedWorktree(null)
   }
 
   const ready = readyPlans(plans ?? EMPTY_PLANS, now)
@@ -960,6 +1024,11 @@ function App(): React.JSX.Element {
         now={now}
         error={projectError === null ? null : projectError.text}
         githubAvailable={githubAvailable}
+        changes={changes}
+        terminals={terminals}
+        selectedWorktree={selectedWorktree}
+        claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
+        cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
         onAdd={() => {
           void changeProject()
         }}
@@ -981,6 +1050,19 @@ function App(): React.JSX.Element {
         }}
         onRemoveChat={(id) => {
           void removeLeadChat(id)
+        }}
+        onSelectWorktree={setSelectedWorktree}
+        onCreateWorktree={(name) => {
+          void createWorktree(name)
+        }}
+        onRenameWorktree={(id, name) => {
+          void renameWorktree(id, name)
+        }}
+        onDiscardWorktree={(id) => {
+          void discardWorktree(id)
+        }}
+        onOpenInWorktree={(provider, worktree) => {
+          void openInWorktree(provider, worktree)
         }}
       />
       {effectiveShown.projects ? (
@@ -1067,6 +1149,9 @@ function App(): React.JSX.Element {
           terminals={terminals}
           initialTerminalIds={initialTerminalIds}
           changes={changes}
+          selectedWorktree={selectedWorktree}
+          placeTerminal={placeTerminal}
+          onSelectWorktree={setSelectedWorktree}
           isRepo={project?.isRepo === true}
           project={project?.path ?? ''}
           bus={terminalBus}

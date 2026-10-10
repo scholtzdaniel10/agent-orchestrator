@@ -214,9 +214,14 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 })
     expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
       name: 'terminals'
+    })
+    expect(
+      check.prepare(`SELECT name FROM sqlite_master WHERE name = 'worktree_names'`).get()
+    ).toEqual({
+      name: 'worktree_names'
     })
     const cols = check
       .prepare(`SELECT name FROM pragma_table_info('terminals') ORDER BY name`)
@@ -429,6 +434,39 @@ test('terminals upsert, list oldest first, update scrollback, delete, and cap', 
       cwd: '/wt/3fa9c1d2',
       change_id: '3fa9c1d2'
     })
+  })
+})
+
+test('worktree names set, list newest first per project, rename, and delete', async () => {
+  await withStore((store) => {
+    store.setWorktreeName({ id: 'aaaaaaaa', project: '/a', name: 'older', created_at: 10 })
+    store.setWorktreeName({ id: 'bbbbbbbb', project: '/a', name: 'newer', created_at: 20 })
+    store.setWorktreeName({ id: 'cccccccc', project: '/b', name: 'other', created_at: 30 })
+    expect(store.worktreeNames('/a').map((row) => row.id)).toEqual(['bbbbbbbb', 'aaaaaaaa'])
+    expect(store.worktreeNames('/a')[0]).toMatchObject({
+      name: 'newer',
+      project: '/a',
+      created_at: 20
+    })
+    expect(store.worktreeNames('/b').map((row) => row.name)).toEqual(['other'])
+    expect(store.worktreeNames('/missing')).toEqual([])
+
+    store.setWorktreeName({
+      id: 'aaaaaaaa',
+      project: '/a',
+      name: 'renamed',
+      created_at: 99
+    })
+    expect(store.worktreeNames('/a')[1]).toMatchObject({
+      id: 'aaaaaaaa',
+      name: 'renamed',
+      created_at: 10
+    })
+
+    store.deleteWorktreeName('bbbbbbbb')
+    expect(store.worktreeNames('/a').map((row) => row.id)).toEqual(['aaaaaaaa'])
+    store.deleteWorktreeName('missing')
+    expect(store.worktreeNames('/a')).toHaveLength(1)
   })
 })
 
