@@ -17,6 +17,7 @@ import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -146,7 +147,11 @@ app.whenReady().then(async () => {
 
   const leadRef: { current: Lead | null } = { current: null }
   const started = await startBridge(
-    createOrchestratorTools(orch, () => leadRef.current?.currentTurn() ?? null)
+    createOrchestratorTools(
+      orch,
+      () => leadRef.current?.currentTurn() ?? null,
+      () => settings.leadAccess()
+    )
   )
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
@@ -232,7 +237,7 @@ app.whenReady().then(async () => {
       type: JobType,
       prompt: string,
       provider?: unknown,
-      edit?: unknown,
+      access?: unknown,
       group?: unknown
     ) => {
       if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
@@ -247,18 +252,15 @@ app.whenReady().then(async () => {
       ) {
         throw new Error('unknown provider')
       }
-      if (edit !== undefined && edit !== null && typeof edit !== 'boolean') {
-        throw new Error('edit must be true or false')
-      }
       const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
-      const editing = typeof edit === 'boolean' ? edit : undefined
+      const granted = parseJobAccess(access)
       const grouping =
         typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
       return orch.submit(
         type,
         prompt,
         chosen,
-        editing,
+        granted,
         grouping !== undefined ? { group: grouping } : undefined
       )
     }
@@ -284,6 +286,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
     if (plan !== null && plan !== 'claude' && plan !== 'cursor') throw new Error('unknown plan')
     settings.setLeadPlan(plan)
+  })
+  ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
+  ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {
+    if (access !== 'read' && access !== 'edit' && access !== 'full') {
+      throw new Error('access must be read, edit, or full')
+    }
+    settings.setLeadAccess(access)
   })
   ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
@@ -571,6 +580,14 @@ function runGh(
       }
     )
   })
+}
+
+function parseJobAccess(value: unknown): JobAccess | undefined {
+  if (value === undefined || value === null) return undefined
+  if (value === true) return 'edit'
+  if (value === false) return 'read'
+  if (value === 'read' || value === 'edit' || value === 'full') return value
+  throw new Error('access must be read, edit, or full')
 }
 
 function requireChangeId(id: unknown): string {

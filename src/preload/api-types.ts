@@ -1,6 +1,7 @@
 import type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -65,8 +66,8 @@ export interface OrchestratorApi {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    /** Let the job edit files, in a git worktree of its own. */
-    edit?: boolean,
+    /** read, edit, or full. The job's file changes still wait in Changes. */
+    access?: JobAccess,
     /** Shared id for jobs submitted together to compare plans. */
     group?: string
   ): Promise<JobRecord>
@@ -124,6 +125,9 @@ export interface OrchestratorApi {
   getLeadPlan(): Promise<ProviderId | null>
   /** Takes effect on the next message; switching plans starts a fresh lead session. */
   setLeadPlan(plan: ProviderId | null): Promise<void>
+  /** Ceiling for jobs the lead hands out. */
+  getLeadAccess(): Promise<JobAccess>
+  setLeadAccess(access: JobAccess): Promise<void>
 
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>
@@ -156,6 +160,7 @@ export interface OrchestratorApi {
 export type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobRecord,
   JobType,
   LeadChat,

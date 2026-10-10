@@ -284,7 +284,13 @@ process.exit(0)
 
     const editDir = join(root, 'edit')
     mkdirSync(editDir)
+    expect(await cliArgs(adapter.run(job, editDir, { access: 'read' }))).toEqual(base)
     expect(await cliArgs(adapter.run(job, editDir, { edit: true }))).toEqual([
+      ...editing,
+      '--permission-mode',
+      'acceptEdits'
+    ])
+    expect(await cliArgs(adapter.run(job, editDir, { access: 'edit' }))).toEqual([
       ...editing,
       '--permission-mode',
       'acceptEdits'
@@ -299,6 +305,16 @@ process.exit(0)
       'sess-e',
       '--model',
       'opus'
+    ])
+    const full = [...start, '--strict-mcp-config', '--permission-mode', 'bypassPermissions']
+    expect(await cliArgs(adapter.run(job, editDir, { access: 'full' }))).toEqual(full)
+    expect(full).not.toContain('--disallowedTools')
+    expect(
+      await cliArgs(adapter.run(job, editDir, { access: 'full', resume: 'sess-f', model: 'opus' }))
+    ).toEqual([...full, '--resume', 'sess-f', '--model', 'opus'])
+    expect(await cliArgs(adapter.run(job, bridged, { access: 'full', bridge }))).toEqual([
+      ...start,
+      ...mcpArgs(bridged)
     ])
   } finally {
     rmSync(root, { recursive: true, force: true })

@@ -3,6 +3,7 @@ import type { JobRecord } from '../core/router'
 import type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -19,10 +20,10 @@ const api: OrchestratorApi = {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    edit?: boolean,
+    access?: JobAccess,
     group?: string
   ): Promise<JobRecord> {
-    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, edit, group)
+    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, access, group)
   },
   listJobs(): Promise<JobRecord[]> {
     return ipcRenderer.invoke('jobs:list')
@@ -113,6 +114,12 @@ const api: OrchestratorApi = {
   },
   setLeadPlan(plan: ProviderId | null): Promise<void> {
     return ipcRenderer.invoke('settings:setLeadPlan', plan)
+  },
+  getLeadAccess(): Promise<JobAccess> {
+    return ipcRenderer.invoke('settings:getLeadAccess')
+  },
+  setLeadAccess(access: JobAccess): Promise<void> {
+    return ipcRenderer.invoke('settings:setLeadAccess', access)
   },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)

@@ -391,6 +391,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     discardChange: ok(undefined),
     getLeadPlan: ok(null),
     setLeadPlan: ok(undefined),
+    getLeadAccess: ok('read'),
+    setLeadAccess: ok(undefined),
     sendLead: (text) => Promise.resolve({ id: 'x', role: 'user', text, status: 'done' }),
     listLeadMessages: ok(lead),
     listLeadChats: ok(chats),

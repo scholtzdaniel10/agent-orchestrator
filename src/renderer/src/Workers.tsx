@@ -14,8 +14,37 @@ type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 type PlanChoice = 'auto' | ProviderId | 'both'
+type JobAccess = 'read' | 'edit' | 'full'
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
+const ACCESS_KEY = 'orch.access'
+
+function asAccess(value: string): JobAccess {
+  if (value === 'edit' || value === 'full') return value
+  return 'read'
+}
+
+function loadAccess(): JobAccess {
+  try {
+    return asAccess(localStorage.getItem(ACCESS_KEY) ?? '')
+  } catch {
+    return 'read'
+  }
+}
+
+function saveAccess(value: JobAccess): void {
+  try {
+    localStorage.setItem(ACCESS_KEY, value)
+  } catch {
+    // Private mode, or storage full.
+  }
+}
+
+function accessMark(job: JobRecord): string | null {
+  if (job.access === 'full') return 'FULL'
+  if (job.edit === true || job.access === 'edit') return 'EDIT'
+  return null
+}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
@@ -53,7 +82,8 @@ function outputTitle(job: JobRecord): string {
   if (job.provider !== null) parts.push(job.provider)
   if (job.model) parts.push(job.model)
   if (job.reason) parts.push(job.reason)
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   return parts.join(' · ')
 }
 
@@ -104,7 +134,8 @@ function jobMetaParts(job: JobRecord): ReactNode[] {
   const parts: ReactNode[] = [job.type]
   if (job.group !== undefined) parts.push('compare')
   if (job.leadMessage !== undefined) parts.push('from lead')
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   if (job.reason) parts.push(<span className="job-reason-mono">{job.reason}</span>)
   if (job.model) parts.push(<span className="job-model">{job.model}</span>)
   parts.push(<span className="job-id">{job.id.slice(0, 8)}</span>)
@@ -311,7 +342,7 @@ function Workers({
   const [prompt, setPrompt] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
   const [worker, setWorker] = useState<PlanChoice>('auto')
-  const [editFiles, setEditFiles] = useState(false)
+  const [access, setAccess] = useState<JobAccess>(loadAccess)
   const [mainTab, setMainTab] = useState<'jobs' | 'changes'>('jobs')
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -441,12 +472,12 @@ function Workers({
     try {
       if (worker === 'both') {
         const group = crypto.randomUUID()
-        const edit = isRepo && editFiles
+        const jobAccess = isRepo ? access : 'read'
         const results: JobRecord[] = []
         let submitError: string | null = null
         for (const provider of ['claude', 'cursor'] as const) {
           try {
-            const job = await window.api.submitJob(jobType, text, provider, edit, group)
+            const job = await window.api.submitJob(jobType, text, provider, jobAccess, group)
             results.push(job)
             onJob(job)
           } catch (err: unknown) {
@@ -462,7 +493,7 @@ function Workers({
         return
       }
       const provider = worker === 'auto' ? undefined : worker
-      const job = await window.api.submitJob(jobType, text, provider, isRepo && editFiles)
+      const job = await window.api.submitJob(jobType, text, provider, isRepo ? access : 'read')
       setPrompt('')
       onJob(job)
       setSelectedJobId(job.id)
@@ -610,21 +641,32 @@ function Workers({
                       both (compare)
                     </option>
                   </select>
-                  <label
-                    className="edit-toggle"
-                    htmlFor="job-edit"
+                  <label htmlFor="job-access">Access</label>
+                  <select
+                    id="job-access"
+                    className="job-access"
+                    value={isRepo ? access : 'read'}
                     title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
+                    onChange={(event) => {
+                      const value = asAccess(event.target.value)
+                      setAccess(value)
+                      saveAccess(value)
+                    }}
                   >
-                    <input
-                      id="job-edit"
-                      type="checkbox"
-                      checked={editFiles}
-                      disabled={!isRepo}
-                      title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
-                      onChange={(event) => setEditFiles(event.target.checked)}
-                    />
-                    Let it edit files
-                  </label>
+                    <option value="read">Read only</option>
+                    <option value="edit" disabled={!isRepo}>
+                      Edit files
+                    </option>
+                    <option value="full" disabled={!isRepo}>
+                      Full access
+                    </option>
+                  </select>
+                  {access === 'full' && isRepo ? (
+                    <span className="composer-hint access-hint">
+                      Runs commands on your computer without asking. Its file changes still wait in
+                      Changes.
+                    </span>
+                  ) : null}
                 </div>
                 <button className="btn btn-primary" type="submit" disabled={submitDisabled}>
                   Submit

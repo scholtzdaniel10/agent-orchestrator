@@ -1,6 +1,17 @@
 export type ProviderId = 'claude' | 'cursor'
 export type JobType = 'planning' | 'debugging' | 'review' | 'refactor' | 'boilerplate'
+export type JobAccess = 'read' | 'edit' | 'full'
 export type VersionStatus = 'tested' | 'newer' | 'older' | 'unknown'
+
+export function isJobAccess(value: unknown): value is JobAccess {
+  return value === 'read' || value === 'edit' || value === 'full'
+}
+
+/** A record with `edit: true` and no `access` is `edit`; neither is `read`. */
+export function accessOf(record: { access?: unknown; edit?: unknown }): JobAccess {
+  if (isJobAccess(record.access)) return record.access
+  return record.edit === true ? 'edit' : 'read'
+}
 
 export interface Job {
   id: string
@@ -66,6 +77,8 @@ export interface RunOptions {
   model?: string
   /** Let the CLI edit files in its working folder (a job's own worktree). Never shell commands. */
   edit?: boolean
+  /** read: files only. edit: files, no shell. full: files and shell, no prompts. */
+  access?: JobAccess
 }
 
 /** A model a CLI can run, for the model picker. */

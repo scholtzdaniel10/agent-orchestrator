@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0
+
+- Three worker access levels (read, edit, full). Full access runs commands without asking, in a git worktree; the person sets a ceiling for jobs the lead hands out.
+
 ## 1.0.0
 
 - Lead chat that splits a request into jobs, hands them to workers, and reports back when they finish.

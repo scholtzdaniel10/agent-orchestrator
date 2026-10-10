@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { compareToTested, unknownFormatMessage } from '../providers/versions'
-import type {
-  AgentEvent,
-  JobType,
-  ProviderAdapter,
-  ProviderId,
-  RouterRules,
-  VersionStatus
+import {
+  accessOf,
+  isJobAccess,
+  type AgentEvent,
+  type JobAccess,
+  type JobType,
+  type ProviderAdapter,
+  type ProviderId,
+  type RouterRules,
+  type VersionStatus
 } from '../types'
 import { Worktrees } from '../worktrees'
 import { headroom, pickProvider, pickWithReason, planUsage } from './router'
@@ -31,6 +34,8 @@ export interface JobRecord {
   reason?: string
   /** The job may edit files, in its own worktree. */
   edit?: boolean
+  /** read, edit, or full. Absent on old saved jobs; then `edit: true` means edit. */
+  access?: JobAccess
   /** Id of the job's change set (see `ChangeSet`), once its worktree exists. */
   change?: string
   /** Jobs submitted together to compare plans share this id. */
@@ -57,6 +62,7 @@ interface InternalJob {
   chosen: boolean
   /** The job may edit files, in its own worktree. */
   edit?: boolean
+  access: JobAccess
   /** Id of the job's change set, once its worktree exists. */
   change?: string
   /** Jobs submitted together to compare plans share this id. */
@@ -181,9 +187,10 @@ export class Orchestrator {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    edit?: boolean,
+    access?: JobAccess | boolean,
     extra?: { group?: string; leadMessage?: string }
   ): JobRecord {
+    const granted = submitAccess(access)
     const job: InternalJob = {
       id: randomUUID(),
       type,
@@ -196,7 +203,8 @@ export class Orchestrator {
       chosen: false,
       project: this.workingDir(),
       createdAt: this.now(),
-      ...(edit === true ? { edit: true } : {}),
+      access: granted,
+      ...(granted !== 'read' ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {})
     }
@@ -457,6 +465,7 @@ export class Orchestrator {
       started = true
       handle = adapter.run({ id: job.id, prompt: job.prompt }, runCwd, {
         model: this.modelFor?.(provider),
+        access: job.access,
         ...(job.edit ? { edit: true } : {})
       })
       this.handles.set(job.id, handle)
@@ -787,7 +796,8 @@ function copy(job: InternalJob): JobRecord {
   if (job.error !== undefined) record.error = job.error
   if (job.model !== undefined) record.model = job.model
   if (job.reason !== undefined) record.reason = job.reason
-  if (job.edit === true) record.edit = true
+  record.access = job.access
+  if (job.access !== 'read') record.edit = true
   if (job.change !== undefined) record.change = job.change
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
@@ -795,6 +805,7 @@ function copy(job: InternalJob): JobRecord {
 }
 
 function fromRecord(record: JobRecord, project: string, createdAt: number): InternalJob {
+  const access = accessOf(record)
   return {
     id: record.id,
     type: record.type,
@@ -807,14 +818,22 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     chosen: record.reason === 'chosen',
     project,
     createdAt,
+    access,
     ...(record.error !== undefined ? { error: record.error } : {}),
     ...(record.model !== undefined ? { model: record.model } : {}),
     ...(record.reason !== undefined ? { reason: record.reason } : {}),
-    ...(record.edit === true ? { edit: true } : {}),
+    ...(access !== 'read' ? { edit: true } : {}),
     ...(record.change !== undefined ? { change: record.change } : {}),
     ...(record.group !== undefined ? { group: record.group } : {}),
     ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {})
   }
+}
+
+function submitAccess(value: JobAccess | boolean | undefined): JobAccess {
+  if (value === true) return 'edit'
+  if (value === false || value === undefined) return 'read'
+  if (isJobAccess(value)) return value
+  return 'read'
 }
 
 function failureMessage(resultText: string | undefined, stderr: string): string {
