@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type SetStateAction
+} from 'react'
 import FlowView from './FlowView'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
@@ -6,6 +15,23 @@ import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
+import {
+  DEFAULT_SIZES,
+  MIN_FLOW,
+  MIN_LEAD,
+  MIN_SIDEBAR,
+  MIN_USAGE,
+  clampSizes,
+  loadLayout,
+  maxSize,
+  requestLayoutFit,
+  saveLayout,
+  type LayoutSizes,
+  type PanelKey,
+  type PanelVisibility,
+  type PaneLayoutId,
+  type SizeKey
+} from './layout'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
 import { THEMES, applyTheme, isThemeId, loadTheme, type ThemeId } from './theme'
 
@@ -254,6 +280,115 @@ function summaryLine(ready: number, running: number, queued: number): string {
   return `${plans} · ${running} running · ${queued} queued`
 }
 
+const PANEL_ORDER: readonly PanelKey[] = ['projects', 'flow', 'lead', 'usage']
+const PANEL_LABELS: Record<PanelKey, string> = {
+  projects: 'Projects',
+  flow: 'Flow',
+  lead: 'Lead',
+  usage: 'Usage'
+}
+
+function isTerminalTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return target.closest('.terminal-host, .xterm') !== null
+}
+
+function ResizeHandle({
+  className,
+  orientation,
+  value,
+  min,
+  max,
+  label,
+  invert,
+  onChange,
+  onReset,
+  onDragState
+}: {
+  className: string
+  orientation: 'horizontal' | 'vertical'
+  value: number
+  min: number
+  max: number
+  label: string
+  invert?: boolean
+  onChange: (value: number) => void
+  onReset: () => void
+  onDragState: (active: 'horizontal' | 'vertical' | null) => void
+}): React.JSX.Element {
+  const start = useRef({ pos: 0, value: 0 })
+  const dragging = useRef(false)
+
+  function onPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (event.button !== 0) return
+    event.preventDefault()
+    dragging.current = true
+    start.current = {
+      pos: orientation === 'vertical' ? event.clientX : event.clientY,
+      value
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    onDragState(orientation)
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (!dragging.current) return
+    const pos = orientation === 'vertical' ? event.clientX : event.clientY
+    const delta = pos - start.current.pos
+    const next = invert ? start.current.value - delta : start.current.value + delta
+    onChange(next)
+  }
+
+  function endDrag(): void {
+    if (!dragging.current) return
+    dragging.current = false
+    onDragState(null)
+    requestLayoutFit()
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      onReset()
+      requestLayoutFit()
+      return
+    }
+    const step = 16
+    let delta = 0
+    if (orientation === 'vertical') {
+      if (event.key === 'ArrowLeft') delta = -step
+      else if (event.key === 'ArrowRight') delta = step
+    } else if (event.key === 'ArrowUp') delta = -step
+    else if (event.key === 'ArrowDown') delta = step
+    if (delta === 0) return
+    event.preventDefault()
+    onChange(invert ? value - delta : value + delta)
+  }
+
+  return (
+    <button
+      type="button"
+      className={className}
+      role="separator"
+      aria-label={label}
+      aria-orientation={orientation}
+      aria-valuenow={value}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={() => {
+        onReset()
+        requestLayoutFit()
+      }}
+      onKeyDown={onKeyDown}
+    />
+  )
+}
+
 function AppSummary({
   ready,
   running,
@@ -302,6 +437,16 @@ function App(): React.JSX.Element {
   const [flashes, setFlashes] = useState<Record<string, number>>({})
   const [showJob, setShowJob] = useState<{ id: string; nonce: number } | null>(null)
   const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
+  const [layout] = useState(loadLayout)
+  const [sizes, setSizes] = useState<LayoutSizes>(layout.sizes)
+  const [shown, setShown] = useState<PanelVisibility>(layout.shown)
+  const [paneLayout, setPaneLayout] = useState<PaneLayoutId>(layout.paneLayout)
+  const [focusMode, setFocusMode] = useState(false)
+  const [dragging, setDragging] = useState<'horizontal' | 'vertical' | null>(null)
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1200 : window.innerWidth,
+    height: typeof window === 'undefined' ? 800 : window.innerHeight
+  }))
   const showJobNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
@@ -535,6 +680,54 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    function onResize(): void {
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    saveLayout({ sizes, shown, paneLayout })
+  }, [sizes, shown, paneLayout])
+
+  useEffect(() => {
+    requestLayoutFit()
+  }, [shown, focusMode, paneLayout])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (isTerminalTarget(event.target)) return
+      if (event.key === 'Escape' && focusMode) {
+        event.preventDefault()
+        setFocusMode(false)
+        return
+      }
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return
+      const index =
+        event.key === '1'
+          ? 0
+          : event.key === '2'
+            ? 1
+            : event.key === '3'
+              ? 2
+              : event.key === '4'
+                ? 3
+                : -1
+      if (index < 0) return
+      event.preventDefault()
+      const key = PANEL_ORDER[index]
+      setShown((current) => ({ ...current, [key]: !current[key] }))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [focusMode])
+
+  useEffect(() => {
     const entries = Object.entries(flashes)
     if (entries.length === 0) return
     const timers = entries.map(([provider, until]) =>
@@ -674,9 +867,40 @@ function App(): React.JSX.Element {
   const running = jobs.filter((job) => job.status === 'running').length
   const queued = jobs.filter((job) => job.status === 'queued').length
   const leadBusy = messages.some((message) => message.status === 'streaming')
+  const effectiveShown: PanelVisibility = focusMode
+    ? { projects: false, flow: false, lead: false, usage: false }
+    : shown
+  const displayed = clampSizes(sizes, viewport, effectiveShown)
+  const appStyle = {
+    '--layout-sidebar': effectiveShown.projects ? `${String(displayed.sidebar)}px` : '0px',
+    '--layout-lead': effectiveShown.lead ? `${String(displayed.lead)}px` : '0px',
+    '--layout-usage': effectiveShown.usage ? `${String(displayed.usage)}px` : '0px',
+    '--layout-flow': effectiveShown.flow ? `${String(displayed.flow)}px` : '0px'
+  } as CSSProperties
+  const appClass = [
+    'app',
+    dragging !== null ? 'is-dragging' : '',
+    dragging === 'vertical' ? 'is-dragging-col' : '',
+    dragging === 'horizontal' ? 'is-dragging-row' : '',
+    focusMode ? 'is-focus' : '',
+    !effectiveShown.projects ? 'is-hide-projects' : '',
+    !effectiveShown.flow ? 'is-hide-flow' : '',
+    !effectiveShown.lead ? 'is-hide-lead' : '',
+    !effectiveShown.usage ? 'is-hide-usage' : ''
+  ]
+    .filter((name) => name !== '')
+    .join(' ')
+
+  function setSize(key: SizeKey, value: number): void {
+    setSizes((current) => clampSizes({ ...current, [key]: value }, viewport, shown))
+  }
+
+  function resetSize(key: SizeKey): void {
+    setSizes((current) => clampSizes({ ...current, [key]: DEFAULT_SIZES[key] }, viewport, shown))
+  }
 
   return (
-    <div className="app">
+    <div className={appClass} style={appStyle}>
       <header className="app-header">
         <div className="app-brand">
           <RayBurst />
@@ -686,6 +910,21 @@ function App(): React.JSX.Element {
           <div className="app-name">agent-orchestrator</div>
         </div>
         <div className="app-header-tools">
+          <div className="layout-toggles">
+            {PANEL_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className="btn btn-quiet btn-compact layout-toggle"
+                aria-pressed={shown[key]}
+                onClick={() => {
+                  setShown((current) => ({ ...current, [key]: !current[key] }))
+                }}
+              >
+                {PANEL_LABELS[key]}
+              </button>
+            ))}
+          </div>
           <div className="theme-picker">
             <label htmlFor="app-theme">
               <span className="visually-hidden">Theme</span>
@@ -744,6 +983,23 @@ function App(): React.JSX.Element {
           void removeLeadChat(id)
         }}
       />
+      {effectiveShown.projects ? (
+        <ResizeHandle
+          className="layout-handle layout-handle-sidebar"
+          orientation="vertical"
+          value={displayed.sidebar}
+          min={MIN_SIDEBAR}
+          max={maxSize('sidebar', sizes, viewport, shown)}
+          label="Projects width"
+          onChange={(value) => {
+            setSize('sidebar', value)
+          }}
+          onReset={() => {
+            resetSize('sidebar')
+          }}
+          onDragState={setDragging}
+        />
+      ) : null}
       <section className="panel panel-flow" aria-labelledby="flow-heading">
         <RayBurst />
         <FlowView
@@ -757,6 +1013,23 @@ function App(): React.JSX.Element {
           starts={starts}
           flashes={flashes}
         />
+        {effectiveShown.flow ? (
+          <ResizeHandle
+            className="layout-handle layout-handle-horizontal"
+            orientation="horizontal"
+            value={displayed.flow}
+            min={MIN_FLOW}
+            max={maxSize('flow', sizes, viewport, shown)}
+            label="Flow height"
+            onChange={(value) => {
+              setSize('flow', value)
+            }}
+            onReset={() => {
+              resetSize('flow')
+            }}
+            onDragState={setDragging}
+          />
+        ) : null}
       </section>
       <section className="panel panel-lead" aria-labelledby="lead-heading">
         <LeadChat
@@ -769,6 +1042,23 @@ function App(): React.JSX.Element {
             setShowJob({ id, nonce: showJobNonce.current })
           }}
         />
+        {effectiveShown.lead && viewport.width >= 700 ? (
+          <ResizeHandle
+            className="layout-handle layout-handle-vertical"
+            orientation="vertical"
+            value={displayed.lead}
+            min={MIN_LEAD}
+            max={maxSize('lead', sizes, viewport, shown)}
+            label="Lead width"
+            onChange={(value) => {
+              setSize('lead', value)
+            }}
+            onReset={() => {
+              resetSize('lead')
+            }}
+            onDragState={setDragging}
+          />
+        ) : null}
       </section>
       <section className="panel panel-workers" aria-labelledby="workers-heading">
         <Workers
@@ -781,6 +1071,12 @@ function App(): React.JSX.Element {
           project={project?.path ?? ''}
           bus={terminalBus}
           showJob={showJob}
+          focusMode={focusMode}
+          paneLayout={paneLayout}
+          onToggleFocus={() => {
+            setFocusMode((on) => !on)
+          }}
+          onPaneLayout={setPaneLayout}
           onJob={(job) => {
             commitJobs(
               bag.current,
@@ -799,6 +1095,24 @@ function App(): React.JSX.Element {
             publish(state, setEvents)
           }}
         />
+        {effectiveShown.usage && viewport.width >= 900 ? (
+          <ResizeHandle
+            className="layout-handle layout-handle-vertical"
+            orientation="vertical"
+            value={displayed.usage}
+            min={MIN_USAGE}
+            max={maxSize('usage', sizes, viewport, shown)}
+            label="Usage width"
+            invert
+            onChange={(value) => {
+              setSize('usage', value)
+            }}
+            onReset={() => {
+              resetSize('usage')
+            }}
+            onDragState={setDragging}
+          />
+        ) : null}
       </section>
       <section className="panel panel-usage" aria-labelledby="usage-heading">
         <UsageMeter plans={plans} now={now} />

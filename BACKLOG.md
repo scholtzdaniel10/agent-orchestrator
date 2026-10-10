@@ -19,6 +19,7 @@ Ordered. The top item is the next one to build.
 - Seven looks for the window, chosen in the header.
 - Open a terminal in its own git worktree, from the Workers header or from Changes.
 - Live step list for each job: every file a worker reads or edits and every command it runs, with the diff of each edited file.
+- Free layout: resizable and hidable panels, a workers focus mode, and a grid of terminal panes.
 
 ## Next
 
