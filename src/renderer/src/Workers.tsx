@@ -13,6 +13,7 @@ import {
   fillPanes,
   placeNewTerminal,
   placeTerminalInPane,
+  seatUnplaced,
   requestLayoutFit,
   type PaneLayoutId
 } from './layout'
@@ -366,7 +367,11 @@ function Workers({
   }
 
   const liveIds = new Set(terminals.map((info) => info.id))
-  const liveSlots = dropMissingTerminals(slots, liveIds)
+  // Seat the ones that arrived without a click: restored after a restart, or opened from Changes.
+  const liveSlots = seatUnplaced(
+    dropMissingTerminals(slots, liveIds),
+    terminals.map((info) => info.id)
+  )
   if (liveSlots !== slots) setSlots(liveSlots)
 
   useEffect(() => {

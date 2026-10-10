@@ -388,3 +388,18 @@ export function requestLayoutFit(): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(LAYOUT_FIT_EVENT))
 }
+
+/**
+ * Terminals that came back after a restart, or were opened from Changes, arrive with no pane.
+ * Each takes the first empty pane, in tab order; none is moved and a full grid is left alone.
+ */
+export function seatUnplaced(slots: PaneSlots, terminalIds: readonly string[]): PaneSlots {
+  let next = slots
+  for (const id of terminalIds) {
+    if (next.includes(id)) continue
+    const empty = next.indexOf(null)
+    if (empty < 0) break
+    next = placeTerminalInPane(next, empty, id)
+  }
+  return next
+}

@@ -20,6 +20,8 @@ import {
   parseLayout,
   placeNewTerminal,
   placeTerminalInPane,
+  seatUnplaced,
+  type PaneSlots,
   saveLayout,
   type LayoutStorage
 } from './layout'
@@ -209,4 +211,13 @@ test('empty-pane open places the terminal in that pane', () => {
 
 test('dropMissingTerminals empties closed ids', () => {
   expect(dropMissingTerminals(['a', 'b'], new Set(['b']))).toEqual([null, 'b'])
+})
+
+test('seatUnplaced gives unplaced terminals the empty panes, in order, and moves nothing', () => {
+  expect(seatUnplaced(['a', null, null, null], ['a', 'b', 'c'])).toEqual(['a', 'b', 'c', null])
+  expect(seatUnplaced([null, 'b'], ['a', 'b', 'c'])).toEqual(['a', 'b'])
+  const full: PaneSlots = ['a']
+  expect(seatUnplaced(full, ['a', 'b'])).toBe(full)
+  const settled: PaneSlots = ['a', null]
+  expect(seatUnplaced(settled, ['a'])).toBe(settled)
 })
