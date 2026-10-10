@@ -9,6 +9,7 @@ import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
+import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
@@ -323,11 +324,16 @@ app.whenReady().then(async () => {
     publishPlans()
   }
   const terms = new PtyHost({
-    launch: (provider, model) =>
-      provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
+    launch: (provider, opts) =>
+      provider === 'claude' ? claude.interactive(opts) : cursor.interactive(opts),
     cwd: projectDir,
     modelFor,
-    store: shared
+    store: shared,
+    createChat: async () => {
+      const spec = cursor.interactive()
+      const result = await runCaptured({ command: spec.command, args: spec.args }, ['create-chat'])
+      return result.stdout
+    }
   })
   terminals = terms
 
@@ -355,6 +361,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('terminals:snapshot', (_event, id: unknown) => {
     if (typeof id !== 'string') return ''
     return terms.snapshot(id)
+  })
+  ipcMain.handle('terminals:restore', (_event, cols: unknown, rows: unknown) => {
+    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 2 || cols > 1000) {
+      throw new Error('invalid cols')
+    }
+    if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 2 || rows > 1000) {
+      throw new Error('invalid rows')
+    }
+    return terms.restore(projectDir(), cols, rows)
   })
   function assertProjectIdle(): void {
     // Open terminals keep the folder they started in, so only jobs block a project change.

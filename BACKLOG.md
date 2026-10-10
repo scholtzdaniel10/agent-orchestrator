@@ -10,6 +10,7 @@ Ordered. The top item is the next one to build.
 - Stop a job. A button to cancel a running or queued job.
 - GitHub through `gh`: clone a repo into the projects list (hidden when `gh` is missing or signed out).
 - Delete and rename chats.
+- Direct Claude and Cursor terminal sessions are saved and restored after a restart.
 
 ## Next
 
@@ -25,6 +26,5 @@ Ordered. The top item is the next one to build.
 ## Later
 
 - Codex as a third worker (needs its own subscription).
-- Save the direct Claude and Cursor terminal sessions.
 - Search across chats and jobs.
 - Browser tools, Linear, a mobile companion.

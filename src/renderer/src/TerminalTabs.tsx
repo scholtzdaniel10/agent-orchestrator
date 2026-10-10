@@ -30,8 +30,20 @@ function tabElementId(active: string): string {
   return `worker-tab-${active}`
 }
 
+function firstPaneSize(): { cols: number; rows: number } {
+  const pane = document.querySelector('.workers-stage')
+  if (!(pane instanceof HTMLElement)) return { cols: 120, rows: 30 }
+  const rect = pane.getBoundingClientRect()
+  if (rect.width < 2 || rect.height < 2) return { cols: 120, rows: 30 }
+  return {
+    cols: Math.max(2, Math.min(1000, Math.floor(rect.width / 8))),
+    rows: Math.max(2, Math.min(1000, Math.floor(rect.height / 17)))
+  }
+}
+
 function TerminalTabs({
   terminals,
+  project,
   active,
   changeCount,
   split,
@@ -42,6 +54,8 @@ function TerminalTabs({
   onToggleSplit
 }: {
   terminals: readonly TerminalInfo[]
+  /** Active project folder; restore runs when this changes. */
+  project: string
   /** `jobs`, `changes`, or a terminal id. */
   active: string
   changeCount: number
@@ -53,6 +67,12 @@ function TerminalTabs({
   onToggleSplit: () => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
+
+  useEffect(() => {
+    if (project === '') return
+    const size = firstPaneSize()
+    void window.api.restoreTerminals(size.cols, size.rows).catch(() => {})
+  }, [project])
 
   useEffect(() => {
     const element = document.getElementById(tabElementId(active))

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { JobRecord } from './orchestrator'
-import { Store, type RunRow } from './store'
+import { Store, TERMINAL_SCROLLBACK_CAP, type RunRow, type TerminalRow } from './store'
 
 function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>): RunRow {
   return {
@@ -16,6 +16,21 @@ function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>)
     utilization: null,
     outcome: 'ok',
     session_id: null,
+    ...partial
+  }
+}
+
+function terminal(
+  partial: Partial<TerminalRow> & Pick<TerminalRow, 'id' | 'project'>
+): TerminalRow {
+  return {
+    provider: 'claude',
+    model: null,
+    session_id: null,
+    title: 'claude 1',
+    created_at: 10,
+    updated_at: 10,
+    scrollback: '',
     ...partial
   }
 }
@@ -197,7 +212,10 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 })
+    expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
+      name: 'terminals'
+    })
     check.close()
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -320,6 +338,72 @@ test('deleteChat removes messages and keeps other chats and jobs', async () => {
     expect(store.jobs('/a', 10).map((item) => item.id)).toEqual(['j1'])
     store.renameChat('c2', 'renamed')
     expect(store.chat('c2')?.title).toBe('renamed')
+  })
+})
+
+test('terminals upsert, list oldest first, update scrollback, delete, and cap', async () => {
+  await withStore((store) => {
+    store.saveTerminal(
+      terminal({
+        id: 't2',
+        project: '/a',
+        title: 'claude 2',
+        created_at: 20,
+        session_id: 's2',
+        model: 'opus'
+      })
+    )
+    store.saveTerminal(
+      terminal({
+        id: 't1',
+        project: '/a',
+        title: 'claude 1',
+        created_at: 10,
+        provider: 'cursor'
+      })
+    )
+    store.saveTerminal(terminal({ id: 't3', project: '/b', title: 'other' }))
+    expect(store.terminals('/a').map((row) => row.id)).toEqual(['t1', 't2'])
+    expect(store.terminals('/a')[1]).toMatchObject({
+      provider: 'claude',
+      model: 'opus',
+      session_id: 's2',
+      title: 'claude 2'
+    })
+    store.saveTerminal(
+      terminal({
+        id: 't1',
+        project: '/a',
+        title: 'cursor 1',
+        created_at: 10,
+        updated_at: 40,
+        provider: 'cursor',
+        session_id: 'chat-1',
+        scrollback: 'hi'
+      })
+    )
+    expect(store.terminals('/a')[0]).toMatchObject({
+      title: 'cursor 1',
+      session_id: 'chat-1',
+      scrollback: 'hi',
+      updated_at: 40
+    })
+
+    store.updateTerminalScrollback('t2', 'later', 50)
+    expect(store.terminals('/a')[1]).toMatchObject({ scrollback: 'later', updated_at: 50 })
+
+    const long = 'x'.repeat(TERMINAL_SCROLLBACK_CAP + 20)
+    store.saveTerminal(terminal({ id: 't4', project: '/a', created_at: 30, scrollback: long }))
+    expect(store.terminals('/a')[2].scrollback).toBe(long.slice(-TERMINAL_SCROLLBACK_CAP))
+    store.updateTerminalScrollback('t4', `ab${long}`, 60)
+    expect(store.terminals('/a')[2].scrollback).toBe(`ab${long}`.slice(-TERMINAL_SCROLLBACK_CAP))
+    expect(store.terminals('/a')[2].scrollback).toHaveLength(TERMINAL_SCROLLBACK_CAP)
+
+    store.deleteTerminal('t1')
+    expect(store.terminals('/a').map((row) => row.id)).toEqual(['t2', 't4'])
+    expect(store.terminals('/b').map((row) => row.id)).toEqual(['t3'])
+    store.deleteTerminal('missing')
+    expect(store.terminals('/a')).toHaveLength(2)
   })
 })
 

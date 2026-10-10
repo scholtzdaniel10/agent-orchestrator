@@ -397,6 +397,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     resizeTerminal: () => {},
     closeTerminal: ok(undefined),
     listTerminals: ok([]),
+    restoreTerminals: ok([]),
     terminalSnapshot: ok(''),
     onTerminalData: off,
     onTerminalUpdate: off

@@ -289,6 +289,7 @@ function Workers({
   initialTerminalIds,
   changes,
   isRepo,
+  project,
   bus,
   showJob,
   onJob,
@@ -300,6 +301,7 @@ function Workers({
   initialTerminalIds: ReadonlySet<string> | null
   changes: ChangeSet[]
   isRepo: boolean
+  project: string
   bus: TerminalBus
   showJob?: { id: string; nonce: number } | null
   onJob: (job: JobRecord) => void
@@ -518,6 +520,7 @@ function Workers({
       </div>
       <TerminalTabs
         terminals={terminals}
+        project={project}
         active={shownId ?? mainTab}
         changeCount={changes.length}
         split={split}

@@ -49,11 +49,17 @@ export class ClaudeAdapter implements ProviderAdapter {
   }
 
   /** Interactive session: the same binary as `run`, with no `-p`. */
-  interactive(model?: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
-    return {
-      command: this.bin.command,
-      args: [...(this.bin.args ?? []), ...(model ? ['--model', model] : [])]
-    }
+  interactive(modelOrOpts?: string | { model?: string; sessionId?: string; resume?: string }): {
+    command: string
+    args: string[]
+    env?: NodeJS.ProcessEnv
+  } {
+    const opts = typeof modelOrOpts === 'string' ? { model: modelOrOpts } : (modelOrOpts ?? {})
+    const args = [...(this.bin.args ?? [])]
+    if (opts.resume) args.push('--resume', opts.resume)
+    else if (opts.sessionId) args.push('--session-id', opts.sessionId)
+    if (opts.model) args.push('--model', opts.model)
+    return { command: this.bin.command, args }
   }
 
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
