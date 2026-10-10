@@ -163,6 +163,9 @@ const api: OrchestratorApi = {
   listTerminals(): Promise<TerminalInfo[]> {
     return ipcRenderer.invoke('terminals:list')
   },
+  restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]> {
+    return ipcRenderer.invoke('terminals:restore', cols, rows)
+  },
   terminalSnapshot(id: string): Promise<string> {
     return ipcRenderer.invoke('terminals:snapshot', id)
   },

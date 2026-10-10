@@ -144,6 +144,8 @@ export interface OrchestratorApi {
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>
   listTerminals(): Promise<TerminalInfo[]>
+  /** Reopen this project's saved Claude and Cursor terminal sessions. */
+  restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]>
   /** Recent output of a terminal, to repaint a pane that attaches late. */
   terminalSnapshot(id: string): Promise<string>
   onTerminalData(cb: (id: string, data: string) => void): () => void

@@ -13,15 +13,18 @@ Ordered. The top item is the next one to build.
 - Open a pull request from a merged change via `gh`.
 - CI on pull requests; Windows installer and auto-update from GitHub Releases.
 - Tested CLI versions are stated; a readable error when a CLI's output changes.
+- Terminal sessions are saved per project and come back after a restart.
+- Reviewed what a worker may do and the Electron security settings; Claude workers are denied a shell and the person's MCP servers.
 
-## Before a release
+## Next
 
-- Run every feature against the real CLIs, on a clean clone.
-- Review what a worker may do when "Let it edit files" is on, and the Electron security settings.
+1. Run the lead chat and a Claude job against the real CLIs from an installed build (the Cursor path is covered by `GATE_WORKERS=cursor pnpm gate worktrees`).
+2. Sign the Windows installer so SmartScreen stops warning.
+3. macOS and Linux builds.
 
 ## Later
 
 - Codex as a third worker (needs its own subscription).
-- Save the direct Claude and Cursor terminal sessions.
+- Run agents on a remote machine over SSH.
 - Search across chats and jobs.
 - Browser tools, Linear, a mobile companion.

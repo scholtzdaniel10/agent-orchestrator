@@ -750,6 +750,7 @@ function App(): React.JSX.Element {
           initialTerminalIds={initialTerminalIds}
           changes={changes}
           isRepo={project?.isRepo === true}
+          project={project?.path ?? ''}
           bus={terminalBus}
           showJob={showJob}
           onJob={(job) => {

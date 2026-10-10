@@ -34,6 +34,20 @@ export interface ChatRow {
   session_provider: string | null
 }
 
+export interface TerminalRow {
+  id: string
+  project: string
+  provider: string
+  model: string | null
+  session_id: string | null
+  title: string
+  created_at: number
+  updated_at: number
+  scrollback: string
+}
+
+export const TERMINAL_SCROLLBACK_CAP = 200_000
+
 const MIGRATIONS: string[] = [
   `
       CREATE TABLE IF NOT EXISTS runs (
@@ -87,6 +101,20 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX jobs_project ON jobs (project, created_at);
+    `,
+  `
+      CREATE TABLE terminals (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT,
+        session_id TEXT,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        scrollback TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX terminals_project ON terminals (project, created_at);
     `
 ]
 
@@ -322,6 +350,57 @@ export class Store {
     return out
   }
 
+  saveTerminal(row: TerminalRow): void {
+    const scrollback = capScrollback(row.scrollback)
+    this.db
+      .prepare(
+        `INSERT INTO terminals (
+           id, project, provider, model, session_id, title, created_at, updated_at, scrollback
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           provider = excluded.provider,
+           model = excluded.model,
+           session_id = excluded.session_id,
+           title = excluded.title,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at,
+           scrollback = excluded.scrollback`
+      )
+      .run(
+        row.id,
+        row.project,
+        row.provider,
+        row.model,
+        row.session_id,
+        row.title,
+        row.created_at,
+        row.updated_at,
+        scrollback
+      )
+  }
+
+  updateTerminalScrollback(id: string, scrollback: string, updatedAt: number): void {
+    this.db
+      .prepare(`UPDATE terminals SET scrollback = ?, updated_at = ? WHERE id = ?`)
+      .run(capScrollback(scrollback), updatedAt, id)
+  }
+
+  /** Oldest first. */
+  terminals(project: string): TerminalRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, provider, model, session_id, title, created_at, updated_at, scrollback
+         FROM terminals WHERE project = ? ORDER BY created_at ASC`
+      )
+      .all(project)
+    return rows.map((row) => mapTerminal(row as Row))
+  }
+
+  deleteTerminal(id: string): void {
+    this.db.prepare('DELETE FROM terminals WHERE id = ?').run(id)
+  }
+
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
@@ -371,6 +450,26 @@ function parseJsonRow(row: Row): { id: string } | null {
     return value as { id: string }
   } catch {
     return null
+  }
+}
+
+function capScrollback(text: string): string {
+  if (text.length <= TERMINAL_SCROLLBACK_CAP) return text
+  return text.slice(-TERMINAL_SCROLLBACK_CAP)
+}
+
+function mapTerminal(row: Row): TerminalRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    provider: String(row.provider),
+    model: row.model === null || row.model === undefined ? null : String(row.model),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    title: String(row.title),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+    scrollback: String(row.scrollback ?? '')
   }
 }
 

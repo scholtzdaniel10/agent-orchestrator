@@ -18,7 +18,7 @@ The screenshots use fake data and are made with `pnpm shots`.
 
 - **Lead chat.** You talk to one lead bot. It splits your request into jobs and hands them to workers, and you can keep talking to it while they run. When they finish it reports back. The lead is an ordinary CLI session that can only call the app's own tools.
   Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
-- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
+- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar. Direct Claude and Cursor terminal sessions come back after a restart.
 - **Projects.** A sidebar lists the folders you work in. One is active at a time; jobs and the lead run there. If the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate). Each plan runs up to three jobs at once, and a job can be stopped.
 - **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
