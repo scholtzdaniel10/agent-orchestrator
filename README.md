@@ -1,6 +1,6 @@
-![agent-orchestrator: one lead, every plan you already pay for](docs/banner.png)
+![Legate: one lead, every plan you already pay for](docs/banner.png)
 
-# agent-orchestrator
+# Legate
 
 A desktop app (Electron + TypeScript) that spreads your coding jobs across the AI subscriptions you already pay for, so no plan sits idle or runs out early.
 
@@ -58,7 +58,7 @@ You are responsible for staying within each provider's terms.
 
 ## Install
 
-Download the `-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**. You need the `claude` and/or Cursor `agent` CLI installed and signed in. Updates download in the background and install themselves when you quit.
+Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**. You need the `claude` and/or Cursor `agent` CLI installed and signed in. Updates download in the background and install themselves when you quit.
 
 ## Develop
 

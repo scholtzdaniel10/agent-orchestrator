@@ -1,5 +1,6 @@
 {
   "name": "agent-orchestrator",
+  "productName": "Legate",
   "version": "1.0.0",
   "description": "Desktop app that routes coding jobs across your own Claude Code and Cursor subscriptions",
   "main": "./out/main/index.js",

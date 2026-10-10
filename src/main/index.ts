@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
-import { statSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -42,7 +42,7 @@ function createWindow(): void {
     height: 820,
     show: false,
     autoHideMenuBar: true,
-    title: 'agent-orchestrator',
+    title: 'Legate',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -86,7 +86,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('dev.agent-orchestrator')
+  electronApp.setAppUserModelId('dev.legate.app')
+  bringOldData()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -596,6 +597,25 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+/**
+ * The app was called agent-orchestrator before 1.0 and kept its data under that name.
+ * Copy the saved chats, jobs and settings across once, so a rename does not look like data loss.
+ */
+function bringOldData(): void {
+  const next = app.getPath('userData')
+  const old = join(app.getPath('appData'), 'agent-orchestrator')
+  if (next === old || !existsSync(join(old, 'orchestrator.sqlite'))) return
+  if (existsSync(join(next, 'orchestrator.sqlite'))) return
+  try {
+    mkdirSync(next, { recursive: true })
+    for (const file of ['orchestrator.sqlite', 'settings.json']) {
+      if (existsSync(join(old, file))) copyFileSync(join(old, file), join(next, file))
+    }
+  } catch (err: unknown) {
+    console.error(err)
+  }
+}
 
 function isFolder(path: string): boolean {
   try {

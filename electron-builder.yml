@@ -1,5 +1,5 @@
-appId: dev.agent-orchestrator.app
-productName: agent-orchestrator
+appId: dev.legate.app
+productName: Legate
 directories:
   buildResources: build
 files:
@@ -20,13 +20,13 @@ asarUnpack:
   - resources/**
   - node_modules/node-pty/**
 win:
-  executableName: agent-orchestrator
+  executableName: legate
   target:
     - target: nsis
       arch:
         - x64
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: legate-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -37,7 +37,7 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: legate-${version}.${ext}
 linux:
   target:
     - AppImage
@@ -45,7 +45,7 @@ linux:
   maintainer: scholtzdaniel10
   category: Development
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: legate-${version}.${ext}
 npmRebuild: false
 publish:
   provider: github

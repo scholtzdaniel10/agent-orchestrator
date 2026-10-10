@@ -907,7 +907,7 @@ function App(): React.JSX.Element {
           <span className="app-mark" aria-hidden="true">
             <Star size={16} />
           </span>
-          <div className="app-name">agent-orchestrator</div>
+          <div className="app-name">Legate</div>
         </div>
         <div className="app-header-tools">
           <div className="layout-toggles">
