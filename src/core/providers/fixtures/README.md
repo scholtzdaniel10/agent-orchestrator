@@ -2,8 +2,9 @@
 
 Captured from the real CLIs (`claude -p --output-format stream-json --verbose` and `agent -p --output-format stream-json`), then scrubbed: every session, message, request and tool id replaced with a made-up value, and local paths, hook output, command/skill/plugin lists and extra thinking deltas removed. Event shapes are otherwise unchanged. Capture versions: claude 2.1.280, agent 2026.09.26.
 
-| File | Source |
-| --- | --- |
-| `claude-plain`, `claude-tool` | real, scrubbed |
-| `cursor-plain`, `cursor-tool` | real, scrubbed |
-| `claude-limit.synthetic`, `cursor-limit.synthetic` | **hand-built**. No real limit had been hit when these were written. They follow the documented shapes (`rate_limit_event` status `rejected`, `system/api_retry` error `rate_limit`, `is_error` result). Replace them with real captures the first time a plan actually runs out. |
+| File                                                                 | Source                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude-plain`, `claude-tool`                                        | real, scrubbed                                                                                                                                                                                                                                                                   |
+| `cursor-plain`, `cursor-tool`                                        | real, scrubbed                                                                                                                                                                                                                                                                   |
+| `claude-limit.synthetic`, `cursor-limit.synthetic`                   | **hand-built**. No real limit had been hit when these were written. They follow the documented shapes (`rate_limit_event` status `rejected`, `system/api_retry` error `rate_limit`, `is_error` result). Replace them with real captures the first time a plan actually runs out. |
+| `claude-unknown-format.synthetic`, `cursor-unknown-format.synthetic` | **hand-built**. Made-up lines that are not a recognised stream-json event, used to assert a readable failure when a CLI's output changes.                                                                                                                                        |

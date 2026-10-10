@@ -1,19 +1,25 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
-import { statSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { startAutoUpdate } from './updater'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
+import { TESTED_VERSIONS } from '../core/providers/versions'
+import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
+  ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -36,7 +42,7 @@ function createWindow(): void {
     height: 820,
     show: false,
     autoHideMenuBar: true,
-    title: 'agent-orchestrator',
+    title: 'Legate',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -80,7 +86,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('dev.agent-orchestrator')
+  electronApp.setAppUserModelId('dev.legate.app')
+  bringOldData()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -105,9 +112,41 @@ app.whenReady().then(async () => {
   })
   const github = new Github(runGh)
 
+  async function listedChanges(project: string): Promise<ChangeSet[]> {
+    const listed = await worktrees.list(project)
+    const byId = new Map(listed.map((change) => [change.id, change]))
+    const ids = await worktrees.ids(project)
+    const named = shared.worktreeNames(project)
+    const nameById = new Map(named.map((row) => [row.id, row]))
+    const merged: ChangeSet[] = []
+    for (const id of ids) {
+      const existing = byId.get(id)
+      const row = nameById.get(id)
+      const entry: ChangeSet =
+        existing !== undefined
+          ? { ...existing }
+          : {
+              id,
+              branch: `orch/${id}`,
+              path: worktrees.folder(id),
+              files: [],
+              insertions: 0,
+              deletions: 0
+            }
+      if (row !== undefined && row.name !== '') entry.name = row.name
+      merged.push(entry)
+    }
+    merged.sort((a, b) => {
+      const ta = nameById.get(a.id)?.created_at ?? 0
+      const tb = nameById.get(b.id)?.created_at ?? 0
+      if (ta !== tb) return tb - ta
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    })
+    return merged
+  }
+
   function pushChanges(): void {
-    void worktrees
-      .list(projectDir())
+    void listedChanges(projectDir())
       .then((list) => {
         if (
           mainWindow === null ||
@@ -143,7 +182,11 @@ app.whenReady().then(async () => {
 
   const leadRef: { current: Lead | null } = { current: null }
   const started = await startBridge(
-    createOrchestratorTools(orch, () => leadRef.current?.currentTurn() ?? null)
+    createOrchestratorTools(
+      orch,
+      () => leadRef.current?.currentTurn() ?? null,
+      () => settings.leadAccess()
+    )
   )
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
@@ -189,7 +232,10 @@ app.whenReady().then(async () => {
         windows: worker.windows,
         busy: worker.busy,
         running: worker.running,
-        queued: worker.queued
+        queued: worker.queued,
+        version: worker.version,
+        versionStatus: worker.versionStatus,
+        testedVersion: TESTED_VERSIONS[worker.id]
       }
       if (worker.problem !== undefined) status.problem = worker.problem
       return status
@@ -226,7 +272,7 @@ app.whenReady().then(async () => {
       type: JobType,
       prompt: string,
       provider?: unknown,
-      edit?: unknown,
+      access?: unknown,
       group?: unknown
     ) => {
       if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
@@ -241,18 +287,15 @@ app.whenReady().then(async () => {
       ) {
         throw new Error('unknown provider')
       }
-      if (edit !== undefined && edit !== null && typeof edit !== 'boolean') {
-        throw new Error('edit must be true or false')
-      }
       const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
-      const editing = typeof edit === 'boolean' ? edit : undefined
+      const granted = parseJobAccess(access)
       const grouping =
         typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
       return orch.submit(
         type,
         prompt,
         chosen,
-        editing,
+        granted,
         grouping !== undefined ? { group: grouping } : undefined
       )
     }
@@ -278,6 +321,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
     if (plan !== null && plan !== 'claude' && plan !== 'cursor') throw new Error('unknown plan')
     settings.setLeadPlan(plan)
+  })
+  ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
+  ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {
+    if (access !== 'read' && access !== 'edit' && access !== 'full') {
+      throw new Error('access must be read, edit, or full')
+    }
+    settings.setLeadAccess(access)
   })
   ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
@@ -323,11 +373,16 @@ app.whenReady().then(async () => {
     publishPlans()
   }
   const terms = new PtyHost({
-    launch: (provider, model) =>
-      provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
+    launch: (provider, opts) =>
+      provider === 'claude' ? claude.interactive(opts) : cursor.interactive(opts),
     cwd: projectDir,
     modelFor,
-    store: shared
+    store: shared,
+    createChat: async () => {
+      const spec = cursor.interactive()
+      const result = await runCaptured({ command: spec.command, args: spec.args }, ['create-chat'])
+      return result.stdout
+    }
   })
   terminals = terms
 
@@ -335,10 +390,41 @@ app.whenReady().then(async () => {
     return mainWindow !== null && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()
   }
 
-  ipcMain.handle('terminals:open', (_event, provider: unknown, cols: unknown, rows: unknown) => {
-    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
-    return terms.open(provider, cols as number, rows as number)
-  })
+  ipcMain.handle(
+    'terminals:open',
+    async (_event, provider: unknown, cols: unknown, rows: unknown, worktree: unknown) => {
+      if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+      let opts: { cwd?: string; change?: string } | undefined
+      if (worktree !== undefined && worktree !== null) {
+        if (worktree === 'new') {
+          const about = await worktrees.info(projectDir())
+          if (!about.isRepo) {
+            throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+          }
+          const created = await worktrees.create(projectDir(), randomUUID())
+          if (!shared.worktreeNames(projectDir()).some((row) => row.id === created.id)) {
+            shared.setWorktreeName({
+              id: created.id,
+              project: projectDir(),
+              name: '',
+              created_at: Date.now()
+            })
+          }
+          opts = { cwd: created.path, change: created.id }
+        } else {
+          const id = requireChangeId(worktree)
+          const folder = worktrees.folder(id)
+          if (!isFolder(folder)) {
+            throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+          }
+          opts = { cwd: folder, change: id }
+        }
+      }
+      const info = await terms.open(provider, cols as number, rows as number, opts)
+      if (opts !== undefined) pushChanges()
+      return info
+    }
+  )
   ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return
     terms.write(id, data)
@@ -356,6 +442,15 @@ app.whenReady().then(async () => {
     if (typeof id !== 'string') return ''
     return terms.snapshot(id)
   })
+  ipcMain.handle('terminals:restore', (_event, cols: unknown, rows: unknown) => {
+    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 2 || cols > 1000) {
+      throw new Error('invalid cols')
+    }
+    if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 2 || rows > 1000) {
+      throw new Error('invalid rows')
+    }
+    return terms.restore(projectDir(), cols, rows)
+  })
   function assertProjectIdle(): void {
     // Open terminals keep the folder they started in, so only jobs block a project change.
     if (orch.busy()) {
@@ -371,7 +466,7 @@ app.whenReady().then(async () => {
     for (const path of paths) {
       try {
         const info = await worktrees.info(path)
-        const changes = (await worktrees.list(path)).length
+        const changes = (await listedChanges(path)).length
         entries.push({ ...info, active: path === active, changes })
       } catch {
         entries.push({
@@ -386,7 +481,7 @@ app.whenReady().then(async () => {
     if (entries.length === 0) {
       try {
         const info = await worktrees.info(active)
-        const changes = (await worktrees.list(active)).length
+        const changes = (await listedChanges(active)).length
         return [{ ...info, active: true, changes }]
       } catch {
         return [{ path: active, isRepo: false, branch: null, active: true, changes: 0 }]
@@ -432,7 +527,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('github:available', () => github.available())
   ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
   ipcMain.handle('github:clone', async (_event, nameWithOwner: unknown) => {
-    if (typeof nameWithOwner !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)) {
+    if (
+      typeof nameWithOwner !== 'string' ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)
+    ) {
       throw new Error('invalid repository name')
     }
     if (nameWithOwner.startsWith('-') || nameWithOwner.includes('/-')) {
@@ -450,17 +548,78 @@ app.whenReady().then(async () => {
     const path = await github.clone(nameWithOwner, parent)
     return activateProject(path)
   })
-  ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
+  ipcMain.handle('github:openPr', async (_event, title: unknown, body: unknown) => {
+    if (
+      typeof title !== 'string' ||
+      title.trim() === '' ||
+      title.length > 120 ||
+      /[\r\n]/.test(title)
+    ) {
+      throw new Error('invalid title')
+    }
+    if (typeof body !== 'string' || body.length > 4000) {
+      throw new Error('invalid description')
+    }
+    assertProjectIdle()
+    const result = await github.openPr(projectDir(), title, body)
+    pushChanges()
+    return result
+  })
+  ipcMain.handle('changes:list', () => listedChanges(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {
     return worktrees.diff(projectDir(), requireChangeId(id))
   })
   ipcMain.handle('changes:merge', async (_event, id: unknown) => {
-    const result = await worktrees.merge(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    await terms.closeChange(changeId)
+    const result = await worktrees.merge(projectDir(), changeId)
+    if (result.ok) shared.deleteWorktreeName(changeId)
     pushChanges()
     return result
   })
   ipcMain.handle('changes:discard', async (_event, id: unknown) => {
-    await worktrees.discard(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    await terms.closeChange(changeId)
+    await worktrees.discard(projectDir(), changeId)
+    shared.deleteWorktreeName(changeId)
+    pushChanges()
+  })
+  ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
+    const about = await worktrees.info(projectDir())
+    if (!about.isRepo) {
+      throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+    }
+    const label = parseWorktreeName(name, false) ?? ''
+    const created = await worktrees.create(projectDir(), randomUUID())
+    shared.setWorktreeName({
+      id: created.id,
+      project: projectDir(),
+      name: label,
+      created_at: Date.now()
+    })
+    const list = await listedChanges(projectDir())
+    pushChanges()
+    const entry = list.find((change) => change.id === created.id)
+    if (entry === undefined) {
+      throw new Error('The worktree was created, but it did not appear in the list. Try again.')
+    }
+    return entry
+  })
+  ipcMain.handle('worktrees:rename', async (_event, id: unknown, name: unknown) => {
+    const changeId = requireChangeId(id)
+    const label = parseWorktreeName(name, true)
+    if (label === undefined) throw new Error('Name must be 1 to 40 characters on one line.')
+    const folder = worktrees.folder(changeId)
+    if (!isFolder(folder)) {
+      throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+    }
+    const existing = shared.worktreeNames(projectDir()).find((row) => row.id === changeId)
+    shared.setWorktreeName({
+      id: changeId,
+      project: projectDir(),
+      name: label,
+      created_at: existing?.created_at ?? Date.now()
+    })
     pushChanges()
   })
 
@@ -477,6 +636,7 @@ app.whenReady().then(async () => {
   lead.onUpdate(publishLead)
 
   createWindow()
+  startAutoUpdate({ isPackaged: app.isPackaged, log: console.log })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -495,6 +655,25 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+/**
+ * The app was called agent-orchestrator before 1.0 and kept its data under that name.
+ * Copy the saved chats, jobs and settings across once, so a rename does not look like data loss.
+ */
+function bringOldData(): void {
+  const next = app.getPath('userData')
+  const old = join(app.getPath('appData'), 'agent-orchestrator')
+  if (next === old || !existsSync(join(old, 'orchestrator.sqlite'))) return
+  if (existsSync(join(next, 'orchestrator.sqlite'))) return
+  try {
+    mkdirSync(next, { recursive: true })
+    for (const file of ['orchestrator.sqlite', 'settings.json']) {
+      if (existsSync(join(old, file))) copyFileSync(join(old, file), join(next, file))
+    }
+  } catch (err: unknown) {
+    console.error(err)
+  }
+}
 
 function isFolder(path: string): boolean {
   try {
@@ -521,12 +700,7 @@ function runGh(
         encoding: 'utf8'
       },
       (err, stdout, stderr) => {
-        const code =
-          err === null
-            ? 0
-            : typeof err.code === 'number'
-              ? err.code
-              : 1
+        const code = err === null ? 0 : typeof err.code === 'number' ? err.code : 1
         resolve({
           code,
           stdout: String(stdout ?? ''),
@@ -537,9 +711,34 @@ function runGh(
   })
 }
 
+function parseJobAccess(value: unknown): JobAccess | undefined {
+  if (value === undefined || value === null) return undefined
+  if (value === true) return 'edit'
+  if (value === false) return 'read'
+  if (value === 'read' || value === 'edit' || value === 'full') return value
+  throw new Error('access must be read, edit, or full')
+}
+
 function requireChangeId(id: unknown): string {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
   return id
+}
+
+function parseWorktreeName(value: unknown, required: boolean): string | undefined {
+  if (value === undefined || value === null) {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (typeof value !== 'string' || /[\r\n]/.test(value)) {
+    throw new Error('Name must be 1 to 40 characters on one line.')
+  }
+  const trimmed = value.trim()
+  if (trimmed === '') {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (trimmed.length > 40) throw new Error('Name must be 1 to 40 characters on one line.')
+  return trimmed
 }
 
 function clamp01(value: number): number {

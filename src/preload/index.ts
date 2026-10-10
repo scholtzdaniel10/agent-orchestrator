@@ -3,6 +3,7 @@ import type { JobRecord } from '../core/router'
 import type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -19,10 +20,10 @@ const api: OrchestratorApi = {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    edit?: boolean,
+    access?: JobAccess,
     group?: string
   ): Promise<JobRecord> {
-    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, edit, group)
+    return ipcRenderer.invoke('jobs:submit', type, prompt, provider, access, group)
   },
   listJobs(): Promise<JobRecord[]> {
     return ipcRenderer.invoke('jobs:list')
@@ -84,6 +85,9 @@ const api: OrchestratorApi = {
   githubClone(nameWithOwner: string): Promise<ProjectInfo | null> {
     return ipcRenderer.invoke('github:clone', nameWithOwner)
   },
+  githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }> {
+    return ipcRenderer.invoke('github:openPr', title, body)
+  },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
   },
@@ -105,11 +109,23 @@ const api: OrchestratorApi = {
   discardChange(id: string): Promise<void> {
     return ipcRenderer.invoke('changes:discard', id)
   },
+  createWorktree(name?: string): Promise<ChangeSet> {
+    return ipcRenderer.invoke('worktrees:create', name)
+  },
+  renameWorktree(id: string, name: string): Promise<void> {
+    return ipcRenderer.invoke('worktrees:rename', id, name)
+  },
   getLeadPlan(): Promise<ProviderId | null> {
     return ipcRenderer.invoke('settings:getLeadPlan')
   },
   setLeadPlan(plan: ProviderId | null): Promise<void> {
     return ipcRenderer.invoke('settings:setLeadPlan', plan)
+  },
+  getLeadAccess(): Promise<JobAccess> {
+    return ipcRenderer.invoke('settings:getLeadAccess')
+  },
+  setLeadAccess(access: JobAccess): Promise<void> {
+    return ipcRenderer.invoke('settings:setLeadAccess', access)
   },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)
@@ -145,8 +161,13 @@ const api: OrchestratorApi = {
       ipcRenderer.removeListener('lead:update', listener)
     }
   },
-  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo> {
-    return ipcRenderer.invoke('terminals:open', provider, cols, rows)
+  openTerminal(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    worktree?: 'new' | string
+  ): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('terminals:open', provider, cols, rows, worktree)
   },
   writeTerminal(id: string, data: string): void {
     ipcRenderer.send('terminals:write', id, data)
@@ -159,6 +180,9 @@ const api: OrchestratorApi = {
   },
   listTerminals(): Promise<TerminalInfo[]> {
     return ipcRenderer.invoke('terminals:list')
+  },
+  restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]> {
+    return ipcRenderer.invoke('terminals:restore', cols, rows)
   },
   terminalSnapshot(id: string): Promise<string> {
     return ipcRenderer.invoke('terminals:snapshot', id)

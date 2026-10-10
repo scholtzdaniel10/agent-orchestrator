@@ -1,6 +1,7 @@
 import type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -8,7 +9,8 @@ import type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
-  TerminalInfo
+  TerminalInfo,
+  VersionStatus
 } from '../core/types'
 import type { JobRecord } from '../core/router'
 
@@ -40,6 +42,11 @@ export interface PlanStatus {
   model: string | null
   /** Each allowance window the plan reports (empty when only an estimate exists). */
   windows: PlanWindow[]
+  /** Token from the CLI's `--version`, or null when unknown. */
+  version: string | null
+  versionStatus: VersionStatus
+  /** The CLI version this app was tested with. */
+  testedVersion: string
 }
 
 /** One allowance window of a plan, e.g. Claude's five-hour and weekly windows. */
@@ -59,8 +66,8 @@ export interface OrchestratorApi {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    /** Let the job edit files, in a git worktree of its own. */
-    edit?: boolean,
+    /** read, edit, or full. The job's file changes still wait in Changes. */
+    access?: JobAccess,
     /** Shared id for jobs submitted together to compare plans. */
     group?: string
   ): Promise<JobRecord>
@@ -98,6 +105,11 @@ export interface OrchestratorApi {
    * Resolves null when the folder picker is cancelled. Refused while work is running.
    */
   githubClone(nameWithOwner: string): Promise<ProjectInfo | null>
+  /**
+   * Commits staged changes on a new branch, pushes, and opens a pull request.
+   * Refused while jobs are running.
+   */
+  githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }>
 
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
@@ -108,11 +120,18 @@ export interface OrchestratorApi {
   mergeChange(id: string): Promise<{ ok: boolean; message: string }>
   /** Deletes the worktree and its branch. */
   discardChange(id: string): Promise<void>
+  /** Create an empty worktree of the active project. Name is optional. */
+  createWorktree(name?: string): Promise<ChangeSet>
+  /** Rename a worktree. Pushes the change list. */
+  renameWorktree(id: string, name: string): Promise<void>
 
   /** Plan the person chose to run the lead; null means the one with the most headroom. */
   getLeadPlan(): Promise<ProviderId | null>
   /** Takes effect on the next message; switching plans starts a fresh lead session. */
   setLeadPlan(plan: ProviderId | null): Promise<void>
+  /** Ceiling for jobs the lead hands out. */
+  getLeadAccess(): Promise<JobAccess>
+  setLeadAccess(access: JobAccess): Promise<void>
 
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>
@@ -126,13 +145,20 @@ export interface OrchestratorApi {
   onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void
 
   /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
-  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo>
+  openTerminal(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    worktree?: 'new' | string
+  ): Promise<TerminalInfo>
   /** Keystrokes for a terminal. Fire and forget. */
   writeTerminal(id: string, data: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>
   listTerminals(): Promise<TerminalInfo[]>
+  /** Reopen this project's saved Claude and Cursor terminal sessions. */
+  restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]>
   /** Recent output of a terminal, to repaint a pane that attaches late. */
   terminalSnapshot(id: string): Promise<string>
   onTerminalData(cb: (id: string, data: string) => void): () => void
@@ -143,6 +169,7 @@ export interface OrchestratorApi {
 export type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobRecord,
   JobType,
   LeadChat,

@@ -112,6 +112,10 @@ class LimitInjector implements ProviderAdapter {
     return this.inner.isInstalled()
   }
 
+  version(): Promise<string | null> {
+    return this.inner.version()
+  }
+
   isSignedIn(): Promise<boolean> {
     return this.inner.isSignedIn()
   }

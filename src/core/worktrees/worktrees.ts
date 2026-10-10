@@ -66,6 +66,35 @@ export class Worktrees {
     return located
   }
 
+  /** Every orch worktree id for this project, including ones with no changed files. */
+  async ids(project: string): Promise<string[]> {
+    const about = await this.info(project)
+    if (!about.isRepo) return []
+    let porcelain: string
+    try {
+      porcelain = await git(['-C', project, 'worktree', 'list', '--porcelain'], project)
+    } catch {
+      return []
+    }
+    const ids: string[] = []
+    for (const entry of parseWorktrees(porcelain)) {
+      const match = entry.branch?.match(BRANCH_RE)
+      if (!match) continue
+      const id = match[1]
+      if (!id) continue
+      const listed = isAbsolute(entry.path) ? entry.path : resolve(project, entry.path)
+      if (!this.pathInsideRoot(listed)) continue
+      ids.push(id)
+    }
+    ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return ids
+  }
+
+  /** Path of this change's worktree folder. Throws on a bad id. */
+  folder(id: string): string {
+    return this.locate(id).path
+  }
+
   async list(project: string): Promise<ChangeSet[]> {
     const about = await this.info(project)
     if (!about.isRepo) return []
@@ -166,12 +195,16 @@ export class Worktrees {
     if (current !== located.branch) throw new Error('not a change worktree')
   }
 
+  /**
+   * Compared by real path, so neither `..` nor a link can point outside the root. The real path
+   * also undoes a Windows short name (`RUNNER~1`) in the root, which git never reports back.
+   * A path that does not exist yet has no real path and is compared as written.
+   */
   private pathInsideRoot(target: string): boolean {
-    if (!isInside(resolve(this.root), resolve(target))) return false
     try {
-      return isInside(realpathSync(this.root), realpathSync(target))
+      return isInside(realpathSync.native(this.root), realpathSync.native(target))
     } catch {
-      return true
+      return isInside(resolve(this.root), resolve(target))
     }
   }
 

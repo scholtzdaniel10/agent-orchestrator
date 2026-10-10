@@ -1,6 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode
+} from 'react'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
+import { editedFilesSummary, latestStepTitle } from './job-steps'
 import RichText from './RichText'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
@@ -8,6 +16,18 @@ type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = PlanStatus['id']
 type PlanChoice = 'auto' | ProviderId
+type JobAccess = 'read' | 'edit' | 'full'
+
+function asAccess(value: string): JobAccess {
+  if (value === 'edit' || value === 'full') return value
+  return 'read'
+}
+
+function accessMark(job: JobRecord): string | null {
+  if (job.access === 'full') return 'FULL'
+  if (job.edit === true || job.access === 'edit') return 'EDIT'
+  return null
+}
 
 function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
   if (status === 'running') return 'working'
@@ -59,7 +79,13 @@ function messageClass(message: LeadMessage): string {
 function metaLine(parts: ReactNode[]): React.JSX.Element {
   const nodes: ReactNode[] = []
   parts.forEach((part, index) => {
-    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    if (index > 0)
+      nodes.push(
+        <span key={`sep-${String(index)}`} className="meta-sep">
+          {' '}
+          /{' '}
+        </span>
+      )
     nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
   })
   return <>{nodes}</>
@@ -67,7 +93,8 @@ function metaLine(parts: ReactNode[]): React.JSX.Element {
 
 function delegatedMeta(job: JobRecord): ReactNode[] {
   const parts: ReactNode[] = [job.type]
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   if (job.reason) parts.push(job.reason)
   return parts
 }
@@ -99,6 +126,8 @@ function LeadChat({
   const [sendError, setSendError] = useState<string | null>(null)
   const [choice, setChoice] = useState<PlanChoice>('auto')
   const [planError, setPlanError] = useState<string | null>(null)
+  const [workerAccess, setWorkerAccess] = useState<JobAccess>('read')
+  const accessRef = useRef<JobAccess>('read')
   const logRef = useRef<HTMLDivElement>(null)
   const sending = useRef(false)
   const resetting = useRef(false)
@@ -119,10 +148,36 @@ function LeadChat({
         setPlanError(errorText(err))
       }
     )
+    void window.api.getLeadAccess().then(
+      (access) => {
+        if (!active) return
+        accessRef.current = access
+        setWorkerAccess(access)
+      },
+      (err: unknown) => {
+        if (!active) return
+        setPlanError(errorText(err))
+      }
+    )
     return () => {
       active = false
     }
   }, [])
+
+  async function changeAccess(value: JobAccess): Promise<void> {
+    const previous = accessRef.current
+    accessRef.current = value
+    setWorkerAccess(value)
+    setPlanError(null)
+    try {
+      await window.api.setLeadAccess(value)
+    } catch (err: unknown) {
+      if (accessRef.current !== value) return
+      accessRef.current = previous
+      setWorkerAccess(previous)
+      setPlanError(errorText(err))
+    }
+  }
 
   async function changePlan(value: PlanChoice): Promise<void> {
     const previous = choiceRef.current
@@ -150,8 +205,7 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
-  const noPlanReady =
-    plans !== null && !plans.some((plan) => plan.available)
+  const noPlanReady = plans !== null && !plans.some((plan) => plan.available)
   const sendDisabled = draftEmpty || leadStreaming || noPlanReady
 
   async function send(): Promise<void> {
@@ -219,6 +273,20 @@ function LeadChat({
               cursor
             </option>
           </select>
+          <label htmlFor="lead-access">Workers may</label>
+          <select
+            id="lead-access"
+            className="plan-choice lead-access"
+            value={workerAccess}
+            disabled={leadStreaming}
+            onChange={(event) => {
+              void changeAccess(asAccess(event.target.value))
+            }}
+          >
+            <option value="read">read only</option>
+            <option value="edit">edit files</option>
+            <option value="full">do anything</option>
+          </select>
           <button
             type="button"
             className="btn btn-quiet"
@@ -258,9 +326,7 @@ function LeadChat({
             return (
               <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
                 <div className={messageClass(message)}>
-                  <span className="lead-meta">
-                    {isUser ? 'You' : metaLine(leadMeta(message))}
-                  </span>
+                  <span className="lead-meta">{isUser ? 'You' : metaLine(leadMeta(message))}</span>
                   <div className="lead-body">
                     {isUser ? (
                       message.text
@@ -282,6 +348,8 @@ function LeadChat({
                       <div className="lead-delegated-list">
                         {delegated.map((job) => {
                           const label = `Show job: ${job.prompt.slice(0, 60)}`
+                          const stepTitle = latestStepTitle(job)
+                          const edits = editedFilesSummary(job)
                           return (
                             <button
                               key={job.id}
@@ -310,6 +378,18 @@ function LeadChat({
                               <div className="lead-job-card-meta">
                                 {metaLine(delegatedMeta(job))}
                               </div>
+                              {job.status === 'running' && stepTitle !== undefined ? (
+                                <p className="lead-job-step" title={stepTitle}>
+                                  {stepTitle}
+                                </p>
+                              ) : null}
+                              {edits !== null ? (
+                                <p className="lead-job-edits">
+                                  {`Edited ${edits.files === 1 ? '1 file' : `${String(edits.files)} files`} `}
+                                  <span className="stat-add">{`+${String(edits.added)}`}</span>{' '}
+                                  <span className="stat-del">{`−${String(edits.removed)}`}</span>
+                                </p>
+                              ) : null}
                               <p className="lead-job-prompt" title={job.prompt}>
                                 {job.prompt}
                               </p>

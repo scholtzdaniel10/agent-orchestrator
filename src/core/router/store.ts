@@ -34,6 +34,29 @@ export interface ChatRow {
   session_provider: string | null
 }
 
+export interface TerminalRow {
+  id: string
+  project: string
+  provider: string
+  model: string | null
+  session_id: string | null
+  title: string
+  created_at: number
+  updated_at: number
+  scrollback: string
+  cwd: string | null
+  change_id: string | null
+}
+
+export interface WorktreeNameRow {
+  id: string
+  project: string
+  name: string
+  created_at: number
+}
+
+export const TERMINAL_SCROLLBACK_CAP = 200_000
+
 const MIGRATIONS: string[] = [
   `
       CREATE TABLE IF NOT EXISTS runs (
@@ -87,6 +110,32 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX jobs_project ON jobs (project, created_at);
+    `,
+  `
+      CREATE TABLE terminals (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT,
+        session_id TEXT,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        scrollback TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX terminals_project ON terminals (project, created_at);
+    `,
+  `
+      ALTER TABLE terminals ADD COLUMN cwd TEXT;
+      ALTER TABLE terminals ADD COLUMN change_id TEXT;
+    `,
+  `
+      CREATE TABLE worktree_names (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `
 ]
 
@@ -322,6 +371,90 @@ export class Store {
     return out
   }
 
+  saveTerminal(row: TerminalRow): void {
+    const scrollback = capScrollback(row.scrollback)
+    this.db
+      .prepare(
+        `INSERT INTO terminals (
+           id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+           cwd, change_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           provider = excluded.provider,
+           model = excluded.model,
+           session_id = excluded.session_id,
+           title = excluded.title,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at,
+           scrollback = excluded.scrollback,
+           cwd = excluded.cwd,
+           change_id = excluded.change_id`
+      )
+      .run(
+        row.id,
+        row.project,
+        row.provider,
+        row.model,
+        row.session_id,
+        row.title,
+        row.created_at,
+        row.updated_at,
+        scrollback,
+        row.cwd,
+        row.change_id
+      )
+  }
+
+  updateTerminalScrollback(id: string, scrollback: string, updatedAt: number): void {
+    this.db
+      .prepare(`UPDATE terminals SET scrollback = ?, updated_at = ? WHERE id = ?`)
+      .run(capScrollback(scrollback), updatedAt, id)
+  }
+
+  /** Oldest first. */
+  terminals(project: string): TerminalRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+                cwd, change_id
+         FROM terminals WHERE project = ? ORDER BY created_at ASC`
+      )
+      .all(project)
+    return rows.map((row) => mapTerminal(row as Row))
+  }
+
+  deleteTerminal(id: string): void {
+    this.db.prepare('DELETE FROM terminals WHERE id = ?').run(id)
+  }
+
+  setWorktreeName(row: WorktreeNameRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO worktree_names (id, project, name, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           name = excluded.name`
+      )
+      .run(row.id, row.project, row.name, row.created_at)
+  }
+
+  /** Newest first. */
+  worktreeNames(project: string): WorktreeNameRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, name, created_at
+         FROM worktree_names WHERE project = ? ORDER BY created_at DESC`
+      )
+      .all(project)
+    return rows.map((row) => mapWorktreeName(row as Row))
+  }
+
+  deleteWorktreeName(id: string): void {
+    this.db.prepare('DELETE FROM worktree_names WHERE id = ?').run(id)
+  }
+
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
@@ -374,6 +507,37 @@ function parseJsonRow(row: Row): { id: string } | null {
   }
 }
 
+function capScrollback(text: string): string {
+  if (text.length <= TERMINAL_SCROLLBACK_CAP) return text
+  return text.slice(-TERMINAL_SCROLLBACK_CAP)
+}
+
+function mapTerminal(row: Row): TerminalRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    provider: String(row.provider),
+    model: row.model === null || row.model === undefined ? null : String(row.model),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    title: String(row.title),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+    scrollback: String(row.scrollback ?? ''),
+    cwd: row.cwd === null || row.cwd === undefined ? null : String(row.cwd),
+    change_id: row.change_id === null || row.change_id === undefined ? null : String(row.change_id)
+  }
+}
+
+function mapWorktreeName(row: Row): WorktreeNameRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    name: String(row.name),
+    created_at: Number(row.created_at)
+  }
+}
+
 function mapChat(row: Row): ChatRow {
   return {
     id: String(row.id),
@@ -381,7 +545,8 @@ function mapChat(row: Row): ChatRow {
     title: String(row.title),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
-    session_id: row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
     session_provider:
       row.session_provider === null || row.session_provider === undefined
         ? null

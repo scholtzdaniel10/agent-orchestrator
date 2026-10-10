@@ -3,11 +3,12 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import { LAYOUT_FIT_EVENT } from './layout'
 import type { TerminalBus } from './terminal-bus'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 
-export type PanePlacement = 'only' | 'left' | 'right' | 'hidden'
+export type PanePlacement = number | 'hidden'
 
 function cssColor(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -22,32 +23,41 @@ function terminalTheme(): {
   return {
     background: cssColor('--bg'),
     foreground: cssColor('--text'),
-    cursor: cssColor('--signal'),
-    selectionBackground: cssColor('--brand')
+    cursor: cssColor('--brand'),
+    selectionBackground: cssColor('--selected')
   }
 }
 
-function paneClass(placement: PanePlacement): string {
+function paneClass(placement: PanePlacement, focused: boolean): string {
   if (placement === 'hidden') return 'terminal-pane is-hidden'
-  if (placement === 'left') return 'terminal-pane is-left'
-  if (placement === 'right') return 'terminal-pane is-right'
-  return 'terminal-pane is-only'
+  const slot = `terminal-pane is-slot-${String(placement)}`
+  return focused ? `${slot} is-focused` : slot
+}
+
+function layoutDragging(): boolean {
+  return document.querySelector('.app.is-dragging') !== null
 }
 
 function TerminalPane({
   info,
+  heading,
   bus,
   restore,
   placement,
+  focused,
   focusNonce,
-  onActivate
+  onActivate,
+  onClose
 }: {
   info: TerminalInfo
+  heading?: string
   bus: TerminalBus
   restore: boolean
   placement: PanePlacement
+  focused: boolean
   focusNonce: number
   onActivate: () => void
+  onClose: () => void
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -58,6 +68,7 @@ function TerminalPane({
   const focusedTick = useRef(0)
   const visible = placement !== 'hidden'
   const exitLabel = info.exitCode === null ? '—' : String(info.exitCode)
+  const label = heading ?? info.title
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -162,30 +173,38 @@ function TerminalPane({
     }, 0)
     applyFit()
 
-    let timer: number | undefined
-    const observer = new ResizeObserver(() => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = window.setTimeout(() => {
-        timer = undefined
+    let frame = 0
+    function scheduleFit(): void {
+      if (layoutDragging()) return
+      if (frame !== 0) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
         applyFit()
-      }, 60)
+      })
+    }
+    const observer = new ResizeObserver(() => {
+      scheduleFit()
     })
     observer.observe(element)
+    window.addEventListener(LAYOUT_FIT_EVENT, applyFit)
 
     const scheme = window.matchMedia('(prefers-color-scheme: dark)')
     const onScheme = (): void => {
       term.options.theme = terminalTheme()
     }
     scheme.addEventListener('change', onScheme)
+    window.addEventListener('themechange', onScheme)
 
     return () => {
       cancelled = true
       focusedTick.current = 0
       window.clearTimeout(bootTimer)
       detach()
-      if (timer !== undefined) window.clearTimeout(timer)
+      if (frame !== 0) window.cancelAnimationFrame(frame)
+      window.removeEventListener(LAYOUT_FIT_EVENT, applyFit)
       observer.disconnect()
       scheme.removeEventListener('change', onScheme)
+      window.removeEventListener('themechange', onScheme)
       onData.dispose()
       try {
         webgl?.dispose()
@@ -214,13 +233,29 @@ function TerminalPane({
 
   return (
     <div
-      className={paneClass(placement)}
+      className={paneClass(placement, focused)}
       inert={visible ? undefined : true}
       aria-hidden={visible ? undefined : true}
       onMouseDown={() => {
         onActivate()
       }}
     >
+      {visible ? (
+        <div className="terminal-pane-head">
+          <span className="terminal-pane-title">{label}</span>
+          <button
+            type="button"
+            className="tab-close"
+            aria-label={`Close ${label}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onClose()
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       {info.status === 'exited' ? (
         <p className="terminal-banner">
           Session ended (exit code {exitLabel}). Close the tab or open a new one.

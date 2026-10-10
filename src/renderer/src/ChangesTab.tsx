@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { RayBurst } from './Star'
 import { parseDiff } from './diff-lines'
+import { worktreeLabel } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ChangedFile = ChangeSet['files'][number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
+type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 
 const DIFF_LINE_CAP = 5000
 
@@ -24,6 +26,11 @@ function jobTypeFor(jobs: readonly JobRecord[], id: string): string {
 
 function fileLabel(count: number): string {
   return count === 1 ? '1 file' : `${count} files`
+}
+
+function titleFromPrompt(prompt: string): string {
+  const line = prompt.split(/\r?\n/, 1)[0] ?? ''
+  return line.trim().slice(0, 72)
 }
 
 function ChangeStats({
@@ -115,12 +122,20 @@ function ChangesTab({
   changes,
   jobs,
   selectedId,
-  onSelect
+  onSelect,
+  claudeAvailable,
+  cursorAvailable,
+  opening,
+  onOpenHere
 }: {
   changes: ChangeSet[]
   jobs: JobRecord[]
   selectedId: string | null
   onSelect: (id: string | null) => void
+  claudeAvailable: boolean
+  cursorAvailable: boolean
+  opening: boolean
+  onOpenHere: (provider: ProviderId, changeId: string) => void
 }): React.JSX.Element {
   const [listSeen, setListSeen] = useState(changes)
   const [listTick, setListTick] = useState(0)
@@ -131,7 +146,16 @@ function ChangesTab({
     tone: 'ok' | 'bad'
     text: string
   } | null>(null)
+  const [githubOn, setGithubOn] = useState(false)
+  const [mergedOk, setMergedOk] = useState(false)
+  const [prForm, setPrForm] = useState(false)
+  const [prTitle, setPrTitle] = useState('')
+  const [prBody, setPrBody] = useState('')
+  const [prOpening, setPrOpening] = useState(false)
+  const [prUrl, setPrUrl] = useState<string | null>(null)
+  const [prError, setPrError] = useState<string | null>(null)
   const busyRef = useRef(false)
+  const titleRef = useRef<HTMLInputElement>(null)
 
   const resolvedId =
     selectedId !== null && changes.some((item) => item.id === selectedId)
@@ -157,9 +181,30 @@ function ChangesTab({
 
   useEffect(() => {
     if (notice === null || notice.tone !== 'ok') return
+    if (githubOn && mergedOk) return
     const timer = window.setTimeout(() => setNotice(null), 5000)
     return () => window.clearTimeout(timer)
-  }, [notice])
+  }, [notice, githubOn, mergedOk])
+
+  useEffect(() => {
+    let active = true
+    void window.api.githubAvailable().then(
+      (ok) => {
+        if (active) setGithubOn(ok)
+      },
+      () => {
+        if (active) setGithubOn(false)
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!prForm) return
+    titleRef.current?.focus()
+  }, [prForm])
 
   function onRowKeyDown(event: KeyboardEvent<HTMLDivElement>, index: number): void {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -195,11 +240,42 @@ function ChangesTab({
   function onMerge(): void {
     if (selected === null) return
     const id = selected.id
+    const prompt = jobs.find((job) => job.change === id)?.prompt ?? ''
     setArmedId(null)
     void run(id, async () => {
       const result = await window.api.mergeChange(id)
       setNotice({ id, tone: result.ok ? 'ok' : 'bad', text: result.message })
+      if (result.ok) {
+        setMergedOk(true)
+        setPrForm(false)
+        setPrUrl(null)
+        setPrError(null)
+        setPrBody('')
+        setPrTitle(titleFromPrompt(prompt))
+      }
     })
+  }
+
+  function onCancelPr(): void {
+    if (prOpening) return
+    setPrForm(false)
+    setPrError(null)
+  }
+
+  async function onOpenPr(): Promise<void> {
+    if (prOpening) return
+    if (prTitle.length < 1 || prTitle.length > 120) return
+    setPrOpening(true)
+    setPrError(null)
+    try {
+      const result = await window.api.githubOpenPr(prTitle, prBody)
+      setPrUrl(result.url)
+      setPrForm(false)
+    } catch (err: unknown) {
+      setPrError(errorText(err))
+    } finally {
+      setPrOpening(false)
+    }
   }
 
   function onDiscard(): void {
@@ -229,6 +305,88 @@ function ChangesTab({
           {okNotice}
         </p>
       ) : null}
+      {prUrl !== null ? (
+        <p className="change-ok" role="status">
+          {'Pull request opened '}
+          <a href={prUrl} target="_blank" rel="noreferrer">
+            {prUrl}
+          </a>
+        </p>
+      ) : null}
+      {githubOn && mergedOk && prUrl === null && !prForm ? (
+        <div className="change-pr">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy || prOpening}
+            onClick={() => setPrForm(true)}
+          >
+            Open pull request
+          </button>
+        </div>
+      ) : null}
+      {prForm && prUrl === null ? (
+        <form
+          className="change-pr-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void onOpenPr()
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              onCancelPr()
+            }
+          }}
+        >
+          <div className="change-pr-field">
+            <label htmlFor="pr-title">Title</label>
+            <input
+              ref={titleRef}
+              id="pr-title"
+              type="text"
+              value={prTitle}
+              maxLength={120}
+              disabled={prOpening}
+              onChange={(event) => setPrTitle(event.target.value)}
+            />
+          </div>
+          <div className="change-pr-field">
+            <label htmlFor="pr-body">Description</label>
+            <textarea
+              id="pr-body"
+              value={prBody}
+              maxLength={4000}
+              rows={4}
+              disabled={prOpening}
+              onChange={(event) => setPrBody(event.target.value)}
+            />
+          </div>
+          <div className="change-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={prOpening || prTitle.length < 1 || prTitle.length > 120}
+            >
+              Open pull request
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={prOpening}
+              onClick={onCancelPr}
+            >
+              Cancel
+            </button>
+          </div>
+          {prOpening ? <p className="change-help">Opening pull request…</p> : null}
+          {prError !== null ? (
+            <p className="field-error" role="alert">
+              {prError}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
       {changes.length === 0 || selected === null ? (
         <div className="changes-empty">
           <RayBurst />
@@ -252,13 +410,17 @@ function ChangesTab({
                   onClick={() => onSelect(item.id)}
                   onKeyDown={(event) => onRowKeyDown(event, index)}
                 >
-                  <span className="change-id">{item.id}</span>
+                  <span className="change-id">{worktreeLabel(item)}</span>
                   <span className="change-origin">{jobTypeFor(jobs, item.id)}</span>
-                  <ChangeStats
-                    files={item.files.length}
-                    insertions={item.insertions}
-                    deletions={item.deletions}
-                  />
+                  {item.files.length === 0 ? (
+                    <span className="change-stats">No changes yet</span>
+                  ) : (
+                    <ChangeStats
+                      files={item.files.length}
+                      insertions={item.insertions}
+                      deletions={item.deletions}
+                    />
+                  )}
                 </div>
               )
             })}
@@ -266,17 +428,28 @@ function ChangesTab({
           {selected === null ? null : (
             <div className="change-detail">
               <div className="change-head">
-                <span className="change-branch">{selected.branch}</span>
-                <ChangeStats
-                  files={selected.files.length}
-                  insertions={selected.insertions}
-                  deletions={selected.deletions}
-                />
+                <span className="change-branch">{worktreeLabel(selected)}</span>
+                {selected.files.length === 0 ? (
+                  <span className="change-stats">No changes yet</span>
+                ) : (
+                  <ChangeStats
+                    files={selected.files.length}
+                    insertions={selected.insertions}
+                    deletions={selected.deletions}
+                  />
+                )}
               </div>
               <div className="change-actions">
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={onMerge}>
-                  Merge
-                </button>
+                {selected.files.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy}
+                    onClick={onMerge}
+                  >
+                    Merge
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={confirming ? 'btn btn-quiet is-danger-label' : 'btn btn-quiet'}
@@ -285,24 +458,54 @@ function ChangesTab({
                 >
                   {confirming ? 'Discard for good?' : 'Discard'}
                 </button>
+                {claudeAvailable ? (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-compact"
+                    disabled={opening || busy}
+                    onClick={() => {
+                      onOpenHere('claude', selected.id)
+                    }}
+                  >
+                    Claude here
+                  </button>
+                ) : null}
+                {cursorAvailable ? (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-compact"
+                    disabled={opening || busy}
+                    onClick={() => {
+                      onOpenHere('cursor', selected.id)
+                    }}
+                  >
+                    Cursor here
+                  </button>
+                ) : null}
               </div>
-              <p className="change-help">
-                Merge applies this to your project as staged changes. Nothing is committed.
-              </p>
+              {selected.files.length > 0 ? (
+                <p className="change-help">
+                  Merge applies this to your project as staged changes. Nothing is committed.
+                </p>
+              ) : null}
               {badNotice !== null ? (
                 <p className="field-error" role="alert">
                   {badNotice}
                 </p>
               ) : null}
-              <ul className="change-files">
-                {selected.files.map((file) => (
-                  <li key={file.path} className="change-file">
-                    <span className="change-path">{file.path}</span>
-                    <FileStat file={file} />
-                  </li>
-                ))}
-              </ul>
-              <DiffPane key={`${selected.id}:${listTick}`} id={selected.id} />
+              {selected.files.length > 0 ? (
+                <>
+                  <ul className="change-files">
+                    {selected.files.map((file) => (
+                      <li key={file.path} className="change-file">
+                        <span className="change-path">{file.path}</span>
+                        <FileStat file={file} />
+                      </li>
+                    ))}
+                  </ul>
+                  <DiffPane key={`${selected.id}:${listTick}`} id={selected.id} />
+                </>
+              ) : null}
             </div>
           )}
         </div>

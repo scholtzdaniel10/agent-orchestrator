@@ -22,6 +22,9 @@ function plan(partial: Partial<PlanStatus> & Pick<PlanStatus, 'id'>): PlanStatus
     queued: 0,
     model: null,
     windows: [],
+    version: null,
+    versionStatus: 'unknown',
+    testedVersion: '2.1.258',
     ...partial
   }
 }
@@ -81,7 +84,14 @@ function snap(partial: Partial<FlowSnapshot> = {}): FlowSnapshot {
 
 function clone(snapshot: FlowSnapshot): FlowSnapshot {
   return {
-    jobs: snapshot.jobs.map((item) => ({ ...item, failedOver: [...item.failedOver] })),
+    jobs: snapshot.jobs.map((item) => ({
+      ...item,
+      failedOver: [...item.failedOver],
+      steps: item.steps?.map((step) => ({
+        ...step,
+        ...(step.edit !== undefined ? { edit: { ...step.edit } } : {})
+      }))
+    })),
     plans: snapshot.plans.map((item) => ({ ...item })),
     lead: snapshot.lead.map((item) => ({ ...item })),
     terminals: snapshot.terminals.map((item) => ({ ...item })),
@@ -458,6 +468,79 @@ test('a change that disappears is closed by the router', () => {
       NOW
     ).map((event) => `${event.actor}: ${event.text}`)
   ).toEqual(['claude: change ready (3 files)', 'router: change closed (bbbbbbbb)'])
+})
+
+test('finished steps that are not say or think appear in the activity log', () => {
+  const running = job({ id: 'j', status: 'running', provider: 'cursor', type: 'boilerplate' })
+  const withSteps = job({
+    id: 'j',
+    status: 'running',
+    provider: 'cursor',
+    type: 'boilerplate',
+    steps: [
+      {
+        id: 's1',
+        tool: 'edit',
+        title: 'Edited src/app.ts',
+        status: 'done',
+        startedAt: NOW,
+        endedAt: NOW + 10,
+        edit: { path: 'src/app.ts', added: 4, removed: 1 }
+      },
+      {
+        id: 's2',
+        tool: 'say',
+        title: 'hello',
+        status: 'done',
+        startedAt: NOW,
+        endedAt: NOW + 10
+      },
+      {
+        id: 's3',
+        tool: 'think',
+        title: 'hmm',
+        status: 'done',
+        startedAt: NOW,
+        endedAt: NOW + 10
+      },
+      {
+        id: 's4',
+        tool: 'read',
+        title: 'Read src/app.ts',
+        status: 'done',
+        startedAt: NOW,
+        endedAt: NOW + 20
+      },
+      {
+        id: 's5',
+        tool: 'read',
+        title: 'Read more.ts',
+        status: 'running',
+        startedAt: NOW
+      }
+    ]
+  })
+  expect(diffFlow(snap({ jobs: [running] }), snap({ jobs: [withSteps] }), NOW)).toEqual([
+    { at: NOW, actor: 'cursor', text: 'edited src/app.ts +4 −1' },
+    { at: NOW, actor: 'cursor', text: 'read src/app.ts' }
+  ])
+})
+
+test('at most 40 step lines are kept per job', () => {
+  const steps = Array.from({ length: 45 }, (_, index) => ({
+    id: `s${String(index)}`,
+    tool: 'read' as const,
+    title: `Read ${String(index)}`,
+    status: 'done' as const,
+    startedAt: NOW,
+    endedAt: NOW + 1
+  }))
+  const before = job({ id: 'j', status: 'running', provider: 'claude', steps: steps.slice(0, 10) })
+  const after = job({ id: 'j', status: 'running', provider: 'claude', steps })
+  const lines = diffFlow(snap({ jobs: [before] }), snap({ jobs: [after] }), NOW)
+  expect(lines).toHaveLength(30)
+  expect(lines[0]?.text).toBe('read 10')
+  expect(lines[29]?.text).toBe('read 39')
 })
 
 test('a job that is new and already running yields the router line and the running line', () => {

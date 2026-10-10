@@ -1,5 +1,17 @@
 export type ProviderId = 'claude' | 'cursor'
 export type JobType = 'planning' | 'debugging' | 'review' | 'refactor' | 'boilerplate'
+export type JobAccess = 'read' | 'edit' | 'full'
+export type VersionStatus = 'tested' | 'newer' | 'older' | 'unknown'
+
+export function isJobAccess(value: unknown): value is JobAccess {
+  return value === 'read' || value === 'edit' || value === 'full'
+}
+
+/** A record with `edit: true` and no `access` is `edit`; neither is `read`. */
+export function accessOf(record: { access?: unknown; edit?: unknown }): JobAccess {
+  if (isJobAccess(record.access)) return record.access
+  return record.edit === true ? 'edit' : 'read'
+}
 
 export interface Job {
   id: string
@@ -16,10 +28,28 @@ export interface UsageWindow {
   resetsAt?: number
 }
 
+export type StepTool =
+  'say' | 'think' | 'read' | 'edit' | 'shell' | 'search' | 'web' | 'mcp' | 'other'
+
 /** Provider-neutral view of one stream-json line. Lines that carry nothing we use parse to null. */
 export type AgentEvent =
   | { kind: 'init'; sessionId: string; model?: string }
   | { kind: 'text'; text: string }
+  | {
+      kind: 'step'
+      /** Stable per tool call, so 'start' and 'end' pair up. */
+      id: string
+      phase: 'start' | 'end'
+      tool: StepTool
+      /** Short and human: "Read src/app.ts", "Edited src/app.ts", "Ran pnpm test". */
+      title: string
+      /** More, when there is more: the command, the query, the output tail, the error. */
+      detail?: string
+      /** On 'end': false when the tool reported a failure. */
+      ok?: boolean
+      /** For edits and writes. Path relative to the job folder when it is inside it. */
+      edit?: { path: string; added: number; removed: number }
+    }
   /**
    * Fraction of the plan already used (0..1), the worst of its windows, plus each window
    * as the CLI reported it. Claude only.
@@ -41,7 +71,7 @@ export type AgentEvent =
 export interface RunHandle {
   /** Parsed events in order; ends when the process closes. */
   events: AsyncIterable<AgentEvent>
-  exit: Promise<{ code: number | null; stderr: string }>
+  exit: Promise<{ code: number | null; stderr: string; unreadable?: boolean }>
   /** Kills the whole process tree, not just the top process. */
   kill(): void
 }
@@ -65,6 +95,8 @@ export interface RunOptions {
   model?: string
   /** Let the CLI edit files in its working folder (a job's own worktree). Never shell commands. */
   edit?: boolean
+  /** read: files only. edit: files, no shell. full: files and shell, no prompts. */
+  access?: JobAccess
 }
 
 /** A model a CLI can run, for the model picker. */
@@ -77,6 +109,8 @@ export interface ModelOption {
 export interface ProviderAdapter {
   id: ProviderId
   isInstalled(): Promise<boolean>
+  /** Token from `--version`, or null when the CLI did not print one. */
+  version(): Promise<string | null>
   isSignedIn(): Promise<boolean>
   /** Spawns the official CLI headless. Read-only: no edit flags until worktrees exist. */
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle
@@ -150,6 +184,8 @@ export interface TerminalInfo {
   model: string | null
   /** Epoch ms. */
   startedAt: number
+  /** Worktree id this session is running in, when it has one. */
+  change?: string
 }
 
 /** One file touched by a job, as git reports it. */
@@ -171,6 +207,8 @@ export interface ChangeSet {
   files: ChangedFile[]
   insertions: number
   deletions: number
+  /** Saved display name; absent when the worktree was never named. */
+  name?: string
 }
 
 /** The folder jobs and terminals work in. */

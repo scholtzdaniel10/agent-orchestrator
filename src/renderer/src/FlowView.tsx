@@ -441,10 +441,7 @@ function Topology({
           } else if (running !== undefined) {
             const started = starts[running.id] ?? elapsedNow
             const more = parallel - 1
-            text =
-              more > 0
-                ? `${running.type} · +${more} more · `
-                : `${running.type} · running · `
+            text = more > 0 ? `${running.type} · +${more} more · ` : `${running.type} · running · `
             elapsed = formatElapsed(elapsedNow - started)
           }
           return (

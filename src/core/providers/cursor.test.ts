@@ -13,8 +13,7 @@ function eventsFromFixture(adapter: CursorAdapter, name: string): AgentEvent[] {
   const raw = readFileSync(join(fixtureDir, name), 'utf8')
   const events: AgentEvent[] = []
   for (const line of raw.split('\n')) {
-    const event = adapter.parseEvent(line.trim())
-    if (event) events.push(event)
+    events.push(...adapter.parseEvents(line.trim()))
   }
   return events
 }
@@ -47,9 +46,10 @@ async function cliArgs(handle: RunHandle): Promise<string[]> {
   return JSON.parse(exit.stderr) as string[]
 }
 
-async function collect(
-  handle: RunHandle
-): Promise<{ events: AgentEvent[]; exit: { code: number | null; stderr: string } }> {
+async function collect(handle: RunHandle): Promise<{
+  events: AgentEvent[]
+  exit: { code: number | null; stderr: string; unreadable?: boolean }
+}> {
   const events: AgentEvent[] = []
   for await (const event of handle.events) events.push(event)
   return { events, exit: await handle.exit }
@@ -63,7 +63,31 @@ test('cursor-plain parses init, text, and result', () => {
       sessionId: '00000000-0000-4000-8000-00000000011c',
       model: 'Grok 4.7 256K Extra High'
     },
+    {
+      kind: 'step',
+      id: 'think-1790832734780',
+      phase: 'end',
+      tool: 'think',
+      title: 'The user requested a',
+      detail: 'The user requested a'
+    },
+    {
+      kind: 'step',
+      id: 'think-1790832734905',
+      phase: 'end',
+      tool: 'think',
+      title: 'reply containing exactly',
+      detail: ' reply containing exactly'
+    },
     { kind: 'text', text: 'ok' },
+    {
+      kind: 'step',
+      id: 'say-00000000-0000-4000-8000-00000000011c-ok',
+      phase: 'end',
+      tool: 'say',
+      title: 'ok',
+      detail: 'ok'
+    },
     {
       kind: 'result',
       ok: true,
@@ -75,12 +99,93 @@ test('cursor-plain parses init, text, and result', () => {
   ])
 })
 
-test('cursor-tool result contains the fixture text', () => {
+test('cursor-tool yields ordered steps then the fixture text', () => {
   const events = eventsFromFixture(new CursorAdapter(), 'cursor-tool.ndjson')
-  expect(events.map((event) => event.kind)).toEqual(['init', 'text', 'text', 'result'])
+  const steps = events.filter((event) => event.kind === 'step')
+  expect(
+    steps.map((event) =>
+      event.kind === 'step' ? `${event.phase}:${event.tool}:${event.title}` : ''
+    )
+  ).toEqual([
+    'end:think:Reading hello.txt to',
+    'end:think:summarize its contents',
+    "end:say:I'll read `hello.txt` and answer in five words or fewer.",
+    'start:search:Searched for **/hello.txt',
+    'end:search:Searched for **/hello.txt',
+    'start:read:Read hello.txt',
+    'end:read:Read hello.txt',
+    'end:say:hello fixture'
+  ])
+  expect(events.map((event) => event.kind)).toEqual([
+    'init',
+    'step',
+    'step',
+    'text',
+    'step',
+    'step',
+    'step',
+    'step',
+    'step',
+    'text',
+    'step',
+    'result'
+  ])
   const last = events[events.length - 1]
   expect(last).toMatchObject({ kind: 'result', ok: true })
   if (last.kind === 'result') expect(last.text).toContain('hello fixture')
+})
+
+test('cursor edit steps use reported counts when present', () => {
+  const adapter = new CursorAdapter()
+  adapter.parseEvents(
+    JSON.stringify({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'sess-c',
+      cwd: '/work/example',
+      model: 'Grok'
+    })
+  )
+  const started = adapter.parseEvents(
+    JSON.stringify({
+      type: 'tool_call',
+      subtype: 'started',
+      call_id: 'call-edit',
+      session_id: 'sess-c',
+      tool_call: {
+        editToolCall: { args: { path: '/work/example/src/app.ts' } }
+      }
+    })
+  )
+  expect(started[0]).toMatchObject({
+    kind: 'step',
+    id: 'call-edit',
+    phase: 'start',
+    tool: 'edit',
+    title: 'Edited src/app.ts',
+    edit: { path: 'src/app.ts', added: 0, removed: 0 }
+  })
+  const done = adapter.parseEvents(
+    JSON.stringify({
+      type: 'tool_call',
+      subtype: 'completed',
+      call_id: 'call-edit',
+      session_id: 'sess-c',
+      tool_call: {
+        editToolCall: {
+          args: { path: '/work/example/src/app.ts' },
+          result: { success: { addedLines: 4, removedLines: 1 } }
+        }
+      }
+    })
+  )
+  expect(done[0]).toMatchObject({
+    kind: 'step',
+    phase: 'end',
+    tool: 'edit',
+    ok: true,
+    edit: { path: 'src/app.ts', added: 4, removed: 1 }
+  })
 })
 
 test('cursor-limit.synthetic yields a limit event', () => {
@@ -139,6 +244,7 @@ process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
     const { events, exit } = await collect(adapter.run(job, dir))
     expect(events).toEqual(eventsFromFixture(adapter, 'cursor-plain.ndjson'))
     expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(false)
     expect(exit.stderr).toBe(prompt)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -310,6 +416,115 @@ process.exit(0)
     expect(readFileSync(bridgeCli, 'utf8')).toBe(bridgeBody)
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('full adds --force and does not write a permission file', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-full-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { existsSync, readFileSync, writeSync } from 'node:fs'
+import { join } from 'node:path'
+const cli = join(process.cwd(), '.cursor', 'cli.json')
+const body = existsSync(cli) ? readFileSync(cli, 'utf8') : ''
+writeSync(2, JSON.stringify({ argv: process.argv.slice(2), body, hasCli: existsSync(cli) }))
+process.exit(0)
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  const job = { id: 'job-1', prompt: 'hello' }
+  const base = ['-p', '--trust', '--output-format', 'stream-json']
+  try {
+    const fresh = join(root, 'fresh')
+    mkdirSync(fresh)
+    const created = adapter.run(job, fresh, { access: 'full' })
+    expect(existsSync(join(fresh, '.cursor', 'cli.json'))).toBe(false)
+    const createdExit = await created.exit
+    expect(createdExit.code).toBe(0)
+    const createdReport = JSON.parse(createdExit.stderr) as {
+      argv: string[]
+      body: string
+      hasCli: boolean
+    }
+    expect(createdReport.argv).toEqual([...base, '--force'])
+    expect(createdReport.hasCli).toBe(false)
+    expect(existsSync(join(fresh, '.cursor'))).toBe(false)
+
+    const readDir = join(root, 'read')
+    mkdirSync(readDir)
+    const readExit = await adapter.run(job, readDir, { access: 'read' }).exit
+    expect(JSON.parse(readExit.stderr)).toMatchObject({ argv: base, hasCli: false })
+
+    const editDir = join(root, 'edit')
+    mkdirSync(editDir)
+    const editRun = adapter.run(job, editDir, { access: 'edit' })
+    expect(existsSync(join(editDir, '.cursor', 'cli.json'))).toBe(true)
+    const editExit = await editRun.exit
+    expect(JSON.parse(editExit.stderr)).toMatchObject({ argv: base, hasCli: true })
+    expect(JSON.parse(editExit.stderr).argv).not.toContain('--force')
+    expect(existsSync(join(editDir, '.cursor'))).toBe(false)
+
+    const bridged = join(root, 'bridged')
+    const bridge = { url: 'http://127.0.0.1:9/mcp', token: 'secret-token', tools: ['send_job'] }
+    const bridgeRun = adapter.run(job, bridged, { access: 'full', bridge })
+    const bridgeExit = await bridgeRun.exit
+    const bridgeReport = JSON.parse(bridgeExit.stderr) as { argv: string[] }
+    expect(bridgeReport.argv).toContain('--approve-mcps')
+    expect(bridgeReport.argv).not.toContain('--force')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('unknown-format fixture is unreadable and has no result event', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-unknown-'))
+  const fixturePath = join(fixtureDir, 'cursor-unknown-format.synthetic.ndjson')
+  const script = writeScript(
+    dir,
+    'replay.mjs',
+    `import { readFileSync } from 'node:fs'
+process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  try {
+    const raw = readFileSync(fixturePath, 'utf8')
+    for (const line of raw.split('\n')) {
+      if (line.trim()) expect(adapter.parseEvent(line.trim())).toBeNull()
+    }
+    const { events, exit } = await collect(adapter.run({ id: 'u', prompt: 'hi' }, dir))
+    expect(events.some((event) => event.kind === 'result')).toBe(false)
+    expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('isInstalled and version share one --version call', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-ver-'))
+  const counter = join(dir, 'count.txt')
+  const script = writeScript(
+    dir,
+    'version.mjs',
+    `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(counter)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+process.stdout.write('2026.10.01-e373342\\n')
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  try {
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2026.10.01-e373342')
+    expect(readFileSync(counter, 'utf8')).toBe('1')
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2026.10.01-e373342')
+    expect(readFileSync(counter, 'utf8')).toBe('2')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 

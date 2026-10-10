@@ -19,7 +19,10 @@
           running: 0,
           queued: 0,
           model: null,
-          windows: []
+          windows: [],
+          version: null,
+          versionStatus: 'unknown',
+          testedVersion: '2.1.258'
         },
         {
           id: 'cursor',
@@ -33,7 +36,10 @@
           running: 0,
           queued: 0,
           model: null,
-          windows: []
+          windows: [],
+          version: null,
+          versionStatus: 'unknown',
+          testedVersion: '2026.10.01-e373342'
         }
       ]
     : [
@@ -51,7 +57,10 @@
           windows: [
             { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
             { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
-          ]
+          ],
+          version: '2.1.258',
+          versionStatus: 'tested',
+          testedVersion: '2.1.258'
         },
         {
           id: 'cursor',
@@ -64,7 +73,10 @@
           running: 0,
           queued: 0,
           model: 'gpt-5',
-          windows: []
+          windows: [],
+          version: '2026.10.01-e373342',
+          versionStatus: 'tested',
+          testedVersion: '2026.10.01-e373342'
         }
       ]
   const jobs = empty
@@ -184,7 +196,8 @@
             { path: 'src/core/router/orchestrator.ts', insertions: 12, deletions: 131 },
             { path: 'src/core/router/queue.ts', insertions: 84, deletions: 0 },
             { path: 'src/core/router/failover.ts', insertions: 52, deletions: 0 }
-          ]
+          ],
+          name: 'split router'
         }
       ]
   const diff = `diff --git a/src/core/router/queue.ts b/src/core/router/queue.ts
@@ -368,13 +381,30 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }
     ]),
     githubClone: ok(null),
+    githubOpenPr: ok({
+      url: 'https://github.com/acme/agent-orchestrator/pull/1',
+      branch: 'orch/pr-merged-aaaaaa'
+    }),
     listChanges: ok(changes),
     onChangesUpdate: off,
     changeDiff: ok(diff),
     mergeChange: ok({ ok: true, message: 'Merged' }),
     discardChange: ok(undefined),
+    createWorktree: (name) =>
+      Promise.resolve({
+        id: 'aabbccdd',
+        branch: 'orch/aabbccdd',
+        path: 'C:/tmp/orch/aabbccdd',
+        files: [],
+        insertions: 0,
+        deletions: 0,
+        name: typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+      }),
+    renameWorktree: ok(undefined),
     getLeadPlan: ok(null),
     setLeadPlan: ok(undefined),
+    getLeadAccess: ok('read'),
+    setLeadAccess: ok(undefined),
     sendLead: (text) => Promise.resolve({ id: 'x', role: 'user', text, status: 'done' }),
     listLeadMessages: ok(lead),
     listLeadChats: ok(chats),
@@ -383,20 +413,25 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     renameLeadChat: ok(undefined),
     removeLeadChat: ok(undefined),
     onLeadUpdate: off,
-    openTerminal: (provider) =>
+    openTerminal: (provider, _cols, _rows, worktree) =>
       Promise.resolve({
         id: 't1',
         provider,
-        title: provider + ' 1',
+        title:
+          provider +
+          ' 1' +
+          (typeof worktree === 'string' && worktree !== 'new' ? ' · ' + worktree : ''),
         status: 'running',
         exitCode: null,
         model: null,
-        startedAt: now
+        startedAt: now,
+        change: typeof worktree === 'string' && worktree !== 'new' ? worktree : undefined
       }),
     writeTerminal: () => {},
     resizeTerminal: () => {},
     closeTerminal: ok(undefined),
     listTerminals: ok([]),
+    restoreTerminals: ok([]),
     terminalSnapshot: ok(''),
     onTerminalData: off,
     onTerminalUpdate: off

@@ -2,10 +2,25 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ChangesTab from './ChangesTab'
+import JobSteps from './JobSteps'
+import { latestStepTitle } from './job-steps'
 import RichText from './RichText'
-import TerminalPane, { type PanePlacement } from './TerminalPane'
+import {
+  assignTabToPane,
+  dropMissingTerminals,
+  emptyPaneForTerminal,
+  emptySlots,
+  fillPanes,
+  placeNewTerminal,
+  placeTerminalInPane,
+  seatUnplaced,
+  requestLayoutFit,
+  type PaneLayoutId
+} from './layout'
+import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
+import { terminalDisplayTitle } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -14,8 +29,37 @@ type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 type PlanChoice = 'auto' | ProviderId | 'both'
+type JobAccess = 'read' | 'edit' | 'full'
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
+const ACCESS_KEY = 'orch.access'
+
+function asAccess(value: string): JobAccess {
+  if (value === 'edit' || value === 'full') return value
+  return 'read'
+}
+
+function loadAccess(): JobAccess {
+  try {
+    return asAccess(localStorage.getItem(ACCESS_KEY) ?? '')
+  } catch {
+    return 'read'
+  }
+}
+
+function saveAccess(value: JobAccess): void {
+  try {
+    localStorage.setItem(ACCESS_KEY, value)
+  } catch {
+    // Private mode, or storage full.
+  }
+}
+
+function accessMark(job: JobRecord): string | null {
+  if (job.access === 'full') return 'FULL'
+  if (job.edit === true || job.access === 'edit') return 'EDIT'
+  return null
+}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
@@ -53,7 +97,8 @@ function outputTitle(job: JobRecord): string {
   if (job.provider !== null) parts.push(job.provider)
   if (job.model) parts.push(job.model)
   if (job.reason) parts.push(job.reason)
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   return parts.join(' · ')
 }
 
@@ -88,7 +133,13 @@ function FailoverArrow(): React.JSX.Element {
 function metaLine(parts: ReactNode[]): React.JSX.Element {
   const nodes: ReactNode[] = []
   parts.forEach((part, index) => {
-    if (index > 0) nodes.push(<span key={`sep-${String(index)}`} className="meta-sep"> / </span>)
+    if (index > 0)
+      nodes.push(
+        <span key={`sep-${String(index)}`} className="meta-sep">
+          {' '}
+          /{' '}
+        </span>
+      )
     nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
   })
   return <>{nodes}</>
@@ -98,20 +149,15 @@ function jobMetaParts(job: JobRecord): ReactNode[] {
   const parts: ReactNode[] = [job.type]
   if (job.group !== undefined) parts.push('compare')
   if (job.leadMessage !== undefined) parts.push('from lead')
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   if (job.reason) parts.push(<span className="job-reason-mono">{job.reason}</span>)
   if (job.model) parts.push(<span className="job-model">{job.model}</span>)
   parts.push(<span className="job-id">{job.id.slice(0, 8)}</span>)
   return parts
 }
 
-function EmptyState({
-  title,
-  guidance
-}: {
-  title: string
-  guidance: string
-}): React.JSX.Element {
+function EmptyState({ title, guidance }: { title: string; guidance: string }): React.JSX.Element {
   return (
     <div className="empty-state">
       <RayBurst />
@@ -121,32 +167,12 @@ function EmptyState({
   )
 }
 
-function splitPartner(
-  terminals: readonly TerminalInfo[],
-  selectedId: string,
-  recentId: string | null
-): string | null {
-  if (
-    recentId !== null &&
-    recentId !== selectedId &&
-    terminals.some((info) => info.id === recentId)
-  ) {
-    return recentId
+function worktreeFlag(): 'new' | undefined {
+  try {
+    return localStorage.getItem('orch.newWorktree') === '1' ? 'new' : undefined
+  } catch {
+    return undefined
   }
-  const other = terminals.find((info) => info.id !== selectedId)
-  return other === undefined ? null : other.id
-}
-
-function placementFor(
-  id: string,
-  selectedId: string | null,
-  partnerId: string | null,
-  splitOn: boolean
-): PanePlacement {
-  if (!splitOn || selectedId === null) return id === selectedId ? 'only' : 'hidden'
-  if (id === selectedId) return 'left'
-  if (id === partnerId) return 'right'
-  return 'hidden'
 }
 
 function canStop(job: JobRecord): boolean {
@@ -205,10 +231,8 @@ function CompareOutput({
     <div className="compare-output">
       {ordered.map((job) => {
         const changeId = visibleChange(job, changes)
-        const change =
-          changeId === null ? undefined : changes.find((item) => item.id === changeId)
-        const waiting =
-          job.output === '' && (job.status === 'queued' || job.status === 'running')
+        const change = changeId === null ? undefined : changes.find((item) => item.id === changeId)
+        const waiting = job.output === '' && (job.status === 'queued' || job.status === 'running')
         const mergeTitle = eitherBusy ? 'Wait for both to finish' : undefined
         const message = messages[job.id]
         return (
@@ -242,10 +266,9 @@ function CompareOutput({
               ) : null}
             </div>
             <div className="output-body">
+              <JobSteps job={job} />
               {waiting ? (
-                <p className="compare-wait">
-                  {job.status === 'queued' ? 'Waiting…' : 'Working…'}
-                </p>
+                <p className="compare-wait">{job.status === 'queued' ? 'Waiting…' : 'Working…'}</p>
               ) : (
                 <RichText text={job.output} />
               )}
@@ -292,9 +315,17 @@ function Workers({
   terminals,
   initialTerminalIds,
   changes,
+  selectedWorktree,
+  placeTerminal,
+  onSelectWorktree,
   isRepo,
+  project,
   bus,
   showJob,
+  focusMode,
+  paneLayout,
+  onToggleFocus,
+  onPaneLayout,
   onJob,
   onTerminal
 }: {
@@ -303,9 +334,17 @@ function Workers({
   terminals: TerminalInfo[]
   initialTerminalIds: ReadonlySet<string> | null
   changes: ChangeSet[]
+  selectedWorktree: string | null
+  placeTerminal: { id: string; nonce: number } | null
+  onSelectWorktree: (id: string | null) => void
   isRepo: boolean
+  project: string
   bus: TerminalBus
   showJob?: { id: string; nonce: number } | null
+  focusMode: boolean
+  paneLayout: PaneLayoutId
+  onToggleFocus: () => void
+  onPaneLayout: (layout: PaneLayoutId) => void
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
 }): React.JSX.Element {
@@ -313,12 +352,11 @@ function Workers({
   const [prompt, setPrompt] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
   const [worker, setWorker] = useState<PlanChoice>('auto')
-  const [editFiles, setEditFiles] = useState(false)
-  const [mainTab, setMainTab] = useState<'jobs' | 'changes'>('jobs')
+  const [access, setAccess] = useState<JobAccess>(loadAccess)
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [recentOther, setRecentOther] = useState<string | null>(null)
-  const [split, setSplit] = useState(false)
+  const [stage, setStage] = useState<'jobs' | 'changes' | 'panes'>('jobs')
+  const [slots, setSlots] = useState(() => emptySlots(paneLayout))
+  const [focusedIndex, setFocusedIndex] = useState(0)
   const [opening, setOpening] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
   const [focusTermId, setFocusTermId] = useState<string | null>(null)
@@ -327,20 +365,52 @@ function Workers({
   const sending = useRef(false)
   const openingRef = useRef(false)
   const stoppingRef = useRef(false)
-  const selectedRef = useRef<string | null>(null)
+  const [seenShowJob, setSeenShowJob] = useState<number | null>(null)
+  const [seenPlace, setSeenPlace] = useState<number | null>(null)
+  const [paneWorktree, setPaneWorktree] = useState(selectedWorktree)
 
-  useEffect(() => {
-    selectedRef.current = selectedId
-  }, [selectedId])
+  if (showJob != null && showJob.nonce !== seenShowJob) {
+    setSeenShowJob(showJob.nonce)
+    if (stage !== 'jobs') setStage('jobs')
+    if (selectedJobId !== showJob.id) setSelectedJobId(showJob.id)
+  }
+
+  const visibleTerminals = terminals.filter((info) =>
+    selectedWorktree === null ? info.change === undefined : info.change === selectedWorktree
+  )
+  const visibleIds = visibleTerminals.map((info) => info.id)
+  const liveIds = new Set(visibleIds)
+  const selectionChanged = paneWorktree !== selectedWorktree
+  if (selectionChanged) {
+    setPaneWorktree(selectedWorktree)
+    setFocusedIndex(0)
+  }
+  const baseSlots = selectionChanged
+    ? fillPanes(paneLayout, visibleIds, visibleIds[0] ?? null)
+    : slots
+  // Seat the ones that arrived without a click: restored after a restart, or opened from Changes.
+  const liveSlots = seatUnplaced(dropMissingTerminals(baseSlots, liveIds), visibleIds)
+  if (liveSlots !== slots) setSlots(liveSlots)
+
+  if (placeTerminal != null && placeTerminal.nonce !== seenPlace) {
+    setSeenPlace(placeTerminal.nonce)
+    setStage('panes')
+    setFocusTermId(placeTerminal.id)
+    setFocusTick((tick) => tick + 1)
+    const placed = liveSlots.indexOf(placeTerminal.id)
+    if (placed >= 0) setFocusedIndex(placed)
+  }
+
+  if (
+    selectedWorktree !== null &&
+    selectedChangeId !== selectedWorktree &&
+    changes.some((item) => item.id === selectedWorktree)
+  ) {
+    setSelectedChangeId(selectedWorktree)
+  }
 
   useEffect(() => {
     if (showJob == null) return
-    const previous = selectedRef.current
-    if (previous !== null) setRecentOther(previous)
-    selectedRef.current = null
-    setSelectedId(null)
-    setMainTab('jobs')
-    setSelectedJobId(showJob.id)
     const id = showJob.id
     requestAnimationFrame(() => {
       document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'nearest' })
@@ -359,13 +429,8 @@ function Workers({
     (worker === 'cursor' && !cursorReady) ||
     (worker === 'both' && !bothReady)
   const submitDisabled = promptEmpty || noPlanReady || choiceBlocked
-  const shownId =
-    selectedId !== null && terminals.some((info) => info.id === selectedId) ? selectedId : null
-  const partnerId =
-    split && shownId !== null && terminals.length >= 2
-      ? splitPartner(terminals, shownId, recentOther)
-      : null
-  const splitOn = partnerId !== null
+  const focusedId = slots[focusedIndex] ?? null
+  const tabActive = stage === 'panes' ? (focusedId ?? '') : stage === 'changes' ? 'changes' : 'jobs'
 
   async function stopJob(id: string): Promise<void> {
     if (stoppingRef.current) return
@@ -388,44 +453,49 @@ function Workers({
     setFocusTick((tick) => tick + 1)
   }
 
-  function selectTab(id: string | null, source: 'click' | 'arrow'): void {
-    const previous = selectedRef.current
-    if (previous !== null && previous !== id) setRecentOther(previous)
-    selectedRef.current = id
-    setSelectedId(id)
-    if (source === 'click' && id !== null) requestFocus(id)
+  function selectTab(id: string, source: 'click' | 'arrow'): void {
+    setStage('panes')
+    setSlots((current) => assignTabToPane(current, focusedIndex, id))
+    if (source === 'click') requestFocus(id)
   }
 
   function closeTerminal(id: string): void {
-    const index = terminals.findIndex((info) => info.id === id)
-    if (selectedRef.current === id) {
-      const left = index > 0 ? terminals[index - 1].id : null
-      selectedRef.current = left
-      setSelectedId(left)
-      if (left === null) {
-        setMainTab('jobs')
-        document.getElementById('worker-tab-jobs')?.focus()
-      } else {
-        requestFocus(left)
-      }
+    setSlots((current) => emptyPaneForTerminal(current, id))
+    const remaining = visibleTerminals.filter((info) => info.id !== id)
+    if (remaining.length === 0) {
+      setStage('jobs')
+      document.getElementById('worker-tab-jobs')?.focus()
+    } else if (focusedId === id) {
+      requestFocus(remaining[0].id)
     }
-    if (recentOther === id) setRecentOther(null)
     void window.api.closeTerminal(id).catch((err: unknown) => {
       setOpenError(errorText(err))
     })
   }
 
-  async function openProvider(provider: ProviderId): Promise<void> {
+  async function openProvider(
+    provider: ProviderId,
+    worktree?: 'new' | string,
+    size?: { cols: number; rows: number },
+    paneIndex?: number
+  ): Promise<void> {
     if (openingRef.current) return
     openingRef.current = true
     setOpening(true)
     try {
-      const info = await window.api.openTerminal(provider, 100, 30)
+      const cols = size?.cols ?? 100
+      const rows = size?.rows ?? 30
+      const info = await window.api.openTerminal(provider, cols, rows, worktree)
       onTerminal(info)
-      const previous = selectedRef.current
-      if (previous !== null && previous !== info.id) setRecentOther(previous)
-      selectedRef.current = info.id
-      setSelectedId(info.id)
+      if (worktree === 'new' && info.change !== undefined) onSelectWorktree(info.change)
+      setStage('panes')
+      const nextSlots =
+        paneIndex !== undefined
+          ? placeTerminalInPane(slots, paneIndex, info.id)
+          : placeNewTerminal(slots, focusedIndex, info.id)
+      setSlots(nextSlots)
+      const placed = nextSlots.indexOf(info.id)
+      if (placed >= 0) setFocusedIndex(placed)
       requestFocus(info.id)
       setOpenError(null)
     } catch (err: unknown) {
@@ -443,12 +513,12 @@ function Workers({
     try {
       if (worker === 'both') {
         const group = crypto.randomUUID()
-        const edit = isRepo && editFiles
+        const jobAccess = isRepo ? access : 'read'
         const results: JobRecord[] = []
         let submitError: string | null = null
         for (const provider of ['claude', 'cursor'] as const) {
           try {
-            const job = await window.api.submitJob(jobType, text, provider, edit, group)
+            const job = await window.api.submitJob(jobType, text, provider, jobAccess, group)
             results.push(job)
             onJob(job)
           } catch (err: unknown) {
@@ -464,7 +534,7 @@ function Workers({
         return
       }
       const provider = worker === 'auto' ? undefined : worker
-      const job = await window.api.submitJob(jobType, text, provider, isRepo && editFiles)
+      const job = await window.api.submitJob(jobType, text, provider, isRepo ? access : 'read')
       setPrompt('')
       onJob(job)
       setSelectedJobId(job.id)
@@ -496,21 +566,28 @@ function Workers({
     document.getElementById(`job-${next.id}`)?.focus()
   }
 
-  const showJobs = shownId === null && mainTab === 'jobs'
-  const showChanges = shownId === null && mainTab === 'changes'
+  const showJobs = stage === 'jobs'
+  const showChanges = stage === 'changes'
 
   function showMain(tab: 'jobs' | 'changes'): void {
-    const previous = selectedRef.current
-    if (previous !== null) setRecentOther(previous)
-    selectedRef.current = null
-    setSelectedId(null)
-    setMainTab(tab)
+    setStage(tab)
+  }
+
+  function changePaneLayout(next: PaneLayoutId): void {
+    const ids = visibleIds
+    const active = focusedId ?? ids[0] ?? null
+    setSlots(fillPanes(next, ids, active))
+    setFocusedIndex(0)
+    onPaneLayout(next)
+    requestLayoutFit()
   }
 
   function viewChange(id: string): void {
     setSelectedChangeId(id)
     showMain('changes')
   }
+
+  const openWorktree = selectedWorktree ?? worktreeFlag()
 
   return (
     <div className="workers">
@@ -519,12 +596,22 @@ function Workers({
           <Star size={12} />
           <h2 id="workers-heading">Workers</h2>
         </div>
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact workers-focus"
+          aria-pressed={focusMode}
+          onClick={onToggleFocus}
+        >
+          Focus
+        </button>
       </div>
       <TerminalTabs
-        terminals={terminals}
-        active={shownId ?? mainTab}
+        terminals={visibleTerminals}
+        changes={changes}
+        project={project}
+        active={tabActive}
         changeCount={changes.length}
-        split={split}
+        paneLayout={paneLayout}
         opening={opening}
         onSelect={(id, source) => {
           if (id === 'jobs' || id === 'changes') {
@@ -534,12 +621,10 @@ function Workers({
           selectTab(id, source)
         }}
         onClose={closeTerminal}
-        onOpen={(provider) => {
-          void openProvider(provider)
+        onOpen={(provider, worktree) => {
+          void openProvider(provider, openWorktree ?? worktree)
         }}
-        onToggleSplit={() => {
-          setSplit((value) => !value)
-        }}
+        onPaneLayout={changePaneLayout}
       />
       {openError !== null ? (
         <p className="field-error" role="alert">
@@ -611,30 +696,39 @@ function Workers({
                       both (compare)
                     </option>
                   </select>
-                  <label
-                    className="edit-toggle"
-                    htmlFor="job-edit"
+                  <label htmlFor="job-access">Access</label>
+                  <select
+                    id="job-access"
+                    className="job-access"
+                    value={isRepo ? access : 'read'}
                     title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
+                    onChange={(event) => {
+                      const value = asAccess(event.target.value)
+                      setAccess(value)
+                      saveAccess(value)
+                    }}
                   >
-                    <input
-                      id="job-edit"
-                      type="checkbox"
-                      checked={editFiles}
-                      disabled={!isRepo}
-                      title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
-                      onChange={(event) => setEditFiles(event.target.checked)}
-                    />
-                    Let it edit files
-                  </label>
+                    <option value="read">Read only</option>
+                    <option value="edit" disabled={!isRepo}>
+                      Edit files
+                    </option>
+                    <option value="full" disabled={!isRepo}>
+                      Full access
+                    </option>
+                  </select>
+                  {access === 'full' && isRepo ? (
+                    <span className="composer-hint access-hint">
+                      Runs commands on your computer without asking. Its file changes still wait in
+                      Changes.
+                    </span>
+                  ) : null}
                 </div>
                 <button className="btn btn-primary" type="submit" disabled={submitDisabled}>
                   Submit
                 </button>
               </div>
             </div>
-            {noPlanReady ? (
-              <p className="hint">No plan is ready. See Usage on the right.</p>
-            ) : null}
+            {noPlanReady ? <p className="hint">No plan is ready. See Usage on the right.</p> : null}
           </form>
 
           <section className="jobs" aria-label="Jobs">
@@ -648,6 +742,7 @@ function Workers({
                 {newest.map((job, index) => {
                   const isSelected = job.id === selectedJobId
                   const failoverChain = [...job.failedOver, job.provider ?? '—']
+                  const stepTitle = latestStepTitle(job)
                   return (
                     <div
                       key={job.id}
@@ -678,6 +773,11 @@ function Workers({
                           {job.status}
                         </span>
                       </div>
+                      {job.status === 'running' && stepTitle !== undefined ? (
+                        <p className="job-step-live" title={stepTitle}>
+                          {stepTitle}
+                        </p>
+                      ) : null}
                       <div className="job-meta">
                         {metaLine(jobMetaParts(job))}
                         {visibleChange(job, changes) !== null ? (
@@ -702,7 +802,10 @@ function Workers({
                         >
                           <span className="failover-label">Failover</span>
                           {failoverChain.map((name, hop) => (
-                            <span key={`${job.id}-failover-${hop}-${name}`} className="failover-hop">
+                            <span
+                              key={`${job.id}-failover-${hop}-${name}`}
+                              className="failover-hop"
+                            >
                               {hop > 0 ? <FailoverArrow /> : null}
                               <span>{name}</span>
                             </span>
@@ -718,10 +821,7 @@ function Workers({
 
           <section className="output-pane" aria-label="Output">
             {selectedJob === null ? (
-              <EmptyState
-                title="No job selected"
-                guidance="Select a job to see its output."
-              />
+              <EmptyState title="No job selected" guidance="Select a job to see its output." />
             ) : selectedJob.group !== undefined &&
               jobs.some((job) => job.group === selectedJob.group && job.id !== selectedJob.id) ? (
               <CompareOutput
@@ -758,6 +858,7 @@ function Workers({
                   ) : null}
                 </div>
                 <div className="output-body">
+                  <JobSteps job={selectedJob} />
                   <RichText text={selectedJob.output} />
                 </div>
                 {selectedJob.error ? <pre className="output-error">{selectedJob.error}</pre> : null}
@@ -774,34 +875,79 @@ function Workers({
             jobs={jobs}
             selectedId={selectedChangeId}
             onSelect={setSelectedChangeId}
+            claudeAvailable={claudeReady}
+            cursorAvailable={cursorReady}
+            opening={opening}
+            onOpenHere={(provider, changeId) => {
+              void openProvider(provider, changeId, { cols: 120, rows: 30 })
+            }}
           />
         </div>
         <div
           className={
-            shownId === null
-              ? 'terminal-stage is-inactive'
-              : splitOn
-                ? 'terminal-stage is-split'
-                : 'terminal-stage'
+            stage === 'panes' ? `terminal-stage is-${paneLayout}` : 'terminal-stage is-inactive'
           }
-          inert={shownId === null ? true : undefined}
+          inert={stage === 'panes' ? undefined : true}
         >
-          {splitOn ? <div className="terminal-divider" aria-hidden="true" /> : null}
+          {slots.map((id, index) => {
+            if (id !== null) return null
+            return (
+              <div
+                key={`empty-${String(index)}`}
+                className={
+                  focusedIndex === index
+                    ? `pane-empty is-slot-${String(index)} is-focused`
+                    : `pane-empty is-slot-${String(index)}`
+                }
+                onMouseDown={() => {
+                  setFocusedIndex(index)
+                }}
+              >
+                <div className="pane-empty-actions">
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={opening}
+                    onClick={() => {
+                      void openProvider('claude', openWorktree, undefined, index)
+                    }}
+                  >
+                    + Claude
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={opening}
+                    onClick={() => {
+                      void openProvider('cursor', openWorktree, undefined, index)
+                    }}
+                  >
+                    + Cursor
+                  </button>
+                </div>
+              </div>
+            )
+          })}
           {initialTerminalIds === null
             ? null
             : terminals.map((info) => {
-                const placement = placementFor(info.id, shownId, partnerId, splitOn)
+                const placement = slots.indexOf(info.id)
                 return (
                   <TerminalPane
                     key={info.id}
                     info={info}
+                    heading={terminalDisplayTitle(info, changes)}
                     bus={bus}
                     restore={initialTerminalIds.has(info.id)}
-                    placement={placement}
+                    placement={placement >= 0 ? placement : 'hidden'}
+                    focused={placement >= 0 && placement === focusedIndex}
                     focusNonce={focusTermId === info.id ? focusTick : 0}
                     onActivate={() => {
-                      if (shownId === info.id) return
-                      selectTab(info.id, 'click')
+                      if (placement >= 0) setFocusedIndex(placement)
+                      requestFocus(info.id)
+                    }}
+                    onClose={() => {
+                      closeTerminal(info.id)
                     }}
                   />
                 )
