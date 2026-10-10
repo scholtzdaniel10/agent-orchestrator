@@ -451,38 +451,44 @@ test('a throwing listener does not stop the others', async () => {
   }
 })
 
-test('a real pty echoes a line and exits', async () => {
-  const host = new PtyHost({
-    cwd: process.cwd(),
-    launch: () => ({
-      command: process.execPath,
-      args: [
-        '-e',
-        "process.stdin.once('data', d => { console.log('got:' + String(d).trim()); process.exit(0) }); console.log('ready')"
-      ]
+// The native terminal module ships no Linux build.
+test.skipIf(process.platform === 'linux')(
+  'a real pty echoes a line and exits',
+  async () => {
+    const host = new PtyHost({
+      cwd: process.cwd(),
+      launch: () => ({
+        command: process.execPath,
+        args: [
+          '-e',
+          "process.stdin.once('data', d => { console.log('got:' + String(d).trim()); process.exit(0) }); console.log('ready')"
+        ]
+      })
     })
-  })
-  const exits: TerminalInfo[] = []
-  host.onUpdate((info, removed) => {
-    if (!removed && info.status === 'exited') exits.push({ ...info })
-  })
-  const info = await host.open('claude', 80, 24)
-  try {
-    const ready = await waitUntil(() => host.snapshot(info.id).includes('ready'), 15_000)
-    expect(ready, host.snapshot(info.id).slice(-800)).toBe(true)
-    host.write(info.id, 'ping\r')
-    const done = await waitUntil(
-      () => host.snapshot(info.id).includes('got:ping') && exits.some((row) => row.exitCode === 0),
-      15_000
-    )
-    expect(done, host.snapshot(info.id).slice(-800)).toBe(true)
-    expect(
-      exits.some((row) => row.id === info.id && row.status === 'exited' && row.exitCode === 0)
-    ).toBe(true)
-  } finally {
-    host.closeAll()
-  }
-}, 20_000)
+    const exits: TerminalInfo[] = []
+    host.onUpdate((info, removed) => {
+      if (!removed && info.status === 'exited') exits.push({ ...info })
+    })
+    const info = await host.open('claude', 80, 24)
+    try {
+      const ready = await waitUntil(() => host.snapshot(info.id).includes('ready'), 15_000)
+      expect(ready, host.snapshot(info.id).slice(-800)).toBe(true)
+      host.write(info.id, 'ping\r')
+      const done = await waitUntil(
+        () =>
+          host.snapshot(info.id).includes('got:ping') && exits.some((row) => row.exitCode === 0),
+        15_000
+      )
+      expect(done, host.snapshot(info.id).slice(-800)).toBe(true)
+      expect(
+        exits.some((row) => row.id === info.id && row.status === 'exited' && row.exitCode === 0)
+      ).toBe(true)
+    } finally {
+      host.closeAll()
+    }
+  },
+  20_000
+)
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RESTORE_MARK = '\r\n\x1b[2m— restored session —\x1b[0m\r\n'

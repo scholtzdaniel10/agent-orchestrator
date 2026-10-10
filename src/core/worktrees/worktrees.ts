@@ -195,12 +195,16 @@ export class Worktrees {
     if (current !== located.branch) throw new Error('not a change worktree')
   }
 
+  /**
+   * Compared by real path, so neither `..` nor a link can point outside the root. The real path
+   * also undoes a Windows short name (`RUNNER~1`) in the root, which git never reports back.
+   * A path that does not exist yet has no real path and is compared as written.
+   */
   private pathInsideRoot(target: string): boolean {
-    if (!isInside(resolve(this.root), resolve(target))) return false
     try {
-      return isInside(realpathSync(this.root), realpathSync(target))
+      return isInside(realpathSync.native(this.root), realpathSync.native(target))
     } catch {
-      return true
+      return isInside(resolve(this.root), resolve(target))
     }
   }
 
