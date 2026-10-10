@@ -468,6 +468,23 @@ test('onUpdate receives copies and unsubscribe stops them', async () => {
   })
 })
 
+test('a model the CLI does not know fails with a message that says so', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [],
+      exitCode: 1,
+      stderr: '[claude-code:unrecognized_model] {"model":"claude-opus-5-5","query_source":"sdk"}'
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'one')
+    await orch.idle()
+    expect(orch.list()[0].error).toBe(
+      'This CLI version does not know the model claude-opus-5-5. Update the CLI, or pick another model in Usage.'
+    )
+  })
+})
+
 test('failed runs prefer result text, else a trimmed stderr tail', async () => {
   const stderr = ` ${'a'.repeat(600)}END `
   const claude = new FakeAdapter('claude', [

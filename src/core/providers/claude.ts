@@ -50,11 +50,19 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   // Static: the Claude CLI has no command that lists models; help names these aliases.
   async listModels(): Promise<ModelOption[]> {
+    // The CLI has no command that lists models. A short name means the newest one the installed
+    // CLI knows, which lags behind: 2.1.258 turns `opus` into Opus 5 and rejects the 5.5 names.
     return [
-      { id: 'fable', label: 'Fable (latest)' },
-      { id: 'opus', label: 'Opus (latest)' },
-      { id: 'sonnet', label: 'Sonnet (latest)' },
-      { id: 'haiku', label: 'Haiku (latest)' }
+      { id: 'opus', label: 'Opus, newest this CLI knows' },
+      { id: 'claude-opus-5-5', label: 'Opus 5.5' },
+      { id: 'claude-opus-5', label: 'Opus 5' },
+      { id: 'sonnet', label: 'Sonnet, newest this CLI knows' },
+      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+      { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+      { id: 'haiku', label: 'Haiku, newest this CLI knows' },
+      { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
+      { id: 'fable', label: 'Fable, needs usage credits on Pro' },
+      { id: 'claude-fable-5-1', label: 'Fable 5.1, needs usage credits on Pro' }
     ]
   }
 

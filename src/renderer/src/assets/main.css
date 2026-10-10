@@ -2628,13 +2628,6 @@ select {
   opacity: 1;
 }
 
-.model-clear {
-  width: 28px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
-}
-
 .bot-avatar {
   display: block;
   flex: none;

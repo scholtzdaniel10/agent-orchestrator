@@ -305,14 +305,22 @@ process.exit(0)
   }
 })
 
-test('listModels returns the four help-text aliases', async () => {
+test('listModels offers each family by short name and by exact version', async () => {
   const adapter = new ClaudeAdapter({ command: 'claude' })
-  await expect(adapter.listModels()).resolves.toEqual([
-    { id: 'fable', label: 'Fable (latest)' },
-    { id: 'opus', label: 'Opus (latest)' },
-    { id: 'sonnet', label: 'Sonnet (latest)' },
-    { id: 'haiku', label: 'Haiku (latest)' }
+  const ids = (await adapter.listModels()).map((option) => option.id)
+  expect(ids).toEqual([
+    'opus',
+    'claude-opus-5-5',
+    'claude-opus-5',
+    'sonnet',
+    'claude-sonnet-5-5',
+    'claude-sonnet-5',
+    'haiku',
+    'claude-haiku-5-5',
+    'fable',
+    'claude-fable-5-1'
   ])
+  expect(new Set(ids).size).toBe(ids.length)
 })
 
 test('interactive is the resolved binary with no -p', () => {

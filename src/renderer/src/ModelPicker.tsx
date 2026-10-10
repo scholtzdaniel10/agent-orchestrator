@@ -1,7 +1,9 @@
-import { useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { useEffect, useState, type FocusEvent, type KeyboardEvent } from 'react'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ModelOption = Awaited<ReturnType<Window['api']['listModels']>>[number]
+
+const OTHER = '__other__'
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
@@ -16,71 +18,73 @@ function ModelField({
   plan,
   disabled,
   models,
-  onFocus,
   labelTitle
 }: {
   plan: PlanStatus
   disabled: boolean
   models: ModelOption[] | null
-  onFocus: () => void
   labelTitle?: string
 }): React.JSX.Element {
-  const [value, setValue] = useState(plan.model ?? '')
+  const saved = plan.model ?? ''
+  const [typing, setTyping] = useState(false)
+  const [typed, setTyped] = useState(saved)
   const [error, setError] = useState<string | null>(null)
-  const inputId = `model-${plan.id}`
-  const listId = `model-list-${plan.id}`
+  const selectId = `model-${plan.id}`
+  const otherId = `model-other-${plan.id}`
   const errorId = `model-error-${plan.id}`
   const hintId = `model-hint-${plan.id}`
-  const modelSet = plan.model !== null && plan.model !== ''
   const describedBy = [labelTitle !== undefined ? hintId : null, error !== null ? errorId : null]
     .filter((id): id is string => id !== null)
     .join(' ')
+  const listed = models ?? []
+  // A model typed by hand, or saved before the list arrived, still needs a row of its own.
+  const savedIsListed = saved === '' || listed.some((option) => option.id === saved)
 
-  async function commit(raw: string): Promise<void> {
+  async function save(next: string): Promise<void> {
     if (disabled) return
-    const next = raw.trim()
-    const prev = plan.model ?? ''
-    if (next === prev) {
-      setValue(prev)
-      return
-    }
-    setValue(next)
     setError(null)
     try {
       await window.api.setModel(plan.id, next === '' ? null : next)
     } catch (err: unknown) {
       setError(errorText(err))
-      setValue(prev)
     }
   }
 
-  async function clearModel(): Promise<void> {
-    if (disabled) return
-    const prev = plan.model ?? ''
-    setValue('')
-    setError(null)
-    try {
-      await window.api.setModel(plan.id, null)
-    } catch (err: unknown) {
-      setError(errorText(err))
-      setValue(prev)
+  function onSelect(next: string): void {
+    if (next === OTHER) {
+      setTyped(saved)
+      setTyping(true)
+      return
     }
+    setTyping(false)
+    if (next !== saved) void save(next)
+  }
+
+  function commitTyped(raw: string): void {
+    const next = raw.trim()
+    setTyping(false)
+    if (next !== saved) void save(next)
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setTyping(false)
+      return
+    }
     if (event.key !== 'Enter') return
     event.preventDefault()
-    void commit(event.currentTarget.value)
+    commitTyped(event.currentTarget.value)
   }
 
   function onBlur(event: FocusEvent<HTMLInputElement>): void {
     if (!event.currentTarget.isConnected) return
-    void commit(event.currentTarget.value)
+    commitTyped(event.currentTarget.value)
   }
 
   return (
     <div className="model-picker">
-      <label htmlFor={inputId} title={labelTitle}>
+      <label htmlFor={selectId} title={labelTitle}>
         Model
       </label>
       {labelTitle !== undefined ? (
@@ -89,49 +93,49 @@ function ModelField({
         </span>
       ) : null}
       <div className="model-row">
-        <input
-          id={inputId}
+        <select
+          id={selectId}
           className="model-input"
-          list={listId}
-          placeholder="CLI default"
-          value={value}
+          value={typing ? OTHER : saved}
           disabled={disabled}
-          spellCheck={false}
-          autoComplete="off"
           aria-invalid={error !== null ? true : undefined}
           aria-describedby={describedBy === '' ? undefined : describedBy}
-          onFocus={onFocus}
           onChange={(event) => {
-            setValue(event.target.value)
-            if (error !== null) setError(null)
+            onSelect(event.target.value)
           }}
-          onBlur={onBlur}
-          onKeyDown={onKeyDown}
-        />
-        {modelSet ? (
-          <button
-            type="button"
-            className="btn btn-quiet model-clear"
-            aria-label={`Use the CLI default model for ${plan.id}`}
-            disabled={disabled}
-            onMouseDown={(event) => {
-              event.preventDefault()
-            }}
-            onClick={() => {
-              void clearModel()
-            }}
-          >
-            ×
-          </button>
-        ) : null}
+        >
+          <option value="">CLI default</option>
+          {savedIsListed ? null : <option value={saved}>{saved}</option>}
+          {listed.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label === option.id ? option.id : `${option.label} · ${option.id}`}
+            </option>
+          ))}
+          <option value={OTHER}>Other…</option>
+        </select>
       </div>
-      <datalist id={listId}>
-        {models?.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </datalist>
+      {typing ? (
+        <div className="model-row">
+          <label htmlFor={otherId} className="visually-hidden">
+            Model name
+          </label>
+          <input
+            id={otherId}
+            className="model-input"
+            placeholder="Model name, then Enter"
+            value={typed}
+            disabled={disabled}
+            spellCheck={false}
+            autoComplete="off"
+            autoFocus
+            onChange={(event) => {
+              setTyped(event.target.value)
+            }}
+            onBlur={onBlur}
+            onKeyDown={onKeyDown}
+          />
+        </div>
+      ) : null}
       {error !== null ? (
         <p id={errorId} className="field-error" role="alert">
           {error}
@@ -150,21 +154,25 @@ function ModelPicker({
   disabled: boolean
   labelTitle?: string
 }): React.JSX.Element {
-  const started = useRef(false)
   const [models, setModels] = useState<ModelOption[] | null>(null)
+  const { id, available } = plan
 
-  function onFocus(): void {
-    if (started.current) return
-    started.current = true
-    void window.api.listModels(plan.id).then(
+  // Load the list up front: every model has to be there the first time the menu opens.
+  useEffect(() => {
+    if (!available) return
+    let active = true
+    void window.api.listModels(id).then(
       (list) => {
-        setModels(list)
+        if (active) setModels(list)
       },
       () => {
-        started.current = false
+        // The menu still offers the CLI default and a typed name.
       }
     )
-  }
+    return () => {
+      active = false
+    }
+  }, [id, available])
 
   return (
     <ModelField
@@ -172,7 +180,6 @@ function ModelPicker({
       plan={plan}
       disabled={disabled}
       models={models}
-      onFocus={onFocus}
       labelTitle={labelTitle}
     />
   )

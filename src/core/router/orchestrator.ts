@@ -820,6 +820,10 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
 function failureMessage(resultText: string | undefined, stderr: string): string {
   if (resultText) return resultText
   const trimmed = stderr.trim()
+  const unknownModel = /unrecognized_model\]\s*\{"model":"([^"]{1,80})"/.exec(trimmed)
+  if (unknownModel) {
+    return `This CLI version does not know the model ${unknownModel[1]}. Update the CLI, or pick another model in Usage.`
+  }
   if (trimmed.length <= 500) return trimmed
   return trimmed.slice(-500)
 }
