@@ -3535,6 +3535,8 @@ select {
   .theme-picker-label {
     display: none;
   }
+}
+
 .job-access {
   width: 124px;
 }
