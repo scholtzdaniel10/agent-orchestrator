@@ -44,6 +44,8 @@ export interface TerminalRow {
   created_at: number
   updated_at: number
   scrollback: string
+  cwd: string | null
+  change_id: string | null
 }
 
 export const TERMINAL_SCROLLBACK_CAP = 200_000
@@ -115,6 +117,10 @@ const MIGRATIONS: string[] = [
         scrollback TEXT NOT NULL DEFAULT ''
       );
       CREATE INDEX terminals_project ON terminals (project, created_at);
+    `,
+  `
+      ALTER TABLE terminals ADD COLUMN cwd TEXT;
+      ALTER TABLE terminals ADD COLUMN change_id TEXT;
     `
 ]
 
@@ -355,8 +361,9 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO terminals (
-           id, project, provider, model, session_id, title, created_at, updated_at, scrollback
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+           cwd, change_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            project = excluded.project,
            provider = excluded.provider,
@@ -365,7 +372,9 @@ export class Store {
            title = excluded.title,
            created_at = excluded.created_at,
            updated_at = excluded.updated_at,
-           scrollback = excluded.scrollback`
+           scrollback = excluded.scrollback,
+           cwd = excluded.cwd,
+           change_id = excluded.change_id`
       )
       .run(
         row.id,
@@ -376,7 +385,9 @@ export class Store {
         row.title,
         row.created_at,
         row.updated_at,
-        scrollback
+        scrollback,
+        row.cwd,
+        row.change_id
       )
   }
 
@@ -390,7 +401,8 @@ export class Store {
   terminals(project: string): TerminalRow[] {
     const rows = this.db
       .prepare(
-        `SELECT id, project, provider, model, session_id, title, created_at, updated_at, scrollback
+        `SELECT id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+                cwd, change_id
          FROM terminals WHERE project = ? ORDER BY created_at ASC`
       )
       .all(project)
@@ -469,7 +481,9 @@ function mapTerminal(row: Row): TerminalRow {
     title: String(row.title),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
-    scrollback: String(row.scrollback ?? '')
+    scrollback: String(row.scrollback ?? ''),
+    cwd: row.cwd === null || row.cwd === undefined ? null : String(row.cwd),
+    change_id: row.change_id === null || row.change_id === undefined ? null : String(row.change_id)
   }
 }
 

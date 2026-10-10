@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { spawn as spawnPty } from 'node-pty'
 import { TERMINAL_SCROLLBACK_CAP, type Store } from '../router/store'
 import type { ProviderId, TerminalInfo } from '../types'
@@ -38,9 +39,10 @@ const STORE_FLUSH_MS = 2_000
 const CREATE_CHAT_MS = 10_000
 const SNAPSHOT_MAX = 256_000
 const WRITE_MAX = 65_536
-const DEFAULT_MAX_TERMINALS = 8
+const DEFAULT_MAX_TERMINALS = 16
 const DEFAULT_COLS = 100
 const DEFAULT_ROWS = 30
+const CLOSE_CHANGE_MS = 5_000
 // A CLI that cannot resume says so and exits within a few seconds, even on a cold start.
 const PROBATION_MS = 20_000
 const RESTORE_MARK = '\r\n\x1b[2m— restored session —\x1b[0m\r\n'
@@ -56,6 +58,8 @@ interface Session {
   cols: number
   rows: number
   project: string
+  cwd: string
+  exitWaiters: Array<() => void>
   onProbation: boolean
   relaunching: boolean
   removed: boolean
@@ -76,6 +80,7 @@ interface PtyHostOptions {
   clearTimeout?: (id: ReturnType<typeof setTimeout>) => void
   createChat?: CreateChat
   maxTerminals?: number
+  exists?: (path: string) => boolean
 }
 
 /** Drop a "no colour" choice inherited from whoever launched the app, and ask for true colour. */
@@ -104,6 +109,7 @@ export class PtyHost {
   private readonly clearTimeout: (id: ReturnType<typeof setTimeout>) => void
   private readonly createChat: CreateChat | undefined
   private readonly maxTerminals: number
+  private readonly exists: (path: string) => boolean
   private readonly sessions: Session[] = []
   private readonly byId = new Map<string, Session>()
   private readonly opened: Record<ProviderId, number> = { claude: 0, cursor: 0 }
@@ -122,9 +128,15 @@ export class PtyHost {
     this.clearTimeout = opts.clearTimeout ?? clearTimeout
     this.createChat = opts.createChat
     this.maxTerminals = opts.maxTerminals ?? DEFAULT_MAX_TERMINALS
+    this.exists = opts.exists ?? existsSync
   }
 
-  async open(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo> {
+  async open(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    opts?: { cwd?: string; change?: string }
+  ): Promise<TerminalInfo> {
     if (this.liveCount() >= this.maxTerminals) {
       throw new Error('too many terminals')
     }
@@ -136,16 +148,20 @@ export class PtyHost {
       else launchOpts.resume = sessionId
     }
     const n = this.opened[provider] + 1
+    const change = opts?.change
+    const title = change === undefined ? `${provider} ${n}` : `${provider} ${n} · ${change}`
     const info = this.boot({
       id: randomUUID(),
       provider,
-      title: `${provider} ${n}`,
+      title,
       model,
       launchOpts,
       cols,
       rows,
       snapshot: '',
-      startedAt: this.now()
+      startedAt: this.now(),
+      cwd: opts?.cwd,
+      change
     })
     this.opened[provider] = n
     this.persistOpen(info, sessionId)
@@ -171,6 +187,13 @@ export class PtyHost {
         launchOpts.sessionId = sessionId
       }
       const snapshot = `${row.scrollback}${RESTORE_MARK}`
+      const savedCwd = row.cwd
+      if (savedCwd !== null && savedCwd !== '') {
+        if (!this.exists(savedCwd)) {
+          store.deleteTerminal(row.id)
+          continue
+        }
+      }
       try {
         const info = this.boot({
           id: row.id,
@@ -182,7 +205,10 @@ export class PtyHost {
           rows,
           snapshot,
           startedAt: this.now(),
-          onProbation: row.session_id !== null
+          onProbation: row.session_id !== null,
+          cwd: savedCwd === null || savedCwd === '' ? undefined : savedCwd,
+          change: row.change_id ?? undefined,
+          project
         })
         this.opened[provider] += 1
         if (sessionId !== row.session_id) {
@@ -222,6 +248,28 @@ export class PtyHost {
     const session = this.byId.get(id)
     if (!session || session.removed) return
     this.teardown(session, { keepRow: false })
+  }
+
+  async closeChange(id: string): Promise<void> {
+    const matching = this.sessions.filter(
+      (session) => !session.removed && session.info.change === id
+    )
+    if (matching.length === 0) return
+    const waits = matching.map((session) => this.whenExited(session))
+    for (const session of matching) {
+      this.teardown(session, { keepRow: false })
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const done = (): void => {
+        if (settled) return
+        settled = true
+        this.clearTimeout(timer)
+        resolve()
+      }
+      const timer = this.setTimeout(done, CLOSE_CHANGE_MS)
+      void Promise.all(waits).then(done, done)
+    })
   }
 
   /** Free a session that is both closed and exited; its output buffer is the bulk of it. */
@@ -306,8 +354,13 @@ export class PtyHost {
     snapshot: string
     startedAt: number
     onProbation?: boolean
+    cwd?: string
+    change?: string
+    project?: string
   }): TerminalInfo {
     const size = clampSize(args.cols, args.rows)
+    const cwd = args.cwd ?? this.projectDir()
+    const project = args.project ?? this.projectDir()
     const spec = this.launch(args.provider, args.launchOpts)
     let proc: PtyProcess
     try {
@@ -315,7 +368,7 @@ export class PtyHost {
         name: 'xterm-256color',
         cols: size.cols,
         rows: size.rows,
-        cwd: this.projectDir(),
+        cwd,
         env: terminalEnv(spec.env ?? process.env)
       })
     } catch (err) {
@@ -331,6 +384,7 @@ export class PtyHost {
       model: args.model ?? null,
       startedAt: args.startedAt
     }
+    if (args.change !== undefined) info.change = args.change
     const session: Session = {
       info,
       proc,
@@ -340,7 +394,9 @@ export class PtyHost {
       storeTimer: null,
       cols: args.cols,
       rows: args.rows,
-      project: this.projectDir(),
+      project,
+      cwd,
+      exitWaiters: [],
       onProbation: args.onProbation === true,
       relaunching: false,
       removed: false,
@@ -358,17 +414,33 @@ export class PtyHost {
 
   private persistOpen(info: TerminalInfo, sessionId: string | null): void {
     if (!this.store) return
+    const session = this.byId.get(info.id)
     this.store.saveTerminal({
       id: info.id,
-      project: this.projectDir(),
+      project: session?.project ?? this.projectDir(),
       provider: info.provider,
       model: info.model,
       session_id: sessionId,
       title: info.title,
       created_at: info.startedAt,
       updated_at: info.startedAt,
-      scrollback: ''
+      scrollback: '',
+      cwd: session?.cwd ?? this.projectDir(),
+      change_id: info.change ?? null
     })
+  }
+
+  private whenExited(session: Session): Promise<void> {
+    if (session.exited) return Promise.resolve()
+    return new Promise((resolve) => {
+      session.exitWaiters.push(resolve)
+    })
+  }
+
+  private markExited(session: Session): void {
+    session.exited = true
+    const waiters = session.exitWaiters.splice(0)
+    for (const waiter of waiters) waiter()
   }
 
   private teardown(session: Session, opts: { keepRow: boolean }): void {
@@ -451,7 +523,7 @@ export class PtyHost {
   private beginRelaunch(session: Session, exitCode: number): void {
     this.flush(session)
     this.flushStore(session)
-    session.exited = true
+    this.markExited(session)
     session.onProbation = false
     session.relaunching = true
     if (session.info.provider === 'cursor') {
@@ -510,7 +582,7 @@ export class PtyHost {
       name: 'xterm-256color',
       cols: size.cols,
       rows: size.rows,
-      cwd: session.project,
+      cwd: session.cwd,
       env: terminalEnv(spec.env ?? process.env)
     })
     this.attach(session)
@@ -528,7 +600,7 @@ export class PtyHost {
   }
 
   private finishExit(session: Session, exitCode: number): void {
-    session.exited = true
+    this.markExited(session)
     session.relaunching = false
     this.flush(session)
     this.flushStore(session)

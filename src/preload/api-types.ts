@@ -137,7 +137,12 @@ export interface OrchestratorApi {
   onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void
 
   /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
-  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo>
+  openTerminal(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    worktree?: 'new' | string
+  ): Promise<TerminalInfo>
   /** Keystrokes for a terminal. Fire and forget. */
   writeTerminal(id: string, data: string): void
   resizeTerminal(id: string, cols: number, rows: number): void

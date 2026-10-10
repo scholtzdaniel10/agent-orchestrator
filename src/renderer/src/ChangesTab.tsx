@@ -5,6 +5,7 @@ import { parseDiff } from './diff-lines'
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ChangedFile = ChangeSet['files'][number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
+type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 
 const DIFF_LINE_CAP = 5000
 
@@ -120,12 +121,20 @@ function ChangesTab({
   changes,
   jobs,
   selectedId,
-  onSelect
+  onSelect,
+  claudeAvailable,
+  cursorAvailable,
+  opening,
+  onOpenHere
 }: {
   changes: ChangeSet[]
   jobs: JobRecord[]
   selectedId: string | null
   onSelect: (id: string | null) => void
+  claudeAvailable: boolean
+  cursorAvailable: boolean
+  opening: boolean
+  onOpenHere: (provider: ProviderId, changeId: string) => void
 }): React.JSX.Element {
   const [listSeen, setListSeen] = useState(changes)
   const [listTick, setListTick] = useState(0)
@@ -402,11 +411,15 @@ function ChangesTab({
                 >
                   <span className="change-id">{item.id}</span>
                   <span className="change-origin">{jobTypeFor(jobs, item.id)}</span>
-                  <ChangeStats
-                    files={item.files.length}
-                    insertions={item.insertions}
-                    deletions={item.deletions}
-                  />
+                  {item.files.length === 0 ? (
+                    <span className="change-stats">No changes yet</span>
+                  ) : (
+                    <ChangeStats
+                      files={item.files.length}
+                      insertions={item.insertions}
+                      deletions={item.deletions}
+                    />
+                  )}
                 </div>
               )
             })}
@@ -415,16 +428,27 @@ function ChangesTab({
             <div className="change-detail">
               <div className="change-head">
                 <span className="change-branch">{selected.branch}</span>
-                <ChangeStats
-                  files={selected.files.length}
-                  insertions={selected.insertions}
-                  deletions={selected.deletions}
-                />
+                {selected.files.length === 0 ? (
+                  <span className="change-stats">No changes yet</span>
+                ) : (
+                  <ChangeStats
+                    files={selected.files.length}
+                    insertions={selected.insertions}
+                    deletions={selected.deletions}
+                  />
+                )}
               </div>
               <div className="change-actions">
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={onMerge}>
-                  Merge
-                </button>
+                {selected.files.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy}
+                    onClick={onMerge}
+                  >
+                    Merge
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={confirming ? 'btn btn-quiet is-danger-label' : 'btn btn-quiet'}
@@ -433,24 +457,54 @@ function ChangesTab({
                 >
                   {confirming ? 'Discard for good?' : 'Discard'}
                 </button>
+                {claudeAvailable ? (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-compact"
+                    disabled={opening || busy}
+                    onClick={() => {
+                      onOpenHere('claude', selected.id)
+                    }}
+                  >
+                    Claude here
+                  </button>
+                ) : null}
+                {cursorAvailable ? (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-compact"
+                    disabled={opening || busy}
+                    onClick={() => {
+                      onOpenHere('cursor', selected.id)
+                    }}
+                  >
+                    Cursor here
+                  </button>
+                ) : null}
               </div>
-              <p className="change-help">
-                Merge applies this to your project as staged changes. Nothing is committed.
-              </p>
+              {selected.files.length > 0 ? (
+                <p className="change-help">
+                  Merge applies this to your project as staged changes. Nothing is committed.
+                </p>
+              ) : null}
               {badNotice !== null ? (
                 <p className="field-error" role="alert">
                   {badNotice}
                 </p>
               ) : null}
-              <ul className="change-files">
-                {selected.files.map((file) => (
-                  <li key={file.path} className="change-file">
-                    <span className="change-path">{file.path}</span>
-                    <FileStat file={file} />
-                  </li>
-                ))}
-              </ul>
-              <DiffPane key={`${selected.id}:${listTick}`} id={selected.id} />
+              {selected.files.length > 0 ? (
+                <>
+                  <ul className="change-files">
+                    {selected.files.map((file) => (
+                      <li key={file.path} className="change-file">
+                        <span className="change-path">{file.path}</span>
+                        <FileStat file={file} />
+                      </li>
+                    ))}
+                  </ul>
+                  <DiffPane key={`${selected.id}:${listTick}`} id={selected.id} />
+                </>
+              ) : null}
             </div>
           )}
         </div>

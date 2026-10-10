@@ -31,6 +31,8 @@ function terminal(
     created_at: 10,
     updated_at: 10,
     scrollback: '',
+    cwd: null,
+    change_id: null,
     ...partial
   }
 }
@@ -212,10 +214,16 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 })
     expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
       name: 'terminals'
     })
+    const cols = check
+      .prepare(`SELECT name FROM pragma_table_info('terminals') ORDER BY name`)
+      .all() as Array<{ name: string }>
+    expect(cols.map((col) => col.name)).toEqual(
+      expect.arrayContaining(['cwd', 'change_id', 'id', 'project', 'scrollback'])
+    )
     check.close()
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -368,7 +376,9 @@ test('terminals upsert, list oldest first, update scrollback, delete, and cap', 
       provider: 'claude',
       model: 'opus',
       session_id: 's2',
-      title: 'claude 2'
+      title: 'claude 2',
+      cwd: null,
+      change_id: null
     })
     store.saveTerminal(
       terminal({
@@ -404,6 +414,21 @@ test('terminals upsert, list oldest first, update scrollback, delete, and cap', 
     expect(store.terminals('/b').map((row) => row.id)).toEqual(['t3'])
     store.deleteTerminal('missing')
     expect(store.terminals('/a')).toHaveLength(2)
+
+    store.saveTerminal(
+      terminal({
+        id: 't5',
+        project: '/a',
+        created_at: 40,
+        cwd: '/wt/3fa9c1d2',
+        change_id: '3fa9c1d2'
+      })
+    )
+    expect(store.terminals('/a')[2]).toMatchObject({
+      id: 't5',
+      cwd: '/wt/3fa9c1d2',
+      change_id: '3fa9c1d2'
+    })
   })
 })
 

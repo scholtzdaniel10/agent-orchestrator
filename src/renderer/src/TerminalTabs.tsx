@@ -1,4 +1,4 @@
-import { useEffect, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
@@ -63,10 +63,11 @@ function TerminalTabs({
   opening: boolean
   onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
-  onOpen: (provider: ProviderId) => void
+  onOpen: (provider: ProviderId, worktree?: 'new') => void
   onToggleSplit: () => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
+  const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
 
   useEffect(() => {
     if (project === '') return
@@ -169,7 +170,7 @@ function TerminalTabs({
           aria-label="New claude terminal"
           disabled={opening}
           onClick={() => {
-            onOpen('claude')
+            onOpen('claude', newWorktree ? 'new' : undefined)
           }}
         >
           <BotAvatar bot="claude" state="idle" size={16} />+ claude
@@ -180,10 +181,25 @@ function TerminalTabs({
           aria-label="New cursor terminal"
           disabled={opening}
           onClick={() => {
-            onOpen('cursor')
+            onOpen('cursor', newWorktree ? 'new' : undefined)
           }}
         >
           <BotAvatar bot="cursor" state="idle" size={16} />+ cursor
+        </button>
+        <button
+          type="button"
+          className="btn btn-quiet tab-worktree"
+          aria-pressed={newWorktree}
+          title="Start new terminals in their own git worktree"
+          onClick={() => {
+            setNewWorktree((on) => {
+              const next = !on
+              writeNewWorktree(next)
+              return next
+            })
+          }}
+        >
+          Worktree
         </button>
         <button
           type="button"
@@ -196,6 +212,22 @@ function TerminalTabs({
       </div>
     </div>
   )
+}
+
+function readNewWorktree(): boolean {
+  try {
+    return localStorage.getItem('orch.newWorktree') === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeNewWorktree(on: boolean): void {
+  try {
+    localStorage.setItem('orch.newWorktree', on ? '1' : '0')
+  } catch {
+    // Private mode or a full quota must not block the toggle.
+  }
 }
 
 export default TerminalTabs

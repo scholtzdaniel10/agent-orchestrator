@@ -15,6 +15,7 @@ Ordered. The top item is the next one to build.
 - Tested CLI versions are stated; a readable error when a CLI's output changes.
 - Terminal sessions are saved per project and come back after a restart.
 - Reviewed what a worker may do and the Electron security settings; Claude workers are denied a shell and the person's MCP servers.
+- Open a terminal in its own git worktree, from the Workers header or from Changes.
 
 ## Next
 

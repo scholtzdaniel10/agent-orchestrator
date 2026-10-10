@@ -297,6 +297,41 @@ describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
     }
   })
 
+  test('ids lists every worktree including ones with no file changes', async () => {
+    const { root, project, wt } = await tempRoot()
+    const outside = join(root, 'outside')
+    try {
+      mkdirSync(outside)
+      const trees = new Worktrees({ root: wt })
+      expect(await trees.ids(project)).toEqual([])
+      const quiet = await trees.create(project, 'ccccccc1-0000-0000-0000-000000000000')
+      expect(await trees.list(project)).toEqual([])
+      expect(await trees.ids(project)).toEqual(['ccccccc1'])
+      expect(trees.folder('ccccccc1')).toBe(quiet.path)
+
+      await gitOk(project, [
+        'worktree',
+        'add',
+        '-b',
+        'orch/abcdef12',
+        join(outside, 'abcdef12'),
+        'HEAD'
+      ])
+      await gitOk(project, ['worktree', 'add', '-b', 'side', join(wt, 'side'), 'HEAD'])
+      const later = await trees.create(project, 'bbbbbbb2-0000-0000-0000-000000000000')
+      writeFileSync(join(later.path, 'notes.txt'), 'alpha\nours\n')
+      expect(await trees.ids(project)).toEqual(['bbbbbbb2', 'ccccccc1'])
+      expect((await trees.list(project)).map((change) => change.id)).toEqual(['bbbbbbb2'])
+
+      const plain = join(root, 'plain')
+      mkdirSync(plain)
+      await expect(trees.ids(plain)).resolves.toEqual([])
+      await expect(trees.ids(join(root, 'missing'))).resolves.toEqual([])
+    } finally {
+      await cleanup(root)
+    }
+  })
+
   test('a bad id is rejected before git runs', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ao-wt-'))
     try {
@@ -309,6 +344,7 @@ describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
         await expect(trees.diff(plain, id)).rejects.toThrow(/^invalid change id$/)
         await expect(trees.merge(plain, id)).rejects.toThrow(/^invalid change id$/)
         await expect(trees.discard(plain, id)).rejects.toThrow(/^invalid change id$/)
+        expect(() => trees.folder(id)).toThrow(/^invalid change id$/)
       }
     } finally {
       await cleanup(root)

@@ -3402,3 +3402,17 @@ select {
 .project-bar .project-github-glyph {
   display: inline !important;
 }
+
+.tab-actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.tab-actions .btn {
+  padding: 0 6px;
+}
+
+.tab-worktree[aria-pressed='true'] {
+  border-color: var(--signal);
+  background: var(--raised);
+}

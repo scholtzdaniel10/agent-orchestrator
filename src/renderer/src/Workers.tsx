@@ -413,12 +413,18 @@ function Workers({
     })
   }
 
-  async function openProvider(provider: ProviderId): Promise<void> {
+  async function openProvider(
+    provider: ProviderId,
+    worktree?: 'new' | string,
+    size?: { cols: number; rows: number }
+  ): Promise<void> {
     if (openingRef.current) return
     openingRef.current = true
     setOpening(true)
     try {
-      const info = await window.api.openTerminal(provider, 100, 30)
+      const cols = size?.cols ?? 100
+      const rows = size?.rows ?? 30
+      const info = await window.api.openTerminal(provider, cols, rows, worktree)
       onTerminal(info)
       const previous = selectedRef.current
       if (previous !== null && previous !== info.id) setRecentOther(previous)
@@ -533,8 +539,8 @@ function Workers({
           selectTab(id, source)
         }}
         onClose={closeTerminal}
-        onOpen={(provider) => {
-          void openProvider(provider)
+        onOpen={(provider, worktree) => {
+          void openProvider(provider, worktree)
         }}
         onToggleSplit={() => {
           setSplit((value) => !value)
@@ -771,6 +777,12 @@ function Workers({
             jobs={jobs}
             selectedId={selectedChangeId}
             onSelect={setSelectedChangeId}
+            claudeAvailable={claudeReady}
+            cursorAvailable={cursorReady}
+            opening={opening}
+            onOpenHere={(provider, changeId) => {
+              void openProvider(provider, changeId, { cols: 120, rows: 30 })
+            }}
           />
         </div>
         <div

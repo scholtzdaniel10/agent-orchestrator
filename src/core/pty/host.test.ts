@@ -76,6 +76,7 @@ function makeHost(partial?: {
   createChat?: () => Promise<string>
   killTree?: (proc: PtyProcess) => void
   spawn?: SpawnPty
+  exists?: (path: string) => boolean
 }): { host: PtyHost; ptys: FakePty[]; calls: SpawnCall[] } {
   const ptys: FakePty[] = []
   const calls: SpawnCall[] = []
@@ -86,6 +87,7 @@ function makeHost(partial?: {
     store: partial?.store,
     now: partial?.now,
     createChat: partial?.createChat,
+    exists: partial?.exists ?? (() => true),
     launch:
       partial?.launch ??
       ((provider, opts) => ({
@@ -203,11 +205,11 @@ test('cwd is read when a terminal opens', async () => {
 
 test('open throws at the terminal limit', async () => {
   const { host, calls } = makeHost()
-  for (let i = 0; i < 8; i++) await host.open(i % 2 === 0 ? 'claude' : 'cursor', 80, 24)
-  expect(host.list()).toHaveLength(8)
+  for (let i = 0; i < 16; i++) await host.open(i % 2 === 0 ? 'claude' : 'cursor', 80, 24)
+  expect(host.list()).toHaveLength(16)
   await expect(host.open('claude', 80, 24)).rejects.toThrow('too many terminals')
-  expect(host.list()).toHaveLength(8)
-  expect(calls).toHaveLength(8)
+  expect(host.list()).toHaveLength(16)
+  expect(calls).toHaveLength(16)
 })
 
 test('a throwing spawn names the provider and registers nothing', async () => {
@@ -496,6 +498,8 @@ function putTerminal(
     session_id?: string | null
     title?: string
     scrollback?: string
+    cwd?: string | null
+    change_id?: string | null
   }
 ): string {
   const id = partial?.id ?? 'term-1'
@@ -508,7 +512,9 @@ function putTerminal(
     title: partial?.title ?? 'claude 1',
     created_at: 1,
     updated_at: 1,
-    scrollback: partial?.scrollback ?? 'old'
+    scrollback: partial?.scrollback ?? 'old',
+    cwd: partial?.cwd === undefined ? null : partial.cwd,
+    change_id: partial?.change_id === undefined ? null : partial.change_id
   })
   return id
 }
@@ -574,7 +580,9 @@ test('a row is written on open', async () => {
       model: 'opus',
       title: 'claude 1',
       created_at: 50,
-      scrollback: ''
+      scrollback: '',
+      cwd: '/proj',
+      change_id: null
     })
     expect(rows[0].session_id).toMatch(SESSION_ID)
     expect(rows[1]).toMatchObject({
@@ -665,7 +673,9 @@ test('restore relaunches with --resume, seeds the snapshot, keeps ids, and is id
       title: 'claude 9',
       created_at: 1,
       updated_at: 1,
-      scrollback: 'nope'
+      scrollback: 'nope',
+      cwd: null,
+      change_id: null
     })
 
     const second = makeHost({
@@ -924,6 +934,82 @@ test('close during a pending cursor relaunch starts no process and deletes the r
   } finally {
     store.close()
   }
+})
+
+test('cwd and change are passed to the spawn and saved; title carries the id', async () => {
+  const store = new Store(':memory:')
+  try {
+    const { host, calls } = makeHost({ store, cwd: '/proj', now: () => 7 })
+    const info = await host.open('claude', 80, 24, { cwd: '/wt/3fa9c1d2', change: '3fa9c1d2' })
+    expect(calls[0].opts.cwd).toBe('/wt/3fa9c1d2')
+    expect(info).toMatchObject({
+      title: 'claude 1 · 3fa9c1d2',
+      change: '3fa9c1d2',
+      provider: 'claude'
+    })
+    expect(store.terminals('/proj')[0]).toMatchObject({
+      id: info.id,
+      project: '/proj',
+      cwd: '/wt/3fa9c1d2',
+      change_id: '3fa9c1d2',
+      title: 'claude 1 · 3fa9c1d2'
+    })
+  } finally {
+    store.close()
+  }
+})
+
+test('restore uses the saved cwd', async () => {
+  const store = new Store(':memory:')
+  try {
+    putTerminal(store, { cwd: '/saved/path', change_id: 'aabbccdd', title: 'claude 1 · aabbccdd' })
+    const { host, calls } = makeHost({ store, cwd: 'work' })
+    const restored = host.restore('work', 80, 24)
+    expect(calls[0].opts.cwd).toBe('/saved/path')
+    expect(restored[0]).toMatchObject({
+      id: 'term-1',
+      title: 'claude 1 · aabbccdd',
+      change: 'aabbccdd'
+    })
+  } finally {
+    store.close()
+  }
+})
+
+test('restore drops a row whose saved folder is gone', async () => {
+  const store = new Store(':memory:')
+  try {
+    putTerminal(store, { cwd: '/gone' })
+    putTerminal(store, { id: 'term-2', cwd: null, title: 'claude 2' })
+    const { host, calls } = makeHost({
+      store,
+      cwd: 'work',
+      exists: (path) => path !== '/gone'
+    })
+    const restored = host.restore('work', 80, 24)
+    expect(restored.map((info) => info.id)).toEqual(['term-2'])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].opts.cwd).toBe('work')
+    expect(store.terminals('work').map((row) => row.id)).toEqual(['term-2'])
+  } finally {
+    store.close()
+  }
+})
+
+test('closeChange closes only matching terminals and resolves', async () => {
+  const { host, ptys } = makeHost()
+  const keptA = await host.open('claude', 80, 24, { change: 'bbb22222', cwd: 'wb' })
+  const gone = await host.open('cursor', 80, 24, { change: 'aaa11111', cwd: 'wa' })
+  const keptB = await host.open('claude', 80, 24)
+  const pending = host.closeChange('aaa11111')
+  expect(host.list()).toHaveLength(2)
+  expect(host.list().map((info) => info.id)).toEqual(expect.arrayContaining([keptA.id, keptB.id]))
+  expect(host.list().some((info) => info.id === gone.id)).toBe(false)
+  ptys[1].exit(1)
+  await pending
+  expect(host.list()).toHaveLength(2)
+  expect(host.list().map((info) => info.id)).toEqual(expect.arrayContaining([keptA.id, keptB.id]))
+  await host.closeChange('missing0')
 })
 
 test('stored scrollback is capped at the last 200_000 characters', async () => {

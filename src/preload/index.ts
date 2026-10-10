@@ -148,8 +148,13 @@ const api: OrchestratorApi = {
       ipcRenderer.removeListener('lead:update', listener)
     }
   },
-  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo> {
-    return ipcRenderer.invoke('terminals:open', provider, cols, rows)
+  openTerminal(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    worktree?: 'new' | string
+  ): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('terminals:open', provider, cols, rows, worktree)
   },
   writeTerminal(id: string, data: string): void {
     ipcRenderer.send('terminals:write', id, data)
