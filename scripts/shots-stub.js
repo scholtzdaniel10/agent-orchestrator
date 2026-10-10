@@ -19,7 +19,10 @@
           running: 0,
           queued: 0,
           model: null,
-          windows: []
+          windows: [],
+          version: null,
+          versionStatus: 'unknown',
+          testedVersion: '2.1.258'
         },
         {
           id: 'cursor',
@@ -33,7 +36,10 @@
           running: 0,
           queued: 0,
           model: null,
-          windows: []
+          windows: [],
+          version: null,
+          versionStatus: 'unknown',
+          testedVersion: '2026.09.08-6caf4ff'
         }
       ]
     : [
@@ -51,7 +57,10 @@
           windows: [
             { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
             { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
-          ]
+          ],
+          version: '2.1.258',
+          versionStatus: 'tested',
+          testedVersion: '2.1.258'
         },
         {
           id: 'cursor',
@@ -64,7 +73,10 @@
           running: 0,
           queued: 0,
           model: 'gpt-5',
-          windows: []
+          windows: [],
+          version: '2026.09.08-6caf4ff',
+          versionStatus: 'tested',
+          testedVersion: '2026.09.08-6caf4ff'
         }
       ]
   const jobs = empty

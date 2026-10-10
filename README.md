@@ -83,6 +83,13 @@ Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds 
 
 Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild.
 
+## Tested with
+
+- Claude Code `2.1.258`
+- Cursor CLI `2026.09.08-6caf4ff`
+
+Newer CLI versions usually work; the app tells you when one sends output it does not understand.
+
 ## License
 
 MIT

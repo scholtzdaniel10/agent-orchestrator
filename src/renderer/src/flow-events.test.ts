@@ -22,6 +22,9 @@ function plan(partial: Partial<PlanStatus> & Pick<PlanStatus, 'id'>): PlanStatus
     queued: 0,
     model: null,
     windows: [],
+    version: null,
+    versionStatus: 'unknown',
+    testedVersion: '2.1.258',
     ...partial
   }
 }

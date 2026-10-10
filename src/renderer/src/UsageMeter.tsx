@@ -31,6 +31,15 @@ function planStatusLabel(plan: PlanStatus, word: PlanWord): string {
   return word
 }
 
+function cliVersionLine(plan: PlanStatus): string {
+  if (plan.version === null || plan.versionStatus === 'unknown') return 'CLI version unknown'
+  if (plan.versionStatus === 'tested') return `CLI ${plan.version}`
+  if (plan.versionStatus === 'newer') {
+    return `CLI ${plan.version} · newer than tested (${plan.testedVersion})`
+  }
+  return `CLI ${plan.version} · older than tested (${plan.testedVersion}) — update it`
+}
+
 function problemNotice(plan: PlanStatus): string | null {
   if (plan.problem === 'not-installed') {
     return plan.id === 'claude'
@@ -290,6 +299,9 @@ function UsageMeter({
                   disabled={planUnusable(word)}
                   labelTitle={plan.id === 'cursor' ? CURSOR_MODEL_HINT : undefined}
                 />
+                {plan.problem === 'not-installed' ? null : (
+                  <p className="hint">{cliVersionLine(plan)}</p>
+                )}
               </div>
             </div>
           )

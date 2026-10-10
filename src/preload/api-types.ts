@@ -8,7 +8,8 @@ import type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
-  TerminalInfo
+  TerminalInfo,
+  VersionStatus
 } from '../core/types'
 import type { JobRecord } from '../core/router'
 
@@ -40,6 +41,11 @@ export interface PlanStatus {
   model: string | null
   /** Each allowance window the plan reports (empty when only an estimate exists). */
   windows: PlanWindow[]
+  /** Token from the CLI's `--version`, or null when unknown. */
+  version: string | null
+  versionStatus: VersionStatus
+  /** The CLI version this app was tested with. */
+  testedVersion: string
 }
 
 /** One allowance window of a plan, e.g. Claude's five-hour and weekly windows. */

@@ -10,7 +10,8 @@ import type {
   RunOptions,
   UsageWindow
 } from '../types'
-import { runCaptured, spawnCli, type Bin } from './process'
+import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
+import { parseCliVersion } from './versions'
 
 const LIMIT_RE =
   /rate.?limit|usage limit|limit reached|hit your (usage )?limit|out of (usage|credits)/i
@@ -18,14 +19,23 @@ const LIMIT_RE =
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = 'claude' as const
   private readonly bin: Bin
+  private versionCapture: Promise<CapturedRun> | null = null
 
   constructor(bin?: Bin) {
     this.bin = bin ?? resolveClaudeBin()
   }
 
   async isInstalled(): Promise<boolean> {
-    const { code } = await runCaptured(this.bin, ['--version'])
+    this.versionCapture = runCaptured(this.bin, ['--version'])
+    const { code } = await this.versionCapture
     return code === 0
+  }
+
+  async version(): Promise<string | null> {
+    const captured =
+      this.versionCapture ?? (this.versionCapture = runCaptured(this.bin, ['--version']))
+    const { stdout } = await captured
+    return parseCliVersion(this.id, stdout)
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -77,12 +87,20 @@ export class ClaudeAdapter implements ProviderAdapter {
       )
     }
     if (opts?.model) args.push('--model', opts.model)
-    return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseEvent(line))
+    return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseLine(line))
   }
 
   parseEvent(line: string): AgentEvent | null {
+    const parsed = this.parseLine(line)
+    return parsed === null || parsed === 'ignored' ? null : parsed
+  }
+
+  private parseLine(line: string): LineParse {
     try {
-      return mapClaude(JSON.parse(line), (text) => this.isLimitError(text))
+      const value: unknown = JSON.parse(line)
+      const event = mapClaude(value, (text) => this.isLimitError(text))
+      if (event) return event
+      return knownClaudeType(value) ? 'ignored' : null
     } catch {
       return null
     }
@@ -231,6 +249,17 @@ function resultEvent(
 
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function knownClaudeType(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return (
+    value.type === 'system' ||
+    value.type === 'assistant' ||
+    value.type === 'rate_limit_event' ||
+    value.type === 'result' ||
+    value.type === 'user'
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

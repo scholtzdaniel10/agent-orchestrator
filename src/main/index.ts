@@ -10,6 +10,7 @@ import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
+import { TESTED_VERSIONS } from '../core/providers/versions'
 import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
@@ -190,7 +191,10 @@ app.whenReady().then(async () => {
         windows: worker.windows,
         busy: worker.busy,
         running: worker.running,
-        queued: worker.queued
+        queued: worker.queued,
+        version: worker.version,
+        versionStatus: worker.versionStatus,
+        testedVersion: TESTED_VERSIONS[worker.id]
       }
       if (worker.problem !== undefined) status.problem = worker.problem
       return status

@@ -47,9 +47,10 @@ async function cliArgs(handle: RunHandle): Promise<string[]> {
   return JSON.parse(exit.stderr) as string[]
 }
 
-async function collect(
-  handle: RunHandle
-): Promise<{ events: AgentEvent[]; exit: { code: number | null; stderr: string } }> {
+async function collect(handle: RunHandle): Promise<{
+  events: AgentEvent[]
+  exit: { code: number | null; stderr: string; unreadable?: boolean }
+}> {
   const events: AgentEvent[] = []
   for await (const event of handle.events) events.push(event)
   return { events, exit: await handle.exit }
@@ -172,6 +173,7 @@ process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
     const { events, exit } = await collect(adapter.run(job, dir))
     expect(events).toEqual(eventsFromFixture(adapter, 'claude-plain.ndjson'))
     expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(false)
     expect(exit.stderr).toBe(prompt)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -326,6 +328,57 @@ test('interactive is the resolved binary with no -p', () => {
     command: 'node.exe',
     args: ['cli.js', '--model', 'sonnet']
   })
+})
+
+test('unknown-format fixture is unreadable and has no result event', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-claude-unknown-'))
+  const fixturePath = join(fixtureDir, 'claude-unknown-format.synthetic.ndjson')
+  const script = writeScript(
+    dir,
+    'replay.mjs',
+    `import { readFileSync } from 'node:fs'
+process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
+`
+  )
+  const adapter = new ClaudeAdapter({ command: process.execPath, args: [script] })
+  try {
+    const raw = readFileSync(fixturePath, 'utf8')
+    for (const line of raw.split('\n')) {
+      if (line.trim()) expect(adapter.parseEvent(line.trim())).toBeNull()
+    }
+    const { events, exit } = await collect(adapter.run({ id: 'u', prompt: 'hi' }, dir))
+    expect(events.some((event) => event.kind === 'result')).toBe(false)
+    expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('isInstalled and version share one --version call', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-claude-ver-'))
+  const counter = join(dir, 'count.txt')
+  const script = writeScript(
+    dir,
+    'version.mjs',
+    `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(counter)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+process.stdout.write('2.1.258 (Claude Code)\\n')
+`
+  )
+  const adapter = new ClaudeAdapter({ command: process.execPath, args: [script] })
+  try {
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2.1.258')
+    expect(readFileSync(counter, 'utf8')).toBe('1')
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2.1.258')
+    expect(readFileSync(counter, 'utf8')).toBe('2')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('missing CLI resolves exit and ends events', async () => {
