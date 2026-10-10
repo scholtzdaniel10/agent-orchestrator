@@ -3549,3 +3549,17 @@ select {
   flex: 1 0 100%;
   margin: 0;
 }
+
+.tab-actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.tab-actions .btn {
+  padding: 0 6px;
+}
+
+.tab-worktree[aria-pressed='true'] {
+  border-color: var(--signal);
+  background: var(--raised);
+}

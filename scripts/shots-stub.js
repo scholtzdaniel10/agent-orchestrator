@@ -401,15 +401,19 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     renameLeadChat: ok(undefined),
     removeLeadChat: ok(undefined),
     onLeadUpdate: off,
-    openTerminal: (provider) =>
+    openTerminal: (provider, _cols, _rows, worktree) =>
       Promise.resolve({
         id: 't1',
         provider,
-        title: provider + ' 1',
+        title:
+          provider +
+          ' 1' +
+          (typeof worktree === 'string' && worktree !== 'new' ? ' · ' + worktree : ''),
         status: 'running',
         exitCode: null,
         model: null,
-        startedAt: now
+        startedAt: now,
+        change: typeof worktree === 'string' && worktree !== 'new' ? worktree : undefined
       }),
     writeTerminal: () => {},
     resizeTerminal: () => {},

@@ -166,6 +166,8 @@ export interface TerminalInfo {
   model: string | null
   /** Epoch ms. */
   startedAt: number
+  /** Worktree id this session is running in, when it has one. */
+  change?: string
 }
 
 /** One file touched by a job, as git reports it. */

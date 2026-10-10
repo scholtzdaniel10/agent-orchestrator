@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { statSync } from 'fs'
 import { join } from 'path'
@@ -16,6 +17,7 @@ import { PtyHost } from '../core/pty'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
+  ChangeSet,
   GithubRepo,
   JobAccess,
   JobType,
@@ -109,9 +111,31 @@ app.whenReady().then(async () => {
   })
   const github = new Github(runGh)
 
+  async function listedChanges(project: string): Promise<ChangeSet[]> {
+    const listed = await worktrees.list(project)
+    const byId = new Map(listed.map((change) => [change.id, change]))
+    const ids = await worktrees.ids(project)
+    const merged: ChangeSet[] = []
+    for (const id of ids) {
+      const existing = byId.get(id)
+      if (existing !== undefined) {
+        merged.push(existing)
+        continue
+      }
+      merged.push({
+        id,
+        branch: `orch/${id}`,
+        path: worktrees.folder(id),
+        files: [],
+        insertions: 0,
+        deletions: 0
+      })
+    }
+    return merged
+  }
+
   function pushChanges(): void {
-    void worktrees
-      .list(projectDir())
+    void listedChanges(projectDir())
       .then((list) => {
         if (
           mainWindow === null ||
@@ -355,10 +379,33 @@ app.whenReady().then(async () => {
     return mainWindow !== null && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()
   }
 
-  ipcMain.handle('terminals:open', (_event, provider: unknown, cols: unknown, rows: unknown) => {
-    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
-    return terms.open(provider, cols as number, rows as number)
-  })
+  ipcMain.handle(
+    'terminals:open',
+    async (_event, provider: unknown, cols: unknown, rows: unknown, worktree: unknown) => {
+      if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+      let opts: { cwd?: string; change?: string } | undefined
+      if (worktree !== undefined && worktree !== null) {
+        if (worktree === 'new') {
+          const about = await worktrees.info(projectDir())
+          if (!about.isRepo) {
+            throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+          }
+          const created = await worktrees.create(projectDir(), randomUUID())
+          opts = { cwd: created.path, change: created.id }
+        } else {
+          const id = requireChangeId(worktree)
+          const folder = worktrees.folder(id)
+          if (!isFolder(folder)) {
+            throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+          }
+          opts = { cwd: folder, change: id }
+        }
+      }
+      const info = await terms.open(provider, cols as number, rows as number, opts)
+      if (opts !== undefined) pushChanges()
+      return info
+    }
+  )
   ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return
     terms.write(id, data)
@@ -400,7 +447,7 @@ app.whenReady().then(async () => {
     for (const path of paths) {
       try {
         const info = await worktrees.info(path)
-        const changes = (await worktrees.list(path)).length
+        const changes = (await listedChanges(path)).length
         entries.push({ ...info, active: path === active, changes })
       } catch {
         entries.push({
@@ -415,7 +462,7 @@ app.whenReady().then(async () => {
     if (entries.length === 0) {
       try {
         const info = await worktrees.info(active)
-        const changes = (await worktrees.list(active)).length
+        const changes = (await listedChanges(active)).length
         return [{ ...info, active: true, changes }]
       } catch {
         return [{ path: active, isRepo: false, branch: null, active: true, changes: 0 }]
@@ -499,17 +546,21 @@ app.whenReady().then(async () => {
     pushChanges()
     return result
   })
-  ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
+  ipcMain.handle('changes:list', () => listedChanges(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {
     return worktrees.diff(projectDir(), requireChangeId(id))
   })
   ipcMain.handle('changes:merge', async (_event, id: unknown) => {
-    const result = await worktrees.merge(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    await terms.closeChange(changeId)
+    const result = await worktrees.merge(projectDir(), changeId)
     pushChanges()
     return result
   })
   ipcMain.handle('changes:discard', async (_event, id: unknown) => {
-    await worktrees.discard(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    await terms.closeChange(changeId)
+    await worktrees.discard(projectDir(), changeId)
     pushChanges()
   })
 
