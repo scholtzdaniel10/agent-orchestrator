@@ -1089,6 +1089,57 @@ test('failover of an editing job keeps the folder and adds the handoff line', as
   )
 })
 
+test('a full-access job runs in its worktree and passes access through', async () => {
+  const claude = new FakeAdapter('claude', [ok('ran')])
+  const worktrees = fakeWorktrees(async (_project, jobId) => {
+    const id = jobId.slice(0, 8)
+    return { id, path: `wt/${id}`, branch: `orch/${id}` }
+  })
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const submitted = orch.submit('boilerplate', 'do it', undefined, 'full')
+      expect(submitted).toMatchObject({ access: 'full', edit: true })
+      await orch.idle()
+      const id = submitted.id.slice(0, 8)
+      expect(orch.get(submitted.id)).toMatchObject({
+        status: 'done',
+        access: 'full',
+        edit: true,
+        change: id
+      })
+      expect(claude.cwds).toEqual([`wt/${id}`])
+      expect(claude.options[0]).toMatchObject({ access: 'full', edit: true })
+    },
+    undefined,
+    undefined,
+    { worktrees }
+  )
+})
+
+test('an old saved job with edit true and no access comes back as edit', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/proj', 100, {
+      id: 'old-edit',
+      type: 'boilerplate',
+      prompt: 'legacy',
+      provider: 'claude',
+      status: 'done',
+      output: 'ok',
+      failedOver: [],
+      edit: true,
+      change: 'old-edit'
+    })
+    orch.restore('/proj')
+    expect(orch.list()[0]).toMatchObject({
+      id: 'old-edit',
+      access: 'edit',
+      edit: true,
+      change: 'old-edit'
+    })
+  })
+})
+
 test('onChanges fires after an editing run of any outcome', async () => {
   const claude = new FakeAdapter('claude', [
     ok('edited'),

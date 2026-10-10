@@ -4,6 +4,7 @@ Ordered. The top item is the next one to build.
 
 ## Done
 
+- Worker access: read, edit, or full. Full access may run commands, still in a worktree; the person sets a ceiling for jobs the lead hands out.
 - Saved chats and jobs, per project, with past chats listed in the sidebar.
 - Parallel jobs per plan (`maxParallel` in `rules.json`).
 - First-run check. Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app works with only one of them.

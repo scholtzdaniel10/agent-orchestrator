@@ -15,6 +15,18 @@ type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProviderId = PlanStatus['id']
 type PlanChoice = 'auto' | ProviderId
+type JobAccess = 'read' | 'edit' | 'full'
+
+function asAccess(value: string): JobAccess {
+  if (value === 'edit' || value === 'full') return value
+  return 'read'
+}
+
+function accessMark(job: JobRecord): string | null {
+  if (job.access === 'full') return 'FULL'
+  if (job.edit === true || job.access === 'edit') return 'EDIT'
+  return null
+}
 
 function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
   if (status === 'running') return 'working'
@@ -80,7 +92,8 @@ function metaLine(parts: ReactNode[]): React.JSX.Element {
 
 function delegatedMeta(job: JobRecord): ReactNode[] {
   const parts: ReactNode[] = [job.type]
-  if (job.edit === true) parts.push('edits')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
   if (job.reason) parts.push(job.reason)
   return parts
 }
@@ -112,6 +125,8 @@ function LeadChat({
   const [sendError, setSendError] = useState<string | null>(null)
   const [choice, setChoice] = useState<PlanChoice>('auto')
   const [planError, setPlanError] = useState<string | null>(null)
+  const [workerAccess, setWorkerAccess] = useState<JobAccess>('read')
+  const accessRef = useRef<JobAccess>('read')
   const logRef = useRef<HTMLDivElement>(null)
   const sending = useRef(false)
   const resetting = useRef(false)
@@ -132,10 +147,36 @@ function LeadChat({
         setPlanError(errorText(err))
       }
     )
+    void window.api.getLeadAccess().then(
+      (access) => {
+        if (!active) return
+        accessRef.current = access
+        setWorkerAccess(access)
+      },
+      (err: unknown) => {
+        if (!active) return
+        setPlanError(errorText(err))
+      }
+    )
     return () => {
       active = false
     }
   }, [])
+
+  async function changeAccess(value: JobAccess): Promise<void> {
+    const previous = accessRef.current
+    accessRef.current = value
+    setWorkerAccess(value)
+    setPlanError(null)
+    try {
+      await window.api.setLeadAccess(value)
+    } catch (err: unknown) {
+      if (accessRef.current !== value) return
+      accessRef.current = previous
+      setWorkerAccess(previous)
+      setPlanError(errorText(err))
+    }
+  }
 
   async function changePlan(value: PlanChoice): Promise<void> {
     const previous = choiceRef.current
@@ -230,6 +271,20 @@ function LeadChat({
             <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
               cursor
             </option>
+          </select>
+          <label htmlFor="lead-access">Workers may</label>
+          <select
+            id="lead-access"
+            className="plan-choice lead-access"
+            value={workerAccess}
+            disabled={leadStreaming}
+            onChange={(event) => {
+              void changeAccess(asAccess(event.target.value))
+            }}
+          >
+            <option value="read">read only</option>
+            <option value="edit">edit files</option>
+            <option value="full">do anything</option>
           </select>
           <button
             type="button"

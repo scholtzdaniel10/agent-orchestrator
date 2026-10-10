@@ -315,6 +315,64 @@ process.exit(0)
   }
 })
 
+test('full adds --force and does not write a permission file', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-full-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { existsSync, readFileSync, writeSync } from 'node:fs'
+import { join } from 'node:path'
+const cli = join(process.cwd(), '.cursor', 'cli.json')
+const body = existsSync(cli) ? readFileSync(cli, 'utf8') : ''
+writeSync(2, JSON.stringify({ argv: process.argv.slice(2), body, hasCli: existsSync(cli) }))
+process.exit(0)
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  const job = { id: 'job-1', prompt: 'hello' }
+  const base = ['-p', '--trust', '--output-format', 'stream-json']
+  try {
+    const fresh = join(root, 'fresh')
+    mkdirSync(fresh)
+    const created = adapter.run(job, fresh, { access: 'full' })
+    expect(existsSync(join(fresh, '.cursor', 'cli.json'))).toBe(false)
+    const createdExit = await created.exit
+    expect(createdExit.code).toBe(0)
+    const createdReport = JSON.parse(createdExit.stderr) as {
+      argv: string[]
+      body: string
+      hasCli: boolean
+    }
+    expect(createdReport.argv).toEqual([...base, '--force'])
+    expect(createdReport.hasCli).toBe(false)
+    expect(existsSync(join(fresh, '.cursor'))).toBe(false)
+
+    const readDir = join(root, 'read')
+    mkdirSync(readDir)
+    const readExit = await adapter.run(job, readDir, { access: 'read' }).exit
+    expect(JSON.parse(readExit.stderr)).toMatchObject({ argv: base, hasCli: false })
+
+    const editDir = join(root, 'edit')
+    mkdirSync(editDir)
+    const editRun = adapter.run(job, editDir, { access: 'edit' })
+    expect(existsSync(join(editDir, '.cursor', 'cli.json'))).toBe(true)
+    const editExit = await editRun.exit
+    expect(JSON.parse(editExit.stderr)).toMatchObject({ argv: base, hasCli: true })
+    expect(JSON.parse(editExit.stderr).argv).not.toContain('--force')
+    expect(existsSync(join(editDir, '.cursor'))).toBe(false)
+
+    const bridged = join(root, 'bridged')
+    const bridge = { url: 'http://127.0.0.1:9/mcp', token: 'secret-token', tools: ['send_job'] }
+    const bridgeRun = adapter.run(job, bridged, { access: 'full', bridge })
+    const bridgeExit = await bridgeRun.exit
+    const bridgeReport = JSON.parse(bridgeExit.stderr) as { argv: string[] }
+    expect(bridgeReport.argv).toContain('--approve-mcps')
+    expect(bridgeReport.argv).not.toContain('--force')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('unknown-format fixture is unreadable and has no result event', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-unknown-'))
   const fixturePath = join(fixtureDir, 'cursor-unknown-format.synthetic.ndjson')

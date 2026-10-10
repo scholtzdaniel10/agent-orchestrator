@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import type {
-  AgentEvent,
-  BridgeInfo,
-  Job,
-  ModelOption,
-  ProviderAdapter,
-  RunHandle,
-  RunOptions,
-  UsageWindow
+import {
+  accessOf,
+  type AgentEvent,
+  type BridgeInfo,
+  type Job,
+  type JobAccess,
+  type ModelOption,
+  type ProviderAdapter,
+  type RunHandle,
+  type RunOptions,
+  type UsageWindow
 } from '../types'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
@@ -82,8 +84,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
-    if (!opts?.bridge) args.push(...workerLimits(opts?.edit === true))
-    if (opts?.edit) args.push('--permission-mode', 'acceptEdits')
+    if (!opts?.bridge) args.push(...workerArgs(accessOf(opts ?? {})))
     if (opts?.resume) args.push('--resume', opts.resume)
     if (opts?.bridge) {
       mkdirSync(cwd, { recursive: true })
@@ -131,9 +132,19 @@ const WRITE_TOOLS = ['Edit', 'Write', 'NotebookEdit']
 
 /**
  * The person's own Claude settings may allow a shell, edits or their MCP servers everywhere.
- * A worker never gets a shell or those servers, and writes only when it was allowed to edit.
- * Deny rules win over any allow rule or permission mode.
+ * A worker never gets those servers. Read and edit jobs never get a shell, and write only
+ * when allowed to edit. A full-access job may run commands. Deny rules win over any allow
+ * rule or permission mode.
  */
+function workerArgs(access: JobAccess): string[] {
+  if (access === 'full') {
+    return ['--strict-mcp-config', '--permission-mode', 'bypassPermissions']
+  }
+  const limits = workerLimits(access === 'edit')
+  if (access === 'edit') return [...limits, '--permission-mode', 'acceptEdits']
+  return limits
+}
+
 function workerLimits(edit: boolean): string[] {
   const denied = edit ? SHELL_TOOLS : [...SHELL_TOOLS, ...WRITE_TOOLS]
   return ['--disallowedTools', denied.join(','), '--strict-mcp-config']

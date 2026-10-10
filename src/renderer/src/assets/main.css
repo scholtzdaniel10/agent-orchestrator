@@ -3402,3 +3402,16 @@ select {
 .project-bar .project-github-glyph {
   display: inline !important;
 }
+
+.job-access {
+  width: 124px;
+}
+
+.head-actions .lead-access {
+  width: 118px;
+}
+
+.composer-tools .access-hint {
+  flex: 1 0 100%;
+  margin: 0;
+}

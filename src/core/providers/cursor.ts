@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type {
-  AgentEvent,
-  BridgeInfo,
-  Job,
-  ModelOption,
-  ProviderAdapter,
-  RunHandle,
-  RunOptions
+import {
+  accessOf,
+  type AgentEvent,
+  type BridgeInfo,
+  type Job,
+  type ModelOption,
+  type ProviderAdapter,
+  type RunHandle,
+  type RunOptions
 } from '../types'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
@@ -75,8 +76,10 @@ export class CursorAdapter implements ProviderAdapter {
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--trust', '--output-format', 'stream-json']
     if (opts?.resume) args.push('--resume', opts.resume)
-    // bridge wins: its own permission file stays, and edit is ignored.
-    const cleanupEdit = opts?.edit && !opts.bridge ? allowEdits(cwd) : undefined
+    const access = accessOf(opts ?? {})
+    // bridge wins: its own permission file stays, and edit/full are ignored.
+    if (access === 'full' && !opts?.bridge) args.push('--force')
+    const cleanupEdit = access === 'edit' && !opts?.bridge ? allowEdits(cwd) : undefined
     if (opts?.bridge) {
       const cursorDir = join(cwd, '.cursor')
       mkdirSync(cursorDir, { recursive: true })
