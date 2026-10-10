@@ -368,6 +368,10 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }
     ]),
     githubClone: ok(null),
+    githubOpenPr: ok({
+      url: 'https://github.com/acme/agent-orchestrator/pull/1',
+      branch: 'orch/pr-merged-aaaaaa'
+    }),
     listChanges: ok(changes),
     onChangesUpdate: off,
     changeDiff: ok(diff),
