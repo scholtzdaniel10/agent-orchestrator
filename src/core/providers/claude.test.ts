@@ -220,7 +220,10 @@ process.exit(0)
   const token = 'secret-token'
   const bridge = { url, token, tools: ['send_job', 'get_result'] }
   const job = { id: 'job-1', prompt: 'hello' }
-  const base = ['-p', '--output-format', 'stream-json', '--verbose']
+  const start = ['-p', '--output-format', 'stream-json', '--verbose']
+  const strict = '--strict-mcp-config'
+  const base = [...start, '--disallowedTools', 'Bash,PowerShell,Edit,Write,NotebookEdit', strict]
+  const editing = [...start, '--disallowedTools', 'Bash,PowerShell', strict]
   const mcpArgs = (cwd: string): string[] => [
     '--mcp-config',
     join(cwd, 'orchestrator-mcp.json'),
@@ -250,13 +253,13 @@ process.exit(0)
     expect(existsSync(join(resumeDir, 'orchestrator-mcp.json'))).toBe(false)
 
     expect(await cliArgs(adapter.run(job, bridged, { bridge }))).toEqual([
-      ...base,
+      ...start,
       ...mcpArgs(bridged)
     ])
     expect(readFileSync(join(bridged, 'orchestrator-mcp.json'), 'utf8')).toBe(expectedConfig)
 
     expect(await cliArgs(adapter.run(job, both, { resume: 'sess-2', bridge }))).toEqual([
-      ...base,
+      ...start,
       '--resume',
       'sess-2',
       ...mcpArgs(both)
@@ -275,19 +278,19 @@ process.exit(0)
     const all = join(root, 'all')
     expect(
       await cliArgs(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
-    ).toEqual([...base, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
+    ).toEqual([...start, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
 
     const editDir = join(root, 'edit')
     mkdirSync(editDir)
     expect(await cliArgs(adapter.run(job, editDir, { edit: true }))).toEqual([
-      ...base,
+      ...editing,
       '--permission-mode',
       'acceptEdits'
     ])
     expect(
       await cliArgs(adapter.run(job, editDir, { edit: true, resume: 'sess-e', model: 'opus' }))
     ).toEqual([
-      ...base,
+      ...editing,
       '--permission-mode',
       'acceptEdits',
       '--resume',

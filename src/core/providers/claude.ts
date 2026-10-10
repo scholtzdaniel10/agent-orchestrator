@@ -58,6 +58,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
+    if (!opts?.bridge) args.push(...workerLimits(opts?.edit === true))
     if (opts?.edit) args.push('--permission-mode', 'acceptEdits')
     if (opts?.resume) args.push('--resume', opts.resume)
     if (opts?.bridge) {
@@ -91,6 +92,19 @@ export class ClaudeAdapter implements ProviderAdapter {
     if (typeof e === 'string') return LIMIT_RE.test(e)
     return e.kind === 'limit'
   }
+}
+
+const SHELL_TOOLS = ['Bash', 'PowerShell']
+const WRITE_TOOLS = ['Edit', 'Write', 'NotebookEdit']
+
+/**
+ * The person's own Claude settings may allow a shell, edits or their MCP servers everywhere.
+ * A worker never gets a shell or those servers, and writes only when it was allowed to edit.
+ * Deny rules win over any allow rule or permission mode.
+ */
+function workerLimits(edit: boolean): string[] {
+  const denied = edit ? SHELL_TOOLS : [...SHELL_TOOLS, ...WRITE_TOOLS]
+  return ['--disallowedTools', denied.join(','), '--strict-mcp-config']
 }
 
 function claudeMcpConfig(bridge: BridgeInfo): string {
