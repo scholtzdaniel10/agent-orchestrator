@@ -2288,6 +2288,53 @@ select {
   color: var(--diff-add);
 }
 
+.change-ok a {
+  color: inherit;
+}
+
+.change-pr,
+.change-pr-form {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.change-pr-form {
+  width: 100%;
+  max-width: 480px;
+}
+
+.change-pr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.change-pr-field label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.change-pr-field input,
+.change-pr-field textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--inset);
+  color: var(--text);
+}
+
+.change-pr-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
 .change-files {
   flex: none;
   max-height: 30%;

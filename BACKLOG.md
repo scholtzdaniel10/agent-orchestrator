@@ -10,10 +10,9 @@ Ordered. The top item is the next one to build.
 - Stop a job. A button to cancel a running or queued job.
 - GitHub through `gh`: clone a repo into the projects list (hidden when `gh` is missing or signed out).
 - Delete and rename chats.
+- Open a pull request from a merged change via `gh`.
 
 ## Next
-
-1. **Open a pull request from a merged change** via `gh` (clone already ships; `createPr` is ready in core).
 
 ## Before a release
 

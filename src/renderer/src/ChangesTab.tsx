@@ -26,6 +26,11 @@ function fileLabel(count: number): string {
   return count === 1 ? '1 file' : `${count} files`
 }
 
+function titleFromPrompt(prompt: string): string {
+  const line = prompt.split(/\r?\n/, 1)[0] ?? ''
+  return line.trim().slice(0, 72)
+}
+
 function ChangeStats({
   files,
   insertions,
@@ -131,7 +136,16 @@ function ChangesTab({
     tone: 'ok' | 'bad'
     text: string
   } | null>(null)
+  const [githubOn, setGithubOn] = useState(false)
+  const [mergedOk, setMergedOk] = useState(false)
+  const [prForm, setPrForm] = useState(false)
+  const [prTitle, setPrTitle] = useState('')
+  const [prBody, setPrBody] = useState('')
+  const [prOpening, setPrOpening] = useState(false)
+  const [prUrl, setPrUrl] = useState<string | null>(null)
+  const [prError, setPrError] = useState<string | null>(null)
   const busyRef = useRef(false)
+  const titleRef = useRef<HTMLInputElement>(null)
 
   const resolvedId =
     selectedId !== null && changes.some((item) => item.id === selectedId)
@@ -157,9 +171,30 @@ function ChangesTab({
 
   useEffect(() => {
     if (notice === null || notice.tone !== 'ok') return
+    if (githubOn && mergedOk) return
     const timer = window.setTimeout(() => setNotice(null), 5000)
     return () => window.clearTimeout(timer)
-  }, [notice])
+  }, [notice, githubOn, mergedOk])
+
+  useEffect(() => {
+    let active = true
+    void window.api.githubAvailable().then(
+      (ok) => {
+        if (active) setGithubOn(ok)
+      },
+      () => {
+        if (active) setGithubOn(false)
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!prForm) return
+    titleRef.current?.focus()
+  }, [prForm])
 
   function onRowKeyDown(event: KeyboardEvent<HTMLDivElement>, index: number): void {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -195,11 +230,42 @@ function ChangesTab({
   function onMerge(): void {
     if (selected === null) return
     const id = selected.id
+    const prompt = jobs.find((job) => job.change === id)?.prompt ?? ''
     setArmedId(null)
     void run(id, async () => {
       const result = await window.api.mergeChange(id)
       setNotice({ id, tone: result.ok ? 'ok' : 'bad', text: result.message })
+      if (result.ok) {
+        setMergedOk(true)
+        setPrForm(false)
+        setPrUrl(null)
+        setPrError(null)
+        setPrBody('')
+        setPrTitle(titleFromPrompt(prompt))
+      }
     })
+  }
+
+  function onCancelPr(): void {
+    if (prOpening) return
+    setPrForm(false)
+    setPrError(null)
+  }
+
+  async function onOpenPr(): Promise<void> {
+    if (prOpening) return
+    if (prTitle.length < 1 || prTitle.length > 120) return
+    setPrOpening(true)
+    setPrError(null)
+    try {
+      const result = await window.api.githubOpenPr(prTitle, prBody)
+      setPrUrl(result.url)
+      setPrForm(false)
+    } catch (err: unknown) {
+      setPrError(errorText(err))
+    } finally {
+      setPrOpening(false)
+    }
   }
 
   function onDiscard(): void {
@@ -228,6 +294,88 @@ function ChangesTab({
         <p className="change-ok" role="status">
           {okNotice}
         </p>
+      ) : null}
+      {prUrl !== null ? (
+        <p className="change-ok" role="status">
+          {'Pull request opened '}
+          <a href={prUrl} target="_blank" rel="noreferrer">
+            {prUrl}
+          </a>
+        </p>
+      ) : null}
+      {githubOn && mergedOk && prUrl === null && !prForm ? (
+        <div className="change-pr">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy || prOpening}
+            onClick={() => setPrForm(true)}
+          >
+            Open pull request
+          </button>
+        </div>
+      ) : null}
+      {prForm && prUrl === null ? (
+        <form
+          className="change-pr-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void onOpenPr()
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              onCancelPr()
+            }
+          }}
+        >
+          <div className="change-pr-field">
+            <label htmlFor="pr-title">Title</label>
+            <input
+              ref={titleRef}
+              id="pr-title"
+              type="text"
+              value={prTitle}
+              maxLength={120}
+              disabled={prOpening}
+              onChange={(event) => setPrTitle(event.target.value)}
+            />
+          </div>
+          <div className="change-pr-field">
+            <label htmlFor="pr-body">Description</label>
+            <textarea
+              id="pr-body"
+              value={prBody}
+              maxLength={4000}
+              rows={4}
+              disabled={prOpening}
+              onChange={(event) => setPrBody(event.target.value)}
+            />
+          </div>
+          <div className="change-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={prOpening || prTitle.length < 1 || prTitle.length > 120}
+            >
+              Open pull request
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={prOpening}
+              onClick={onCancelPr}
+            >
+              Cancel
+            </button>
+          </div>
+          {prOpening ? <p className="change-help">Opening pull request…</p> : null}
+          {prError !== null ? (
+            <p className="field-error" role="alert">
+              {prError}
+            </p>
+          ) : null}
+        </form>
       ) : null}
       {changes.length === 0 || selected === null ? (
         <div className="changes-empty">

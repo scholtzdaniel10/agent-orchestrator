@@ -98,6 +98,11 @@ export interface OrchestratorApi {
    * Resolves null when the folder picker is cancelled. Refused while work is running.
    */
   githubClone(nameWithOwner: string): Promise<ProjectInfo | null>
+  /**
+   * Commits staged changes on a new branch, pushes, and opens a pull request.
+   * Refused while jobs are running.
+   */
+  githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }>
 
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>

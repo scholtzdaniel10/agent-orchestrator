@@ -22,7 +22,7 @@ The screenshots use fake data and are made with `pnpm shots`.
 - **Projects.** A sidebar lists the folders you work in. One is active at a time; jobs and the lead run there. If the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate). Each plan runs up to three jobs at once, and a job can be stopped.
 - **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
-- **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it.
+- **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it. After a merge, you can open a pull request from those staged changes.
 - **Router.** A rule table plus how much allowance each plan has left picks the provider. Claude's headroom comes from the usage figure its CLI reports.
 - **Adapters.** The app spawns each provider's official CLI headless (`claude -p`, `agent -p`) and reads its `stream-json` output.
 - **Failover.** If a plan reports a limit error, it is marked resting and its queued jobs move to the other plan.

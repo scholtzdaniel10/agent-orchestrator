@@ -84,6 +84,9 @@ const api: OrchestratorApi = {
   githubClone(nameWithOwner: string): Promise<ProjectInfo | null> {
     return ipcRenderer.invoke('github:clone', nameWithOwner)
   },
+  githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }> {
+    return ipcRenderer.invoke('github:openPr', title, body)
+  },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
   },

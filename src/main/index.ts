@@ -453,6 +453,23 @@ app.whenReady().then(async () => {
     const path = await github.clone(nameWithOwner, parent)
     return activateProject(path)
   })
+  ipcMain.handle('github:openPr', async (_event, title: unknown, body: unknown) => {
+    if (
+      typeof title !== 'string' ||
+      title.trim() === '' ||
+      title.length > 120 ||
+      /[\r\n]/.test(title)
+    ) {
+      throw new Error('invalid title')
+    }
+    if (typeof body !== 'string' || body.length > 4000) {
+      throw new Error('invalid description')
+    }
+    assertProjectIdle()
+    const result = await github.openPr(projectDir(), title, body)
+    pushChanges()
+    return result
+  })
   ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {
     return worktrees.diff(projectDir(), requireChangeId(id))
