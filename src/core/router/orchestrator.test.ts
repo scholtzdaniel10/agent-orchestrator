@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { TESTED_VERSIONS, unknownFormatMessage } from '../providers/versions'
 import type {
   AgentEvent,
   Job,
@@ -22,6 +23,7 @@ interface Script {
   pause?: Promise<void>
   exitCode?: number | null
   stderr?: string
+  unreadable?: boolean
   throwOnRun?: boolean
   onStart?: () => void
 }
@@ -33,15 +35,21 @@ class FakeAdapter implements ProviderAdapter {
   readonly options: Array<RunOptions | undefined> = []
   installed = true
   signedIn = true
+  cliVersion: string | null
   private readonly scripts: Script[]
 
   constructor(id: ProviderId, scripts: Script[]) {
     this.id = id
     this.scripts = [...scripts]
+    this.cliVersion = TESTED_VERSIONS[id]
   }
 
   async isInstalled(): Promise<boolean> {
     return this.installed
+  }
+
+  async version(): Promise<string | null> {
+    return this.cliVersion
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -79,7 +87,8 @@ class FakeAdapter implements ProviderAdapter {
       events,
       exit: Promise.resolve({
         code: script.exitCode === undefined ? 0 : script.exitCode,
-        stderr: script.stderr ?? ''
+        stderr: script.stderr ?? '',
+        ...(script.unreadable === true ? { unreadable: true } : {})
       }),
       kill(): void {
         killed = true
@@ -1540,6 +1549,71 @@ test('cancel of one running job with maxParallel 2 starts the next queued job', 
     undefined,
     { rules: rulesWith(2) }
   )
+})
+
+test('a limit event keeps its message even when the stream is also unreadable', async () => {
+  const now = 1_700_000_000_000
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [{ kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }],
+      unreadable: true
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('moved')])
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      orch.submit('planning', 'go')
+      await orch.idle()
+      expect(orch.list()[0]).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        failedOver: ['claude']
+      })
+      expect(store.restingUntil('claude')).toBe(1_900_000_000_000)
+      expect(store.runs('claude')[0].outcome).toBe('limit')
+    },
+    () => now
+  )
+})
+
+test('unreadable CLI output fails the job with a readable message and does not rest the plan', async () => {
+  const claude = new FakeAdapter('claude', [
+    { events: [{ kind: 'text', text: '??' }], unreadable: true }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('should-not-run')])
+  await withOrch([claude, cursor], async (orch, store) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    expect(orch.list()[0]).toMatchObject({
+      status: 'failed',
+      error: unknownFormatMessage('claude', TESTED_VERSIONS.claude),
+      provider: 'claude',
+      failedOver: []
+    })
+    expect(store.restingUntil('claude')).toBeNull()
+    expect(store.runs().map((run) => run.outcome)).toEqual(['error'])
+    expect(cursor.received).toHaveLength(0)
+  })
+})
+
+test('workers report CLI version and tested status', async () => {
+  const claude = new FakeAdapter('claude', [])
+  const cursor = new FakeAdapter('cursor', [])
+  claude.cliVersion = '2.2.0'
+  cursor.cliVersion = null
+  await withOrch([claude, cursor], async (orch) => {
+    expect(orch.workers()[0]).toMatchObject({
+      id: 'claude',
+      version: '2.2.0',
+      versionStatus: 'newer'
+    })
+    expect(orch.workers()[1]).toMatchObject({
+      id: 'cursor',
+      version: null,
+      versionStatus: 'unknown'
+    })
+  })
 })
 
 test('cancel of a finished or unknown job throws', async () => {

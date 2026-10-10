@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, JobType, ProviderAdapter, ProviderId, RouterRules } from '../types'
+import { compareToTested, unknownFormatMessage } from '../providers/versions'
+import type {
+  AgentEvent,
+  JobType,
+  ProviderAdapter,
+  ProviderId,
+  RouterRules,
+  VersionStatus
+} from '../types'
 import { Worktrees } from '../worktrees'
 import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
@@ -88,6 +96,9 @@ export interface WorkerInfo {
   /** A large share of allowance is about to expire unused. */
   atRisk: boolean
   windows: { name: string; used: number; resetsAt: number | null }[]
+  /** Token from the CLI's `--version`, or null when unknown. */
+  version: string | null
+  versionStatus: VersionStatus
 }
 
 export class Orchestrator {
@@ -102,6 +113,7 @@ export class Orchestrator {
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private candidates: ProviderId[] = []
   private readonly problems = new Map<ProviderId, PlanProblem>()
+  private readonly versions = new Map<ProviderId, string | null>()
   private readonly jobs: InternalJob[] = []
   private readonly byJob = new Map<string, InternalJob>()
   private readonly queues = new Map<ProviderId, string[]>()
@@ -148,8 +160,11 @@ export class Orchestrator {
   async recheck(): Promise<void> {
     const available: ProviderId[] = []
     this.problems.clear()
+    this.versions.clear()
     for (const adapter of this.adapters) {
-      if (!(await adapter.isInstalled())) {
+      const installed = await adapter.isInstalled()
+      this.versions.set(adapter.id, await adapter.version())
+      if (!installed) {
         this.problems.set(adapter.id, 'not-installed')
         continue
       }
@@ -260,6 +275,7 @@ export class Orchestrator {
       const queue = this.queues.get(adapter.id)
       const usage = planUsage(adapter.id, this.store, this.rules, now)
       const problem = this.problems.get(adapter.id)
+      const version = this.versions.get(adapter.id) ?? null
       const info: WorkerInfo = {
         id: adapter.id,
         available: this.candidates.includes(adapter.id),
@@ -274,7 +290,9 @@ export class Orchestrator {
           name: window.name,
           used: window.used,
           resetsAt: window.resetsAt
-        }))
+        })),
+        version,
+        versionStatus: compareToTested(adapter.id, version)
       }
       if (problem !== undefined) info.problem = problem
       return info
@@ -478,7 +496,7 @@ export class Orchestrator {
       }
       // Kill before waiting for exit so a limit or cancel stops the process.
       if (limitEv || this.abandoning.has(job.id) || this.cancelling.has(job.id)) safeKill(handle)
-      let exit: { code: number | null; stderr: string }
+      let exit: { code: number | null; stderr: string; unreadable?: boolean }
       try {
         exit = await handle.exit
       } catch (err) {
@@ -493,6 +511,13 @@ export class Orchestrator {
       if (limited) {
         if (!limitEv) safeKill(handle)
         this.applyLimit(job, provider, limitEv, startedAt, duration, utilization, result)
+        return
+      }
+      if (exit.unreadable === true) {
+        this.insertRun(job, provider, startedAt, duration, utilization, result, 'error')
+        job.status = 'failed'
+        job.error = unknownFormatMessage(provider, this.versions.get(provider) ?? null)
+        this.emitStatus(job)
         return
       }
       this.complete(job, provider, result, exit.stderr, startedAt, duration, utilization)

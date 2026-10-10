@@ -9,7 +9,8 @@ import type {
   RunHandle,
   RunOptions
 } from '../types'
-import { runCaptured, spawnCli, type Bin } from './process'
+import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
+import { parseCliVersion } from './versions'
 
 const LIMIT_RE = /usage limit|rate.?limit|limit reached|out of (usage|credits)|spend limit|quota/i
 
@@ -19,14 +20,23 @@ export class CursorAdapter implements ProviderAdapter {
   readonly id = 'cursor' as const
   private readonly bin: Bin
   private cachedModels: ModelOption[] | undefined
+  private versionCapture: Promise<CapturedRun> | null = null
 
   constructor(bin?: Bin) {
     this.bin = bin ?? resolveCursorBin()
   }
 
   async isInstalled(): Promise<boolean> {
-    const { code } = await runCaptured(this.bin, ['--version'])
+    this.versionCapture = runCaptured(this.bin, ['--version'])
+    const { code } = await this.versionCapture
     return code === 0
+  }
+
+  async version(): Promise<string | null> {
+    const captured =
+      this.versionCapture ?? (this.versionCapture = runCaptured(this.bin, ['--version']))
+    const { stdout } = await captured
+    return parseCliVersion(this.id, stdout)
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -71,7 +81,7 @@ export class CursorAdapter implements ProviderAdapter {
       args,
       job.prompt,
       cwd,
-      (line) => this.parseEvent(line),
+      (line) => this.parseLine(line),
       cursorEnv(process.platform, process.env)
     )
     if (!cleanupEdit) return handle
@@ -88,8 +98,16 @@ export class CursorAdapter implements ProviderAdapter {
   }
 
   parseEvent(line: string): AgentEvent | null {
+    const parsed = this.parseLine(line)
+    return parsed === null || parsed === 'ignored' ? null : parsed
+  }
+
+  private parseLine(line: string): LineParse {
     try {
-      return mapCursor(JSON.parse(line), (text) => this.isLimitError(text))
+      const value: unknown = JSON.parse(line)
+      const event = mapCursor(value, (text) => this.isLimitError(text))
+      if (event) return event
+      return knownCursorType(value) ? 'ignored' : null
     } catch {
       return null
     }
@@ -254,6 +272,18 @@ function resultEvent(
     event.tokens = usage.inputTokens + usage.outputTokens
   }
   return event
+}
+
+function knownCursorType(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return (
+    value.type === 'system' ||
+    value.type === 'assistant' ||
+    value.type === 'result' ||
+    value.type === 'thinking' ||
+    value.type === 'tool_call' ||
+    value.type === 'user'
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -47,9 +47,10 @@ async function cliArgs(handle: RunHandle): Promise<string[]> {
   return JSON.parse(exit.stderr) as string[]
 }
 
-async function collect(
-  handle: RunHandle
-): Promise<{ events: AgentEvent[]; exit: { code: number | null; stderr: string } }> {
+async function collect(handle: RunHandle): Promise<{
+  events: AgentEvent[]
+  exit: { code: number | null; stderr: string; unreadable?: boolean }
+}> {
   const events: AgentEvent[] = []
   for await (const event of handle.events) events.push(event)
   return { events, exit: await handle.exit }
@@ -139,6 +140,7 @@ process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
     const { events, exit } = await collect(adapter.run(job, dir))
     expect(events).toEqual(eventsFromFixture(adapter, 'cursor-plain.ndjson'))
     expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(false)
     expect(exit.stderr).toBe(prompt)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -310,6 +312,57 @@ process.exit(0)
     expect(readFileSync(bridgeCli, 'utf8')).toBe(bridgeBody)
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('unknown-format fixture is unreadable and has no result event', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-unknown-'))
+  const fixturePath = join(fixtureDir, 'cursor-unknown-format.synthetic.ndjson')
+  const script = writeScript(
+    dir,
+    'replay.mjs',
+    `import { readFileSync } from 'node:fs'
+process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  try {
+    const raw = readFileSync(fixturePath, 'utf8')
+    for (const line of raw.split('\n')) {
+      if (line.trim()) expect(adapter.parseEvent(line.trim())).toBeNull()
+    }
+    const { events, exit } = await collect(adapter.run({ id: 'u', prompt: 'hi' }, dir))
+    expect(events.some((event) => event.kind === 'result')).toBe(false)
+    expect(exit.code).toBe(0)
+    expect(exit.unreadable).toBe(true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('isInstalled and version share one --version call', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-cursor-ver-'))
+  const counter = join(dir, 'count.txt')
+  const script = writeScript(
+    dir,
+    'version.mjs',
+    `import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+const file = ${JSON.stringify(counter)}
+const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
+writeFileSync(file, String(n + 1))
+process.stdout.write('2026.09.08-6caf4ff\\n')
+`
+  )
+  const adapter = new CursorAdapter({ command: process.execPath, args: [script] })
+  try {
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2026.09.08-6caf4ff')
+    expect(readFileSync(counter, 'utf8')).toBe('1')
+    expect(await adapter.isInstalled()).toBe(true)
+    expect(await adapter.version()).toBe('2026.09.08-6caf4ff')
+    expect(readFileSync(counter, 'utf8')).toBe('2')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 

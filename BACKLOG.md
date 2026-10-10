@@ -4,6 +4,7 @@ Ordered. The top item is the next one to build.
 
 ## Done
 
+- Tested CLI versions are stated; a readable error when a CLI's output changes.
 - Saved chats and jobs, per project, with past chats listed in the sidebar.
 - Parallel jobs per plan (`maxParallel` in `rules.json`).
 - First-run check. Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app works with only one of them.
@@ -19,7 +20,6 @@ Ordered. The top item is the next one to build.
 
 - Run every feature against the real CLIs, on a clean clone.
 - Review what a worker may do when "Let it edit files" is on, and the Electron security settings.
-- State the tested CLI versions; fail with a readable message when their output changes.
 - CI on pull requests; installers and auto-update from GitHub Releases.
 
 ## Later

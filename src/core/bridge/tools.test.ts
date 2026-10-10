@@ -25,6 +25,10 @@ class FakeAdapter implements ProviderAdapter {
     return this.installed
   }
 
+  async version(): Promise<string | null> {
+    return null
+  }
+
   async isSignedIn(): Promise<boolean> {
     return this.signedIn
   }

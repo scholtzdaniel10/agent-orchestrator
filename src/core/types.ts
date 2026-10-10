@@ -1,5 +1,6 @@
 export type ProviderId = 'claude' | 'cursor'
 export type JobType = 'planning' | 'debugging' | 'review' | 'refactor' | 'boilerplate'
+export type VersionStatus = 'tested' | 'newer' | 'older' | 'unknown'
 
 export interface Job {
   id: string
@@ -41,7 +42,7 @@ export type AgentEvent =
 export interface RunHandle {
   /** Parsed events in order; ends when the process closes. */
   events: AsyncIterable<AgentEvent>
-  exit: Promise<{ code: number | null; stderr: string }>
+  exit: Promise<{ code: number | null; stderr: string; unreadable?: boolean }>
   /** Kills the whole process tree, not just the top process. */
   kill(): void
 }
@@ -77,6 +78,8 @@ export interface ModelOption {
 export interface ProviderAdapter {
   id: ProviderId
   isInstalled(): Promise<boolean>
+  /** Token from `--version`, or null when the CLI did not print one. */
+  version(): Promise<string | null>
   isSignedIn(): Promise<boolean>
   /** Spawns the official CLI headless. Read-only: no edit flags until worktrees exist. */
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle
