@@ -79,7 +79,8 @@ export class CursorAdapter implements ProviderAdapter {
     const resume = opts.resume ?? opts.sessionId
     if (resume) args.push('--resume', resume)
     if (opts.model) args.push('--model', opts.model)
-    if (opts.prompt && !opts.resume) args.push(opts.prompt)
+    // A task means the person wants work done here now; Cursor's trust question would hold it up.
+    if (opts.prompt && !opts.resume) args.push('--trust', opts.prompt)
     return {
       command: this.bin.command,
       args,
