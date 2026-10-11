@@ -21,6 +21,7 @@ Ordered. The top item is the next one to build.
 - Live step list for each job: every file a worker reads or edits and every command it runs, with the diff of each edited file.
 - Free layout: resizable and hidable panels, a workers focus mode, and a grid of terminal panes.
 - Worktrees in the sidebar: name them, open several, and work in each one.
+- Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
 
 ## Next
 

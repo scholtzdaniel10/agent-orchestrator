@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
+import type { Routine } from '../core/routines'
 import type {
   ChangeSet,
   GithubRepo,
@@ -114,6 +115,24 @@ const api: OrchestratorApi = {
   },
   renameWorktree(id: string, name: string): Promise<void> {
     return ipcRenderer.invoke('worktrees:rename', id, name)
+  },
+  getProjectSetup(): Promise<string[]> {
+    return ipcRenderer.invoke('setup:get')
+  },
+  setProjectSetup(commands: string[]): Promise<void> {
+    return ipcRenderer.invoke('setup:set', commands)
+  },
+  listRoutines(): Promise<Routine[]> {
+    return ipcRenderer.invoke('routines:list')
+  },
+  saveRoutine(routine: Routine): Promise<void> {
+    return ipcRenderer.invoke('routines:save', routine)
+  },
+  removeRoutine(id: string): Promise<void> {
+    return ipcRenderer.invoke('routines:remove', id)
+  },
+  runRoutine(id: string): Promise<JobRecord> {
+    return ipcRenderer.invoke('routines:run', id)
   },
   getLeadPlan(): Promise<ProviderId | null> {
     return ipcRenderer.invoke('settings:getLeadPlan')

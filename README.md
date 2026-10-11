@@ -26,6 +26,7 @@ The screenshots use fake data and are made with `pnpm shots`. The app has seven 
 - **Steps.** Every file a worker reads or edits and every command it runs is listed live under its job, with the diff of each edited file.
 - **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
 - **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it. After a merge, you can open a pull request from those staged changes. A worktree with an open terminal shows even before any files change, and you can open Claude or Cursor there.
+- **Routines and setup.** Save a job as a routine and run it with one click, or after a job of a chosen type finishes. Per project you can also save setup commands that run in a terminal whenever you create a worktree by hand.
 - **Router.** A rule table plus how much allowance each plan has left picks the provider. Claude's headroom comes from the usage figure its CLI reports.
 - **Adapters.** The app spawns each provider's official CLI headless (`claude -p`, `agent -p`) and reads its `stream-json` output.
 - **Failover.** If a plan reports a limit error, it is marked resting and its queued jobs move to the other plan.
@@ -43,6 +44,7 @@ The lead reaches the app through a small MCP server inside the main process, wit
 - It never reads, stores or forwards login tokens or session credentials.
 - It does not use any Agent SDK and makes no pay-per-token API calls.
 - Jobs are started by a person, not on a timer.
+- Routines run only after something the person did, never on a timer.
 
 You are responsible for staying within each provider's terms.
 

@@ -30,6 +30,7 @@ function reveal(element: HTMLElement): void {
 function tabElementId(active: string): string {
   if (active === 'jobs') return 'worker-tab-jobs'
   if (active === 'changes') return 'worker-tab-changes'
+  if (active === 'routines') return 'worker-tab-routines'
   return `worker-tab-${active}`
 }
 
@@ -62,7 +63,7 @@ function TerminalTabs({
   changes: readonly ChangeSet[]
   /** Active project folder; restore runs when this changes. */
   project: string
-  /** `jobs`, `changes`, or a terminal id. */
+  /** `jobs`, `changes`, `routines`, or a terminal id. */
   active: string
   changeCount: number
   paneLayout: PaneLayoutId
@@ -90,9 +91,16 @@ function TerminalTabs({
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    const last = terminals.length + 1
+    const last = terminals.length + 2
     if (next < 0 || next > last) return
-    const id = next === 0 ? 'jobs' : next === 1 ? 'changes' : terminals[next - 2].id
+    const id =
+      next === 0
+        ? 'jobs'
+        : next === 1
+          ? 'changes'
+          : next === 2
+            ? 'routines'
+            : terminals[next - 3].id
     onSelect(id, 'arrow')
     const element = document.getElementById(tabElementId(id))
     if (element instanceof HTMLButtonElement) element.focus()
@@ -135,9 +143,23 @@ function TerminalTabs({
             </>
           ) : null}
         </button>
+        <button
+          id="worker-tab-routines"
+          type="button"
+          role="tab"
+          className={active === 'routines' ? 'tab is-selected' : 'tab'}
+          aria-selected={active === 'routines'}
+          tabIndex={active === 'routines' ? 0 : -1}
+          onClick={() => {
+            onSelect('routines', 'click')
+          }}
+          onKeyDown={(event) => onTabKeyDown(event, 2)}
+        >
+          Routines
+        </button>
         {terminals.map((info, index) => {
           const selected = info.id === active
-          const tabIndex = index + 2
+          const tabIndex = index + 3
           const heading = terminalDisplayTitle(info, changes)
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
@@ -153,7 +175,9 @@ function TerminalTabs({
                 }}
                 onKeyDown={(event) => onTabKeyDown(event, tabIndex)}
               >
-                <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
+                {info.provider === 'claude' || info.provider === 'cursor' ? (
+                  <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
+                ) : null}
                 <span className="tab-label">{heading}</span>
               </button>
               <button

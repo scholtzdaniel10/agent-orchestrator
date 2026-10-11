@@ -55,6 +55,13 @@ export interface WorktreeNameRow {
   created_at: number
 }
 
+export interface RoutineRow {
+  id: string
+  project: string
+  position: number
+  data: string
+}
+
 export const TERMINAL_SCROLLBACK_CAP = 200_000
 
 const MIGRATIONS: string[] = [
@@ -136,6 +143,21 @@ const MIGRATIONS: string[] = [
         name TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+    `,
+  `
+      CREATE TABLE project_setup (
+        project TEXT PRIMARY KEY,
+        commands TEXT NOT NULL
+      );
+    `,
+  `
+      CREATE TABLE routines (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX routines_project ON routines (project, position);
     `
 ]
 
@@ -455,6 +477,61 @@ export class Store {
     this.db.prepare('DELETE FROM worktree_names WHERE id = ?').run(id)
   }
 
+  getProjectSetup(project: string): string[] {
+    const row = this.db.prepare(`SELECT commands FROM project_setup WHERE project = ?`).get(project)
+    if (!row) return []
+    try {
+      const parsed: unknown = JSON.parse(String((row as Row).commands))
+      if (!Array.isArray(parsed)) return []
+      const out: string[] = []
+      for (const item of parsed) {
+        if (typeof item !== 'string' || item.length < 1 || item.length > 300) continue
+        if (/[\r\n]/.test(item)) continue
+        out.push(item)
+        if (out.length >= 5) break
+      }
+      return out
+    } catch {
+      return []
+    }
+  }
+
+  setProjectSetup(project: string, commands: string[]): void {
+    this.db
+      .prepare(
+        `INSERT INTO project_setup (project, commands) VALUES (?, ?)
+         ON CONFLICT(project) DO UPDATE SET commands = excluded.commands`
+      )
+      .run(project, JSON.stringify(commands))
+  }
+
+  /** Lowest position first. */
+  listRoutines(project: string): RoutineRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, position, data
+         FROM routines WHERE project = ? ORDER BY position ASC`
+      )
+      .all(project)
+    return rows.map((row) => mapRoutine(row as Row))
+  }
+
+  saveRoutine(row: RoutineRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO routines (id, project, position, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           position = excluded.position,
+           data = excluded.data`
+      )
+      .run(row.id, row.project, row.position, row.data)
+  }
+
+  deleteRoutine(id: string): void {
+    this.db.prepare('DELETE FROM routines WHERE id = ?').run(id)
+  }
+
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
@@ -535,6 +612,15 @@ function mapWorktreeName(row: Row): WorktreeNameRow {
     project: String(row.project),
     name: String(row.name),
     created_at: Number(row.created_at)
+  }
+}
+
+function mapRoutine(row: Row): RoutineRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    position: Number(row.position),
+    data: String(row.data)
   }
 }
 

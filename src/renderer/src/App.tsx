@@ -850,7 +850,7 @@ function App(): React.JSX.Element {
   }
 
   async function openInWorktree(
-    provider: TerminalInfo['provider'],
+    provider: Exclude<TerminalInfo['provider'], 'shell'>,
     worktree: string | null
   ): Promise<void> {
     setSelectedWorktree(worktree)

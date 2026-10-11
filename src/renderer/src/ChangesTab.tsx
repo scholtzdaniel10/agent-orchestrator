@@ -412,6 +412,12 @@ function ChangesTab({
                 >
                   <span className="change-id">{worktreeLabel(item)}</span>
                   <span className="change-origin">{jobTypeFor(jobs, item.id)}</span>
+                  {item.setup === 'running' ? (
+                    <span className="change-origin">setting up…</span>
+                  ) : null}
+                  {item.setup === 'failed' ? (
+                    <span className="setup-failed">setup failed</span>
+                  ) : null}
                   {item.files.length === 0 ? (
                     <span className="change-stats">No changes yet</span>
                   ) : (

@@ -13,6 +13,7 @@ import type {
   VersionStatus
 } from '../core/types'
 import type { JobRecord } from '../core/router'
+import type { Routine } from '../core/routines'
 
 /** Why a plan cannot be used. */
 export type PlanProblem = 'not-installed' | 'signed-out'
@@ -124,6 +125,13 @@ export interface OrchestratorApi {
   createWorktree(name?: string): Promise<ChangeSet>
   /** Rename a worktree. Pushes the change list. */
   renameWorktree(id: string, name: string): Promise<void>
+  /** Command lines that run in each worktree created by hand. */
+  getProjectSetup(): Promise<string[]>
+  setProjectSetup(commands: string[]): Promise<void>
+  listRoutines(): Promise<Routine[]>
+  saveRoutine(routine: Routine): Promise<void>
+  removeRoutine(id: string): Promise<void>
+  runRoutine(id: string): Promise<JobRecord>
 
   /** Plan the person chose to run the lead; null means the one with the most headroom. */
   getLeadPlan(): Promise<ProviderId | null>
@@ -178,5 +186,6 @@ export type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
+  Routine,
   TerminalInfo
 }

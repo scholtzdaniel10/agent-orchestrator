@@ -249,6 +249,11 @@ function diffJobSteps(before: JobRecord | undefined, job: JobRecord, now: number
   return events
 }
 
+function terminalActor(provider: TerminalInfo['provider']): FlowEvent['actor'] {
+  if (provider === 'claude' || provider === 'cursor') return provider
+  return 'router'
+}
+
 function diffTerminals(
   prev: readonly TerminalInfo[],
   next: readonly TerminalInfo[],
@@ -260,15 +265,16 @@ function diffTerminals(
 
   for (const terminal of next) {
     const before = prevById.get(terminal.id)
+    const actor = terminalActor(terminal.provider)
     if (before === undefined) {
-      events.push(change(now, terminal.provider, `terminal opened (${terminal.title})`))
+      events.push(change(now, actor, `terminal opened (${terminal.title})`))
     }
     if (terminal.status === 'exited' && (before === undefined || before.status !== 'exited')) {
       const code = terminal.exitCode
       events.push(
         change(
           now,
-          terminal.provider,
+          actor,
           `terminal ended (${terminal.title})`,
           code === 0 ? 'ok' : 'bad',
           `code ${code ?? 'null'}`
@@ -279,7 +285,9 @@ function diffTerminals(
 
   for (const terminal of prev) {
     if (!nextIds.has(terminal.id)) {
-      events.push(change(now, terminal.provider, `terminal closed (${terminal.title})`))
+      events.push(
+        change(now, terminalActor(terminal.provider), `terminal closed (${terminal.title})`)
+      )
     }
   }
 

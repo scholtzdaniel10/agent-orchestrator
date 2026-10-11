@@ -77,6 +77,7 @@ function makeHost(partial?: {
   killTree?: (proc: PtyProcess) => void
   spawn?: SpawnPty
   exists?: (path: string) => boolean
+  platform?: NodeJS.Platform
 }): { host: PtyHost; ptys: FakePty[]; calls: SpawnCall[] } {
   const ptys: FakePty[] = []
   const calls: SpawnCall[] = []
@@ -88,6 +89,7 @@ function makeHost(partial?: {
     now: partial?.now,
     createChat: partial?.createChat,
     exists: partial?.exists ?? (() => true),
+    platform: partial?.platform,
     launch:
       partial?.launch ??
       ((provider, opts) => ({
@@ -1016,6 +1018,148 @@ test('closeChange closes only matching terminals and resolves', async () => {
   expect(host.list()).toHaveLength(2)
   expect(host.list().map((info) => info.id)).toEqual(expect.arrayContaining([keptA.id, keptB.id]))
   await host.closeChange('missing0')
+})
+
+test('openShell on Windows runs powershell with LASTEXITCODE checks', () => {
+  const { host, calls } = makeHost({
+    cwd: '/proj',
+    now: () => 9,
+    platform: 'win32'
+  })
+  const info = host.openShell({
+    cwd: '/wt/aa11bb22',
+    change: 'aa11bb22',
+    title: 'setup · feature',
+    commands: ['pnpm install', 'pnpm build'],
+    cols: 80,
+    rows: 24
+  })
+  expect(info).toMatchObject({
+    provider: 'shell',
+    title: 'setup · feature',
+    status: 'running',
+    exitCode: null,
+    model: null,
+    startedAt: 9,
+    change: 'aa11bb22'
+  })
+  expect(calls).toHaveLength(1)
+  expect(calls[0].command).toBe('powershell.exe')
+  expect(calls[0].args.slice(0, 3)).toEqual(['-NoLogo', '-NoProfile', '-Command'])
+  expect(calls[0].args[3]).toBe(
+    [
+      'pnpm install',
+      'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
+      'pnpm build',
+      'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+    ].join('\n')
+  )
+  expect(calls[0].opts.cwd).toBe('/wt/aa11bb22')
+  expect(host.list()[0].title).toBe('setup · feature')
+})
+
+test('openShell elsewhere joins commands with && for sh -c', () => {
+  const { host, calls } = makeHost({ platform: 'linux' })
+  host.openShell({
+    cwd: '/wt/x',
+    title: 'setup · x',
+    commands: ['npm ci', 'npm test'],
+    cols: 40,
+    rows: 12
+  })
+  expect(calls[0].command).toBe('sh')
+  expect(calls[0].args).toEqual(['-c', 'npm ci && npm test'])
+  expect(calls[0].args[1]?.includes(' && ')).toBe(true)
+  expect(calls[0].opts.cwd).toBe('/wt/x')
+})
+
+test('openShell stop-at-first-failure is in the script', () => {
+  const win = makeHost({ platform: 'win32' })
+  win.host.openShell({
+    cwd: 'w',
+    title: 'setup · w',
+    commands: ['one', 'two', 'three'],
+    cols: 80,
+    rows: 24
+  })
+  const script = win.calls[0].args[3] ?? ''
+  expect(script).toContain('$LASTEXITCODE')
+  expect(script.indexOf('one')).toBeLessThan(script.indexOf('two'))
+  expect(script.indexOf('two')).toBeLessThan(script.indexOf('three'))
+  const unix = makeHost({ platform: 'darwin' })
+  unix.host.openShell({
+    cwd: 'w',
+    title: 'setup · w',
+    commands: ['one', 'two', 'three'],
+    cols: 80,
+    rows: 24
+  })
+  expect(unix.calls[0].args).toEqual(['-c', 'one && two && three'])
+})
+
+test('a shell terminal stays after exit and writes no usage row', () => {
+  const store = new Store(':memory:')
+  try {
+    const { host, ptys } = makeHost({ store, cwd: '/proj', now: () => 4, platform: 'win32' })
+    const info = host.openShell({
+      cwd: '/wt/aa',
+      change: 'aa',
+      title: 'setup · aa',
+      commands: ['echo hi'],
+      cols: 80,
+      rows: 24
+    })
+    expect(store.terminals('/proj')).toHaveLength(1)
+    ptys[0].exit(0)
+    expect(host.list()[0]).toMatchObject({
+      id: info.id,
+      provider: 'shell',
+      status: 'exited',
+      exitCode: 0
+    })
+    expect(store.terminals('/proj')).toEqual([])
+    expect(store.runs()).toEqual([])
+    const failed = host.openShell({
+      cwd: '/wt/bb',
+      title: 'setup · bb',
+      commands: ['false'],
+      cols: 80,
+      rows: 24
+    })
+    ptys[1].exit(1)
+    expect(host.list()[1]).toMatchObject({ id: failed.id, status: 'exited', exitCode: 1 })
+    expect(store.runs()).toEqual([])
+  } finally {
+    store.close()
+  }
+})
+
+test('shell rows are not restored', () => {
+  const store = new Store(':memory:')
+  try {
+    store.saveTerminal({
+      id: 'shell-1',
+      project: 'work',
+      provider: 'shell',
+      model: null,
+      session_id: null,
+      title: 'setup · old',
+      created_at: 1,
+      updated_at: 1,
+      scrollback: 'npm i',
+      cwd: '/wt/old',
+      change_id: 'oldold01'
+    })
+    putTerminal(store, { id: 'term-2', title: 'claude 1' })
+    const { host, calls } = makeHost({ store, cwd: 'work' })
+    const restored = host.restore('work', 80, 24)
+    expect(restored.map((info) => info.id)).toEqual(['term-2'])
+    expect(restored.some((info) => info.provider === 'shell')).toBe(false)
+    expect(calls).toHaveLength(1)
+    expect(store.terminals('work').map((row) => row.id)).toEqual(['term-2'])
+  } finally {
+    store.close()
+  }
 })
 
 test('stored scrollback is capped at the last 200_000 characters', async () => {

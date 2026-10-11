@@ -401,6 +401,20 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         name: typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
       }),
     renameWorktree: ok(undefined),
+    getProjectSetup: ok([]),
+    setProjectSetup: ok(undefined),
+    listRoutines: ok([]),
+    saveRoutine: ok(undefined),
+    removeRoutine: ok(undefined),
+    runRoutine: ok({
+      id: 'new',
+      type: 'planning',
+      prompt: 'from a routine',
+      provider: 'cursor',
+      status: 'queued',
+      output: '',
+      failedOver: []
+    }),
     getLeadPlan: ok(null),
     setLeadPlan: ok(undefined),
     getLeadAccess: ok('read'),
