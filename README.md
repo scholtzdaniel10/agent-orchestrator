@@ -1,126 +1,133 @@
-﻿![Legate: one lead, every plan you already pay for](docs/banner.png)
+![Legate: one lead, every plan you already pay for](docs/banner.png)
 
 # Legate
 
-A desktop app (Electron + TypeScript) that spreads your coding jobs across the AI subscriptions you already pay for, so no plan sits idle or runs out early.
+In the Roman army a **legate** was the officer a general sent to act in his name. He was given an order, a body of soldiers and the authority to carry it out, and he reported back.
 
-![The main window: projects and worktrees in the sidebar, agent terminals in the centre, and a panel for lead, jobs, and the rest](docs/screenshot.png)
+Legate does that for your coding work. You give one order. It hands the work to agents running on the AI plans you already pay for, keeps each of them in its own camp so they do not trample each other, and reports back with every step in the open.
 
-| Compare two plans side by side                                                  | Light mode                                                         |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| ![One prompt sent to Claude and Cursor, results side by side](docs/compare.png) | ![The same window in light mode, red ink on paper](docs/light.png) |
+It is a desktop app (Electron + TypeScript) with a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
 
-The screenshots use fake data and are made with `pnpm shots`. The app has seven looks, chosen in the header.
+![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 1.0.0, Windows only. Everything below is unit-tested. Checked against the real CLIs: an editing job on Cursor from start to merge, and the terminals on both plans. The lead chat and Claude jobs have had little real use so far. See [BACKLOG.md](BACKLOG.md) for what is next.
+**Status:** 1.0.0, Windows only. Unit-tested throughout, and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, routines, worktrees, terminals restored after a restart, the command line and the app sharing jobs, and the terminal UI. Not yet checked: a pull request against real GitHub, the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+
+## The chain of command
+
+| In Rome         | In Legate   | What it is                                                             |
+| --------------- | ----------- | ---------------------------------------------------------------------- |
+| The general     | You         | Gives the order, reviews the result, decides what is kept              |
+| The legate      | The lead    | One agent you talk to. It splits your order into jobs and reports back |
+| The cohorts     | The workers | Agents on your Claude and Cursor plans that do the jobs                |
+| The camp        | A worktree  | A separate copy of the project for one task, so work never collides    |
+| The dispatch    | The steps   | Every file read, every edit, every command, listed as it happens       |
+| Standing orders | Routines    | Saved jobs, and commands that prepare each new camp                    |
 
 ## How it works
 
-- **Lead chat.** You talk to one lead bot. It splits your request into jobs and hands them to workers, and you can keep talking to it while they run. When they finish it reports back. The lead is an ordinary CLI session that can only call the app's own tools.
-  Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
-- **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
-- **Terminals.** Open a full Claude or Cursor session in a tab and talk to it directly. Open tabs come back after a restart with their conversation; a tab that cannot resume starts a new session. Turn on Worktree to start a session in its own git worktree, or open one from Changes.
-- **Layout.** The centre of the window is the workspace: terminal tabs and a pane grid (up to six panes; Auto picks the smallest that fits). A sidebar lists projects, worktrees and chats (Ctrl+\\ to hide it). A panel on the right holds Lead, Jobs, Changes, Routines, Usage and Activity, one tab at a time (Ctrl+B, or Ctrl+1 through Ctrl+7). Drag the borders to resize them. When the window is too narrow, the panel overlays the workspace instead of squeezing it. A status bar at the bottom shows plan headroom, running and queued counts, and the latest activity. Sizes, which side is open, and the pane layout come back next time.
-- **Windows.** Window (Ctrl+Shift+N) opens another view of the same app, up to six windows. A terminal can be opened in a window of its own; closing that window does not stop the session.
-- **Projects.** A sidebar lists the folders you work in; one is active at a time, and jobs and the lead run there. Under a git project you can select several worktrees at once, create a few in one go, name them, and start Claude or Cursor in each with a task so the agent is already working; if the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
-- **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate) and its access (Read only, Edit files, or Full access). Each plan runs up to three jobs at once, and a job can be stopped. Full access runs commands without asking, still in a worktree; only use it in folders you trust.
-- **Steps.** Every file a worker reads or edits and every command it runs is listed live under its job, with the diff of each edited file.
-- **Compare.** Choose "both (compare)" as the worker to send the same prompt to both plans, read the results side by side, and merge one change while discarding the other.
-- **Changes.** A job allowed to edit files works in its own git worktree. You review the diff, then merge it as staged changes or discard it. After a merge, you can open a pull request from those staged changes. A worktree with an open terminal shows even before any files change, and you can open Claude or Cursor there.
-- **Files.** The files of the active project or a selected worktree are listed in a tree with their git status. You can preview a file or its diff and open it in the system's default program.
-- **Routines and setup.** Save a job as a routine and run it with one click, or after a job of a chosen type finishes. Per project you can also save setup commands that run in a terminal whenever you create a worktree by hand.
-- **Router.** A rule table plus how much allowance each plan has left picks the provider. Claude's headroom comes from the usage figure its CLI reports.
-- **Adapters.** The app spawns each provider's official CLI headless (`claude -p`, `agent -p`) and reads its `stream-json` output.
-- **Failover.** If a plan reports a limit error, it is marked resting and its queued jobs move to the other plan.
-- **Usage meter.** The window shows how much allowance each plan has left, and says what to run when a CLI is missing or signed out. The app works with only one of the two plans.
+- **The window is a workspace.** Projects and worktrees sit on the left, agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage and activity (`Ctrl+1` to `Ctrl+7`; `Ctrl+B` hides it). A status bar shows each plan's allowance and what is running.
+- **The lead.** You talk to one lead. It splits your request into jobs, hands them to workers, and reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
+- **Workers and access.** You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
+- **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
+- **Worktrees.** Any job or terminal that may change files works in its own git worktree. Create one from the sidebar with a name and a **task**, and the agent in it starts working at once; ask for several and you get several agents on the same task. Select one or many to see their terminals together.
+- **Terminals.** A terminal is a full Claude or Cursor session you talk to directly, shown in a grid of up to six panes. A terminal can move into a window of its own, and open terminals come back after a restart with their conversation.
+- **Files.** The panel shows the files of the selected project or worktree, marks what changed, and previews a file or its diff. It reads and opens files; it never writes them.
+- **Changes.** You review a worktree's diff, then merge it as staged changes, discard it, or open a pull request through `gh`. A worktree cannot be merged or discarded while a job is still running in it.
+- **Routines and setup.** A routine is a saved job you run with one click, or after every job of a kind you choose. Setup commands (for example `pnpm install`) run in each worktree you create by hand, in a terminal you can watch.
+- **The router.** A rule table and how much allowance each plan has left decide who gets a job. If a plan reports its limit, it rests and its queued jobs move to the other plan.
+- **Compare.** Send the same prompt to both plans, read the results side by side, keep one.
+- **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in the header.
 
-Everything runs locally, per person. There is no server.
+Everything runs locally, per person. There is no server and no account.
 
-## The MCP bridge
+![The Files panel beside a terminal](docs/files.png)
 
-The lead reaches the app through a small MCP server inside the main process, with four tools: `list_workers`, `send_job`, `get_status` and `get_result`. It listens on loopback only, requires a random token that changes every start, and refuses requests that carry a browser `Origin`.
+## Install
+
+1. **Install Legate.** Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases) and run it. Windows warns because the installer is not signed: choose **More info**, then **Run anyway**. Updates download in the background and install when you quit.
+2. **Install Git**, which the worktrees need:
+   ```
+   winget install --id Git.Git -e
+   ```
+3. **Install and sign in to at least one plan.** Either is enough; both is better.
+   - Claude Code (needs a Claude Pro or Max plan):
+     ```
+     winget install --id Anthropic.ClaudeCode -e
+     claude auth login
+     ```
+   - Cursor CLI (needs a Cursor plan), in PowerShell:
+     ```
+     irm 'https://cursor.com/install?win32=true' | iex
+     agent login
+     ```
+4. **Optional: the GitHub CLI**, to clone your repositories and open pull requests:
+   ```
+   winget install --id GitHub.cli -e
+   gh auth login
+   ```
+5. **Open Legate.** On first start it opens **Setup**, which lists these tools, shows what each still needs, gives the install command, and runs each tool's own sign-in in a terminal on the screen. So steps 2 to 4 can also be done from there. Then add a project folder.
+
+You sign in to each tool yourself, in that tool's own sign-in. Legate never sees a password or a token.
+
+## Command line
+
+`legate` drives the same jobs, changes and routines from a terminal. The app and the command share one database, and each sees the other's jobs within a few seconds.
+
+With no arguments, `legate` opens a terminal UI: worktrees and jobs on the left, the selected job's live steps or a worktree's diff on the right, and a prompt line to hand out a job. `?` lists the keys.
+
+```
+legate                       open the terminal UI (also: legate ui)
+legate status                each plan, and what is running here
+legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate]
+                      [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet]
+legate jobs [--limit N]      recent jobs
+legate show <job-id>         one job with every step
+legate changes               worktrees and their changes
+legate diff <change-id>
+legate merge <change-id>
+legate discard <change-id>
+legate pr "<title>" [--body "<text>"]
+legate worktree create [name] | list | path <change-id-or-name>
+legate routine list | run "<name>"
+```
+
+In a checkout, run `pnpm cli -- status`. In an installed copy, add the app's `resources\bin` folder to PATH.
 
 ## Subscription use
 
-- It runs the unmodified official CLIs, each signed in by you with your own plan.
+- Legate runs the unmodified official CLIs, each signed in by you with your own plan.
 - It never reads, stores or forwards login tokens or session credentials.
 - It does not use any Agent SDK and makes no pay-per-token API calls.
-- Jobs are started by a person, not on a timer.
-- Routines run only after something the person did, never on a timer.
+- Jobs are started by a person. A routine runs only after something you did, never on a timer.
 
 You are responsible for staying within each provider's terms.
 
 ## Security
 
 - Everyone uses their own plans. The app has no accounts, no server and no way to reach anyone else's login.
-- Every window is created by one function with the same sandbox and guards: it cannot navigate away from the app, and reaches the main process only through a fixed list of functions.
-- A worker is Read only, Edit files, or Full access. Read only cannot change files. Edit files writes inside its own git worktree and cannot run shell commands. Full access writes in that same worktree and runs commands without asking; use it only in folders you trust.
-  - Claude workers never get your own MCP servers. Read only and Edit files deny the shell, and deny writes unless the job may edit. Full access uses bypassPermissions. This holds whatever your own Claude settings allow.
-  - Cursor Read only and Edit files jobs are started without `--force`; an Edit files job gets a permission file that denies the shell. Full access passes `--force` and does not write that file. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
+- Every window is made by one function with the same sandbox: it cannot navigate away from the app, cannot open other pages, is refused every permission, and reaches the main process only through a fixed list of functions.
+- A worker's limits are set when it starts, whatever your own CLI settings allow:
+  - Claude workers get no shell and no edit tools when reading, no shell when editing, and never your own MCP servers, not even with full access.
+  - Cursor workers are started without `--force` unless the job has full access, and an editing job gets a permission file that denies the shell. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
+- Full access runs commands on your computer without asking. Use it only in folders you trust.
+- The lead reaches the app through a small local server with four tools (`list_workers`, `send_job`, `get_status`, `get_result`). It listens on loopback only, requires a random token that changes every start, and refuses requests that carry a browser `Origin`.
+- The Files panel can only read inside the project or worktree folder; a path that leads outside it is refused.
 - Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.
 - The terminals are full CLI sessions; what they may do is whatever you approve inside them.
 
-## Install
-
-1. Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**.
-2. Open Legate. The app shows a Setup screen.
-3. Install Git, then Claude Code and/or the Cursor CLI, and sign in to each one. The GitHub CLI is optional (clone your repos and open pull requests). Windows:
-
-   - Git: `winget install --id Git.Git -e`
-   - Claude Code: `winget install --id Anthropic.ClaudeCode -e`
-   - Cursor CLI: `irm 'https://cursor.com/install?win32=true' | iex`
-   - GitHub CLI: `winget install --id GitHub.cli -e`
-
-   Sign in from Setup. Legate never sees a password or token.
-
-Updates download in the background and install themselves when you quit.
-
-## Command line
-
-`legate` drives the same jobs, changes, and routines as the app from a terminal.
-
-With no arguments, `legate` opens a terminal UI when stdin and stdout are terminals. `legate ui` does the same thing. If either stream is not a terminal, it prints help and exits 2, as before.
-
-`n` or `i` starts a job. Tab moves between Worktrees, Jobs, and the detail. Up and Down (or `k` and `j`) move the selection. Enter opens the selection. `d` shows the diff, `m` merges, `x` discards, `w` creates a worktree, `c` opens Claude and `u` opens the Cursor agent in the selected folder, `s` stops a job, `r` lists routines, `?` lists every key, and `q` quits. In the job prompt, Ctrl+T cycles the type, Ctrl+W the worker, and Ctrl+A the access (read, then edit, then full).
-
-In a checkout, run `pnpm cli -- status`. In an installed copy, add the `resources\bin` folder to PATH.
-
-```
-legate ui
-legate status
-legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor]
-                      [--access read|edit|full] [--json] [--quiet]
-legate jobs [--limit N]
-legate show <job-id>
-legate changes
-legate diff <change-id>
-legate merge <change-id>
-legate discard <change-id>
-legate pr "<title>" [--body "<text>"]
-legate worktree create [name]
-legate worktree list
-legate worktree path <change-id-or-name>
-legate routine list
-legate routine run "<name>"
-legate --help | -h
-legate --version | -v
-```
-
-The app and the command share one database; both see each other's jobs within a few seconds.
-
 ## Develop
 
-Requires Node 22+ and pnpm.
+Requires Node 22.5 or newer and pnpm.
 
 ```bash
 pnpm install
-pnpm dev           # run the app
-pnpm test          # unit tests, no real CLIs
-pnpm build         # typecheck + build
-pnpm shots         # screenshots of the UI with fake data, in .orchestrator/shots/
-pnpm build:win     # the Windows installer, in dist/
-pnpm gate router   # acceptance: 10 real jobs + one forced failover
-pnpm gate lead     # acceptance: the lead splits a two-part request across both plans
+pnpm dev              # run the app
+pnpm test             # unit tests, no real CLIs
+pnpm build            # typecheck + build (also builds the legate command)
+pnpm cli -- status    # the legate command from this checkout
+pnpm build:win        # the Windows installer, in dist/
+pnpm gate router      # acceptance: 10 real jobs + one forced failover
+pnpm gate lead        # acceptance: the lead splits a two-part request across both plans
 pnpm gate worktrees   # acceptance: an editing job merges cleanly (GATE_WORKERS=cursor for one plan)
 ```
 
@@ -131,9 +138,11 @@ The `gate` commands use your real plans and spend real allowance.
 | `ORCH_CWD`       | Folder the jobs run in (default: where the app was started)                          |
 | `ORCH_RULES`     | Path to your own edited copy of `src/core/router/rules.json`                         |
 | `ORCH_LEAD`      | `claude` or `cursor` to choose the lead's plan (default: the one with more headroom) |
+| `ORCH_WORKTREES` | Folder the worktrees are made in (default: `~/.orchestrator/wt`)                     |
 | `ORCH_NO_UPDATE` | `1` stops an installed build from checking GitHub Releases for updates               |
+| `LEGATE_DATA`    | Data folder for the `legate` command (default: the app's own)                        |
 
-Usage is stored locally with Node's built-in `node:sqlite`, so there is no native module to rebuild.
+Everything in `src/core` runs without Electron; the app, the command and the terminal UI are three ways into the same core. Data is stored locally with Node's built-in `node:sqlite`, so there is no native database module to rebuild.
 
 ### Release
 
@@ -144,7 +153,11 @@ Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds 
 - Claude Code `2.1.292`
 - Cursor CLI `2026.10.01-e373342`
 
-Newer CLI versions usually work; the app tells you when one sends output it does not understand.
+Newer CLI versions usually work. Each plan shows its CLI version against the tested one, and a job fails with a readable message when a CLI sends output the app does not understand.
+
+## Why the name
+
+A legate carried someone else's authority and answered for how he used it. That is the deal here: the agents act for you, inside limits you set, and the record of what they did is yours to read. The repository keeps its first name, `agent-orchestrator`.
 
 ## License
 
