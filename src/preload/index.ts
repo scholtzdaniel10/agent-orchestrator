@@ -204,6 +204,24 @@ const api: OrchestratorApi = {
     return () => {
       ipcRenderer.removeListener('terminals:update', listener)
     }
+  },
+  newWindow(): Promise<void> {
+    return ipcRenderer.invoke('windows:new')
+  },
+  popOutTerminal(id: string): Promise<void> {
+    return ipcRenderer.invoke('terminals:popOut', id)
+  },
+  poppedOut(): Promise<string[]> {
+    return ipcRenderer.invoke('terminals:poppedOut')
+  },
+  onPoppedOut(cb: (ids: string[]) => void): () => void {
+    const listener = (_event: IpcRendererEvent, ids: string[]): void => {
+      cb(ids)
+    }
+    ipcRenderer.on('terminals:popped', listener)
+    return () => {
+      ipcRenderer.removeListener('terminals:popped', listener)
+    }
   }
 }
 

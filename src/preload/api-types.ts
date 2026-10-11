@@ -164,6 +164,16 @@ export interface OrchestratorApi {
   onTerminalData(cb: (id: string, data: string) => void): () => void
   /** Fires when a terminal opens, exits or is removed (`removed: true`). */
   onTerminalUpdate(cb: (info: TerminalInfo, removed: boolean) => void): () => void
+  /** Open another window of the app. Refused when six are already open. */
+  newWindow(): Promise<void>
+  /**
+   * Open this terminal in a window of its own, or close that window if it is already open.
+   * Closing the window does not stop the session.
+   */
+  popOutTerminal(id: string): Promise<void>
+  /** Terminal ids that currently have a window of their own. */
+  poppedOut(): Promise<string[]>
+  onPoppedOut(cb: (ids: string[]) => void): () => void
 }
 
 export type {

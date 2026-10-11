@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
+import { cascadeBounds, PoppedOutRegistry, refuseWindow } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
@@ -30,19 +31,51 @@ import type {
 import { Worktrees } from '../core/worktrees'
 import type { PlanStatus } from '../preload/api-types'
 
-let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
+const poppedOut = new PoppedOutRegistry()
+const poppedWindows = new Map<string, BrowserWindow>()
 
-function createWindow(): void {
+function broadcast(channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) continue
+    win.webContents.send(channel, ...args)
+  }
+}
+
+function publishPopped(): void {
+  broadcast('terminals:popped', poppedOut.list())
+}
+
+function createWindow(opts?: {
+  from?: BrowserWindow | null
+  width?: number
+  height?: number
+  title?: string
+  query?: Record<string, string>
+}): BrowserWindow {
+  const from = opts?.from
+  const origin =
+    from !== undefined && from !== null && !from.isDestroyed() ? from.getBounds() : null
+  const askedWidth = opts?.width ?? origin?.width ?? 1400
+  const askedHeight = opts?.height ?? origin?.height ?? 820
+  const placed =
+    origin !== null
+      ? cascadeBounds(
+          origin,
+          { width: askedWidth, height: askedHeight },
+          screen.getDisplayMatching(origin).workArea
+        )
+      : null
   const win = new BrowserWindow({
-    width: 1400,
-    height: 820,
+    width: placed?.width ?? askedWidth,
+    height: placed?.height ?? askedHeight,
+    ...(placed !== null ? { x: placed.x, y: placed.y } : {}),
     show: false,
     autoHideMenuBar: true,
-    title: 'Legate',
+    title: opts?.title ?? 'Legate',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -52,7 +85,6 @@ function createWindow(): void {
       webviewTag: false
     }
   })
-  mainWindow = win
 
   win.on('ready-to-show', () => {
     win.show()
@@ -79,10 +111,19 @@ function createWindow(): void {
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    if (opts?.query !== undefined) {
+      for (const [key, value] of Object.entries(opts.query)) {
+        url.searchParams.set(key, value)
+      }
+    }
+    win.loadURL(url.toString())
+  } else if (opts?.query !== undefined) {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { query: opts.query })
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  return win
 }
 
 app.whenReady().then(async () => {
@@ -148,14 +189,7 @@ app.whenReady().then(async () => {
   function pushChanges(): void {
     void listedChanges(projectDir())
       .then((list) => {
-        if (
-          mainWindow === null ||
-          mainWindow.isDestroyed() ||
-          mainWindow.webContents.isDestroyed()
-        ) {
-          return
-        }
-        mainWindow.webContents.send('changes:update', list)
+        broadcast('changes:update', list)
       })
       .catch((err: unknown) => {
         console.error(err)
@@ -243,15 +277,11 @@ app.whenReady().then(async () => {
   }
 
   function publishPlans(): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('plans:update', plans())
+    broadcast('plans:update', plans())
   }
 
   function publish(job: JobRecord): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('jobs:update', job)
+    broadcast('jobs:update', job)
     publishPlans()
     // The orchestrator frees a plan just after a job's last update; look again once it has,
     // or the plan stays "busy" on screen until something else happens.
@@ -259,10 +289,8 @@ app.whenReady().then(async () => {
   }
 
   function publishLead(message: LeadMessage, chatId: string | null): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('lead:update', message, chatId)
-    if (message.status !== 'streaming') mainWindow.webContents.send('plans:update', plans())
+    broadcast('lead:update', message, chatId)
+    if (message.status !== 'streaming') broadcast('plans:update', plans())
   }
 
   ipcMain.handle(
@@ -333,9 +361,7 @@ app.whenReady().then(async () => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
     if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
     settings.setModel(provider, model)
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('plans:update', plans())
+    broadcast('plans:update', plans())
   })
   ipcMain.handle('lead:send', (_event, text: unknown) => {
     if (typeof text !== 'string' || text === '') throw new Error('empty message')
@@ -362,13 +388,11 @@ app.whenReady().then(async () => {
   })
 
   function publishProjectLists(): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
     for (const job of orch.list()) {
-      mainWindow.webContents.send('jobs:update', job)
+      broadcast('jobs:update', job)
     }
     for (const message of lead.messages()) {
-      mainWindow.webContents.send('lead:update', message)
+      broadcast('lead:update', message)
     }
     publishPlans()
   }
@@ -385,10 +409,6 @@ app.whenReady().then(async () => {
     }
   })
   terminals = terms
-
-  function canSend(): boolean {
-    return mainWindow !== null && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()
-  }
 
   ipcMain.handle(
     'terminals:open',
@@ -501,10 +521,11 @@ app.whenReady().then(async () => {
     return worktrees.info(path)
   }
 
-  ipcMain.handle('project:choose', async () => {
+  ipcMain.handle('project:choose', async (event) => {
     assertProjectIdle()
-    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
-    const picked = await dialog.showOpenDialog(mainWindow, {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, {
       properties: ['openDirectory'],
       defaultPath: projectDir()
     })
@@ -526,7 +547,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('github:available', () => github.available())
   ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
-  ipcMain.handle('github:clone', async (_event, nameWithOwner: unknown) => {
+  ipcMain.handle('github:clone', async (event, nameWithOwner: unknown) => {
     if (
       typeof nameWithOwner !== 'string' ||
       !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)
@@ -537,8 +558,9 @@ app.whenReady().then(async () => {
       throw new Error('invalid repository name')
     }
     assertProjectIdle()
-    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
-    const picked = await dialog.showOpenDialog(mainWindow, {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, {
       properties: ['openDirectory'],
       defaultPath: projectDir()
     })
@@ -623,13 +645,62 @@ app.whenReady().then(async () => {
     pushChanges()
   })
 
+  function closePoppedWindow(id: string): void {
+    const win = poppedWindows.get(id)
+    if (win !== undefined && !win.isDestroyed()) {
+      win.close()
+      return
+    }
+    if (!poppedOut.has(id)) return
+    poppedWindows.delete(id)
+    poppedOut.remove(id)
+    publishPopped()
+  }
+
+  function openPoppedWindow(id: string, title: string, from: BrowserWindow | null): void {
+    if (!poppedOut.add(id)) throw new Error('Already open in its own window.')
+    publishPopped()
+    const win = createWindow({
+      from,
+      width: 900,
+      height: 600,
+      title,
+      query: { terminal: id }
+    })
+    poppedWindows.set(id, win)
+    win.on('closed', () => {
+      if (poppedWindows.get(id) !== win) return
+      poppedWindows.delete(id)
+      poppedOut.remove(id)
+      publishPopped()
+    })
+  }
+
+  ipcMain.handle('windows:new', (event) => {
+    const blocked = refuseWindow(BrowserWindow.getAllWindows().length)
+    if (blocked !== null) throw new Error(blocked)
+    createWindow({ from: BrowserWindow.fromWebContents(event.sender) })
+  })
+  ipcMain.handle('terminals:popOut', (event, id: unknown) => {
+    const terminalId = requireTerminalId(id)
+    if (poppedOut.has(terminalId)) {
+      closePoppedWindow(terminalId)
+      return
+    }
+    const info = terms.list().find((item) => item.id === terminalId)
+    if (info === undefined) throw new Error('This terminal has closed.')
+    const blocked = refuseWindow(BrowserWindow.getAllWindows().length)
+    if (blocked !== null) throw new Error(blocked)
+    openPoppedWindow(terminalId, info.title, BrowserWindow.fromWebContents(event.sender))
+  })
+  ipcMain.handle('terminals:poppedOut', () => poppedOut.list())
+
   terms.onData((id, data) => {
-    if (!canSend()) return
-    mainWindow?.webContents.send('terminals:data', id, data)
+    broadcast('terminals:data', id, data)
   })
   terms.onUpdate((info, removed) => {
-    if (!canSend()) return
-    mainWindow?.webContents.send('terminals:update', info, removed)
+    if (removed) closePoppedWindow(info.id)
+    broadcast('terminals:update', info, removed)
   })
 
   orch.onUpdate(publish)
@@ -721,6 +792,11 @@ function parseJobAccess(value: unknown): JobAccess | undefined {
 
 function requireChangeId(id: unknown): string {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
+  return id
+}
+
+function requireTerminalId(id: unknown): string {
+  if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid terminal id')
   return id
 }
 

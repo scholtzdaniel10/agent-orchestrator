@@ -434,6 +434,10 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     restoreTerminals: ok([]),
     terminalSnapshot: ok(''),
     onTerminalData: off,
-    onTerminalUpdate: off
+    onTerminalUpdate: off,
+    newWindow: ok(undefined),
+    popOutTerminal: ok(undefined),
+    poppedOut: ok([]),
+    onPoppedOut: off
   }
 })()
