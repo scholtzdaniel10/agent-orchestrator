@@ -14,7 +14,7 @@ import type {
   ProviderId,
   TerminalInfo
 } from '../core/types'
-import type { OrchestratorApi, PlanStatus } from './api-types'
+import type { FileContent, FileList, OrchestratorApi, PlanStatus } from './api-types'
 
 const api: OrchestratorApi = {
   submitJob(
@@ -115,6 +115,18 @@ const api: OrchestratorApi = {
   },
   renameWorktree(id: string, name: string): Promise<void> {
     return ipcRenderer.invoke('worktrees:rename', id, name)
+  },
+  listFiles(where: string | null): Promise<FileList> {
+    return ipcRenderer.invoke('files:list', where)
+  },
+  readFile(where: string | null, path: string): Promise<FileContent> {
+    return ipcRenderer.invoke('files:read', where, path)
+  },
+  fileDiff(where: string | null, path: string): Promise<string> {
+    return ipcRenderer.invoke('files:diff', where, path)
+  },
+  openFile(where: string | null, path: string): Promise<void> {
+    return ipcRenderer.invoke('files:open', where, path)
   },
   getProjectSetup(): Promise<string[]> {
     return ipcRenderer.invoke('setup:get')

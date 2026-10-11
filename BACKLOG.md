@@ -24,6 +24,7 @@ Ordered. The top item is the next one to build.
 - Worktrees in the sidebar: name them, open several, and work in each one.
 - More than one window, and a terminal in a window of its own.
 - Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
+- Files panel: tree of a project or worktree, preview, and open in the default program.
 - Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
 - Command line: `legate` runs the same jobs, changes, and routines from a terminal.
 - Terminal UI: `legate` with no arguments, or `legate ui`, hands out jobs, watches every step, and reviews changes.
