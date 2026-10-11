@@ -1,5 +1,6 @@
 export const LAYOUT_KEY = 'orch.layout'
 export const LAYOUT_FIT_EVENT = 'layoutfit'
+export const TOGGLE_TERMINALS_EVENT = 'toggleterminals'
 
 export const MIN_SIDEBAR = 160
 export const MIN_LEAD = 280
@@ -9,11 +10,24 @@ export const MIN_WORKERS = 360
 export const HEADER_HEIGHT = 40
 export const FLOW_REST = 80
 
-export const PANE_LAYOUT_IDS = ['1', '2-side', '2-stack', '3-side', '4-grid', '6-grid'] as const
+export const PANE_LAYOUT_IDS = [
+  'auto',
+  '1',
+  '2-side',
+  '2-stack',
+  '3-side',
+  '4-grid',
+  '6-grid'
+] as const
 
 export type PaneLayoutId = (typeof PANE_LAYOUT_IDS)[number]
 
+export type ConcretePaneLayoutId = Exclude<PaneLayoutId, 'auto'>
+
+export const AUTO_PANE_LAYOUTS = ['1', '2-side', '3-side', '4-grid', '6-grid'] as const
+
 export const PANE_LAYOUT_LABELS: Record<PaneLayoutId, string> = {
+  auto: 'Auto',
   '1': '1',
   '2-side': '2 side by side',
   '2-stack': '2 stacked',
@@ -22,7 +36,7 @@ export const PANE_LAYOUT_LABELS: Record<PaneLayoutId, string> = {
   '6-grid': '6 grid'
 }
 
-export const PANE_COUNTS: Record<PaneLayoutId, number> = {
+export const PANE_COUNTS: Record<ConcretePaneLayoutId, number> = {
   '1': 1,
   '2-side': 2,
   '2-stack': 2,
@@ -49,6 +63,7 @@ export interface LayoutState {
   sizes: LayoutSizes
   shown: PanelVisibility
   paneLayout: PaneLayoutId
+  terminalsMode: boolean
 }
 
 export interface LayoutStorage {
@@ -79,7 +94,8 @@ export const DEFAULT_SHOWN: PanelVisibility = {
 export const DEFAULT_LAYOUT: LayoutState = {
   sizes: { ...DEFAULT_SIZES },
   shown: { ...DEFAULT_SHOWN },
-  paneLayout: '1'
+  paneLayout: 'auto',
+  terminalsMode: false
 }
 
 const PANE_LAYOUT_SET: ReadonlySet<string> = new Set(PANE_LAYOUT_IDS)
@@ -88,8 +104,26 @@ export function isPaneLayout(value: string): value is PaneLayoutId {
   return PANE_LAYOUT_SET.has(value)
 }
 
-export function paneCount(layout: PaneLayoutId): number {
-  return PANE_COUNTS[layout]
+export function paneCount(layout: PaneLayoutId, terminalCount = 0): number {
+  return PANE_COUNTS[resolvedPaneLayout(layout, terminalCount)]
+}
+
+/** Smallest of 1, 2-side, 3-side, 4-grid, 6-grid that fits `terminalCount` (capped at 6). */
+export function autoPaneLayout(terminalCount: number): (typeof AUTO_PANE_LAYOUTS)[number] {
+  const n = Math.max(0, Math.floor(terminalCount))
+  if (n <= 1) return '1'
+  if (n === 2) return '2-side'
+  if (n === 3) return '3-side'
+  if (n === 4) return '4-grid'
+  return '6-grid'
+}
+
+export function resolvedPaneLayout(
+  layout: PaneLayoutId,
+  terminalCount: number
+): ConcretePaneLayoutId {
+  if (layout === 'auto') return autoPaneLayout(terminalCount)
+  return layout
 }
 
 export function rowMode(width: number): RowMode {
@@ -118,7 +152,8 @@ export function parseLayout(raw: unknown): LayoutState {
     return {
       sizes: { ...DEFAULT_SIZES },
       shown: { ...DEFAULT_SHOWN },
-      paneLayout: DEFAULT_LAYOUT.paneLayout
+      paneLayout: DEFAULT_LAYOUT.paneLayout,
+      terminalsMode: DEFAULT_LAYOUT.terminalsMode
     }
   }
 
@@ -143,7 +178,9 @@ export function parseLayout(raw: unknown): LayoutState {
       ? root.paneLayout
       : DEFAULT_LAYOUT.paneLayout
 
-  return { sizes, shown, paneLayout }
+  const terminalsMode = asBool(root.terminalsMode, DEFAULT_LAYOUT.terminalsMode)
+
+  return { sizes, shown, paneLayout, terminalsMode }
 }
 
 function liveStorage(): LayoutStorage {
@@ -173,7 +210,8 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
       return {
         sizes: { ...DEFAULT_SIZES },
         shown: { ...DEFAULT_SHOWN },
-        paneLayout: DEFAULT_LAYOUT.paneLayout
+        paneLayout: DEFAULT_LAYOUT.paneLayout,
+        terminalsMode: DEFAULT_LAYOUT.terminalsMode
       }
     }
     return parseLayout(JSON.parse(raw) as unknown)
@@ -181,7 +219,8 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
     return {
       sizes: { ...DEFAULT_SIZES },
       shown: { ...DEFAULT_SHOWN },
-      paneLayout: DEFAULT_LAYOUT.paneLayout
+      paneLayout: DEFAULT_LAYOUT.paneLayout,
+      terminalsMode: DEFAULT_LAYOUT.terminalsMode
     }
   }
 }
@@ -193,7 +232,8 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
       JSON.stringify({
         sizes: state.sizes,
         shown: state.shown,
-        paneLayout: state.paneLayout
+        paneLayout: state.paneLayout,
+        terminalsMode: state.terminalsMode
       })
     )
   } catch {
@@ -288,8 +328,8 @@ export function maxSize(
   return clampSizes({ ...sizes, [key]: 10_000 }, viewport, shown)[key]
 }
 
-export function emptySlots(layout: PaneLayoutId): PaneSlots {
-  return Array.from({ length: paneCount(layout) }, () => null)
+export function emptySlots(layout: PaneLayoutId, terminalCount = 0): PaneSlots {
+  return Array.from({ length: paneCount(layout, terminalCount) }, () => null)
 }
 
 function clampIndex(index: number, length: number): number {
@@ -302,7 +342,7 @@ export function fillPanes(
   terminalIds: readonly string[],
   activeId: string | null
 ): PaneSlots {
-  const slots = emptySlots(layout)
+  const slots = emptySlots(layout, terminalIds.length)
   if (terminalIds.length === 0) return slots
   let start = activeId === null ? 0 : terminalIds.indexOf(activeId)
   if (start < 0) start = 0
@@ -387,6 +427,22 @@ export function dropMissingTerminals(
 export function requestLayoutFit(): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new Event(LAYOUT_FIT_EVENT))
+}
+
+export function isTerminalsShortcut(event: {
+  key: string
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+  metaKey: boolean
+}): boolean {
+  return (
+    (event.key === 'T' || event.key === 't') &&
+    event.ctrlKey &&
+    event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey
+  )
 }
 
 /**

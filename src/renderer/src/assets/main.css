@@ -4309,3 +4309,97 @@ button.job-step {
     display: flex;
   }
 }
+
+.app.is-terminals {
+  grid-template-columns: var(--layout-sidebar, 200px) minmax(360px, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-areas:
+    'header header'
+    'projects workers';
+}
+
+.app.is-terminals.is-hide-projects {
+  grid-template-columns: minmax(360px, 1fr);
+  grid-template-areas:
+    'header'
+    'workers';
+}
+
+.app.is-terminals .panel-flow,
+.app.is-terminals .panel-lead,
+.app.is-terminals .panel-usage {
+  display: none;
+}
+
+.app.is-terminals .panel-workers {
+  padding: 6px 8px 8px;
+}
+
+.app.is-terminals .workers {
+  gap: 0;
+}
+
+.app.is-terminals .workers > .panel-head {
+  display: none;
+}
+
+.app.is-terminals #worker-tab-jobs,
+.app.is-terminals #worker-tab-changes {
+  display: none;
+}
+
+.app.is-terminals .tab-bar {
+  padding: 0 2px 4px;
+}
+
+.project-chats-label .project-worktree-shown {
+  margin-left: 8px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-stretch: 100%;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.project-worktree-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  padding: 0 10px 6px 10px;
+}
+
+.project-worktree-create .project-worktree-rename {
+  flex: 1 1 80px;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.project-worktree-how,
+.project-worktree-start {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.project-worktree-how input {
+  width: 48px;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.project-worktree-start select {
+  width: auto;
+  max-width: 108px;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+}

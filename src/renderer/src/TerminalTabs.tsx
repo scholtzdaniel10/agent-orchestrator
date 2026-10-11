@@ -53,10 +53,12 @@ function TerminalTabs({
   changeCount,
   paneLayout,
   opening,
+  terminalsMode,
   onSelect,
   onClose,
   onOpen,
-  onPaneLayout
+  onPaneLayout,
+  onToggleTerminals
 }: {
   terminals: readonly TerminalInfo[]
   changes: readonly ChangeSet[]
@@ -67,10 +69,12 @@ function TerminalTabs({
   changeCount: number
   paneLayout: PaneLayoutId
   opening: boolean
+  terminalsMode: boolean
   onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
   onOpen: (provider: ProviderId, worktree?: 'new') => void
   onPaneLayout: (layout: PaneLayoutId) => void
+  onToggleTerminals: () => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
   const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
@@ -89,10 +93,18 @@ function TerminalTabs({
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
+    const prefix = terminalsMode ? 0 : 2
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    const last = terminals.length + 1
+    const last = terminals.length + prefix - 1
     if (next < 0 || next > last) return
-    const id = next === 0 ? 'jobs' : next === 1 ? 'changes' : terminals[next - 2].id
+    const id =
+      prefix === 0
+        ? terminals[next].id
+        : next === 0
+          ? 'jobs'
+          : next === 1
+            ? 'changes'
+            : terminals[next - 2].id
     onSelect(id, 'arrow')
     const element = document.getElementById(tabElementId(id))
     if (element instanceof HTMLButtonElement) element.focus()
@@ -137,7 +149,7 @@ function TerminalTabs({
         </button>
         {terminals.map((info, index) => {
           const selected = info.id === active
-          const tabIndex = index + 2
+          const tabIndex = index + (terminalsMode ? 0 : 2)
           const heading = terminalDisplayTitle(info, changes)
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
@@ -231,6 +243,15 @@ function TerminalTabs({
             ))}
           </select>
         </div>
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact workers-focus"
+          aria-pressed={terminalsMode}
+          title="Terminals (Ctrl+Shift+T)"
+          onClick={onToggleTerminals}
+        >
+          Terminals
+        </button>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Star } from './Star'
 import { worktreeLabel } from './worktree-label'
 
@@ -8,6 +8,22 @@ type GithubRepo = Awaited<ReturnType<Window['api']['githubRepos']>>[number]
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+type WorktreeId = string | null
+type WorktreeSelectMode = 'only' | 'toggle' | 'range'
+
+function worktreeKeys(changes: readonly ChangeSet[]): WorktreeId[] {
+  return [null, ...changes.map((item) => item.id)]
+}
+
+function clickSelectMode(event: {
+  shiftKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+}): WorktreeSelectMode {
+  if (event.shiftKey) return 'range'
+  if (event.ctrlKey || event.metaKey) return 'toggle'
+  return 'only'
+}
 
 function folderName(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, '')
@@ -228,8 +244,9 @@ function countTerminals(terminals: readonly TerminalInfo[], change: string | nul
 }
 
 function worktreeRowId(index: number, changes: readonly ChangeSet[]): string {
-  if (index === 0) return 'worktree-row-project'
-  const item = changes[index - 1]
+  if (index === 0) return 'worktree-row-all'
+  if (index === 1) return 'worktree-row-project'
+  const item = changes[index - 2]
   return item === undefined ? 'worktree-row-project' : `worktree-row-${item.id}`
 }
 
@@ -264,9 +281,9 @@ function WorktreeRow({
   canRename: boolean
   canDiscard: boolean
   currentName: string
-  onSelect: () => void
+  onSelect: (event: MouseEvent<HTMLButtonElement>) => void
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
-  onOpen: (provider: ProviderId) => void
+  onOpen?: (provider: ProviderId) => void
   onRename?: (name: string) => void
   onDiscard?: () => void
 }): React.JSX.Element {
@@ -384,7 +401,7 @@ function WorktreeRow({
             className="btn btn-quiet btn-compact"
             title="Open Claude here"
             onClick={() => {
-              onOpen('claude')
+              onOpen?.('claude')
             }}
           >
             + Claude
@@ -396,7 +413,7 @@ function WorktreeRow({
             className="btn btn-quiet btn-compact"
             title="Open Cursor here"
             onClick={() => {
-              onOpen('cursor')
+              onOpen?.('cursor')
             }}
           >
             + Cursor
@@ -436,10 +453,11 @@ function WorktreesSection({
   branch,
   changes,
   terminals,
-  selectedWorktree,
+  selectedWorktrees,
   claudeAvailable,
   cursorAvailable,
   onSelect,
+  onSelectAll,
   onCreate,
   onRename,
   onDiscard,
@@ -448,17 +466,20 @@ function WorktreesSection({
   branch: string | null
   changes: ChangeSet[]
   terminals: readonly TerminalInfo[]
-  selectedWorktree: string | null
+  selectedWorktrees: ReadonlySet<WorktreeId>
   claudeAvailable: boolean
   cursorAvailable: boolean
-  onSelect: (id: string | null) => void
-  onCreate: (name?: string) => void
+  onSelect: (id: WorktreeId, mode?: WorktreeSelectMode) => void
+  onSelectAll: () => void
+  onCreate: (name: string | undefined, count: number, start: ProviderId | null) => void
   onRename: (id: string, name: string) => void
   onDiscard: (id: string) => void
   onOpen: (provider: ProviderId, worktree: string | null) => void
 }): React.JSX.Element {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
+  const [howMany, setHowMany] = useState(1)
+  const [start, setStart] = useState<'' | ProviderId>('')
   const createRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -468,31 +489,57 @@ function WorktreesSection({
 
   function finishCreate(save: boolean): void {
     const next = draft.trim()
+    const count = Math.min(6, Math.max(1, Math.round(howMany)))
+    const agent = start === '' ? null : start
     setCreating(false)
     setDraft('')
-    if (save) onCreate(next === '' ? undefined : next)
+    setHowMany(1)
+    setStart('')
+    if (save) onCreate(next === '' ? undefined : next, count, agent)
   }
 
   function onRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      onSelect(index === 0 ? null : (changes[index - 1]?.id ?? null))
-      return
+    if (index === 0) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        onSelectAll()
+        return
+      }
+    } else {
+      const id = index === 1 ? null : (changes[index - 2]?.id ?? null)
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        onSelect(id, 'only')
+        return
+      }
+      if (event.key === ' ') {
+        event.preventDefault()
+        onSelect(id, 'toggle')
+        return
+      }
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     event.preventDefault()
     const next = event.key === 'ArrowDown' ? index + 1 : index - 1
-    if (next < 0 || next > changes.length) return
+    if (next < 0 || next > changes.length + 1) return
     const element = document.getElementById(worktreeRowId(next, changes))
     if (element instanceof HTMLButtonElement) element.focus()
   }
 
   const folderLabel = branch ?? 'HEAD'
+  const keys = worktreeKeys(changes)
+  const allSelected = keys.every((key) => selectedWorktrees.has(key))
+  const shownCount = selectedWorktrees.size
 
   return (
     <div className="project-worktrees">
       <div className="project-chats-head">
-        <span className="project-chats-label">Worktrees</span>
+        <span className="project-chats-label">
+          Worktrees
+          {shownCount > 1 ? (
+            <span className="project-worktree-shown">{`${String(shownCount)} shown`}</span>
+          ) : null}
+        </span>
         <button
           type="button"
           className="btn btn-quiet btn-compact"
@@ -500,6 +547,8 @@ function WorktreesSection({
           aria-label="New worktree"
           onClick={() => {
             setDraft('')
+            setHowMany(1)
+            setStart('')
             setCreating(true)
           }}
         >
@@ -507,34 +556,87 @@ function WorktreesSection({
         </button>
       </div>
       {creating ? (
-        <input
-          ref={createRef}
-          className="project-worktree-rename"
-          value={draft}
-          aria-label="New worktree name"
-          placeholder="Name (optional)"
-          maxLength={40}
-          onChange={(event) => {
-            setDraft(event.target.value)
+        <form
+          className="project-worktree-create"
+          onSubmit={(event) => {
+            event.preventDefault()
+            finishCreate(true)
           }}
-          onBlur={() => {
-            finishCreate(false)
-          }}
-          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              finishCreate(true)
-            } else if (event.key === 'Escape') {
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
               event.preventDefault()
               finishCreate(false)
             }
           }}
-        />
+        >
+          <input
+            ref={createRef}
+            className="project-worktree-rename"
+            value={draft}
+            aria-label="New worktree name"
+            placeholder="Name (optional)"
+            maxLength={40}
+            onChange={(event) => {
+              setDraft(event.target.value)
+            }}
+          />
+          <label className="project-worktree-how">
+            How many
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={howMany}
+              aria-label="How many"
+              onChange={(event) => {
+                const value = Number(event.target.value)
+                if (!Number.isFinite(value)) return
+                setHowMany(value)
+              }}
+            />
+          </label>
+          <label className="project-worktree-start">
+            Start
+            <select
+              value={start}
+              aria-label="Start"
+              onChange={(event) => {
+                const value = event.target.value
+                if (value === 'claude' || value === 'cursor') setStart(value)
+                else setStart('')
+              }}
+            >
+              <option value="">nothing</option>
+              {claudeAvailable ? <option value="claude">Claude</option> : null}
+              {cursorAvailable ? <option value="cursor">Cursor</option> : null}
+            </select>
+          </label>
+        </form>
       ) : null}
       <ul className="project-worktrees-list">
         <WorktreeRow
           rowId={worktreeRowId(0, changes)}
-          selected={selectedWorktree === null}
+          selected={allSelected}
+          title="All"
+          titleMono={false}
+          subtitle={null}
+          stats={null}
+          terminals={0}
+          claudeAvailable={false}
+          cursorAvailable={false}
+          canRename={false}
+          canDiscard={false}
+          currentName=""
+          onSelect={() => {
+            onSelectAll()
+          }}
+          onKeyDown={(event) => {
+            onRowKeyDown(event, 0)
+          }}
+        />
+        <WorktreeRow
+          rowId={worktreeRowId(1, changes)}
+          selected={selectedWorktrees.has(null)}
           title={folderLabel}
           titleMono={false}
           subtitle="project folder"
@@ -545,14 +647,14 @@ function WorktreesSection({
           canRename={false}
           canDiscard={false}
           currentName=""
-          onSelect={() => {
-            onSelect(null)
+          onSelect={(event) => {
+            onSelect(null, clickSelectMode(event))
           }}
           onKeyDown={(event) => {
-            onRowKeyDown(event, 0)
+            onRowKeyDown(event, 1)
           }}
           onOpen={(provider) => {
-            onSelect(null)
+            onSelect(null, 'only')
             onOpen(provider, null)
           }}
         />
@@ -563,8 +665,8 @@ function WorktreesSection({
           return (
             <WorktreeRow
               key={item.id}
-              rowId={worktreeRowId(index + 1, changes)}
-              selected={selectedWorktree === item.id}
+              rowId={worktreeRowId(index + 2, changes)}
+              selected={selectedWorktrees.has(item.id)}
               title={label}
               titleMono={!named}
               subtitle={null}
@@ -584,14 +686,14 @@ function WorktreesSection({
               canRename={true}
               canDiscard={true}
               currentName={named ? (item.name ?? '') : ''}
-              onSelect={() => {
-                onSelect(item.id)
+              onSelect={(event) => {
+                onSelect(item.id, clickSelectMode(event))
               }}
               onKeyDown={(event) => {
-                onRowKeyDown(event, index + 1)
+                onRowKeyDown(event, index + 2)
               }}
               onOpen={(provider) => {
-                onSelect(item.id)
+                onSelect(item.id, 'only')
                 onOpen(provider, item.id)
               }}
               onRename={(name) => {
@@ -728,7 +830,7 @@ function ProjectBar({
   githubAvailable,
   changes,
   terminals,
-  selectedWorktree,
+  selectedWorktrees,
   claudeAvailable,
   cursorAvailable,
   onAdd,
@@ -740,6 +842,7 @@ function ProjectBar({
   onRenameChat,
   onRemoveChat,
   onSelectWorktree,
+  onSelectAllWorktrees,
   onCreateWorktree,
   onRenameWorktree,
   onDiscardWorktree,
@@ -754,7 +857,7 @@ function ProjectBar({
   githubAvailable: boolean
   changes: ChangeSet[]
   terminals: readonly TerminalInfo[]
-  selectedWorktree: string | null
+  selectedWorktrees: ReadonlySet<WorktreeId>
   claudeAvailable: boolean
   cursorAvailable: boolean
   onAdd: () => void
@@ -765,8 +868,9 @@ function ProjectBar({
   onNewChat: () => void
   onRenameChat: (id: string, title: string) => void
   onRemoveChat: (id: string) => void
-  onSelectWorktree: (id: string | null) => void
-  onCreateWorktree: (name?: string) => void
+  onSelectWorktree: (id: WorktreeId, mode?: WorktreeSelectMode) => void
+  onSelectAllWorktrees: () => void
+  onCreateWorktree: (name: string | undefined, count: number, start: ProviderId | null) => void
   onRenameWorktree: (id: string, name: string) => void
   onDiscardWorktree: (id: string) => void
   onOpenInWorktree: (provider: ProviderId, worktree: string | null) => void
@@ -930,10 +1034,11 @@ function ProjectBar({
                   branch={entry.branch}
                   changes={changes}
                   terminals={terminals}
-                  selectedWorktree={selectedWorktree}
+                  selectedWorktrees={selectedWorktrees}
                   claudeAvailable={claudeAvailable}
                   cursorAvailable={cursorAvailable}
                   onSelect={onSelectWorktree}
+                  onSelectAll={onSelectAllWorktrees}
                   onCreate={onCreateWorktree}
                   onRename={onRenameWorktree}
                   onDiscard={onDiscardWorktree}

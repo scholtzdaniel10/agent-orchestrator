@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { LAYOUT_FIT_EVENT } from './layout'
+import { LAYOUT_FIT_EVENT, TOGGLE_TERMINALS_EVENT, isTerminalsShortcut } from './layout'
 import type { TerminalBus } from './terminal-bus'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
@@ -113,6 +113,15 @@ function TerminalPane({
 
     termRef.current = term
     term.options.disableStdin = exitedRef.current
+    term.attachCustomKeyEventHandler((event) => {
+      if (!isTerminalsShortcut(event)) return true
+      if (event.type === 'keydown') {
+        event.preventDefault()
+        event.stopPropagation()
+        window.dispatchEvent(new Event(TOGGLE_TERMINALS_EVENT))
+      }
+      return false
+    })
 
     // Replaying saved output makes xterm answer the CLI's old startup queries again; those
     // answers must not reach the live session as if they were typed.

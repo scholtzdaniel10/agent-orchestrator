@@ -21,7 +21,9 @@ import {
   MIN_LEAD,
   MIN_SIDEBAR,
   MIN_USAGE,
+  TOGGLE_TERMINALS_EVENT,
   clampSizes,
+  isTerminalsShortcut,
   loadLayout,
   maxSize,
   requestLayoutFit,
@@ -45,6 +47,21 @@ type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProjectInfo = Awaited<ReturnType<Window['api']['getProject']>>
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+type WorktreeId = string | null
+type WorktreeSelectMode = 'only' | 'toggle' | 'range'
+
+function worktreeKeys(changes: readonly ChangeSet[]): WorktreeId[] {
+  return [null, ...changes.map((item) => item.id)]
+}
+
+function sameWorktreeSet(a: ReadonlySet<WorktreeId>, b: ReadonlySet<WorktreeId>): boolean {
+  if (a.size !== b.size) return false
+  for (const id of a) {
+    if (!b.has(id)) return false
+  }
+  return true
+}
 
 const terminalBus: TerminalBus = createTerminalBus((listener) =>
   window.api.onTerminalData(listener)
@@ -426,8 +443,12 @@ function App(): React.JSX.Element {
   const [plans, setPlans] = useState<PlanStatus[] | null>(null)
   const [terminals, setTerminals] = useState<TerminalInfo[]>([])
   const [changes, setChanges] = useState<ChangeSet[]>([])
-  const [selectedWorktree, setSelectedWorktree] = useState<string | null>(null)
+  const [selectedWorktree, setSelectedWorktree] = useState<WorktreeId>(null)
+  const [selectedWorktrees, setSelectedWorktrees] = useState<ReadonlySet<WorktreeId>>(
+    () => new Set<WorktreeId>([null])
+  )
   const [placeTerminal, setPlaceTerminal] = useState<{ id: string; nonce: number } | null>(null)
+  const [showPanes, setShowPanes] = useState(0)
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
@@ -443,7 +464,7 @@ function App(): React.JSX.Element {
   const [sizes, setSizes] = useState<LayoutSizes>(layout.sizes)
   const [shown, setShown] = useState<PanelVisibility>(layout.shown)
   const [paneLayout, setPaneLayout] = useState<PaneLayoutId>(layout.paneLayout)
-  const [focusMode, setFocusMode] = useState(false)
+  const [terminalsMode, setTerminalsMode] = useState(layout.terminalsMode)
   const [dragging, setDragging] = useState<'horizontal' | 'vertical' | null>(null)
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1200 : window.innerWidth,
@@ -451,6 +472,7 @@ function App(): React.JSX.Element {
   }))
   const showJobNonce = useRef(0)
   const termNonce = useRef(0)
+  const panesNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
@@ -693,21 +715,24 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    saveLayout({ sizes, shown, paneLayout })
-  }, [sizes, shown, paneLayout])
+    saveLayout({ sizes, shown, paneLayout, terminalsMode })
+  }, [sizes, shown, paneLayout, terminalsMode])
 
   useEffect(() => {
     requestLayoutFit()
-  }, [shown, focusMode, paneLayout])
+  }, [shown, terminalsMode, paneLayout])
 
   useEffect(() => {
+    function toggleTerminals(): void {
+      setTerminalsMode((on) => !on)
+    }
     function onKeyDown(event: KeyboardEvent): void {
-      if (isTerminalTarget(event.target)) return
-      if (event.key === 'Escape' && focusMode) {
+      if (isTerminalsShortcut(event)) {
         event.preventDefault()
-        setFocusMode(false)
+        if (!isTerminalTarget(event.target)) toggleTerminals()
         return
       }
+      if (isTerminalTarget(event.target)) return
       if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return
       const index =
         event.key === '1'
@@ -725,10 +750,12 @@ function App(): React.JSX.Element {
       setShown((current) => ({ ...current, [key]: !current[key] }))
     }
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener(TOGGLE_TERMINALS_EVENT, toggleTerminals)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener(TOGGLE_TERMINALS_EVENT, toggleTerminals)
     }
-  }, [focusMode])
+  }, [])
 
   useEffect(() => {
     const entries = Object.entries(flashes)
@@ -754,6 +781,7 @@ function App(): React.JSX.Element {
   async function adoptProject(next: ProjectInfo): Promise<void> {
     setProject(next)
     setSelectedWorktree(null)
+    setSelectedWorktrees(new Set<WorktreeId>([null]))
     acceptList.current = false
     const state = bag.current
     const list = await window.api.listChanges()
@@ -854,6 +882,7 @@ function App(): React.JSX.Element {
     worktree: string | null
   ): Promise<void> {
     setSelectedWorktree(worktree)
+    setSelectedWorktrees(new Set<WorktreeId>([worktree]))
     let flag: 'new' | string | undefined
     if (worktree === null) {
       try {
@@ -871,7 +900,10 @@ function App(): React.JSX.Element {
       state.terminals = next
       setTerminals(next)
       publish(state, setEvents)
-      if (flag === 'new' && info.change !== undefined) setSelectedWorktree(info.change)
+      if (flag === 'new' && info.change !== undefined) {
+        setSelectedWorktree(info.change)
+        setSelectedWorktrees(new Set<WorktreeId>([info.change]))
+      }
       termNonce.current += 1
       setPlaceTerminal({ id: info.id, nonce: termNonce.current })
     } catch (err: unknown) {
@@ -879,13 +911,96 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function createWorktree(name?: string): Promise<void> {
+  function requestPanes(): void {
+    panesNonce.current += 1
+    setShowPanes(panesNonce.current)
+  }
+
+  function applyCreatedWorktrees(made: readonly string[]): void {
+    const primary = made[0]
+    if (primary === undefined) return
+    setSelectedWorktree(primary)
+    setSelectedWorktrees(new Set(made))
+  }
+
+  async function createWorktree(
+    name?: string,
+    count = 1,
+    start: ProviderId | null = null
+  ): Promise<void> {
+    const n = Math.min(6, Math.max(1, Math.floor(count)))
+    const made: string[] = []
     try {
-      const created = await window.api.createWorktree(name)
-      setSelectedWorktree(created.id)
+      for (let i = 1; i <= n; i += 1) {
+        const wtName = n === 1 ? name : name === undefined ? undefined : `${name} ${String(i)}`
+        const created = await window.api.createWorktree(wtName)
+        made.push(created.id)
+        const state = bag.current
+        if (!state.changes.some((item) => item.id === created.id)) {
+          commitChanges(state, state.changes.concat(created), setChanges, setEvents)
+        }
+        if (start !== null) {
+          const info = await window.api.openTerminal(start, 100, 30, created.id)
+          const next = applyTerminalUpdate(state.terminals, info, false)
+          state.terminals = next
+          setTerminals(next)
+          publish(state, setEvents)
+          termNonce.current += 1
+          setPlaceTerminal({ id: info.id, nonce: termNonce.current })
+        }
+      }
+      applyCreatedWorktrees(made)
+      if (n > 1) requestPanes()
     } catch (err: unknown) {
+      applyCreatedWorktrees(made)
+      if (n > 1 && made.length > 0) requestPanes()
       setProjectError({ text: errorText(err), at: Date.now() })
     }
+  }
+
+  function selectWorktree(id: WorktreeId, mode: WorktreeSelectMode = 'only'): void {
+    if (mode === 'only') {
+      setSelectedWorktree(id)
+      setSelectedWorktrees(new Set<WorktreeId>([id]))
+      return
+    }
+    const keys = worktreeKeys(changes)
+    if (mode === 'toggle') {
+      const next = new Set(selectedWorktrees)
+      if (next.has(id)) {
+        if (next.size > 1) next.delete(id)
+      } else {
+        next.add(id)
+      }
+      setSelectedWorktrees(next)
+      if (next.has(id)) setSelectedWorktree(id)
+      else {
+        const fallback = keys.find((key) => next.has(key))
+        setSelectedWorktree(fallback === undefined ? null : fallback)
+      }
+      return
+    }
+    const from = keys.indexOf(selectedWorktree)
+    const to = keys.indexOf(id)
+    if (from < 0 || to < 0) {
+      selectWorktree(id, 'only')
+      return
+    }
+    const start = Math.min(from, to)
+    const end = Math.max(from, to)
+    setSelectedWorktrees(new Set(keys.slice(start, end + 1)))
+    setSelectedWorktree(id)
+  }
+
+  function selectAllWorktrees(): void {
+    const keys = worktreeKeys(changes)
+    const allOn = keys.every((key) => selectedWorktrees.has(key))
+    if (allOn) {
+      setSelectedWorktree(null)
+      setSelectedWorktrees(new Set<WorktreeId>([null]))
+      return
+    }
+    setSelectedWorktrees(new Set(keys))
   }
 
   async function renameWorktree(id: string, name: string): Promise<void> {
@@ -899,7 +1014,16 @@ function App(): React.JSX.Element {
   async function discardWorktree(id: string): Promise<void> {
     try {
       await window.api.discardChange(id)
-      if (selectedWorktree === id) setSelectedWorktree(null)
+      const next = new Set(selectedWorktrees)
+      next.delete(id)
+      if (next.size === 0) next.add(null)
+      setSelectedWorktrees(next)
+      if (selectedWorktree === id) {
+        const fallback = worktreeKeys(changes.filter((item) => item.id !== id)).find((key) =>
+          next.has(key)
+        )
+        setSelectedWorktree(fallback === undefined ? null : fallback)
+      }
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
     }
@@ -923,16 +1047,27 @@ function App(): React.JSX.Element {
     }
   }
 
-  if (selectedWorktree !== null && !changes.some((item) => item.id === selectedWorktree)) {
-    setSelectedWorktree(null)
+  const knownWorktrees = new Set<WorktreeId>([null, ...changes.map((item) => item.id)])
+  const prunedSelection = new Set<WorktreeId>()
+  for (const id of selectedWorktrees) {
+    if (knownWorktrees.has(id)) prunedSelection.add(id)
   }
+  if (prunedSelection.size === 0) prunedSelection.add(null)
+  const prunedPrimary =
+    selectedWorktree !== null && !prunedSelection.has(selectedWorktree)
+      ? (worktreeKeys(changes).find((key) => prunedSelection.has(key)) ?? null)
+      : selectedWorktree !== null && !knownWorktrees.has(selectedWorktree)
+        ? null
+        : selectedWorktree
+  if (prunedPrimary !== selectedWorktree) setSelectedWorktree(prunedPrimary)
+  if (!sameWorktreeSet(prunedSelection, selectedWorktrees)) setSelectedWorktrees(prunedSelection)
 
   const ready = readyPlans(plans ?? EMPTY_PLANS, now)
   const running = jobs.filter((job) => job.status === 'running').length
   const queued = jobs.filter((job) => job.status === 'queued').length
   const leadBusy = messages.some((message) => message.status === 'streaming')
-  const effectiveShown: PanelVisibility = focusMode
-    ? { projects: false, flow: false, lead: false, usage: false }
+  const effectiveShown: PanelVisibility = terminalsMode
+    ? { projects: shown.projects, flow: false, lead: false, usage: false }
     : shown
   const displayed = clampSizes(sizes, viewport, effectiveShown)
   const appStyle = {
@@ -946,7 +1081,7 @@ function App(): React.JSX.Element {
     dragging !== null ? 'is-dragging' : '',
     dragging === 'vertical' ? 'is-dragging-col' : '',
     dragging === 'horizontal' ? 'is-dragging-row' : '',
-    focusMode ? 'is-focus' : '',
+    terminalsMode ? 'is-terminals' : '',
     !effectiveShown.projects ? 'is-hide-projects' : '',
     !effectiveShown.flow ? 'is-hide-flow' : '',
     !effectiveShown.lead ? 'is-hide-lead' : '',
@@ -1026,7 +1161,7 @@ function App(): React.JSX.Element {
         githubAvailable={githubAvailable}
         changes={changes}
         terminals={terminals}
-        selectedWorktree={selectedWorktree}
+        selectedWorktrees={selectedWorktrees}
         claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
         cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
         onAdd={() => {
@@ -1051,9 +1186,10 @@ function App(): React.JSX.Element {
         onRemoveChat={(id) => {
           void removeLeadChat(id)
         }}
-        onSelectWorktree={setSelectedWorktree}
-        onCreateWorktree={(name) => {
-          void createWorktree(name)
+        onSelectWorktree={selectWorktree}
+        onSelectAllWorktrees={selectAllWorktrees}
+        onCreateWorktree={(name, count, start) => {
+          void createWorktree(name, count, start)
         }}
         onRenameWorktree={(id, name) => {
           void renameWorktree(id, name)
@@ -1150,16 +1286,20 @@ function App(): React.JSX.Element {
           initialTerminalIds={initialTerminalIds}
           changes={changes}
           selectedWorktree={selectedWorktree}
+          selectedWorktrees={selectedWorktrees}
           placeTerminal={placeTerminal}
-          onSelectWorktree={setSelectedWorktree}
+          showPanes={showPanes}
+          onSelectWorktree={(id) => {
+            selectWorktree(id, 'only')
+          }}
           isRepo={project?.isRepo === true}
           project={project?.path ?? ''}
           bus={terminalBus}
           showJob={showJob}
-          focusMode={focusMode}
+          terminalsMode={terminalsMode}
           paneLayout={paneLayout}
-          onToggleFocus={() => {
-            setFocusMode((on) => !on)
+          onToggleTerminals={() => {
+            setTerminalsMode((on) => !on)
           }}
           onPaneLayout={setPaneLayout}
           onJob={(job) => {
