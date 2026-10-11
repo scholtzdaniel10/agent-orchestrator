@@ -47,6 +47,18 @@ export interface CliContext {
   project: string
   now: () => number
   color: boolean
+  /** True when both stdin and stdout are terminals. */
+  tty: boolean
+  termSize: () => { columns: number; rows: number }
+  interactive: (provider: 'claude' | 'cursor') => {
+    command: string
+    args: string[]
+    env?: NodeJS.ProcessEnv
+  }
+  spawnInherited: (
+    spec: { command: string; args: string[]; env?: NodeJS.ProcessEnv },
+    cwd: string
+  ) => Promise<void>
   stdout: (text: string) => void
   stderr: (text: string) => void
   stdin: {
@@ -91,6 +103,7 @@ export interface CliContext {
   routines: {
     list: () => Routine[]
     run: (id: string) => JobRecord
+    onJobFinished?: (job: JobRecord) => void
   }
   github: {
     openPr: (
@@ -109,7 +122,7 @@ interface RunFlags {
 
 export async function run(argv: string[], ctx: CliContext): Promise<number> {
   try {
-    const early = earlyExit(argv, ctx.version)
+    const early = earlyExit(argv, ctx.version, ctx.tty)
     if (early !== null) {
       ;(early.stream === 'stdout' ? ctx.stdout : ctx.stderr)(early.text)
       return early.code
@@ -129,6 +142,15 @@ export async function run(argv: string[], ctx: CliContext): Promise<number> {
 
 async function dispatch(parsed: Parsed, ctx: CliContext): Promise<number> {
   const command = parsed.command
+  if (command === null || command === 'ui') {
+    if (!ctx.tty) {
+      ctx.stderr(`Missing command.\n${usageFor(null)}\n`)
+      return 2
+    }
+    if (unexpected(parsed.args, 'ui', ctx)) return 2
+    const { openTui } = await import('./tui/open')
+    return openTui(ctx)
+  }
   if (command === 'status') {
     if (unexpected(parsed.args, 'status', ctx)) return 2
     return status(ctx)

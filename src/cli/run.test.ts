@@ -45,6 +45,10 @@ function ctx(io: { out: string; err: string }, patch: Patch = {}): CliContext {
     project: '/proj',
     now: () => 10_000,
     color: false,
+    tty: false,
+    termSize: () => ({ columns: 80, rows: 24 }),
+    interactive: () => ({ command: 'claude', args: [] }),
+    spawnInherited: () => Promise.resolve(),
     stdout: (text) => {
       io.out += text
     },
@@ -126,7 +130,13 @@ test('help, version, and an unknown command', async () => {
   const help = capture()
   expect(await run(['--help'], ctx(help))).toBe(0)
   expect(help.out).toContain('legate job')
+  expect(help.out).toContain('legate ui')
   expect(help.err).toBe('')
+
+  const missing = capture()
+  expect(await run([], ctx(missing))).toBe(2)
+  expect(missing.err).toContain('Missing command.')
+  expect(missing.err).toContain('legate ui')
 
   const version = capture()
   expect(await run(['-v'], ctx(version))).toBe(0)

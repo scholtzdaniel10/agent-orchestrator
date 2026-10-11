@@ -162,6 +162,13 @@ export function planLine(plan: PlanView, tested: string, now: number, color: boo
   return parts.join(' · ')
 }
 
+/** The plan in a few words, for a one-line header: no version, no advice. */
+export function planShort(plan: PlanView, now: number): string {
+  const word = planWord(plan, now)
+  if (word !== 'ready') return `${plan.id} ${word}`
+  return `${plan.id} ready ${String(allowancePercent(plan.headroom))}% left`
+}
+
 export function jobCells(input: {
   id: string
   status: string
