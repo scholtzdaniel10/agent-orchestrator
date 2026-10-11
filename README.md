@@ -130,7 +130,7 @@ Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds 
 
 ## Tested with
 
-- Claude Code `2.1.258`
+- Claude Code `2.1.292`
 - Cursor CLI `2026.10.01-e373342`
 
 Newer CLI versions usually work; the app tells you when one sends output it does not understand.

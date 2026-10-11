@@ -27,7 +27,7 @@ function plan(partial: Partial<PlanView> & Pick<PlanView, 'id'>): PlanView {
     restingUntil: null,
     busy: false,
     running: 0,
-    version: '2.1.258',
+    version: '2.1.292',
     versionStatus: 'tested',
     atRisk: false,
     ...partial
@@ -124,8 +124,8 @@ test('tables pad every column but the last', () => {
 })
 
 test('plan lines use the app wording', () => {
-  expect(planLine(plan({ id: 'claude' }), '2.1.258', 0, false)).toBe(
-    'claude · ready · CLI 2.1.258 · 80% left'
+  expect(planLine(plan({ id: 'claude' }), '2.1.292', 0, false)).toBe(
+    'claude · ready · CLI 2.1.292 · 80% left'
   )
   expect(
     planLine(
@@ -144,17 +144,17 @@ test('plan lines use the app wording', () => {
     'cursor · not installed · The Cursor CLI is not installed. Install it, then run `agent login` in a terminal.'
   )
   expect(
-    planLine(plan({ id: 'claude', version: '9.0.0', versionStatus: 'newer' }), '2.1.258', 0, false)
-  ).toBe('claude · ready · CLI 9.0.0 · newer than tested (2.1.258) · 80% left')
+    planLine(plan({ id: 'claude', version: '9.0.0', versionStatus: 'newer' }), '2.1.292', 0, false)
+  ).toBe('claude · ready · CLI 9.0.0 · newer than tested (2.1.292) · 80% left')
   expect(
     planLine(
       plan({ id: 'claude', version: '1.0.0', versionStatus: 'older', headroom: 0.5 }),
-      '2.1.258',
+      '2.1.292',
       0,
       false
     )
-  ).toBe('claude · ready · CLI 1.0.0 · older than tested (2.1.258) — update it · 50% left')
-  expect(planLine(plan({ id: 'claude' }), '2.1.258', 0, true)).toContain('\u001b[')
+  ).toBe('claude · ready · CLI 1.0.0 · older than tested (2.1.292) — update it · 50% left')
+  expect(planLine(plan({ id: 'claude' }), '2.1.292', 0, true)).toContain('\u001b[')
 })
 
 test('a change footer names the diff command', () => {

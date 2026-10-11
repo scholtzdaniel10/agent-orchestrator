@@ -137,7 +137,22 @@ function createWindow(opts?: {
   return win
 }
 
+// One copy of the app per data folder. A second start shows the first one's window instead of
+// opening the same database twice.
+const firstInstance = app.requestSingleInstanceLock()
+if (!firstInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win === undefined) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
+}
+
 app.whenReady().then(async () => {
+  if (!firstInstance) return
   electronApp.setAppUserModelId('dev.legate.app')
   bringOldData()
 

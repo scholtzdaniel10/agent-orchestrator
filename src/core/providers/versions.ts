@@ -1,7 +1,7 @@
 import type { ProviderId, VersionStatus } from '../types'
 
 export const TESTED_VERSIONS: Record<ProviderId, string> = {
-  claude: '2.1.258',
+  claude: '2.1.292',
   cursor: '2026.10.01-e373342'
 }
 

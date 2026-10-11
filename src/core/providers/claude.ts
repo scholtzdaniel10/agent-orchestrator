@@ -64,7 +64,7 @@ export class ClaudeAdapter implements ProviderAdapter {
   // Static: the Claude CLI has no command that lists models; help names these aliases.
   async listModels(): Promise<ModelOption[]> {
     // The CLI has no command that lists models. A short name means the newest one the installed
-    // CLI knows, which lags behind: 2.1.258 turns `opus` into Opus 5 and rejects the 5.5 names.
+    // CLI knows, and an old CLI rejects a newer exact name: 2.1.258 ran `opus` as Opus 5 and refused 5.5.
     return [
       { id: 'opus', label: 'Opus, newest this CLI knows' },
       { id: 'claude-opus-5-5', label: 'Opus 5.5' },

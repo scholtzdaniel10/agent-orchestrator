@@ -24,7 +24,7 @@ function plan(partial: Partial<PlanStatus> & Pick<PlanStatus, 'id'>): PlanStatus
     windows: [],
     version: null,
     versionStatus: 'unknown',
-    testedVersion: '2.1.258',
+    testedVersion: '2.1.292',
     ...partial
   }
 }

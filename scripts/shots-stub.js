@@ -22,7 +22,7 @@
           windows: [],
           version: null,
           versionStatus: 'unknown',
-          testedVersion: '2.1.258'
+          testedVersion: '2.1.292'
         },
         {
           id: 'cursor',
@@ -58,9 +58,9 @@
             { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
             { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
           ],
-          version: '2.1.258',
+          version: '2.1.292',
           versionStatus: 'tested',
-          testedVersion: '2.1.258'
+          testedVersion: '2.1.292'
         },
         {
           id: 'cursor',

@@ -2,12 +2,12 @@ import { expect, test } from 'vitest'
 import { compareToTested, parseCliVersion, TESTED_VERSIONS, unknownFormatMessage } from './versions'
 
 test('parseCliVersion reads the real --version strings', () => {
-  expect(parseCliVersion('claude', '2.1.258 (Claude Code)')).toBe('2.1.258')
+  expect(parseCliVersion('claude', '2.1.292 (Claude Code)')).toBe('2.1.292')
   expect(parseCliVersion('cursor', '2026.10.01-e373342')).toBe('2026.10.01-e373342')
 })
 
 test('parseCliVersion takes the first token that starts with a digit', () => {
-  expect(parseCliVersion('claude', '  warning 2.1.258 extra')).toBe('2.1.258')
+  expect(parseCliVersion('claude', '  warning 2.1.292 extra')).toBe('2.1.292')
   expect(parseCliVersion('cursor', 'agent 2026.10.01-e373342')).toBe('2026.10.01-e373342')
 })
 
@@ -20,7 +20,7 @@ test('parseCliVersion returns null for junk and empty output', () => {
 
 test('compareToTested treats equal Claude numeric versions as tested', () => {
   expect(compareToTested('claude', TESTED_VERSIONS.claude)).toBe('tested')
-  expect(compareToTested('claude', '2.1.258')).toBe('tested')
+  expect(compareToTested('claude', '2.1.292')).toBe('tested')
 })
 
 test('compareToTested ranks Claude by numeric dot parts', () => {
@@ -30,7 +30,7 @@ test('compareToTested ranks Claude by numeric dot parts', () => {
   expect(compareToTested('claude', '2.0.1')).toBe('older')
   expect(compareToTested('claude', '2.1.257')).toBe('older')
   expect(compareToTested('claude', '2.1')).toBe('older')
-  expect(compareToTested('claude', '2.1.258.1')).toBe('newer')
+  expect(compareToTested('claude', '2.1.292.1')).toBe('newer')
 })
 
 test('compareToTested ranks Cursor by the leading YYYY.MM.DD date', () => {
@@ -47,15 +47,15 @@ test('compareToTested is unknown when the version cannot be parsed', () => {
   expect(compareToTested('claude', null)).toBe('unknown')
   expect(compareToTested('cursor', null)).toBe('unknown')
   expect(compareToTested('claude', 'not-a-version')).toBe('unknown')
-  expect(compareToTested('claude', '2.1.258-beta')).toBe('unknown')
-  expect(compareToTested('cursor', '2.1.258')).toBe('unknown')
+  expect(compareToTested('claude', '2.1.292-beta')).toBe('unknown')
+  expect(compareToTested('cursor', '2.1.292')).toBe('unknown')
   expect(compareToTested('cursor', '2026.9.8-6caf4ff')).toBe('unknown')
 })
 
 test('unknownFormatMessage names the CLI and the tested version', () => {
-  expect(unknownFormatMessage('claude', '2.1.258')).toBe(
-    'The claude CLI (version 2.1.258) sent output this app does not understand. ' +
-      'This app was tested with 2.1.258. Update the app, or install the tested CLI version.'
+  expect(unknownFormatMessage('claude', '2.1.292')).toBe(
+    'The claude CLI (version 2.1.292) sent output this app does not understand. ' +
+      'This app was tested with 2.1.292. Update the app, or install the tested CLI version.'
   )
   expect(unknownFormatMessage('cursor', null)).toBe(
     'The Cursor CLI (version unknown) sent output this app does not understand. ' +

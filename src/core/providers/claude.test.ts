@@ -522,16 +522,16 @@ test('isInstalled and version share one --version call', async () => {
 const file = ${JSON.stringify(counter)}
 const n = existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0
 writeFileSync(file, String(n + 1))
-process.stdout.write('2.1.258 (Claude Code)\\n')
+process.stdout.write('2.1.292 (Claude Code)\\n')
 `
   )
   const adapter = new ClaudeAdapter({ command: process.execPath, args: [script] })
   try {
     expect(await adapter.isInstalled()).toBe(true)
-    expect(await adapter.version()).toBe('2.1.258')
+    expect(await adapter.version()).toBe('2.1.292')
     expect(readFileSync(counter, 'utf8')).toBe('1')
     expect(await adapter.isInstalled()).toBe(true)
-    expect(await adapter.version()).toBe('2.1.258')
+    expect(await adapter.version()).toBe('2.1.292')
     expect(readFileSync(counter, 'utf8')).toBe('2')
   } finally {
     rmSync(dir, { recursive: true, force: true })

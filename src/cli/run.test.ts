@@ -29,7 +29,7 @@ function worker(partial: Partial<WorkerInfo> & Pick<WorkerInfo, 'id'>): WorkerIn
     resetsAt: null,
     atRisk: false,
     windows: [],
-    version: partial.id === 'cursor' ? null : '2.1.258',
+    version: partial.id === 'cursor' ? null : '2.1.292',
     versionStatus: partial.id === 'cursor' ? 'unknown' : 'tested',
     ...partial
   }
@@ -188,7 +188,7 @@ test('status prints plans the way the app does, then the project and its live jo
   )
   expect(code).toBe(0)
   expect(inited).toBe(true)
-  expect(io.out).toContain('claude · ready · CLI 2.1.258 · 80% left')
+  expect(io.out).toContain('claude · ready · CLI 2.1.292 · 80% left')
   expect(io.out).toContain('cursor · not installed · The Cursor CLI is not installed.')
   expect(io.out).toContain('/proj')
   expect(io.out).toContain('abcd9999')
