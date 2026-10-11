@@ -4,7 +4,7 @@
 
 A desktop app (Electron + TypeScript) that spreads your coding jobs across the AI subscriptions you already pay for, so no plan sits idle or runs out early.
 
-![The main window: projects, the flow strip, the lead chat with the jobs it delegated, the job list and plan usage](docs/screenshot.png)
+![The main window: projects and worktrees in the sidebar, agent terminals in the centre, and a panel for lead, jobs, and the rest](docs/screenshot.png)
 
 | Compare two plans side by side                                                  | Light mode                                                         |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -20,7 +20,7 @@ The screenshots use fake data and are made with `pnpm shots`. The app has seven 
   Each reply lists the jobs it handed out: which worker got it, why, and how it is going.
 - **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
 - **Terminals.** Open a full Claude or Cursor session in a tab and talk to it directly. Open tabs come back after a restart with their conversation; a tab that cannot resume starts a new session. Turn on Worktree to start a session in its own git worktree, or open one from Changes.
-- **Layout.** Drag the borders between Projects, Flow, Lead, Workers and Usage to resize them, or hide Projects, Flow, Lead or Usage from the header; Terminals fills the space beside the project list with the pane grid (Ctrl+Shift+T). Terminals can sit in a grid of up to six panes (Auto picks the smallest that fits), and the sizes, mode, and which panels are shown come back next time.
+- **Layout.** The centre of the window is the workspace: terminal tabs and a pane grid (up to six panes; Auto picks the smallest that fits). A sidebar lists projects, worktrees and chats (Ctrl+\\ to hide it). A panel on the right holds Lead, Jobs, Changes, Routines, Usage and Activity, one tab at a time (Ctrl+B, or Ctrl+1 through Ctrl+6). Drag the borders to resize them. When the window is too narrow, the panel overlays the workspace instead of squeezing it. A status bar at the bottom shows plan headroom, running and queued counts, and the latest activity. Sizes, which side is open, and the pane layout come back next time.
 - **Windows.** Window (Ctrl+Shift+N) opens another view of the same app, up to six windows. A terminal can be opened in a window of its own; closing that window does not stop the session.
 - **Projects.** A sidebar lists the folders you work in; one is active at a time, and jobs and the lead run there. Under a git project you can select several worktrees at once, create a few in one go, name them, and start Claude or Cursor in each; if the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate) and its access (Read only, Edit files, or Full access). Each plan runs up to three jobs at once, and a job can be stopped. Full access runs commands without asking, still in a worktree; only use it in folders you trust.

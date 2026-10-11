@@ -8,29 +8,34 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction
 } from 'react'
+import ChangesTab from './ChangesTab'
+import ErrorBoundary from './ErrorBoundary'
 import FlowView from './FlowView'
+import JobsPanel from './JobsPanel'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
+import Routines from './Routines'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
   DEFAULT_SIZES,
-  MIN_FLOW,
-  MIN_LEAD,
+  DRAWER_TAB_LABELS,
+  DRAWER_TABS,
+  LAYOUT_SHORTCUT_EVENT,
+  MIN_DRAWER,
   MIN_SIDEBAR,
-  MIN_USAGE,
-  TOGGLE_TERMINALS_EVENT,
   clampSizes,
-  isTerminalsShortcut,
+  drawerOverlays,
+  layoutShortcut,
   loadLayout,
   maxSize,
   requestLayoutFit,
   saveLayout,
+  type DrawerTab,
+  type LayoutShortcut,
   type LayoutSizes,
-  type PanelKey,
-  type PanelVisibility,
   type PaneLayoutId,
   type SizeKey
 } from './layout'
@@ -100,11 +105,43 @@ function createBag(): FlowBag {
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
-    // Electron prefixes errors from the main process; show only the message itself.
     return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
   }
   if (typeof err === 'string') return err
   return 'Request failed'
+}
+
+function folderName(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (index === -1) return trimmed
+  return trimmed.slice(index + 1)
+}
+
+function headroomPercent(used: number): number {
+  const raw = Math.round((1 - used) * 100)
+  if (!Number.isFinite(raw)) return 0
+  if (raw < 0) return 0
+  if (raw > 100) return 100
+  return raw
+}
+
+function planBarLabel(plan: PlanStatus, now: number): { text: string; bad: boolean } {
+  if (plan.problem === 'not-installed') return { text: `${plan.id} not installed`, bad: true }
+  if (plan.problem === 'signed-out' || !plan.available) {
+    return { text: `${plan.id} signed out`, bad: true }
+  }
+  if (plan.restingUntil !== null && plan.restingUntil > now) {
+    return { text: `${plan.id} resting`, bad: false }
+  }
+  return { text: `${plan.id} ${String(headroomPercent(plan.used))}% left`, bad: false }
+}
+
+function activityLine(events: readonly FlowEvent[]): string {
+  const latest = events[events.length - 1]
+  if (latest === undefined) return ''
+  const result = latest.result ? ` ${latest.result}` : ''
+  return `${latest.actor} ${latest.text}${result}`
 }
 
 function publish(bag: FlowBag, setEvents: Dispatch<SetStateAction<FlowEvent[]>>): void {
@@ -284,27 +321,6 @@ function mergeTerminalList(
   return merged
 }
 
-/** Signed in and not resting. A busy plan still counts: it is in use, not unavailable. */
-function readyPlans(plans: readonly PlanStatus[], now: number): number {
-  return plans.filter((plan) => {
-    if (!plan.available) return false
-    return plan.restingUntil === null || plan.restingUntil <= now
-  }).length
-}
-
-function summaryLine(ready: number, running: number, queued: number): string {
-  const plans = ready === 1 ? '1 plan ready' : `${ready} plans ready`
-  return `${plans} · ${running} running · ${queued} queued`
-}
-
-const PANEL_ORDER: readonly PanelKey[] = ['projects', 'flow', 'lead', 'usage']
-const PANEL_LABELS: Record<PanelKey, string> = {
-  projects: 'Projects',
-  flow: 'Flow',
-  lead: 'Lead',
-  usage: 'Usage'
-}
-
 function isTerminalTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
   return target.closest('.terminal-host, .xterm') !== null
@@ -406,36 +422,6 @@ function ResizeHandle({
   )
 }
 
-function AppSummary({
-  ready,
-  running,
-  queued
-}: {
-  ready: number
-  running: number
-  queued: number
-}): React.JSX.Element {
-  return (
-    <p className="app-summary" aria-label={summaryLine(ready, running, queued)}>
-      <span className={`app-stat${ready === 0 ? ' is-zero' : ''}`} aria-hidden="true">
-        <span className="app-stat-dot app-stat-dot-ok" />
-        <span className="app-stat-count">{ready}</span>
-        <span className="app-stat-label">plans ready</span>
-      </span>
-      <span className={`app-stat${running === 0 ? ' is-zero' : ''}`} aria-hidden="true">
-        <span className="app-stat-dot app-stat-dot-run" />
-        <span className="app-stat-count">{running}</span>
-        <span className="app-stat-label">running</span>
-      </span>
-      <span className={`app-stat${queued === 0 ? ' is-zero' : ''}`} aria-hidden="true">
-        <span className="app-stat-dot app-stat-dot-queued" />
-        <span className="app-stat-count">{queued}</span>
-        <span className="app-stat-label">queued</span>
-      </span>
-    </p>
-  )
-}
-
 function App(): React.JSX.Element {
   const [messages, setMessages] = useState<LeadMessage[]>([])
   const [chats, setChats] = useState<LeadChat[]>([])
@@ -448,7 +434,6 @@ function App(): React.JSX.Element {
     () => new Set<WorktreeId>([null])
   )
   const [placeTerminal, setPlaceTerminal] = useState<{ id: string; nonce: number } | null>(null)
-  const [showPanes, setShowPanes] = useState(0)
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
@@ -459,12 +444,17 @@ function App(): React.JSX.Element {
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
   const [showJob, setShowJob] = useState<{ id: string; nonce: number } | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
+  const [termOpening, setTermOpening] = useState(false)
+  const [leadUnseen, setLeadUnseen] = useState(false)
   const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
   const [layout] = useState(loadLayout)
   const [sizes, setSizes] = useState<LayoutSizes>(layout.sizes)
-  const [shown, setShown] = useState<PanelVisibility>(layout.shown)
+  const [sidebarShown, setSidebarShown] = useState(layout.sidebarShown)
+  const [drawerOpen, setDrawerOpen] = useState(layout.drawerOpen)
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>(layout.drawerTab)
   const [paneLayout, setPaneLayout] = useState<PaneLayoutId>(layout.paneLayout)
-  const [terminalsMode, setTerminalsMode] = useState(layout.terminalsMode)
   const [dragging, setDragging] = useState<'horizontal' | 'vertical' | null>(null)
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1200 : window.innerWidth,
@@ -472,11 +462,25 @@ function App(): React.JSX.Element {
   }))
   const showJobNonce = useRef(0)
   const termNonce = useRef(0)
-  const panesNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
   const viewChatId = useRef<string | null>(null)
+  const drawerTabRef = useRef(drawerTab)
+  const drawerOpenRef = useRef(drawerOpen)
+
+  drawerTabRef.current = drawerTab
+  drawerOpenRef.current = drawerOpen
+
+  function viewingLead(): boolean {
+    return drawerOpenRef.current && drawerTabRef.current === 'lead'
+  }
+
+  function openPanel(tab: DrawerTab): void {
+    setDrawerTab(tab)
+    setDrawerOpen(true)
+    if (tab === 'lead') setLeadUnseen(false)
+  }
 
   function refreshChats(): void {
     void window.api.listLeadChats().then(
@@ -500,6 +504,9 @@ function App(): React.JSX.Element {
       state.lead = next
       setMessages(next)
       publish(state, setEvents)
+      if (message.kind === 'report' && message.status !== 'streaming' && !viewingLead()) {
+        setLeadUnseen(true)
+      }
       if (message.status !== 'streaming') refreshChats()
     })
     void window.api.listLeadMessages().then(
@@ -715,12 +722,12 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    saveLayout({ sizes, shown, paneLayout, terminalsMode })
-  }, [sizes, shown, paneLayout, terminalsMode])
+    saveLayout({ sizes, sidebarShown, drawerOpen, drawerTab, paneLayout })
+  }, [sizes, sidebarShown, drawerOpen, drawerTab, paneLayout])
 
   useEffect(() => {
     requestLayoutFit()
-  }, [shown, terminalsMode, paneLayout])
+  }, [sidebarShown, drawerOpen, paneLayout])
 
   useEffect(() => {
     function onNewWindow(event: KeyboardEvent): void {
@@ -739,37 +746,39 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    function toggleTerminals(): void {
-      setTerminalsMode((on) => !on)
-    }
-    function onKeyDown(event: KeyboardEvent): void {
-      if (isTerminalsShortcut(event)) {
-        event.preventDefault()
-        if (!isTerminalTarget(event.target)) toggleTerminals()
+    function apply(kind: LayoutShortcut): void {
+      if (kind === 'drawer') {
+        setDrawerOpen((open) => !open)
         return
       }
-      if (isTerminalTarget(event.target)) return
-      if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return
-      const index =
-        event.key === '1'
-          ? 0
-          : event.key === '2'
-            ? 1
-            : event.key === '3'
-              ? 2
-              : event.key === '4'
-                ? 3
-                : -1
-      if (index < 0) return
+      if (kind === 'sidebar') {
+        setSidebarShown((on) => !on)
+        return
+      }
+      if (drawerOpenRef.current && drawerTabRef.current === kind) {
+        setDrawerOpen(false)
+        return
+      }
+      setDrawerTab(kind)
+      setDrawerOpen(true)
+      if (kind === 'lead') setLeadUnseen(false)
+    }
+    function onKeyDown(event: KeyboardEvent): void {
+      const kind = layoutShortcut(event)
+      if (kind === null) return
       event.preventDefault()
-      const key = PANEL_ORDER[index]
-      setShown((current) => ({ ...current, [key]: !current[key] }))
+      if (isTerminalTarget(event.target)) return
+      apply(kind)
+    }
+    function onLayoutShortcut(event: Event): void {
+      const custom = event as CustomEvent<LayoutShortcut>
+      apply(custom.detail)
     }
     window.addEventListener('keydown', onKeyDown)
-    window.addEventListener(TOGGLE_TERMINALS_EVENT, toggleTerminals)
+    window.addEventListener(LAYOUT_SHORTCUT_EVENT, onLayoutShortcut)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener(TOGGLE_TERMINALS_EVENT, toggleTerminals)
+      window.removeEventListener(LAYOUT_SHORTCUT_EVENT, onLayoutShortcut)
     }
   }, [])
 
@@ -882,6 +891,7 @@ function App(): React.JSX.Element {
     setMessages(list)
     publish(state, setEvents)
     refreshChats()
+    openPanel('lead')
   }
 
   async function renameLeadChat(id: string, title: string): Promise<void> {
@@ -909,6 +919,7 @@ function App(): React.JSX.Element {
     } else {
       flag = worktree
     }
+    setTermOpening(true)
     try {
       const info = await window.api.openTerminal(provider, 100, 30, flag)
       const state = bag.current
@@ -924,12 +935,9 @@ function App(): React.JSX.Element {
       setPlaceTerminal({ id: info.id, nonce: termNonce.current })
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
+    } finally {
+      setTermOpening(false)
     }
-  }
-
-  function requestPanes(): void {
-    panesNonce.current += 1
-    setShowPanes(panesNonce.current)
   }
 
   function applyCreatedWorktrees(made: readonly string[]): void {
@@ -966,10 +974,8 @@ function App(): React.JSX.Element {
         }
       }
       applyCreatedWorktrees(made)
-      if (n > 1) requestPanes()
     } catch (err: unknown) {
       applyCreatedWorktrees(made)
-      if (n > 1 && made.length > 0) requestPanes()
       setProjectError({ text: errorText(err), at: Date.now() })
     }
   }
@@ -1078,40 +1084,62 @@ function App(): React.JSX.Element {
   if (prunedPrimary !== selectedWorktree) setSelectedWorktree(prunedPrimary)
   if (!sameWorktreeSet(prunedSelection, selectedWorktrees)) setSelectedWorktrees(prunedSelection)
 
-  const ready = readyPlans(plans ?? EMPTY_PLANS, now)
+  if (
+    selectedWorktree !== null &&
+    selectedChangeId !== selectedWorktree &&
+    changes.some((item) => item.id === selectedWorktree)
+  ) {
+    setSelectedChangeId(selectedWorktree)
+  }
+
+  const flags = { sidebarShown, drawerOpen }
+  const displayed = clampSizes(sizes, viewport, flags)
+  const overlay = drawerOverlays(displayed, viewport, flags)
   const running = jobs.filter((job) => job.status === 'running').length
   const queued = jobs.filter((job) => job.status === 'queued').length
   const leadBusy = messages.some((message) => message.status === 'streaming')
-  const effectiveShown: PanelVisibility = terminalsMode
-    ? { projects: shown.projects, flow: false, lead: false, usage: false }
-    : shown
-  const displayed = clampSizes(sizes, viewport, effectiveShown)
+  const jobBadge = running + queued
+  const latestActivity = activityLine(events)
+  const projectLabel = project === null ? '' : folderName(project.path)
+  const branchLabel = project?.branch ?? null
   const appStyle = {
-    '--layout-sidebar': effectiveShown.projects ? `${String(displayed.sidebar)}px` : '0px',
-    '--layout-lead': effectiveShown.lead ? `${String(displayed.lead)}px` : '0px',
-    '--layout-usage': effectiveShown.usage ? `${String(displayed.usage)}px` : '0px',
-    '--layout-flow': effectiveShown.flow ? `${String(displayed.flow)}px` : '0px'
+    '--layout-sidebar': sidebarShown ? `${String(displayed.sidebar)}px` : '0px',
+    '--layout-drawer': drawerOpen ? `${String(displayed.drawer)}px` : '0px'
   } as CSSProperties
   const appClass = [
     'app',
     dragging !== null ? 'is-dragging' : '',
     dragging === 'vertical' ? 'is-dragging-col' : '',
     dragging === 'horizontal' ? 'is-dragging-row' : '',
-    terminalsMode ? 'is-terminals' : '',
-    !effectiveShown.projects ? 'is-hide-projects' : '',
-    !effectiveShown.flow ? 'is-hide-flow' : '',
-    !effectiveShown.lead ? 'is-hide-lead' : '',
-    !effectiveShown.usage ? 'is-hide-usage' : ''
+    !sidebarShown ? 'is-hide-sidebar' : '',
+    !drawerOpen ? 'is-hide-drawer' : '',
+    overlay && drawerOpen ? 'is-drawer-overlay' : ''
   ]
     .filter((name) => name !== '')
     .join(' ')
 
   function setSize(key: SizeKey, value: number): void {
-    setSizes((current) => clampSizes({ ...current, [key]: value }, viewport, shown))
+    setSizes((current) => clampSizes({ ...current, [key]: value }, viewport, flags))
   }
 
   function resetSize(key: SizeKey): void {
-    setSizes((current) => clampSizes({ ...current, [key]: DEFAULT_SIZES[key] }, viewport, shown))
+    setSizes((current) => clampSizes({ ...current, [key]: DEFAULT_SIZES[key] }, viewport, flags))
+  }
+
+  function viewChange(id: string): void {
+    setSelectedChangeId(id)
+    openPanel('changes')
+  }
+
+  function onDrawerTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const next = event.key === 'ArrowRight' ? index + 1 : index - 1
+    if (next < 0 || next >= DRAWER_TABS.length) return
+    const tab = DRAWER_TABS[next]
+    openPanel(tab)
+    const element = document.getElementById(`drawer-tab-${tab}`)
+    if (element instanceof HTMLButtonElement) element.focus()
   }
 
   return (
@@ -1123,6 +1151,14 @@ function App(): React.JSX.Element {
             <Star size={16} />
           </span>
           <div className="app-name">Legate</div>
+          {projectLabel !== '' ? (
+            <p className="app-context">
+              <span className="app-context-project">{projectLabel}</span>
+              {branchLabel !== null ? (
+                <span className="app-context-branch">{branchLabel}</span>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         <div className="app-header-tools">
           <button
@@ -1136,21 +1172,6 @@ function App(): React.JSX.Element {
           >
             Window
           </button>
-          <div className="layout-toggles">
-            {PANEL_ORDER.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className="btn btn-quiet btn-compact layout-toggle"
-                aria-pressed={shown[key]}
-                onClick={() => {
-                  setShown((current) => ({ ...current, [key]: !current[key] }))
-                }}
-              >
-                {PANEL_LABELS[key]}
-              </button>
-            ))}
-          </div>
           <div className="theme-picker">
             <label htmlFor="app-theme">
               <span className="visually-hidden">Theme</span>
@@ -1175,201 +1196,341 @@ function App(): React.JSX.Element {
               ))}
             </select>
           </div>
-          <AppSummary ready={ready} running={running} queued={queued} />
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            aria-pressed={drawerOpen}
+            title="Panel (Ctrl+B)"
+            onClick={() => {
+              setDrawerOpen((open) => !open)
+            }}
+          >
+            Panel
+          </button>
         </div>
       </header>
-      <ProjectBar
-        projects={projects}
-        chats={chats}
-        busy={running > 0 || queued > 0}
-        leadBusy={leadBusy}
-        now={now}
-        error={projectError === null ? null : projectError.text}
-        githubAvailable={githubAvailable}
-        changes={changes}
-        jobs={jobs}
-        terminals={terminals}
-        selectedWorktrees={selectedWorktrees}
-        claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
-        cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
-        onAdd={() => {
-          void changeProject()
-        }}
-        onGithubClone={cloneFromGithub}
-        onSwitch={(path) => {
-          void switchProject(path)
-        }}
-        onRemove={(path) => {
-          void removeProject(path)
-        }}
-        onOpenChat={(id) => {
-          void openLeadChat(id)
-        }}
-        onNewChat={() => {
-          void resetLead()
-        }}
-        onRenameChat={(id, title) => {
-          void renameLeadChat(id, title)
-        }}
-        onRemoveChat={(id) => {
-          void removeLeadChat(id)
-        }}
-        onSelectWorktree={selectWorktree}
-        onSelectAllWorktrees={selectAllWorktrees}
-        onCreateWorktree={(name, count, start) => {
-          void createWorktree(name, count, start)
-        }}
-        onRenameWorktree={(id, name) => {
-          void renameWorktree(id, name)
-        }}
-        onDiscardWorktree={(id) => {
-          void discardWorktree(id)
-        }}
-        onOpenInWorktree={(provider, worktree) => {
-          void openInWorktree(provider, worktree)
-        }}
-      />
-      {effectiveShown.projects ? (
-        <ResizeHandle
-          className="layout-handle layout-handle-sidebar"
-          orientation="vertical"
-          value={displayed.sidebar}
-          min={MIN_SIDEBAR}
-          max={maxSize('sidebar', sizes, viewport, shown)}
-          label="Projects width"
-          onChange={(value) => {
-            setSize('sidebar', value)
-          }}
-          onReset={() => {
-            resetSize('sidebar')
-          }}
-          onDragState={setDragging}
-        />
-      ) : null}
-      <section className="panel panel-flow" aria-labelledby="flow-heading">
-        <RayBurst />
-        <FlowView
-          jobs={jobs}
-          plans={plans ?? EMPTY_PLANS}
-          lead={messages}
-          terminals={terminals}
-          changes={changes}
-          events={events}
-          now={now}
-          starts={starts}
-          flashes={flashes}
-        />
-        {effectiveShown.flow ? (
+      <div className="app-body">
+        {sidebarShown ? (
+          <ErrorBoundary className="sidebar-slot">
+            <ProjectBar
+              jobs={jobs}
+              projects={projects}
+              chats={chats}
+              busy={running > 0 || queued > 0}
+              leadBusy={leadBusy}
+              now={now}
+              error={projectError === null ? null : projectError.text}
+              githubAvailable={githubAvailable}
+              changes={changes}
+              terminals={terminals}
+              selectedWorktrees={selectedWorktrees}
+              claudeAvailable={
+                plans?.some((plan) => plan.id === 'claude' && plan.available) === true
+              }
+              cursorAvailable={
+                plans?.some((plan) => plan.id === 'cursor' && plan.available) === true
+              }
+              onAdd={() => {
+                void changeProject()
+              }}
+              onGithubClone={cloneFromGithub}
+              onSwitch={(path) => {
+                void switchProject(path)
+              }}
+              onRemove={(path) => {
+                void removeProject(path)
+              }}
+              onOpenChat={(id) => {
+                void openLeadChat(id)
+              }}
+              onNewChat={() => {
+                void resetLead()
+                openPanel('lead')
+              }}
+              onRenameChat={(id, title) => {
+                void renameLeadChat(id, title)
+              }}
+              onRemoveChat={(id) => {
+                void removeLeadChat(id)
+              }}
+              onSelectWorktree={selectWorktree}
+              onSelectAllWorktrees={selectAllWorktrees}
+              onCreateWorktree={(name, count, start) => {
+                void createWorktree(name, count, start)
+              }}
+              onRenameWorktree={(id, name) => {
+                void renameWorktree(id, name)
+              }}
+              onDiscardWorktree={(id) => {
+                void discardWorktree(id)
+              }}
+              onOpenInWorktree={(provider, worktree) => {
+                void openInWorktree(provider, worktree)
+              }}
+            />
+          </ErrorBoundary>
+        ) : null}
+        {sidebarShown ? (
           <ResizeHandle
-            className="layout-handle layout-handle-horizontal"
-            orientation="horizontal"
-            value={displayed.flow}
-            min={MIN_FLOW}
-            max={maxSize('flow', sizes, viewport, shown)}
-            label="Flow height"
+            className="layout-handle layout-handle-sidebar"
+            orientation="vertical"
+            value={displayed.sidebar}
+            min={MIN_SIDEBAR}
+            max={maxSize('sidebar', sizes, viewport, flags)}
+            label="Projects width"
             onChange={(value) => {
-              setSize('flow', value)
+              setSize('sidebar', value)
             }}
             onReset={() => {
-              resetSize('flow')
+              resetSize('sidebar')
             }}
             onDragState={setDragging}
           />
         ) : null}
-      </section>
-      <section className="panel panel-lead" aria-labelledby="lead-heading">
-        <LeadChat
-          messages={messages}
-          jobs={jobs}
-          plans={plans}
-          onReset={resetLead}
-          onShowJob={(id) => {
-            showJobNonce.current += 1
-            setShowJob({ id, nonce: showJobNonce.current })
-          }}
-        />
-        {effectiveShown.lead && viewport.width >= 700 ? (
+        <section className="workspace" aria-label="Workspace">
+          <ErrorBoundary className="workspace-slot">
+            <Workers
+              terminals={terminals}
+              initialTerminalIds={initialTerminalIds}
+              changes={changes}
+              selectedWorktree={selectedWorktree}
+              selectedWorktrees={selectedWorktrees}
+              placeTerminal={placeTerminal}
+              onSelectWorktree={(id) => {
+                selectWorktree(id, 'only')
+              }}
+              project={project?.path ?? ''}
+              bus={terminalBus}
+              paneLayout={paneLayout}
+              onPaneLayout={setPaneLayout}
+              onTerminal={(info) => {
+                const state = bag.current
+                const next = applyTerminalUpdate(state.terminals, info, false)
+                state.terminals = next
+                setTerminals(next)
+                publish(state, setEvents)
+              }}
+            />
+          </ErrorBoundary>
+        </section>
+        {drawerOpen ? (
           <ResizeHandle
-            className="layout-handle layout-handle-vertical"
+            className="layout-handle layout-handle-drawer"
             orientation="vertical"
-            value={displayed.lead}
-            min={MIN_LEAD}
-            max={maxSize('lead', sizes, viewport, shown)}
-            label="Lead width"
-            onChange={(value) => {
-              setSize('lead', value)
-            }}
-            onReset={() => {
-              resetSize('lead')
-            }}
-            onDragState={setDragging}
-          />
-        ) : null}
-      </section>
-      <section className="panel panel-workers" aria-labelledby="workers-heading">
-        <Workers
-          jobs={jobs}
-          plans={plans}
-          terminals={terminals}
-          initialTerminalIds={initialTerminalIds}
-          changes={changes}
-          selectedWorktree={selectedWorktree}
-          selectedWorktrees={selectedWorktrees}
-          placeTerminal={placeTerminal}
-          showPanes={showPanes}
-          onSelectWorktree={(id) => {
-            selectWorktree(id, 'only')
-          }}
-          isRepo={project?.isRepo === true}
-          project={project?.path ?? ''}
-          bus={terminalBus}
-          showJob={showJob}
-          terminalsMode={terminalsMode}
-          paneLayout={paneLayout}
-          onToggleTerminals={() => {
-            setTerminalsMode((on) => !on)
-          }}
-          onPaneLayout={setPaneLayout}
-          onJob={(job) => {
-            commitJobs(
-              bag.current,
-              mergeJob(bag.current.jobs, job),
-              setJobs,
-              setStarts,
-              setFlashes,
-              setEvents
-            )
-          }}
-          onTerminal={(info) => {
-            const state = bag.current
-            const next = applyTerminalUpdate(state.terminals, info, false)
-            state.terminals = next
-            setTerminals(next)
-            publish(state, setEvents)
-          }}
-        />
-        {effectiveShown.usage && viewport.width >= 900 ? (
-          <ResizeHandle
-            className="layout-handle layout-handle-vertical"
-            orientation="vertical"
-            value={displayed.usage}
-            min={MIN_USAGE}
-            max={maxSize('usage', sizes, viewport, shown)}
-            label="Usage width"
+            value={displayed.drawer}
+            min={MIN_DRAWER}
+            max={maxSize('drawer', sizes, viewport, flags)}
+            label="Panel width"
             invert
             onChange={(value) => {
-              setSize('usage', value)
+              setSize('drawer', value)
             }}
             onReset={() => {
-              resetSize('usage')
+              resetSize('drawer')
             }}
             onDragState={setDragging}
           />
         ) : null}
-      </section>
-      <section className="panel panel-usage" aria-labelledby="usage-heading">
-        <UsageMeter plans={plans} now={now} />
-      </section>
+        {drawerOpen ? (
+          <aside className="drawer" aria-label="Panel">
+            <div className="drawer-tabs" role="tablist" aria-label="Panel">
+              {DRAWER_TABS.map((tab, index) => {
+                const selected = drawerTab === tab
+                const jobsCount = tab === 'jobs' ? jobBadge : 0
+                const changeCount = tab === 'changes' ? changes.length : 0
+                const leadDot = tab === 'lead' && (leadBusy || leadUnseen)
+                return (
+                  <button
+                    key={tab}
+                    id={`drawer-tab-${tab}`}
+                    type="button"
+                    role="tab"
+                    className={selected ? 'tab is-selected' : 'tab'}
+                    aria-selected={selected}
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => {
+                      openPanel(tab)
+                    }}
+                    onKeyDown={(event) => {
+                      onDrawerTabKeyDown(event, index)
+                    }}
+                  >
+                    {DRAWER_TAB_LABELS[tab]}
+                    {jobsCount > 0 ? <span className="tab-badge">{jobsCount}</span> : null}
+                    {changeCount > 0 ? <span className="tab-badge">{changeCount}</span> : null}
+                    {leadDot ? <span className="tab-dot" aria-hidden="true" /> : null}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="drawer-body">
+              <div
+                className={drawerTab === 'lead' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'lead' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <LeadChat
+                    messages={messages}
+                    jobs={jobs}
+                    plans={plans}
+                    onReset={resetLead}
+                    onShowJob={(id) => {
+                      showJobNonce.current += 1
+                      setShowJob({ id, nonce: showJobNonce.current })
+                      setSelectedJobId(id)
+                      openPanel('jobs')
+                    }}
+                  />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'jobs' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'jobs' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <JobsPanel
+                    jobs={jobs}
+                    plans={plans}
+                    changes={changes}
+                    isRepo={project?.isRepo === true}
+                    selectedJobId={selectedJobId}
+                    showJob={showJob}
+                    onSelectJob={setSelectedJobId}
+                    onJob={(job) => {
+                      commitJobs(
+                        bag.current,
+                        mergeJob(bag.current.jobs, job),
+                        setJobs,
+                        setStarts,
+                        setFlashes,
+                        setEvents
+                      )
+                    }}
+                    onViewChange={viewChange}
+                  />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'changes' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'changes' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <ChangesTab
+                    changes={changes}
+                    jobs={jobs}
+                    selectedId={selectedChangeId}
+                    onSelect={setSelectedChangeId}
+                    claudeAvailable={
+                      plans?.some((plan) => plan.id === 'claude' && plan.available) === true
+                    }
+                    cursorAvailable={
+                      plans?.some((plan) => plan.id === 'cursor' && plan.available) === true
+                    }
+                    opening={termOpening}
+                    onOpenHere={(provider, changeId) => {
+                      void openInWorktree(provider, changeId)
+                    }}
+                  />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'routines' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'routines' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <Routines
+                    key={project?.path ?? ''}
+                    project={project?.path ?? ''}
+                    onRun={(job) => {
+                      commitJobs(
+                        bag.current,
+                        mergeJob(bag.current.jobs, job),
+                        setJobs,
+                        setStarts,
+                        setFlashes,
+                        setEvents
+                      )
+                      setSelectedJobId(job.id)
+                      openPanel('jobs')
+                    }}
+                  />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'usage' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'usage' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <UsageMeter plans={plans} now={now} />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'activity' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'activity' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <FlowView
+                    jobs={jobs}
+                    plans={plans ?? EMPTY_PLANS}
+                    lead={messages}
+                    terminals={terminals}
+                    changes={changes}
+                    events={events}
+                    now={now}
+                    starts={starts}
+                    flashes={flashes}
+                  />
+                </ErrorBoundary>
+              </div>
+            </div>
+          </aside>
+        ) : null}
+      </div>
+      <footer className="status-bar">
+        {(plans ?? EMPTY_PLANS).map((plan) => {
+          const label = planBarLabel(plan, now)
+          return (
+            <button
+              key={plan.id}
+              type="button"
+              className={label.bad ? 'status-bar-item is-bad' : 'status-bar-item'}
+              onClick={() => {
+                openPanel('usage')
+              }}
+            >
+              {label.text}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          className="status-bar-item"
+          onClick={() => {
+            openPanel('jobs')
+          }}
+        >
+          {`${String(running)} running`}
+        </button>
+        <button
+          type="button"
+          className="status-bar-item"
+          onClick={() => {
+            openPanel('jobs')
+          }}
+        >
+          {`${String(queued)} queued`}
+        </button>
+        <button
+          type="button"
+          className="status-bar-item status-bar-activity"
+          title={latestActivity === '' ? undefined : latestActivity}
+          onClick={() => {
+            openPanel('activity')
+          }}
+        >
+          {latestActivity === '' ? 'No activity yet' : `last: ${latestActivity}`}
+        </button>
+      </footer>
     </div>
   )
 }

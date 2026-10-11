@@ -1,21 +1,19 @@
 import { expect, test } from 'vitest'
 import {
   DEFAULT_LAYOUT,
-  DEFAULT_SHOWN,
   DEFAULT_SIZES,
-  MIN_FLOW,
-  MIN_LEAD,
+  MIN_DRAWER,
   MIN_SIDEBAR,
-  MIN_USAGE,
   MIN_WORKERS,
   assignTabToPane,
   autoPaneLayout,
   clampSizes,
+  drawerOverlays,
   dropMissingTerminals,
   emptyPaneForTerminal,
   emptySlots,
   fillPanes,
-  isTerminalsShortcut,
+  layoutShortcut,
   loadLayout,
   maxSize,
   paneCount,
@@ -44,7 +42,8 @@ function fakeStorage(initial: Record<string, string> = {}): LayoutStorage & {
   }
 }
 
-const ALL = DEFAULT_SHOWN
+const OPEN = { sidebarShown: true, drawerOpen: true }
+const WIDE = { width: 1600, height: 900 }
 
 test('parseLayout returns defaults for junk', () => {
   expect(parseLayout(null)).toEqual(DEFAULT_LAYOUT)
@@ -54,25 +53,24 @@ test('parseLayout returns defaults for junk', () => {
 
 test('parseLayout validates field by field and keeps good values', () => {
   const parsed = parseLayout({
-    sizes: { sidebar: 240, lead: 'wide', usage: 210, flow: 120, extra: 1 },
-    shown: { projects: false, flow: 1, lead: true, usage: false },
+    sizes: { sidebar: 260, drawer: 500, lead: 300, extra: 1 },
+    sidebarShown: false,
+    drawerOpen: false,
+    drawerTab: 'jobs',
     paneLayout: '4-grid',
     other: true
   })
-  expect(parsed.sizes.sidebar).toBe(240)
-  expect(parsed.sizes.lead).toBe(DEFAULT_SIZES.lead)
-  expect(parsed.sizes.usage).toBe(210)
-  expect(parsed.sizes.flow).toBe(120)
-  expect(parsed.shown.projects).toBe(false)
-  expect(parsed.shown.flow).toBe(true)
-  expect(parsed.shown.lead).toBe(true)
-  expect(parsed.shown.usage).toBe(false)
+  expect(parsed.sizes.sidebar).toBe(260)
+  expect(parsed.sizes.drawer).toBe(500)
+  expect(parsed.sidebarShown).toBe(false)
+  expect(parsed.drawerOpen).toBe(false)
+  expect(parsed.drawerTab).toBe('jobs')
   expect(parsed.paneLayout).toBe('4-grid')
-  expect(parsed.terminalsMode).toBe(false)
 })
 
-test('parseLayout falls back for an unknown pane layout', () => {
+test('parseLayout falls back for an unknown pane layout and drawer tab', () => {
   expect(parseLayout({ paneLayout: 'split' }).paneLayout).toBe('auto')
+  expect(parseLayout({ drawerTab: 'flow' }).drawerTab).toBe('lead')
 })
 
 test('parseLayout keeps auto and a saved concrete pane layout', () => {
@@ -80,33 +78,47 @@ test('parseLayout keeps auto and a saved concrete pane layout', () => {
   expect(parseLayout({ paneLayout: '1' }).paneLayout).toBe('1')
 })
 
-test('parseLayout reads terminalsMode and defaults old saves to off', () => {
-  expect(parseLayout({ terminalsMode: true }).terminalsMode).toBe(true)
-  expect(parseLayout({ terminalsMode: false }).terminalsMode).toBe(false)
-  expect(parseLayout({ paneLayout: '2-side' }).terminalsMode).toBe(false)
+test('parseLayout reads old saves without error and fills new defaults', () => {
+  const parsed = parseLayout({
+    sizes: { sidebar: 180, lead: 300, usage: 220, flow: 100 },
+    shown: { projects: false, flow: true, lead: true, usage: true },
+    paneLayout: '2-side',
+    terminalsMode: true
+  })
+  expect(parsed.sizes.sidebar).toBe(180)
+  expect(parsed.sizes.drawer).toBe(DEFAULT_SIZES.drawer)
+  expect(parsed.sidebarShown).toBe(false)
+  expect(parsed.drawerOpen).toBe(true)
+  expect(parsed.drawerTab).toBe('lead')
+  expect(parsed.paneLayout).toBe('2-side')
 })
 
-test('parseLayout raises sizes below the minimums', () => {
+test('parseLayout raises sizes below the minimums and caps the maximums', () => {
   const parsed = parseLayout({
-    sizes: { sidebar: 10, lead: 10, usage: 10, flow: 10 }
+    sizes: { sidebar: 10, drawer: 10 }
   })
   expect(parsed.sizes.sidebar).toBe(MIN_SIDEBAR)
-  expect(parsed.sizes.lead).toBe(MIN_LEAD)
-  expect(parsed.sizes.usage).toBe(MIN_USAGE)
-  expect(parsed.sizes.flow).toBe(MIN_FLOW)
+  expect(parsed.sizes.drawer).toBe(MIN_DRAWER)
+  const wide = parseLayout({
+    sizes: { sidebar: 900, drawer: 2000 }
+  })
+  expect(wide.sizes.sidebar).toBe(480)
+  expect(wide.sizes.drawer).toBe(720)
 })
 
 test('loadLayout reads JSON and falls back when storage throws', () => {
   const storage = fakeStorage({
     'orch.layout': JSON.stringify({
-      sizes: { sidebar: 180, lead: 300, usage: 220, flow: 100 },
-      shown: { projects: true, flow: false, lead: true, usage: true },
+      sizes: { sidebar: 180, drawer: 400 },
+      sidebarShown: true,
+      drawerOpen: false,
+      drawerTab: 'usage',
       paneLayout: '2-side'
     })
   })
   expect(loadLayout(storage).paneLayout).toBe('2-side')
-  expect(loadLayout(storage).shown.flow).toBe(false)
-  expect(loadLayout(storage).terminalsMode).toBe(false)
+  expect(loadLayout(storage).drawerOpen).toBe(false)
+  expect(loadLayout(storage).drawerTab).toBe('usage')
   const blocked: LayoutStorage = {
     getItem(): string | null {
       throw new Error('blocked')
@@ -123,67 +135,58 @@ test('saveLayout writes one JSON object', () => {
   const storage = fakeStorage()
   saveLayout(
     {
-      sizes: { sidebar: 180, lead: 300, usage: 220, flow: 110 },
-      shown: { projects: false, flow: true, lead: true, usage: true },
-      paneLayout: '6-grid',
-      terminalsMode: true
+      sizes: { sidebar: 180, drawer: 400 },
+      sidebarShown: false,
+      drawerOpen: true,
+      drawerTab: 'activity',
+      paneLayout: '6-grid'
     },
     storage
   )
   expect(JSON.parse(storage.data['orch.layout']!)).toEqual({
-    sizes: { sidebar: 180, lead: 300, usage: 220, flow: 110 },
-    shown: { projects: false, flow: true, lead: true, usage: true },
-    paneLayout: '6-grid',
-    terminalsMode: true
+    sizes: { sidebar: 180, drawer: 400 },
+    sidebarShown: false,
+    drawerOpen: true,
+    drawerTab: 'activity',
+    paneLayout: '6-grid'
   })
 })
 
 test('clampSizes keeps defaults on a wide window', () => {
-  const next = clampSizes(DEFAULT_SIZES, { width: 1600, height: 900 }, ALL)
+  const next = clampSizes(DEFAULT_SIZES, WIDE, OPEN)
   expect(next).toEqual(DEFAULT_SIZES)
 })
 
-test('clampSizes at 900px keeps workers at least 360 and does not overflow', () => {
-  const next = clampSizes(DEFAULT_SIZES, { width: 900, height: 800 }, ALL)
-  expect(next.sidebar + next.lead).toBeLessThanOrEqual(900 - MIN_WORKERS)
+test('clampSizes at 900px overlays instead of squeezing the workspace below 360', () => {
+  const next = clampSizes(DEFAULT_SIZES, { width: 900, height: 800 }, OPEN)
+  expect(drawerOverlays(next, { width: 900 }, OPEN)).toBe(true)
   expect(next.sidebar).toBeGreaterThanOrEqual(MIN_SIDEBAR)
-  expect(next.lead).toBeGreaterThanOrEqual(MIN_LEAD)
-  expect(900 - next.sidebar - next.lead).toBeGreaterThanOrEqual(MIN_WORKERS)
+  expect(900 - next.sidebar).toBeGreaterThanOrEqual(MIN_WORKERS)
 })
 
-test('clampSizes on a wide short window shrinks the row so workers stay 360', () => {
-  const next = clampSizes(DEFAULT_SIZES, { width: 1100, height: 800 }, ALL)
-  expect(next.sidebar + next.lead + next.usage).toBeLessThanOrEqual(1100 - MIN_WORKERS)
-  expect(1100 - next.sidebar - next.lead - next.usage).toBeGreaterThanOrEqual(MIN_WORKERS)
+test('drawerOverlays is false when sidebar plus drawer plus 360 fit', () => {
+  expect(drawerOverlays(DEFAULT_SIZES, { width: 1600 }, OPEN)).toBe(false)
+  expect(drawerOverlays(DEFAULT_SIZES, { width: 900 }, OPEN)).toBe(true)
+  expect(
+    drawerOverlays(DEFAULT_SIZES, { width: 900 }, { sidebarShown: true, drawerOpen: false })
+  ).toBe(false)
 })
 
-test('clampSizes ignores hidden panels when fitting the row', () => {
+test('clampSizes ignores a hidden sidebar when fitting the row', () => {
   const next = clampSizes(
     DEFAULT_SIZES,
     { width: 700, height: 800 },
-    {
-      projects: false,
-      flow: true,
-      lead: false,
-      usage: false
-    }
+    { sidebarShown: false, drawerOpen: false }
   )
   expect(next.sidebar).toBe(DEFAULT_SIZES.sidebar)
-  expect(next.lead).toBe(DEFAULT_SIZES.lead)
-  expect(next.usage).toBe(DEFAULT_SIZES.usage)
-})
-
-test('clampSizes caps flow to the window', () => {
-  const next = clampSizes({ ...DEFAULT_SIZES, flow: 2000 }, { width: 1200, height: 400 }, ALL)
-  expect(next.flow).toBeLessThan(2000)
-  expect(next.flow).toBeGreaterThanOrEqual(MIN_FLOW)
+  expect(next.drawer).toBe(DEFAULT_SIZES.drawer)
 })
 
 test('maxSize is the largest value clampSizes would allow', () => {
   const sizes = DEFAULT_SIZES
-  const viewport = { width: 1200, height: 800 }
-  const max = maxSize('sidebar', sizes, viewport, ALL)
-  const fitted = clampSizes({ ...sizes, sidebar: 10_000 }, viewport, ALL)
+  const viewport = { width: 1600, height: 800 }
+  const max = maxSize('sidebar', sizes, viewport, OPEN)
+  const fitted = clampSizes({ ...sizes, sidebar: 10_000 }, viewport, OPEN)
   expect(max).toBe(fitted.sidebar)
   expect(max).toBeGreaterThanOrEqual(MIN_SIDEBAR)
 })
@@ -217,12 +220,16 @@ test('autoPaneLayout picks the smallest fitting grid and caps at six', () => {
   expect(resolvedPaneLayout('auto', 3)).toBe('3-side')
 })
 
-test('isTerminalsShortcut is Ctrl+Shift+T', () => {
-  const base = { key: 'T', ctrlKey: true, shiftKey: true, altKey: false, metaKey: false }
-  expect(isTerminalsShortcut(base)).toBe(true)
-  expect(isTerminalsShortcut({ ...base, key: 't' })).toBe(true)
-  expect(isTerminalsShortcut({ ...base, shiftKey: false })).toBe(false)
-  expect(isTerminalsShortcut({ ...base, ctrlKey: false })).toBe(false)
+test('layoutShortcut maps Ctrl+B, Ctrl+\\, and Ctrl+1 through Ctrl+6', () => {
+  const base = { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false }
+  expect(layoutShortcut({ ...base, key: 'b' })).toBe('drawer')
+  expect(layoutShortcut({ ...base, key: 'B' })).toBe('drawer')
+  expect(layoutShortcut({ ...base, key: '\\' })).toBe('sidebar')
+  expect(layoutShortcut({ ...base, key: '1' })).toBe('lead')
+  expect(layoutShortcut({ ...base, key: '6' })).toBe('activity')
+  expect(layoutShortcut({ ...base, key: 'b', shiftKey: true })).toBe(null)
+  expect(layoutShortcut({ ...base, key: 't' })).toBe(null)
+  expect(layoutShortcut({ ...base, key: '0' })).toBe(null)
 })
 
 test('fillPanes auto uses the smallest fitting layout', () => {

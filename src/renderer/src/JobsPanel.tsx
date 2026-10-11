@@ -1,0 +1,660 @@
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { RayBurst } from './Star'
+import BotAvatar from './BotAvatar'
+import JobSteps from './JobSteps'
+import { latestStepTitle } from './job-steps'
+import RichText from './RichText'
+
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
+type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
+type JobType = Parameters<Window['api']['submitJob']>[0]
+type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+type PlanChoice = 'auto' | ProviderId | 'both'
+type JobAccess = 'read' | 'edit' | 'full'
+
+const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
+const ACCESS_KEY = 'orch.access'
+
+function asAccess(value: string): JobAccess {
+  if (value === 'edit' || value === 'full') return value
+  return 'read'
+}
+
+function loadAccess(): JobAccess {
+  try {
+    return asAccess(localStorage.getItem(ACCESS_KEY) ?? '')
+  } catch {
+    return 'read'
+  }
+}
+
+function saveAccess(value: JobAccess): void {
+  try {
+    localStorage.setItem(ACCESS_KEY, value)
+  } catch {
+    // Private mode, or storage full.
+  }
+}
+
+function accessMark(job: JobRecord): string | null {
+  if (job.access === 'full') return 'FULL'
+  if (job.edit === true || job.access === 'edit') return 'EDIT'
+  return null
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+  }
+  if (typeof err === 'string') return err
+  return 'Request failed'
+}
+
+function asPlanChoice(value: string): PlanChoice {
+  if (value === 'claude' || value === 'cursor' || value === 'both') return value
+  return 'auto'
+}
+
+function planRank(provider: JobRecord['provider']): number {
+  if (provider === 'claude') return 0
+  if (provider === 'cursor') return 1
+  return 2
+}
+
+function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boolean {
+  return plans !== null && plans.some((plan) => plan.id === id && plan.available)
+}
+
+function jobAvatarState(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
+  if (status === 'running') return 'working'
+  if (status === 'failed') return 'error'
+  if (status === 'queued') return 'resting'
+  return 'idle'
+}
+
+function outputTitle(job: JobRecord): string {
+  const parts: string[] = [job.type]
+  if (job.provider !== null) parts.push(job.provider)
+  if (job.model) parts.push(job.model)
+  if (job.reason) parts.push(job.reason)
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
+  return parts.join(' · ')
+}
+
+function visibleChange(job: JobRecord, changes: readonly ChangeSet[]): string | null {
+  const id = job.change
+  if (id === undefined) return null
+  return changes.some((item) => item.id === id) ? id : null
+}
+
+function FailoverArrow(): React.JSX.Element {
+  return (
+    <svg
+      className="failover-arrow"
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M1.5 5h5.5M5 2.5 7.5 5 5 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function metaLine(parts: ReactNode[]): React.JSX.Element {
+  const nodes: ReactNode[] = []
+  parts.forEach((part, index) => {
+    if (index > 0)
+      nodes.push(
+        <span key={`sep-${String(index)}`} className="meta-sep">
+          {' '}
+          /{' '}
+        </span>
+      )
+    nodes.push(<span key={`part-${String(index)}`}>{part}</span>)
+  })
+  return <>{nodes}</>
+}
+
+function jobMetaParts(job: JobRecord): ReactNode[] {
+  const parts: ReactNode[] = [job.type]
+  if (job.group !== undefined) parts.push('compare')
+  if (job.leadMessage !== undefined) parts.push('from lead')
+  if (job.routine !== undefined) parts.push('routine')
+  const mark = accessMark(job)
+  if (mark !== null) parts.push(mark)
+  if (job.reason) parts.push(<span className="job-reason-mono">{job.reason}</span>)
+  if (job.model) parts.push(<span className="job-model">{job.model}</span>)
+  parts.push(<span className="job-id">{job.id.slice(0, 8)}</span>)
+  return parts
+}
+
+function EmptyState({ title, guidance }: { title: string; guidance: string }): React.JSX.Element {
+  return (
+    <div className="empty-state">
+      <RayBurst />
+      <p className="empty-state-title">{title}</p>
+      <p className="empty-state-guidance">{guidance}</p>
+    </div>
+  )
+}
+
+function canStop(job: JobRecord): boolean {
+  return job.status === 'queued' || job.status === 'running'
+}
+
+function CompareOutput({
+  groupJobs,
+  changes,
+  onViewChange,
+  stoppingId,
+  onStop
+}: {
+  groupJobs: JobRecord[]
+  changes: readonly ChangeSet[]
+  onViewChange: (id: string) => void
+  stoppingId: string | null
+  onStop: (id: string) => void
+}): React.JSX.Element {
+  const [merging, setMerging] = useState(false)
+  const [messages, setMessages] = useState<Record<string, string>>({})
+  const mergingRef = useRef(false)
+  const ordered = groupJobs.slice().sort((a, b) => planRank(a.provider) - planRank(b.provider))
+  const eitherBusy = ordered.some((job) => job.status === 'queued' || job.status === 'running')
+
+  async function mergeThis(job: JobRecord): Promise<void> {
+    const changeId = visibleChange(job, changes)
+    if (changeId === null || mergingRef.current || eitherBusy) return
+    mergingRef.current = true
+    setMerging(true)
+    try {
+      const result = await window.api.mergeChange(changeId)
+      if (!result.ok) {
+        setMessages((prev) => ({ ...prev, [job.id]: result.message }))
+        return
+      }
+      setMessages((prev) => {
+        const next = { ...prev }
+        delete next[job.id]
+        return next
+      })
+      for (const other of ordered) {
+        if (other.id === job.id) continue
+        const otherChange = visibleChange(other, changes)
+        if (otherChange !== null) await window.api.discardChange(otherChange)
+      }
+    } catch (err: unknown) {
+      setMessages((prev) => ({ ...prev, [job.id]: errorText(err) }))
+    } finally {
+      mergingRef.current = false
+      setMerging(false)
+    }
+  }
+
+  return (
+    <div className="compare-output">
+      {ordered.map((job) => {
+        const changeId = visibleChange(job, changes)
+        const change = changeId === null ? undefined : changes.find((item) => item.id === changeId)
+        const waiting = job.output === '' && (job.status === 'queued' || job.status === 'running')
+        const mergeTitle = eitherBusy ? 'Wait for both to finish' : undefined
+        const message = messages[job.id]
+        return (
+          <div key={job.id} className="compare-col">
+            <div className="output-head">
+              {job.provider !== null ? (
+                <BotAvatar
+                  bot={job.provider}
+                  state={jobAvatarState(job.status)}
+                  size={20}
+                  title={job.provider}
+                />
+              ) : null}
+              <span>
+                {job.provider ?? '—'}
+                {job.model ? ` · ${job.model}` : ''}
+              </span>
+              <span className={`status status-${job.status}`}>
+                <span className="status-dot" aria-hidden="true" />
+                {job.status}
+              </span>
+              {canStop(job) ? (
+                <button
+                  type="button"
+                  className="btn btn-compact"
+                  disabled={stoppingId === job.id}
+                  onClick={() => onStop(job.id)}
+                >
+                  {stoppingId === job.id ? 'Stopping…' : 'Stop'}
+                </button>
+              ) : null}
+            </div>
+            <div className="output-body">
+              <JobSteps job={job} />
+              {waiting ? (
+                <p className="compare-wait">{job.status === 'queued' ? 'Waiting…' : 'Working…'}</p>
+              ) : (
+                <RichText text={job.output} />
+              )}
+            </div>
+            {job.error ? <pre className="output-error">{job.error}</pre> : null}
+            {message !== undefined ? <pre className="output-error">{message}</pre> : null}
+            {change !== undefined ? (
+              <div className="compare-foot">
+                <span className="change-stats">
+                  {`${change.files.length === 1 ? '1 file' : `${String(change.files.length)} files`} · `}
+                  <span className="stat-add">{`+${String(change.insertions)}`}</span>{' '}
+                  <span className="stat-del">{`−${String(change.deletions)}`}</span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-compact"
+                  onClick={() => onViewChange(change.id)}
+                >
+                  View change
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  disabled={merging || eitherBusy}
+                  title={mergeTitle}
+                  onClick={() => {
+                    void mergeThis(job)
+                  }}
+                >
+                  {merging ? 'Merging…' : 'Merge this, discard the other'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function JobsPanel({
+  jobs,
+  plans,
+  changes,
+  isRepo,
+  selectedJobId,
+  showJob,
+  onSelectJob,
+  onJob,
+  onViewChange
+}: {
+  jobs: JobRecord[]
+  plans: PlanStatus[] | null
+  changes: ChangeSet[]
+  isRepo: boolean
+  selectedJobId: string | null
+  showJob?: { id: string; nonce: number } | null
+  onSelectJob: (id: string | null) => void
+  onJob: (job: JobRecord) => void
+  onViewChange: (id: string) => void
+}): React.JSX.Element {
+  const [prompt, setPrompt] = useState('')
+  const [jobType, setJobType] = useState<JobType>('planning')
+  const [worker, setWorker] = useState<PlanChoice>('auto')
+  const [access, setAccess] = useState<JobAccess>(loadAccess)
+  const [stoppingId, setStoppingId] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const sending = useRef(false)
+  const stoppingRef = useRef(false)
+
+  useEffect(() => {
+    if (showJob == null) return
+    const id = showJob.id
+    requestAnimationFrame(() => {
+      document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [showJob])
+
+  const newest = jobs.slice().reverse()
+  const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null
+  const promptEmpty = prompt.trim() === ''
+  const claudeReady = planAvailable(plans, 'claude')
+  const cursorReady = planAvailable(plans, 'cursor')
+  const bothReady = claudeReady && cursorReady
+  const noPlanReady = plans !== null && !claudeReady && !cursorReady
+  const choiceBlocked =
+    (worker === 'claude' && !claudeReady) ||
+    (worker === 'cursor' && !cursorReady) ||
+    (worker === 'both' && !bothReady)
+  const submitDisabled = promptEmpty || noPlanReady || choiceBlocked || submitting
+
+  async function stopJob(id: string): Promise<void> {
+    if (stoppingRef.current) return
+    stoppingRef.current = true
+    setStoppingId(id)
+    try {
+      const job = await window.api.cancelJob(id)
+      onJob(job)
+      setSubmitError(null)
+    } catch (err: unknown) {
+      setSubmitError(errorText(err))
+    } finally {
+      stoppingRef.current = false
+      setStoppingId(null)
+    }
+  }
+
+  async function submit(): Promise<void> {
+    const text = prompt
+    if (text.trim() === '' || sending.current) return
+    sending.current = true
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      if (worker === 'both') {
+        const group = crypto.randomUUID()
+        const jobAccess = isRepo ? access : 'read'
+        const results: JobRecord[] = []
+        let submitErrorText: string | null = null
+        for (const provider of ['claude', 'cursor'] as const) {
+          try {
+            const job = await window.api.submitJob(jobType, text, provider, jobAccess, group)
+            results.push(job)
+            onJob(job)
+          } catch (err: unknown) {
+            submitErrorText = errorText(err)
+          }
+        }
+        if (results.length > 0) {
+          setPrompt('')
+          onSelectJob(results[0].id)
+        }
+        if (submitErrorText !== null) setSubmitError(submitErrorText)
+        return
+      }
+      const provider = worker === 'auto' ? undefined : worker
+      const job = await window.api.submitJob(jobType, text, provider, isRepo ? access : 'read')
+      setPrompt('')
+      onJob(job)
+      onSelectJob(job.id)
+    } catch (err: unknown) {
+      setSubmitError(errorText(err))
+    } finally {
+      sending.current = false
+      setSubmitting(false)
+    }
+  }
+
+  function onPromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === 'Enter' && event.ctrlKey && !promptEmpty) {
+      event.preventDefault()
+      void submit()
+    }
+  }
+
+  function onRowKeyDown(event: KeyboardEvent<HTMLDivElement>, index: number): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const job = newest[index]
+      if (job) onSelectJob(job.id)
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const nextIndex = event.key === 'ArrowDown' ? index + 1 : index - 1
+    const next = newest[nextIndex]
+    if (!next) return
+    onSelectJob(next.id)
+    document.getElementById(`job-${next.id}`)?.focus()
+  }
+
+  return (
+    <div className="jobs-panel">
+      <form
+        className="composer"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+      >
+        <label className="sr-only" htmlFor="prompt">
+          Prompt
+        </label>
+        <div className="composer-box">
+          <textarea
+            id="prompt"
+            rows={3}
+            value={prompt}
+            placeholder="Hand a job straight to a worker."
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={onPromptKeyDown}
+          />
+          <div className="composer-foot">
+            <div className="composer-tools">
+              <label htmlFor="job-type">Job type</label>
+              <select
+                id="job-type"
+                className="job-type"
+                value={jobType}
+                onChange={(event) => setJobType(event.target.value as JobType)}
+              >
+                {JOB_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="job-worker">Worker</label>
+              <select
+                id="job-worker"
+                className="plan-choice"
+                value={worker}
+                onChange={(event) => setWorker(asPlanChoice(event.target.value))}
+              >
+                <option value="auto">auto</option>
+                <option value="claude" disabled={!claudeReady}>
+                  claude
+                </option>
+                <option value="cursor" disabled={!cursorReady}>
+                  cursor
+                </option>
+                <option
+                  value="both"
+                  disabled={!bothReady}
+                  title={
+                    bothReady ? undefined : 'Both Claude and Cursor need to be ready to compare.'
+                  }
+                >
+                  both (compare)
+                </option>
+              </select>
+              <label htmlFor="job-access">Access</label>
+              <select
+                id="job-access"
+                className="job-access"
+                value={isRepo ? access : 'read'}
+                title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
+                onChange={(event) => {
+                  const value = asAccess(event.target.value)
+                  setAccess(value)
+                  saveAccess(value)
+                }}
+              >
+                <option value="read">Read only</option>
+                <option value="edit" disabled={!isRepo}>
+                  Edit files
+                </option>
+                <option value="full" disabled={!isRepo}>
+                  Full access
+                </option>
+              </select>
+              {access === 'full' && isRepo ? (
+                <span className="composer-hint access-hint">
+                  Runs commands on your computer without asking. Its file changes still wait in
+                  Changes.
+                </span>
+              ) : null}
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={submitDisabled}>
+              {submitting ? 'Submitting…' : 'Submit'}
+            </button>
+          </div>
+        </div>
+        {noPlanReady ? <p className="hint">No plan is ready. See Usage in the panel.</p> : null}
+        {submitError !== null ? (
+          <p className="field-error" role="alert">
+            {submitError}
+          </p>
+        ) : null}
+      </form>
+
+      {selectedJob === null ? (
+        <section className="jobs" aria-label="Jobs">
+          {newest.length === 0 ? (
+            <EmptyState
+              title="No jobs yet"
+              guidance="Jobs you submit, and jobs the lead hands out, appear here."
+            />
+          ) : (
+            <div role="listbox" aria-label="Jobs" className="job-list">
+              {newest.map((job, index) => {
+                const isSelected = job.id === selectedJobId
+                const failoverChain = [...job.failedOver, job.provider ?? '—']
+                const stepTitle = latestStepTitle(job)
+                return (
+                  <div
+                    key={job.id}
+                    id={`job-${job.id}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    tabIndex={isSelected || (selectedJobId === null && index === 0) ? 0 : -1}
+                    className={isSelected ? 'job-row is-selected' : 'job-row'}
+                    onClick={() => onSelectJob(job.id)}
+                    onKeyDown={(event) => onRowKeyDown(event, index)}
+                  >
+                    <div className="job-main">
+                      {job.provider !== null ? (
+                        <BotAvatar
+                          bot={job.provider}
+                          state={jobAvatarState(job.status)}
+                          size={20}
+                          title={job.provider}
+                        />
+                      ) : (
+                        <span className="job-avatar-slot" aria-hidden="true" />
+                      )}
+                      <span className="job-title" title={job.prompt}>
+                        {job.prompt}
+                      </span>
+                      <span className={`status status-${job.status}`}>
+                        <span className="status-dot" aria-hidden="true" />
+                        {job.status}
+                      </span>
+                    </div>
+                    {job.status === 'running' && stepTitle !== undefined ? (
+                      <p className="job-step-live" title={stepTitle}>
+                        {stepTitle}
+                      </p>
+                    ) : null}
+                    <div className="job-meta">
+                      {metaLine(jobMetaParts(job))}
+                      {visibleChange(job, changes) !== null ? (
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-compact"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            const id = job.change
+                            if (id !== undefined) onViewChange(id)
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          View change
+                        </button>
+                      ) : null}
+                    </div>
+                    {job.failedOver.length > 0 ? (
+                      <div
+                        className="failover"
+                        aria-label={`Failed over from ${failoverChain[0]} to ${failoverChain[failoverChain.length - 1]}`}
+                      >
+                        <span className="failover-label">Failover</span>
+                        {failoverChain.map((name, hop) => (
+                          <span key={`${job.id}-failover-${hop}-${name}`} className="failover-hop">
+                            {hop > 0 ? <FailoverArrow /> : null}
+                            <span>{name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="output-pane" aria-label="Output">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact jobs-back"
+            onClick={() => onSelectJob(null)}
+          >
+            ← Jobs
+          </button>
+          {selectedJob.group !== undefined &&
+          jobs.some((job) => job.group === selectedJob.group && job.id !== selectedJob.id) ? (
+            <CompareOutput
+              groupJobs={jobs.filter((job) => job.group === selectedJob.group)}
+              changes={changes}
+              onViewChange={onViewChange}
+              stoppingId={stoppingId}
+              onStop={(id) => {
+                void stopJob(id)
+              }}
+            />
+          ) : (
+            <>
+              <div className="output-head">
+                {selectedJob.provider !== null ? (
+                  <BotAvatar
+                    bot={selectedJob.provider}
+                    state={jobAvatarState(selectedJob.status)}
+                    size={20}
+                  />
+                ) : null}
+                <span title={outputTitle(selectedJob)}>{outputTitle(selectedJob)}</span>
+                {canStop(selectedJob) ? (
+                  <button
+                    type="button"
+                    className="btn btn-compact"
+                    disabled={stoppingId === selectedJob.id}
+                    onClick={() => {
+                      void stopJob(selectedJob.id)
+                    }}
+                  >
+                    {stoppingId === selectedJob.id ? 'Stopping…' : 'Stop'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="output-body">
+                <JobSteps job={selectedJob} />
+                <RichText text={selectedJob.output} />
+              </div>
+              {selectedJob.error ? <pre className="output-error">{selectedJob.error}</pre> : null}
+            </>
+          )}
+        </section>
+      )}
+    </div>
+  )
+}
+
+export default JobsPanel
