@@ -2,6 +2,7 @@ import { parseArgs } from './args'
 
 const FULL = [
   'legate [--project <path>] <command>',
+  'legate ui',
   'legate status',
   'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet] [--verbose]',
   'legate jobs [--limit N]',
@@ -21,6 +22,7 @@ const FULL = [
 ].join('\n')
 
 const LINE: Record<string, string> = {
+  ui: 'legate ui',
   status: 'legate status',
   job: 'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet] [--verbose]',
   jobs: 'legate jobs [--limit N]',
@@ -50,7 +52,7 @@ export interface EarlyExit {
   text: string
 }
 
-export function earlyExit(argv: string[], version: string): EarlyExit | null {
+export function earlyExit(argv: string[], version: string, tty = false): EarlyExit | null {
   const parsed = parseArgs(argv)
   if (!parsed.ok) {
     return {
@@ -66,7 +68,8 @@ export function earlyExit(argv: string[], version: string): EarlyExit | null {
     return { code: 0, stream: 'stdout', text: `legate ${version}\n` }
   }
   const command = parsed.parsed.command
-  if (command === null) {
+  if (command === null || command === 'ui') {
+    if (tty) return null
     return { code: 2, stream: 'stderr', text: `Missing command.\n${usageFor(null)}\n` }
   }
   if (LINE[command] === undefined && LINE[parsed.parsed.key ?? ''] === undefined) {

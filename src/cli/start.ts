@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +18,8 @@ import { run, type CliContext } from './run'
 
 export async function start(argv: string[]): Promise<number> {
   const version = readVersion()
-  const early = earlyExit(argv, version)
+  const tty = process.stdin.isTTY === true && process.stdout.isTTY === true
+  const early = earlyExit(argv, version, tty)
   if (early !== null) {
     const stream = early.stream === 'stdout' ? process.stdout : process.stderr
     stream.write(early.text)
@@ -56,8 +57,10 @@ export async function start(argv: string[]): Promise<number> {
     })
     const github = new Github(runCaptured)
     const rules = loadRules(process.env.ORCH_RULES)
+    const claude = new ClaudeAdapter()
+    const cursor = new CursorAdapter()
     const orch = new Orchestrator({
-      adapters: [new ClaudeAdapter(), new CursorAdapter()],
+      adapters: [claude, cursor],
       store,
       rules,
       cwd: () => project,
@@ -75,6 +78,14 @@ export async function start(argv: string[]): Promise<number> {
       project,
       now: () => Date.now(),
       color: process.env.NO_COLOR === undefined && process.stdout.isTTY === true,
+      tty,
+      termSize: () => ({
+        columns: process.stdout.columns || 80,
+        rows: process.stdout.rows || 24
+      }),
+      interactive: (provider) =>
+        provider === 'claude' ? claude.interactive() : cursor.interactive(),
+      spawnInherited,
       stdout: (text) => {
         process.stdout.write(text)
       },
@@ -103,6 +114,35 @@ export async function start(argv: string[]): Promise<number> {
   } finally {
     close()
   }
+}
+
+function spawnInherited(
+  spec: { command: string; args: string[]; env?: NodeJS.ProcessEnv },
+  cwd: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(spec.command, spec.args, {
+      cwd,
+      env: spec.env === undefined ? process.env : { ...process.env, ...spec.env },
+      stdio: 'inherit',
+      shell: false,
+      windowsHide: false
+    })
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') {
+        reject(
+          new Error(
+            `Could not start ${spec.command}. Install it, then run it once in a terminal to sign in.`
+          )
+        )
+        return
+      }
+      reject(err)
+    })
+    child.on('exit', () => {
+      resolve()
+    })
+  })
 }
 
 function readVersion(): string {

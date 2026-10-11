@@ -25,6 +25,7 @@ Ordered. The top item is the next one to build.
 - Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
 - Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
 - Command line: `legate` runs the same jobs, changes, and routines from a terminal.
+- Terminal UI: `legate` with no arguments, or `legate ui`, hands out jobs, watches every step, and reviews changes.
 
 ## Next
 

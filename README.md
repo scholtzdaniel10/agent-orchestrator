@@ -67,9 +67,14 @@ Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/
 
 `legate` drives the same jobs, changes, and routines as the app from a terminal.
 
+With no arguments, `legate` opens a terminal UI when stdin and stdout are terminals. `legate ui` does the same thing. If either stream is not a terminal, it prints help and exits 2, as before.
+
+`n` or `i` starts a job. Tab moves between Worktrees, Jobs, and the detail. Up and Down (or `k` and `j`) move the selection. Enter opens the selection. `d` shows the diff, `m` merges, `x` discards, `w` creates a worktree, `c` opens Claude and `u` opens the Cursor agent in the selected folder, `s` stops a job, `r` lists routines, `?` lists every key, and `q` quits. In the job prompt, Ctrl+T cycles the type, Ctrl+W the worker, and Ctrl+A the access (read, then edit, then full).
+
 In a checkout, run `pnpm cli -- status`. In an installed copy, add the `resources\bin` folder to PATH.
 
 ```
+legate ui
 legate status
 legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor]
                       [--access read|edit|full] [--json] [--quiet]

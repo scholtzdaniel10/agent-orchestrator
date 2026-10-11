@@ -31,6 +31,7 @@ const GLOBAL_FLAGS = new Set(['project', 'help', 'version'])
 const NONE = new Set<string>()
 
 const ALLOWED: Record<string, Set<string>> = {
+  ui: NONE,
   status: NONE,
   job: new Set(['type', 'worker', 'access', 'json', 'quiet', 'verbose']),
   jobs: new Set(['limit']),
