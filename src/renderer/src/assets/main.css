@@ -4798,3 +4798,12 @@ button.job-step {
   flex: 1;
   padding-right: 8px;
 }
+
+/* Seven tabs share one row at the default drawer width; they still wrap when it is dragged narrower. */
+.drawer-tabs .tab {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0 6px;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
