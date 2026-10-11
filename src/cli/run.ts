@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mergeListedChanges } from '../core/changes'
+import { assertWorktreeIdle } from '../core/worktree-guard'
 import type { JobRecord, JobStep, WorkerInfo } from '../core/router/orchestrator'
 import type { Routine } from '../core/routines'
 import type { WorktreeNameRow } from '../core/router/store'
@@ -293,6 +294,11 @@ async function diffChange(parsed: Parsed, ctx: CliContext): Promise<number> {
 async function mergeChange(parsed: Parsed, ctx: CliContext): Promise<number> {
   const hit = await oneChange(parsed, 'merge', ctx)
   if (typeof hit !== 'string') return hit
+  assertWorktreeIdle(
+    ctx.store.jobsNewest(ctx.project, LOOKUP).map((row) => row.job),
+    hit,
+    ctx.now()
+  )
   const result = await ctx.worktrees.merge(ctx.project, hit)
   if (result.ok) ctx.store.deleteWorktreeName(hit)
   ;(result.ok ? ctx.stdout : ctx.stderr)(`${result.message}\n`)
@@ -313,6 +319,11 @@ async function discardChange(parsed: Parsed, ctx: CliContext): Promise<number> {
       return 0
     }
   }
+  assertWorktreeIdle(
+    ctx.store.jobsNewest(ctx.project, LOOKUP).map((row) => row.job),
+    hit,
+    ctx.now()
+  )
   await ctx.worktrees.discard(ctx.project, hit)
   ctx.store.deleteWorktreeName(hit)
   ctx.stdout(`Discarded ${hit}.\n`)

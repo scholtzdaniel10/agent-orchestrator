@@ -161,6 +161,8 @@ export interface OrchestratorApi {
   ): Promise<TerminalInfo>
   /** Keystrokes for a terminal. Fire and forget. */
   writeTerminal(id: string, data: string): void
+  /** This window is focused on the terminal; the pty takes its size from here. */
+  claimTerminal(id: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>

@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { JOB_STALE_MS } from '../worktree-guard'
 import { TESTED_VERSIONS, unknownFormatMessage } from '../providers/versions'
 import type {
   AgentEvent,
@@ -10,7 +11,7 @@ import type {
   RunOptions
 } from '../types'
 import type { Worktrees } from '../worktrees'
-import { Orchestrator, type JobRecord } from './orchestrator'
+import { JOB_HEARTBEAT_MS, JOB_WATCH_MS, Orchestrator, type JobRecord } from './orchestrator'
 import { headroom, loadRules } from './router'
 import { Store } from './store'
 
@@ -139,6 +140,9 @@ async function withOrch(
     worktrees?: Worktrees
     onChanges?: () => void
     rules?: RouterRules
+    ownerId?: string
+    setInterval?: (fn: () => void, ms: number) => unknown
+    clearInterval?: (id: unknown) => void
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -151,7 +155,10 @@ async function withOrch(
       now,
       modelFor,
       worktrees: extra?.worktrees,
-      onChanges: extra?.onChanges
+      onChanges: extra?.onChanges,
+      ownerId: extra?.ownerId,
+      setInterval: extra?.setInterval ?? ((): number => 0),
+      clearInterval: extra?.clearInterval ?? ((): void => {})
     })
     await orch.init()
     await fn(orch, store)
@@ -1918,4 +1925,184 @@ test('step updates are batched to about five per second', async () => {
     },
     () => now
   )
+})
+
+class ManualClock {
+  constructor(readonly time: { ms: number }) {}
+
+  private nextHandle = 1
+  private readonly intervals = new Map<number, { fn: () => void; period: number; next: number }>()
+
+  now = (): number => this.time.ms
+
+  setInterval = (fn: () => void, period: number): number => {
+    const id = this.nextHandle++
+    this.intervals.set(id, { fn, period, next: this.time.ms + period })
+    return id
+  }
+
+  clearInterval = (id: unknown): void => {
+    this.intervals.delete(id as number)
+  }
+
+  clearAll(): void {
+    this.intervals.clear()
+  }
+
+  tick(amount: number): void {
+    const end = this.time.ms + amount
+    while (true) {
+      let due: { id: number; fn: () => void; period: number; next: number } | undefined
+      for (const [id, item] of this.intervals) {
+        if (item.next <= end && (due === undefined || item.next < due.next)) {
+          due = { id, ...item }
+        }
+      }
+      if (due === undefined) break
+      this.time.ms = due.next
+      const item = this.intervals.get(due.id)
+      if (item === undefined) continue
+      item.next = due.next + item.period
+      item.fn()
+    }
+    this.time.ms = end
+  }
+}
+
+async function twoOrchs(
+  fn: (args: {
+    store: Store
+    clockA: ManualClock
+    clockB: ManualClock
+    orchA: Orchestrator
+    orchB: Orchestrator
+    claudeA: FakeAdapter
+    claudeB: FakeAdapter
+    hold: { promise: Promise<void>; open: () => void }
+  }) => Promise<void>
+): Promise<void> {
+  const store = new Store(':memory:')
+  const time = { ms: 1_000_000 }
+  const clockA = new ManualClock(time)
+  const clockB = new ManualClock(time)
+  const hold = gate()
+  const claudeA = new FakeAdapter('claude', [
+    {
+      gate: hold.promise,
+      events: [
+        step({ id: 's1', phase: 'end', title: 'Read a.ts', ok: true }),
+        { kind: 'result', ok: true, text: 'from-a', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  const claudeB = new FakeAdapter('claude', [])
+  const orchA = new Orchestrator({
+    adapters: [claudeA],
+    store,
+    rules: loadRules(),
+    cwd: '/proj',
+    now: clockA.now,
+    ownerId: 'owner-a',
+    setInterval: clockA.setInterval,
+    clearInterval: clockA.clearInterval
+  })
+  const orchB = new Orchestrator({
+    adapters: [claudeB],
+    store,
+    rules: loadRules(),
+    cwd: '/proj',
+    now: clockB.now,
+    ownerId: 'owner-b',
+    setInterval: clockB.setInterval,
+    clearInterval: clockB.clearInterval
+  })
+  try {
+    await orchA.init()
+    await orchB.init()
+    await fn({ store, clockA, clockB, orchA, orchB, claudeA, claudeB, hold })
+  } finally {
+    clockA.clearAll()
+    clockB.clearAll()
+    store.close()
+  }
+}
+
+test('restore while another process is running leaves that job running and follows it', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockB, hold }) => {
+    const snaps: JobRecord[] = []
+    orchB.onUpdate((job) => snaps.push(job))
+    const submitted = orchA.submit('planning', 'keep going')
+    expect(submitted).toMatchObject({ status: 'running', ownerId: 'owner-a' })
+    orchB.restore('/proj')
+    expect(orchB.get(submitted.id)).toMatchObject({
+      id: submitted.id,
+      status: 'running',
+      ownerId: 'owner-a'
+    })
+    expect(orchB.get(submitted.id)?.error).toBeUndefined()
+    expect(orchB.busy()).toBe(false)
+    hold.open()
+    await orchA.idle()
+    clockB.tick(JOB_WATCH_MS)
+    expect(orchB.get(submitted.id)).toMatchObject({
+      status: 'done',
+      output: 'from-a',
+      steps: [expect.objectContaining({ id: 's1', title: 'Read a.ts' })]
+    })
+    expect(snaps.some((snap) => snap.status === 'done' && snap.id === submitted.id)).toBe(true)
+  })
+})
+
+test('a dead process is marked interrupted after its heartbeat goes stale', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockA, clockB, hold }) => {
+    const submitted = orchA.submit('planning', 'ghost')
+    orchB.restore('/proj')
+    expect(orchB.get(submitted.id)?.status).toBe('running')
+    clockA.clearAll()
+    clockB.tick(JOB_STALE_MS)
+    expect(orchB.get(submitted.id)).toMatchObject({
+      status: 'failed',
+      error: 'interrupted when the app closed'
+    })
+    hold.open()
+    await orchA.idle()
+  })
+})
+
+test('cancel of a foreign job asks the owner to stop it', async () => {
+  await twoOrchs(async ({ store, orchA, orchB, clockA, hold }) => {
+    const submitted = orchA.submit('planning', 'stop me')
+    orchB.restore('/proj')
+    const asked = orchB.cancel(submitted.id)
+    expect(asked).toMatchObject({ status: 'running', cancelRequested: true })
+    expect(store.isCancelRequested(submitted.id)).toBe(true)
+    expect(orchA.get(submitted.id)?.status).toBe('running')
+    clockA.tick(JOB_HEARTBEAT_MS)
+    await waitFor(() => orchA.get(submitted.id)?.status === 'failed')
+    expect(orchA.get(submitted.id)).toMatchObject({ status: 'failed', error: 'stopped' })
+    hold.open()
+    await orchA.idle()
+  })
+})
+
+test('watchStore picks up a job started in another process', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockB, hold }) => {
+    orchB.restore('/proj')
+    expect(orchB.list()).toEqual([])
+    const stop = orchB.watchStore()
+    const submitted = orchA.submit('planning', 'new from a')
+    expect(orchB.list()).toEqual([])
+    clockB.tick(JOB_WATCH_MS)
+    expect(orchB.list()).toEqual([
+      expect.objectContaining({
+        id: submitted.id,
+        status: 'running',
+        prompt: 'new from a',
+        ownerId: 'owner-a'
+      })
+    ])
+    stop()
+    hold.open()
+    await orchA.idle()
+  })
 })

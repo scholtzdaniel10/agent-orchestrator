@@ -6,7 +6,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
-import { cascadeBounds, PoppedOutRegistry, refuseWindow } from './windows'
+import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
@@ -31,14 +31,17 @@ import type {
 } from '../core/types'
 import { Worktrees } from '../core/worktrees'
 import { mergeListedChanges } from '../core/changes'
+import { assertWorktreeIdle } from '../core/worktree-guard'
 import type { PlanStatus } from '../preload/api-types'
 
 let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
+let stopStoreWatch: () => void = () => {}
 const poppedOut = new PoppedOutRegistry()
 const poppedWindows = new Map<string, BrowserWindow>()
+const terminalClaims = new TerminalClaims()
 
 function broadcast(channel: string, ...args: unknown[]): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -86,6 +89,11 @@ function createWindow(opts?: {
       nodeIntegration: false,
       webviewTag: false
     }
+  })
+
+  const contentsId = win.webContents.id
+  win.on('closed', () => {
+    terminalClaims.releaseWindow(contentsId)
   })
 
   win.on('ready-to-show', () => {
@@ -241,6 +249,7 @@ app.whenReady().then(async () => {
   } catch (err: unknown) {
     console.error(err)
   }
+  stopStoreWatch = orch.watchStore()
 
   function plans(): PlanStatus[] {
     return orch.workers().map((worker) => {
@@ -442,12 +451,18 @@ app.whenReady().then(async () => {
       return info
     }
   )
-  ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
+  ipcMain.on('terminals:write', (event, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return
+    terminalClaims.claim(id, event.sender.id)
     terms.write(id, data)
   })
-  ipcMain.on('terminals:resize', (_event, id: unknown, cols: unknown, rows: unknown) => {
+  ipcMain.on('terminals:claim', (event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) return
+    terminalClaims.claim(id, event.sender.id)
+  })
+  ipcMain.on('terminals:resize', (event, id: unknown, cols: unknown, rows: unknown) => {
     if (typeof id !== 'string' || !Number.isInteger(cols) || !Number.isInteger(rows)) return
+    if (!terminalClaims.allowResize(id, event.sender.id)) return
     terms.resize(id, cols as number, rows as number)
   })
   ipcMain.handle('terminals:close', (_event, id: unknown) => {
@@ -590,6 +605,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('changes:merge', async (_event, id: unknown) => {
     const changeId = requireChangeId(id)
+    assertWorktreeIdle([...orch.list(), ...shared.jobs(projectDir(), 200)], changeId, Date.now())
     await terms.closeChange(changeId)
     const result = await worktrees.merge(projectDir(), changeId)
     if (result.ok) {
@@ -601,6 +617,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('changes:discard', async (_event, id: unknown) => {
     const changeId = requireChangeId(id)
+    assertWorktreeIdle([...orch.list(), ...shared.jobs(projectDir(), 200)], changeId, Date.now())
     await terms.closeChange(changeId)
     await worktrees.discard(projectDir(), changeId)
     shared.deleteWorktreeName(changeId)
@@ -769,6 +786,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  stopStoreWatch()
   terminals?.closeAll()
   if (bridge) void bridge.close()
   store?.close()

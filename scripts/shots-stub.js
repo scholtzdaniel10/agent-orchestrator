@@ -442,6 +442,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         change: typeof worktree === 'string' && worktree !== 'new' ? worktree : undefined
       }),
     writeTerminal: () => {},
+    claimTerminal: () => {},
     resizeTerminal: () => {},
     closeTerminal: ok(undefined),
     listTerminals: ok([]),

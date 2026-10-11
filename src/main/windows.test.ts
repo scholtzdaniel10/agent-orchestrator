@@ -3,6 +3,7 @@ import {
   CASCADE_OFFSET,
   MAX_WINDOWS,
   PoppedOutRegistry,
+  TerminalClaims,
   WINDOW_CAP_MESSAGE,
   cascadeBounds,
   refuseWindow
@@ -70,4 +71,18 @@ test('popped-out registry removes an id and clears it when that terminal is gone
   popped.remove('missing')
   expect(popped.list()).toEqual(['b'])
   expect(popped.add('a')).toBe(true)
+})
+
+test('resize follows the window that last claimed the terminal', () => {
+  const claims = new TerminalClaims()
+  expect(claims.allowResize('t1', 1)).toBe(true)
+  expect(claims.allowResize('t1', 2)).toBe(false)
+  claims.claim('t1', 2)
+  expect(claims.allowResize('t1', 2)).toBe(true)
+  expect(claims.allowResize('t1', 1)).toBe(false)
+  claims.releaseWindow(2)
+  expect(claims.allowResize('t1', 1)).toBe(true)
+  expect(claims.allowResize('t1', 2)).toBe(false)
+  claims.releaseWindow(1)
+  expect(claims.allowResize('t1', 2)).toBe(true)
 })

@@ -7,6 +7,7 @@ type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
 type GithubRepo = Awaited<ReturnType<Window['api']['githubRepos']>>[number]
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 type WorktreeId = string | null
 type WorktreeSelectMode = 'only' | 'toggle' | 'range'
@@ -262,6 +263,7 @@ function WorktreeRow({
   cursorAvailable,
   canRename,
   canDiscard,
+  discardBlocked,
   currentName,
   onSelect,
   onKeyDown,
@@ -280,6 +282,7 @@ function WorktreeRow({
   cursorAvailable: boolean
   canRename: boolean
   canDiscard: boolean
+  discardBlocked?: boolean
   currentName: string
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
@@ -436,7 +439,8 @@ function WorktreeRow({
           <button
             type="button"
             className="btn btn-quiet btn-compact"
-            title="Discard"
+            title={discardBlocked === true ? 'job running' : 'Discard'}
+            disabled={discardBlocked === true}
             onClick={() => {
               setMode('confirm')
             }}
@@ -444,14 +448,22 @@ function WorktreeRow({
             Discard
           </button>
         ) : null}
+        {discardBlocked === true ? <span className="project-worktree-sub">job running</span> : null}
       </div>
     </li>
+  )
+}
+
+function worktreeJobRunning(jobs: readonly JobRecord[], id: string): boolean {
+  return jobs.some(
+    (job) => job.change === id && (job.status === 'queued' || job.status === 'running')
   )
 }
 
 function WorktreesSection({
   branch,
   changes,
+  jobs,
   terminals,
   selectedWorktrees,
   claudeAvailable,
@@ -465,6 +477,7 @@ function WorktreesSection({
 }: {
   branch: string | null
   changes: ChangeSet[]
+  jobs: readonly JobRecord[]
   terminals: readonly TerminalInfo[]
   selectedWorktrees: ReadonlySet<WorktreeId>
   claudeAvailable: boolean
@@ -691,6 +704,7 @@ function WorktreesSection({
               cursorAvailable={cursorAvailable}
               canRename={true}
               canDiscard={true}
+              discardBlocked={worktreeJobRunning(jobs, item.id)}
               currentName={named ? (item.name ?? '') : ''}
               onSelect={(event) => {
                 onSelect(item.id, clickSelectMode(event))
@@ -835,6 +849,7 @@ function ProjectBar({
   error,
   githubAvailable,
   changes,
+  jobs,
   terminals,
   selectedWorktrees,
   claudeAvailable,
@@ -862,6 +877,7 @@ function ProjectBar({
   error: string | null
   githubAvailable: boolean
   changes: ChangeSet[]
+  jobs: readonly JobRecord[]
   terminals: readonly TerminalInfo[]
   selectedWorktrees: ReadonlySet<WorktreeId>
   claudeAvailable: boolean
@@ -1039,6 +1055,7 @@ function ProjectBar({
                 <WorktreesSection
                   branch={entry.branch}
                   changes={changes}
+                  jobs={jobs}
                   terminals={terminals}
                   selectedWorktrees={selectedWorktrees}
                   claudeAvailable={claudeAvailable}

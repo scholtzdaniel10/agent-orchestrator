@@ -214,7 +214,7 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 })
     expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
       name: 'terminals'
     })
@@ -558,6 +558,36 @@ test('a busy database waits up to 5 seconds', () => {
   const db = (store as unknown as { db: DatabaseSync }).db
   expect(db.prepare('PRAGMA busy_timeout').get()).toEqual({ timeout: 5000 })
   store.close()
+})
+
+test('requestCancel survives a later saveJob of the same row', async () => {
+  await withStore((store) => {
+    store.saveJob('/a', 1, job({ id: 'j1', status: 'running', ownerId: 'aaa', heartbeatAt: 10 }))
+    expect(store.isCancelRequested('j1')).toBe(false)
+    store.requestCancel('j1')
+    expect(store.isCancelRequested('j1')).toBe(true)
+    expect(store.jobs('/a', 10)[0]?.cancelRequested).toBe(true)
+    store.saveJob(
+      '/a',
+      1,
+      job({
+        id: 'j1',
+        status: 'running',
+        output: 'more',
+        ownerId: 'aaa',
+        heartbeatAt: 20
+      })
+    )
+    expect(store.isCancelRequested('j1')).toBe(true)
+    const loaded = store.jobs('/a', 10)[0]
+    expect(loaded).toMatchObject({
+      output: 'more',
+      ownerId: 'aaa',
+      heartbeatAt: 20,
+      cancelRequested: true
+    })
+    expect(store.isCancelRequested('missing')).toBe(false)
+  })
 })
 
 test('jobsNewest returns the newest jobs first, with their times', () => {

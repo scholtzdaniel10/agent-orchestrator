@@ -12,9 +12,13 @@ import {
   type RouterRules,
   type VersionStatus
 } from '../types'
+import { JOB_STALE_MS } from '../worktree-guard'
 import { Worktrees } from '../worktrees'
 import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
+
+export const JOB_HEARTBEAT_MS = 5_000
+export const JOB_WATCH_MS = 2_000
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
 
@@ -61,6 +65,12 @@ export interface JobRecord {
   /** Name of the routine that started this job, when it did. */
   routine?: string
   error?: string
+  /** Process that is running this job. Absent on old saved jobs. */
+  ownerId?: string
+  /** Epoch ms of the owner's last heartbeat. */
+  heartbeatAt?: number
+  /** Another process asked the owner to stop this job. */
+  cancelRequested?: boolean
 }
 
 interface InternalJob {
@@ -96,6 +106,9 @@ interface InternalJob {
   createdAt: number
   steps: JobStep[]
   stepsDropped: number
+  ownerId?: string
+  heartbeatAt?: number
+  cancelRequested?: boolean
 }
 
 type ResultEvent = Extract<AgentEvent, { kind: 'result' }>
@@ -156,6 +169,13 @@ export class Orchestrator {
   private idleWaiters: Array<() => void> = []
   private readonly stepFlushAt = new Map<string, number>()
   private readonly stepTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  readonly ownerId: string
+  private readonly startInterval: (fn: () => void, ms: number) => unknown
+  private readonly stopInterval: (id: unknown) => void
+  private project: string | null = null
+  private watching = false
+  private heartbeatTimer: unknown
+  private watchTimer: unknown
 
   constructor(opts: {
     adapters: ProviderAdapter[]
@@ -166,6 +186,9 @@ export class Orchestrator {
     modelFor?: (provider: ProviderId) => string | undefined
     worktrees?: Worktrees
     onChanges?: () => void
+    ownerId?: string
+    setInterval?: (fn: () => void, ms: number) => unknown
+    clearInterval?: (id: unknown) => void
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -176,6 +199,10 @@ export class Orchestrator {
     this.onChanges = opts.onChanges
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
+    this.ownerId = opts.ownerId ?? randomUUID()
+    this.startInterval = opts.setInterval ?? ((fn, ms) => setInterval(fn, ms))
+    this.stopInterval =
+      opts.clearInterval ?? ((id) => clearInterval(id as ReturnType<typeof setInterval>))
   }
 
   /** Providers that are installed and signed in become the candidate set. */
@@ -230,6 +257,8 @@ export class Orchestrator {
       access: granted,
       steps: [],
       stepsDropped: 0,
+      ownerId: this.ownerId,
+      heartbeatAt: this.now(),
       ...(granted !== 'read' ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {}),
@@ -277,19 +306,35 @@ export class Orchestrator {
   /** Replace the in-memory job list with the newest stored jobs for `project`. */
   restore(project: string): void {
     if (this.busy()) throw new Error('orchestrator is busy')
+    this.project = project
     this.jobs.length = 0
     this.byJob.clear()
     this.queues.clear()
     this.running.clear()
     for (const record of this.store.jobs(project, 200)) {
       const job = fromRecord(record, project, this.now())
-      if (job.status === 'queued' || job.status === 'running') {
+      if (this.shouldInterrupt(job)) {
         job.status = 'failed'
         job.error = 'interrupted when the app closed'
         this.persist(job)
       }
       this.jobs.push(job)
       this.byJob.set(job.id, job)
+    }
+    this.syncTimers()
+  }
+
+  /**
+   * Watch the store for jobs another process starts on the current project.
+   * The app calls this while a window is open; one-shot commands do not.
+   */
+  watchStore(): () => void {
+    this.watching = true
+    if (this.project === null) this.project = this.workingDir()
+    this.syncTimers()
+    return (): void => {
+      this.watching = false
+      this.syncTimers()
     }
   }
 
@@ -340,6 +385,11 @@ export class Orchestrator {
     if (!job || (job.status !== 'queued' && job.status !== 'running')) {
       throw new Error('job is not running')
     }
+    if (this.isLiveForeign(job)) {
+      this.store.requestCancel(job.id)
+      job.cancelRequested = true
+      return copy(job)
+    }
     if (job.status === 'queued') {
       const provider = job.provider
       if (provider !== null) {
@@ -375,7 +425,9 @@ export class Orchestrator {
   }
 
   busy(): boolean {
-    return this.jobs.some((job) => job.status === 'queued' || job.status === 'running')
+    return this.jobs.some(
+      (job) => this.isOurs(job) && (job.status === 'queued' || job.status === 'running')
+    )
   }
 
   private resolveIdle(): void {
@@ -789,6 +841,7 @@ export class Orchestrator {
     if (job.status !== 'running') this.closeRunningSteps(job, job.status === 'done')
     this.persist(job)
     this.emit(job)
+    this.syncTimers()
   }
 
   private applyStep(job: InternalJob, event: Extract<AgentEvent, { kind: 'step' }>): void {
@@ -898,6 +951,11 @@ export class Orchestrator {
   }
 
   private persist(job: InternalJob): void {
+    if (this.isLiveForeign(job)) return
+    if (job.ownerId === undefined || job.ownerId === this.ownerId) {
+      job.ownerId = this.ownerId
+      job.heartbeatAt = this.now()
+    }
     try {
       this.store.saveJob(job.project, job.createdAt, copy(job))
     } catch (err) {
@@ -909,6 +967,131 @@ export class Orchestrator {
     const snap = copy(job)
     for (const cb of this.listeners) cb(snap)
   }
+
+  private isOurs(job: InternalJob): boolean {
+    return job.ownerId === this.ownerId
+  }
+
+  private isLiveForeign(job: InternalJob): boolean {
+    if (job.ownerId === undefined || job.ownerId === this.ownerId) return false
+    if (job.heartbeatAt === undefined) return false
+    return this.now() - job.heartbeatAt < JOB_STALE_MS
+  }
+
+  private shouldInterrupt(job: InternalJob): boolean {
+    if (job.status !== 'queued' && job.status !== 'running') return false
+    if (job.ownerId === undefined || job.ownerId === this.ownerId) return true
+    if (job.heartbeatAt === undefined) return true
+    return this.now() - job.heartbeatAt >= JOB_STALE_MS
+  }
+
+  private hasOwnedActive(): boolean {
+    return this.jobs.some(
+      (job) => this.isOurs(job) && (job.status === 'queued' || job.status === 'running')
+    )
+  }
+
+  private hasForeignUnfinished(): boolean {
+    return this.jobs.some(
+      (job) =>
+        job.ownerId !== undefined &&
+        job.ownerId !== this.ownerId &&
+        (job.status === 'queued' || job.status === 'running')
+    )
+  }
+
+  private syncTimers(): void {
+    const needBeat = this.hasOwnedActive()
+    if (needBeat && this.heartbeatTimer === undefined) {
+      this.heartbeatTimer = this.startInterval(() => this.onHeartbeat(), JOB_HEARTBEAT_MS)
+    } else if (!needBeat && this.heartbeatTimer !== undefined) {
+      this.stopInterval(this.heartbeatTimer)
+      this.heartbeatTimer = undefined
+    }
+    const needWatch = this.watching || this.hasForeignUnfinished()
+    if (needWatch && this.watchTimer === undefined) {
+      this.watchTimer = this.startInterval(() => this.pollStore(), JOB_WATCH_MS)
+    } else if (!needWatch && this.watchTimer !== undefined) {
+      this.stopInterval(this.watchTimer)
+      this.watchTimer = undefined
+    }
+  }
+
+  private onHeartbeat(): void {
+    for (const job of this.jobs) {
+      if (!this.isOurs(job)) continue
+      if (job.status !== 'queued' && job.status !== 'running') continue
+      if (this.store.isCancelRequested(job.id)) {
+        this.cancel(job.id)
+        continue
+      }
+      this.persist(job)
+    }
+    this.syncTimers()
+  }
+
+  private pollStore(): void {
+    const project = this.project
+    if (project === null) return
+    for (const record of this.store.jobs(project, 200)) {
+      const existing = this.byJob.get(record.id)
+      if (existing === undefined) {
+        if (!this.watching) continue
+        const job = fromRecord(record, project, this.now())
+        this.jobs.push(job)
+        this.byJob.set(job.id, job)
+        if (this.shouldInterrupt(job)) {
+          job.status = 'failed'
+          job.error = 'interrupted when the app closed'
+          this.emitStatus(job)
+        } else {
+          this.emit(job)
+        }
+        continue
+      }
+      if (this.isOurs(existing)) continue
+      const changed = !sameSnapshot(existing, record)
+      adopt(existing, record)
+      if (this.shouldInterrupt(existing)) {
+        existing.status = 'failed'
+        existing.error = 'interrupted when the app closed'
+        this.emitStatus(existing)
+        continue
+      }
+      if (changed) this.emit(existing)
+    }
+    this.syncTimers()
+  }
+}
+
+function sameSnapshot(job: InternalJob, record: JobRecord): boolean {
+  return (
+    job.status === record.status &&
+    job.output === record.output &&
+    job.error === record.error &&
+    job.provider === record.provider &&
+    job.model === record.model &&
+    job.change === record.change &&
+    JSON.stringify(job.steps) === JSON.stringify(record.steps ?? [])
+  )
+}
+
+function adopt(job: InternalJob, record: JobRecord): void {
+  job.status = record.status
+  job.output = record.output
+  job.provider = record.provider
+  job.failedOver = [...record.failedOver]
+  job.steps = stepsFrom(record)
+  job.stepsDropped = typeof record.stepsDropped === 'number' ? record.stepsDropped : 0
+  if (record.error !== undefined) job.error = record.error
+  else delete job.error
+  if (record.model !== undefined) job.model = record.model
+  else delete job.model
+  if (record.reason !== undefined) job.reason = record.reason
+  if (record.change !== undefined) job.change = record.change
+  if (record.ownerId !== undefined) job.ownerId = record.ownerId
+  if (record.heartbeatAt !== undefined) job.heartbeatAt = record.heartbeatAt
+  if (record.cancelRequested === true) job.cancelRequested = true
 }
 
 function safeKill(handle: { kill(): void } | undefined): void {
@@ -941,6 +1124,9 @@ function copy(job: InternalJob): JobRecord {
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   if (job.routine !== undefined) record.routine = job.routine
+  if (job.ownerId !== undefined) record.ownerId = job.ownerId
+  if (job.heartbeatAt !== undefined) record.heartbeatAt = job.heartbeatAt
+  if (job.cancelRequested === true) record.cancelRequested = true
   return record
 }
 
@@ -982,7 +1168,10 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     ...(record.change !== undefined ? { change: record.change } : {}),
     ...(record.group !== undefined ? { group: record.group } : {}),
     ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {}),
-    ...(record.routine !== undefined ? { routine: record.routine } : {})
+    ...(record.routine !== undefined ? { routine: record.routine } : {}),
+    ...(record.ownerId !== undefined ? { ownerId: record.ownerId } : {}),
+    ...(record.heartbeatAt !== undefined ? { heartbeatAt: record.heartbeatAt } : {}),
+    ...(record.cancelRequested === true ? { cancelRequested: true } : {})
   }
 }
 

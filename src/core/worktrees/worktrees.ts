@@ -18,9 +18,11 @@ interface ListedWorktree {
 
 export class Worktrees {
   private readonly root: string
+  private readonly delay: (ms: number) => Promise<void>
 
-  constructor(opts: { root: string }) {
+  constructor(opts: { root: string; delay?: (ms: number) => Promise<void> }) {
     this.root = opts.root
+    this.delay = opts.delay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   }
 
   /** Never throws. A missing folder or a non-repo is `isRepo: false`. */
@@ -165,7 +167,13 @@ export class Worktrees {
 
   async discard(project: string, id: string): Promise<void> {
     const located = this.locate(id)
-    await gitAllowMissing(['-C', project, 'worktree', 'remove', '--force', located.path], project)
+    await removeWorktreeWithRetries(
+      async () => {
+        await git(['-C', project, 'worktree', 'remove', '--force', located.path], project)
+      },
+      () => !existsSync(located.path),
+      this.delay
+    )
     await gitAllowMissing(['-C', project, 'branch', '-D', located.branch], project)
     await gitAllowMissing(['-C', project, 'worktree', 'prune'], project)
   }
@@ -252,6 +260,26 @@ export class Worktrees {
       deletions
     }
   }
+}
+
+const WINDOWS_LOCK_MESSAGE =
+  'Windows still has files open in this worktree. Close programs using it and try again.'
+
+export async function removeWorktreeWithRetries(
+  remove: () => Promise<void>,
+  folderGone: () => boolean,
+  delay: (ms: number) => Promise<void>
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await remove()
+    } catch {
+      // Folder still present: wait and try again. Already gone: treat as success.
+    }
+    if (folderGone()) return
+    if (attempt < 2) await delay(300)
+  }
+  throw new Error(WINDOWS_LOCK_MESSAGE)
 }
 
 function idFromJob(jobId: string): string {
