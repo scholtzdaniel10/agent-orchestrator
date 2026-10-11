@@ -1,7 +1,10 @@
-import { useEffect, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import BotAvatar from './BotAvatar'
+import { PANE_LAYOUT_IDS, PANE_LAYOUT_LABELS, isPaneLayout, type PaneLayoutId } from './layout'
+import { terminalDisplayTitle } from './worktree-label'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 
 function terminalAvatarState(info: TerminalInfo): 'idle' | 'resting' | 'error' {
@@ -25,34 +28,54 @@ function reveal(element: HTMLElement): void {
 }
 
 function tabElementId(active: string): string {
-  if (active === 'jobs') return 'worker-tab-jobs'
-  if (active === 'changes') return 'worker-tab-changes'
   return `worker-tab-${active}`
+}
+
+function firstPaneSize(): { cols: number; rows: number } {
+  const host = document.querySelector('.terminal-pane:not(.is-hidden) .terminal-host')
+  const pane = host instanceof HTMLElement ? host : document.querySelector('.workers-stage')
+  if (!(pane instanceof HTMLElement)) return { cols: 120, rows: 30 }
+  const rect = pane.getBoundingClientRect()
+  if (rect.width < 2 || rect.height < 2) return { cols: 120, rows: 30 }
+  return {
+    cols: Math.max(2, Math.min(1000, Math.floor(rect.width / 8))),
+    rows: Math.max(2, Math.min(1000, Math.floor(rect.height / 17)))
+  }
 }
 
 function TerminalTabs({
   terminals,
+  changes,
+  project,
   active,
-  changeCount,
-  split,
+  paneLayout,
   opening,
   onSelect,
   onClose,
   onOpen,
-  onToggleSplit
+  onPaneLayout
 }: {
   terminals: readonly TerminalInfo[]
-  /** `jobs`, `changes`, or a terminal id. */
+  changes: readonly ChangeSet[]
+  /** Active project folder; restore runs when this changes. */
+  project: string
+  /** Active terminal id, or empty when none. */
   active: string
-  changeCount: number
-  split: boolean
+  paneLayout: PaneLayoutId
   opening: boolean
   onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
-  onOpen: (provider: ProviderId) => void
-  onToggleSplit: () => void
+  onOpen: (provider: ProviderId, worktree?: 'new') => void
+  onPaneLayout: (layout: PaneLayoutId) => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
+  const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
+
+  useEffect(() => {
+    if (project === '') return
+    const size = firstPaneSize()
+    void window.api.restoreTerminals(size.cols, size.rows).catch(() => {})
+  }, [project])
 
   useEffect(() => {
     const element = document.getElementById(tabElementId(active))
@@ -61,11 +84,12 @@ function TerminalTabs({
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    if (terminals.length === 0) return
     event.preventDefault()
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    const last = terminals.length + 1
+    const last = terminals.length - 1
     if (next < 0 || next > last) return
-    const id = next === 0 ? 'jobs' : next === 1 ? 'changes' : terminals[next - 2].id
+    const id = terminals[next].id
     onSelect(id, 'arrow')
     const element = document.getElementById(tabElementId(id))
     if (element instanceof HTMLButtonElement) element.focus()
@@ -73,44 +97,10 @@ function TerminalTabs({
 
   return (
     <div className="tab-bar">
-      <div className="tab-scroll" role="tablist" aria-label="Worker views">
-        <button
-          id="worker-tab-jobs"
-          type="button"
-          role="tab"
-          className={active === 'jobs' ? 'tab is-selected' : 'tab'}
-          aria-selected={active === 'jobs'}
-          tabIndex={active === 'jobs' ? 0 : -1}
-          onClick={() => {
-            onSelect('jobs', 'click')
-          }}
-          onKeyDown={(event) => onTabKeyDown(event, 0)}
-        >
-          Jobs
-        </button>
-        <button
-          id="worker-tab-changes"
-          type="button"
-          role="tab"
-          className={active === 'changes' ? 'tab is-selected' : 'tab'}
-          aria-selected={active === 'changes'}
-          tabIndex={active === 'changes' ? 0 : -1}
-          onClick={() => {
-            onSelect('changes', 'click')
-          }}
-          onKeyDown={(event) => onTabKeyDown(event, 1)}
-        >
-          {'Changes'}
-          {changeCount > 0 ? (
-            <>
-              {' '}
-              <span className="tab-badge">{changeCount}</span>
-            </>
-          ) : null}
-        </button>
+      <div className="tab-scroll" role="tablist" aria-label="Terminals">
         {terminals.map((info, index) => {
           const selected = info.id === active
-          const tabIndex = index + 2
+          const heading = terminalDisplayTitle(info, changes)
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
               <button
@@ -123,15 +113,17 @@ function TerminalTabs({
                 onClick={() => {
                   onSelect(info.id, 'click')
                 }}
-                onKeyDown={(event) => onTabKeyDown(event, tabIndex)}
+                onKeyDown={(event) => onTabKeyDown(event, index)}
               >
-                <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
-                <span className="tab-label">{info.title}</span>
+                {info.provider === 'claude' || info.provider === 'cursor' ? (
+                  <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
+                ) : null}
+                <span className="tab-label">{heading}</span>
               </button>
               <button
                 type="button"
                 className="tab-close"
-                aria-label={`Close ${info.title}`}
+                aria-label={`Close ${heading}`}
                 onClick={() => {
                   onClose(info.id)
                 }}
@@ -146,36 +138,86 @@ function TerminalTabs({
         <button
           type="button"
           className="btn btn-quiet tab-new"
-          aria-label="New claude terminal"
+          aria-label="New Claude terminal"
           disabled={opening}
           onClick={() => {
-            onOpen('claude')
+            onOpen('claude', newWorktree ? 'new' : undefined)
           }}
         >
-          <BotAvatar bot="claude" state="idle" size={16} />+ claude
+          <BotAvatar bot="claude" state="idle" size={16} />
+          <span className="tab-new-plus">+</span>
+          <span className="tab-new-label">Claude</span>
         </button>
         <button
           type="button"
           className="btn btn-quiet tab-new"
-          aria-label="New cursor terminal"
+          aria-label="New Cursor terminal"
           disabled={opening}
           onClick={() => {
-            onOpen('cursor')
+            onOpen('cursor', newWorktree ? 'new' : undefined)
           }}
         >
-          <BotAvatar bot="cursor" state="idle" size={16} />+ cursor
+          <BotAvatar bot="cursor" state="idle" size={16} />
+          <span className="tab-new-plus">+</span>
+          <span className="tab-new-label">Cursor</span>
         </button>
         <button
           type="button"
-          className="btn btn-quiet tab-split"
-          aria-pressed={split}
-          onClick={onToggleSplit}
+          className="btn btn-quiet tab-worktree"
+          aria-pressed={newWorktree}
+          title="Start new terminals in their own git worktree"
+          onClick={() => {
+            setNewWorktree((on) => {
+              const next = !on
+              writeNewWorktree(next)
+              return next
+            })
+          }}
         >
-          Split
+          Worktree
         </button>
+        <div className="pane-layout-picker">
+          <label htmlFor="pane-layout">
+            <span className="visually-hidden">Panes</span>
+            <span className="pane-layout-label" aria-hidden="true">
+              Panes
+            </span>
+          </label>
+          <select
+            id="pane-layout"
+            value={paneLayout}
+            onChange={(event) => {
+              const next = event.target.value
+              if (!isPaneLayout(next)) return
+              onPaneLayout(next)
+            }}
+          >
+            {PANE_LAYOUT_IDS.map((id) => (
+              <option key={id} value={id}>
+                {PANE_LAYOUT_LABELS[id]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   )
+}
+
+function readNewWorktree(): boolean {
+  try {
+    return localStorage.getItem('orch.newWorktree') === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeNewWorktree(on: boolean): void {
+  try {
+    localStorage.setItem('orch.newWorktree', on ? '1' : '0')
+  } catch {
+    // Private mode or a full quota must not block the toggle.
+  }
 }
 
 export default TerminalTabs

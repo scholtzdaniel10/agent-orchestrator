@@ -1,13 +1,14 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import { LAYOUT_FIT_EVENT, dispatchLayoutShortcut, layoutShortcut } from './layout'
 import type { TerminalBus } from './terminal-bus'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 
-export type PanePlacement = 'only' | 'left' | 'right' | 'hidden'
+export type PanePlacement = number | 'hidden'
 
 function cssColor(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -22,32 +23,43 @@ function terminalTheme(): {
   return {
     background: cssColor('--bg'),
     foreground: cssColor('--text'),
-    cursor: cssColor('--signal'),
-    selectionBackground: cssColor('--brand')
+    cursor: cssColor('--brand'),
+    selectionBackground: cssColor('--selected')
   }
 }
 
-function paneClass(placement: PanePlacement): string {
+function paneClass(placement: PanePlacement, focused: boolean): string {
   if (placement === 'hidden') return 'terminal-pane is-hidden'
-  if (placement === 'left') return 'terminal-pane is-left'
-  if (placement === 'right') return 'terminal-pane is-right'
-  return 'terminal-pane is-only'
+  const slot = `terminal-pane is-slot-${String(placement)}`
+  return focused ? `${slot} is-focused` : slot
+}
+
+function layoutDragging(): boolean {
+  return document.querySelector('.app.is-dragging') !== null
 }
 
 function TerminalPane({
   info,
+  heading,
   bus,
   restore,
   placement,
+  focused,
   focusNonce,
-  onActivate
+  onActivate,
+  onClose,
+  ownWindow = false
 }: {
   info: TerminalInfo
+  heading?: string
   bus: TerminalBus
   restore: boolean
   placement: PanePlacement
+  focused: boolean
   focusNonce: number
   onActivate: () => void
+  onClose: () => void
+  ownWindow?: boolean
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -56,8 +68,29 @@ function TerminalPane({
   const sizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const applyFitRef = useRef<() => void>(() => {})
   const focusedTick = useRef(0)
+  const [poppedIds, setPoppedIds] = useState<string[]>([])
   const visible = placement !== 'hidden'
+  const popped = !ownWindow && poppedIds.includes(info.id)
   const exitLabel = info.exitCode === null ? '—' : String(info.exitCode)
+  const label = heading ?? info.title
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = window.api.onPoppedOut((ids) => {
+      setPoppedIds(ids)
+    })
+    void window.api.poppedOut().then(
+      (ids) => {
+        if (!active) return
+        setPoppedIds(ids)
+      },
+      () => {}
+    )
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -71,6 +104,7 @@ function TerminalPane({
   }, [info.status])
 
   useLayoutEffect(() => {
+    if (popped) return
     const host = hostRef.current
     if (host === null) return
     const element = host
@@ -86,6 +120,19 @@ function TerminalPane({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(element)
+    term.attachCustomKeyEventHandler((event) => {
+      if (
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (event.key === 'N' || event.key === 'n')
+      ) {
+        if (event.type === 'keydown') void window.api.newWindow()
+        return false
+      }
+      return true
+    })
 
     let webgl: WebglAddon | null = null
     try {
@@ -102,6 +149,16 @@ function TerminalPane({
 
     termRef.current = term
     term.options.disableStdin = exitedRef.current
+    term.attachCustomKeyEventHandler((event) => {
+      const kind = layoutShortcut(event)
+      if (kind === null) return true
+      if (event.type === 'keydown') {
+        event.preventDefault()
+        event.stopPropagation()
+        dispatchLayoutShortcut(kind)
+      }
+      return false
+    })
 
     // Replaying saved output makes xterm answer the CLI's old startup queries again; those
     // answers must not reach the live session as if they were typed.
@@ -162,30 +219,38 @@ function TerminalPane({
     }, 0)
     applyFit()
 
-    let timer: number | undefined
-    const observer = new ResizeObserver(() => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = window.setTimeout(() => {
-        timer = undefined
+    let frame = 0
+    function scheduleFit(): void {
+      if (layoutDragging()) return
+      if (frame !== 0) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
         applyFit()
-      }, 60)
+      })
+    }
+    const observer = new ResizeObserver(() => {
+      scheduleFit()
     })
     observer.observe(element)
+    window.addEventListener(LAYOUT_FIT_EVENT, applyFit)
 
     const scheme = window.matchMedia('(prefers-color-scheme: dark)')
     const onScheme = (): void => {
       term.options.theme = terminalTheme()
     }
     scheme.addEventListener('change', onScheme)
+    window.addEventListener('themechange', onScheme)
 
     return () => {
       cancelled = true
       focusedTick.current = 0
       window.clearTimeout(bootTimer)
       detach()
-      if (timer !== undefined) window.clearTimeout(timer)
+      if (frame !== 0) window.cancelAnimationFrame(frame)
+      window.removeEventListener(LAYOUT_FIT_EVENT, applyFit)
       observer.disconnect()
       scheme.removeEventListener('change', onScheme)
+      window.removeEventListener('themechange', onScheme)
       onData.dispose()
       try {
         webgl?.dispose()
@@ -197,12 +262,12 @@ function TerminalPane({
       termRef.current = null
       applyFitRef.current = () => {}
     }
-  }, [bus, info.id, restore])
+  }, [bus, info.id, restore, popped])
 
   useLayoutEffect(() => {
-    if (!visible) return
+    if (!visible || popped) return
     applyFitRef.current()
-  }, [visible])
+  }, [visible, popped])
 
   useLayoutEffect(() => {
     if (!visible || focusNonce === 0 || focusNonce === focusedTick.current) return
@@ -212,21 +277,77 @@ function TerminalPane({
     term.focus()
   }, [visible, focusNonce])
 
+  useLayoutEffect(() => {
+    if (!visible || popped || !focused) return
+    window.api.claimTerminal(info.id)
+    const term = termRef.current
+    if (term === null) return
+    window.api.resizeTerminal(info.id, term.cols, term.rows)
+  }, [visible, popped, focused, info.id])
+
   return (
     <div
-      className={paneClass(placement)}
+      className={paneClass(placement, focused)}
       inert={visible ? undefined : true}
       aria-hidden={visible ? undefined : true}
       onMouseDown={() => {
         onActivate()
       }}
     >
-      {info.status === 'exited' ? (
-        <p className="terminal-banner">
-          Session ended (exit code {exitLabel}). Close the tab or open a new one.
-        </p>
+      {visible ? (
+        <div className="terminal-pane-head">
+          <span className="terminal-pane-title">{label}</span>
+          {ownWindow ? null : (
+            <button
+              type="button"
+              className="tab-close"
+              title="Open in its own window"
+              aria-label="Open in its own window"
+              onClick={(event) => {
+                event.stopPropagation()
+                void window.api.popOutTerminal(info.id)
+              }}
+            >
+              ↗
+            </button>
+          )}
+          <button
+            type="button"
+            className="tab-close"
+            aria-label={`Close ${label}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onClose()
+            }}
+          >
+            ×
+          </button>
+        </div>
       ) : null}
-      <div ref={hostRef} className="terminal-host" />
+      {popped ? (
+        <div className="terminal-popped">
+          <p>Open in its own window</p>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={(event) => {
+              event.stopPropagation()
+              void window.api.popOutTerminal(info.id)
+            }}
+          >
+            Bring back
+          </button>
+        </div>
+      ) : (
+        <>
+          {info.status === 'exited' ? (
+            <p className="terminal-banner">
+              Session ended (exit code {exitLabel}). Close the tab or open a new one.
+            </p>
+          ) : null}
+          <div ref={hostRef} className="terminal-host" />
+        </>
+      )}
     </div>
   )
 }

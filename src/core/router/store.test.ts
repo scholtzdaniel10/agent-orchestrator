@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { JobRecord } from './orchestrator'
-import { Store, type RunRow } from './store'
+import { Store, TERMINAL_SCROLLBACK_CAP, type RunRow, type TerminalRow } from './store'
 
 function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>): RunRow {
   return {
@@ -16,6 +16,23 @@ function row(partial: Partial<RunRow> & Pick<RunRow, 'provider' | 'started_at'>)
     utilization: null,
     outcome: 'ok',
     session_id: null,
+    ...partial
+  }
+}
+
+function terminal(
+  partial: Partial<TerminalRow> & Pick<TerminalRow, 'id' | 'project'>
+): TerminalRow {
+  return {
+    provider: 'claude',
+    model: null,
+    session_id: null,
+    title: 'claude 1',
+    created_at: 10,
+    updated_at: 10,
+    scrollback: '',
+    cwd: null,
+    change_id: null,
     ...partial
   }
 }
@@ -197,7 +214,29 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 })
+    expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
+      name: 'terminals'
+    })
+    expect(
+      check.prepare(`SELECT name FROM sqlite_master WHERE name = 'worktree_names'`).get()
+    ).toEqual({
+      name: 'worktree_names'
+    })
+    expect(
+      check.prepare(`SELECT name FROM sqlite_master WHERE name = 'project_setup'`).get()
+    ).toEqual({
+      name: 'project_setup'
+    })
+    expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'routines'`).get()).toEqual({
+      name: 'routines'
+    })
+    const cols = check
+      .prepare(`SELECT name FROM pragma_table_info('terminals') ORDER BY name`)
+      .all() as Array<{ name: string }>
+    expect(cols.map((col) => col.name)).toEqual(
+      expect.arrayContaining(['cwd', 'change_id', 'id', 'project', 'scrollback'])
+    )
     check.close()
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -323,6 +362,158 @@ test('deleteChat removes messages and keeps other chats and jobs', async () => {
   })
 })
 
+test('terminals upsert, list oldest first, update scrollback, delete, and cap', async () => {
+  await withStore((store) => {
+    store.saveTerminal(
+      terminal({
+        id: 't2',
+        project: '/a',
+        title: 'claude 2',
+        created_at: 20,
+        session_id: 's2',
+        model: 'opus'
+      })
+    )
+    store.saveTerminal(
+      terminal({
+        id: 't1',
+        project: '/a',
+        title: 'claude 1',
+        created_at: 10,
+        provider: 'cursor'
+      })
+    )
+    store.saveTerminal(terminal({ id: 't3', project: '/b', title: 'other' }))
+    expect(store.terminals('/a').map((row) => row.id)).toEqual(['t1', 't2'])
+    expect(store.terminals('/a')[1]).toMatchObject({
+      provider: 'claude',
+      model: 'opus',
+      session_id: 's2',
+      title: 'claude 2',
+      cwd: null,
+      change_id: null
+    })
+    store.saveTerminal(
+      terminal({
+        id: 't1',
+        project: '/a',
+        title: 'cursor 1',
+        created_at: 10,
+        updated_at: 40,
+        provider: 'cursor',
+        session_id: 'chat-1',
+        scrollback: 'hi'
+      })
+    )
+    expect(store.terminals('/a')[0]).toMatchObject({
+      title: 'cursor 1',
+      session_id: 'chat-1',
+      scrollback: 'hi',
+      updated_at: 40
+    })
+
+    store.updateTerminalScrollback('t2', 'later', 50)
+    expect(store.terminals('/a')[1]).toMatchObject({ scrollback: 'later', updated_at: 50 })
+
+    const long = 'x'.repeat(TERMINAL_SCROLLBACK_CAP + 20)
+    store.saveTerminal(terminal({ id: 't4', project: '/a', created_at: 30, scrollback: long }))
+    expect(store.terminals('/a')[2].scrollback).toBe(long.slice(-TERMINAL_SCROLLBACK_CAP))
+    store.updateTerminalScrollback('t4', `ab${long}`, 60)
+    expect(store.terminals('/a')[2].scrollback).toBe(`ab${long}`.slice(-TERMINAL_SCROLLBACK_CAP))
+    expect(store.terminals('/a')[2].scrollback).toHaveLength(TERMINAL_SCROLLBACK_CAP)
+
+    store.deleteTerminal('t1')
+    expect(store.terminals('/a').map((row) => row.id)).toEqual(['t2', 't4'])
+    expect(store.terminals('/b').map((row) => row.id)).toEqual(['t3'])
+    store.deleteTerminal('missing')
+    expect(store.terminals('/a')).toHaveLength(2)
+
+    store.saveTerminal(
+      terminal({
+        id: 't5',
+        project: '/a',
+        created_at: 40,
+        cwd: '/wt/3fa9c1d2',
+        change_id: '3fa9c1d2'
+      })
+    )
+    expect(store.terminals('/a')[2]).toMatchObject({
+      id: 't5',
+      cwd: '/wt/3fa9c1d2',
+      change_id: '3fa9c1d2'
+    })
+  })
+})
+
+test('worktree names set, list newest first per project, rename, and delete', async () => {
+  await withStore((store) => {
+    store.setWorktreeName({ id: 'aaaaaaaa', project: '/a', name: 'older', created_at: 10 })
+    store.setWorktreeName({ id: 'bbbbbbbb', project: '/a', name: 'newer', created_at: 20 })
+    store.setWorktreeName({ id: 'cccccccc', project: '/b', name: 'other', created_at: 30 })
+    expect(store.worktreeNames('/a').map((row) => row.id)).toEqual(['bbbbbbbb', 'aaaaaaaa'])
+    expect(store.worktreeNames('/a')[0]).toMatchObject({
+      name: 'newer',
+      project: '/a',
+      created_at: 20
+    })
+    expect(store.worktreeNames('/b').map((row) => row.name)).toEqual(['other'])
+    expect(store.worktreeNames('/missing')).toEqual([])
+
+    store.setWorktreeName({
+      id: 'aaaaaaaa',
+      project: '/a',
+      name: 'renamed',
+      created_at: 99
+    })
+    expect(store.worktreeNames('/a')[1]).toMatchObject({
+      id: 'aaaaaaaa',
+      name: 'renamed',
+      created_at: 10
+    })
+
+    store.deleteWorktreeName('bbbbbbbb')
+    expect(store.worktreeNames('/a').map((row) => row.id)).toEqual(['aaaaaaaa'])
+    store.deleteWorktreeName('missing')
+    expect(store.worktreeNames('/a')).toHaveLength(1)
+  })
+})
+
+test('project setup upserts a JSON command list per project', async () => {
+  await withStore((store) => {
+    expect(store.getProjectSetup('/a')).toEqual([])
+    store.setProjectSetup('/a', ['pnpm install', 'pnpm build'])
+    store.setProjectSetup('/b', ['echo hi'])
+    expect(store.getProjectSetup('/a')).toEqual(['pnpm install', 'pnpm build'])
+    expect(store.getProjectSetup('/b')).toEqual(['echo hi'])
+    store.setProjectSetup('/a', ['pnpm test'])
+    expect(store.getProjectSetup('/a')).toEqual(['pnpm test'])
+    store.setProjectSetup('/a', [])
+    expect(store.getProjectSetup('/a')).toEqual([])
+  })
+})
+
+test('routines list in position order, upsert, and delete per project', async () => {
+  await withStore((store) => {
+    store.saveRoutine({ id: 'r2', project: '/a', position: 1, data: '{"name":"two"}' })
+    store.saveRoutine({ id: 'r1', project: '/a', position: 0, data: '{"name":"one"}' })
+    store.saveRoutine({ id: 'r3', project: '/b', position: 0, data: '{"name":"other"}' })
+    expect(store.listRoutines('/a').map((row) => row.id)).toEqual(['r1', 'r2'])
+    expect(store.listRoutines('/a')[0]).toMatchObject({
+      project: '/a',
+      position: 0,
+      data: '{"name":"one"}'
+    })
+    expect(store.listRoutines('/b').map((row) => row.id)).toEqual(['r3'])
+    store.saveRoutine({ id: 'r1', project: '/a', position: 0, data: '{"name":"one-again"}' })
+    expect(store.listRoutines('/a')[0].data).toBe('{"name":"one-again"}')
+    store.deleteRoutine('r1')
+    expect(store.listRoutines('/a').map((row) => row.id)).toEqual(['r2'])
+    store.deleteRoutine('missing')
+    expect(store.listRoutines('/a')).toHaveLength(1)
+    expect(store.listRoutines('/missing')).toEqual([])
+  })
+})
+
 test('a corrupt data row is skipped', () => {
   const root = mkdtempSync(join(tmpdir(), 'ao-store-bad-'))
   const path = join(root, 'db.sqlite')
@@ -342,24 +533,15 @@ test('a corrupt data row is skipped', () => {
     store.close()
 
     const raw = new DatabaseSync(path)
-    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
-      'bad',
-      'c1',
-      1,
-      '{not-json'
-    )
-    raw.prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`).run(
-      'noid',
-      'c1',
-      2,
-      '{"text":"x"}'
-    )
-    raw.prepare(`INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)`).run(
-      'badj',
-      '/a',
-      2,
-      'nope'
-    )
+    raw
+      .prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`)
+      .run('bad', 'c1', 1, '{not-json')
+    raw
+      .prepare(`INSERT INTO messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)`)
+      .run('noid', 'c1', 2, '{"text":"x"}')
+    raw
+      .prepare(`INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)`)
+      .run('badj', '/a', 2, 'nope')
     raw.close()
 
     const again = new Store(path)
@@ -369,4 +551,53 @@ test('a corrupt data row is skipped', () => {
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('a busy database waits up to 5 seconds', () => {
+  const store = new Store(':memory:')
+  const db = (store as unknown as { db: DatabaseSync }).db
+  expect(db.prepare('PRAGMA busy_timeout').get()).toEqual({ timeout: 5000 })
+  store.close()
+})
+
+test('requestCancel survives a later saveJob of the same row', async () => {
+  await withStore((store) => {
+    store.saveJob('/a', 1, job({ id: 'j1', status: 'running', ownerId: 'aaa', heartbeatAt: 10 }))
+    expect(store.isCancelRequested('j1')).toBe(false)
+    store.requestCancel('j1')
+    expect(store.isCancelRequested('j1')).toBe(true)
+    expect(store.jobs('/a', 10)[0]?.cancelRequested).toBe(true)
+    store.saveJob(
+      '/a',
+      1,
+      job({
+        id: 'j1',
+        status: 'running',
+        output: 'more',
+        ownerId: 'aaa',
+        heartbeatAt: 20
+      })
+    )
+    expect(store.isCancelRequested('j1')).toBe(true)
+    const loaded = store.jobs('/a', 10)[0]
+    expect(loaded).toMatchObject({
+      output: 'more',
+      ownerId: 'aaa',
+      heartbeatAt: 20,
+      cancelRequested: true
+    })
+    expect(store.isCancelRequested('missing')).toBe(false)
+  })
+})
+
+test('jobsNewest returns the newest jobs first, with their times', () => {
+  const store = new Store(':memory:')
+  store.saveJob('/p', 10, job({ id: 'old' }))
+  store.saveJob('/p', 30, job({ id: 'new' }))
+  store.saveJob('/p', 20, job({ id: 'mid' }))
+  expect(store.jobsNewest('/p', 2).map((row) => [row.job.id, row.createdAt])).toEqual([
+    ['new', 30],
+    ['mid', 20]
+  ])
+  store.close()
 })

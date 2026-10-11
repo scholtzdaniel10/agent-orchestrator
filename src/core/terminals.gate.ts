@@ -61,7 +61,7 @@ async function runSession(
       raw += data
       if (collectAfter) after += data
     })
-    const opened = terms.open(provider, 110, 32)
+    const opened = await terms.open(provider, 110, 32)
     terms.onUpdate((info, gone) => {
       if (info.id === opened.id && gone) removed = true
     })

@@ -1,0 +1,4 @@
+{"format":"v9","kind":"blob","seq":1}
+this is not json
+{"schema":"other","items":[1,2,3]}
+{"type":"brand_new_event","data":{"n":1}}

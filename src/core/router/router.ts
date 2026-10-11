@@ -225,12 +225,7 @@ export function pickWithReason(
   return { provider: winner.provider, reason: pickReason(type, winner, scores, rules) }
 }
 
-function pickReason(
-  type: JobType,
-  winner: Score,
-  scores: Score[],
-  rules: RouterRules
-): string {
+function pickReason(type: JobType, winner: Score, scores: Score[], rules: RouterRules): string {
   const another = scores.some((row) => row.provider !== winner.provider && row.score > 0)
   if (!another) return 'only plan available'
   if (winner.atRisk) return 'allowance expiring'

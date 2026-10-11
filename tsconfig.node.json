@@ -4,10 +4,12 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/core/**/*"
+    "src/core/**/*",
+    "src/cli/**/*"
   ],
   "compilerOptions": {
     "composite": true,
+    "jsx": "react-jsx",
     "types": [
       "electron-vite/node"
     ]

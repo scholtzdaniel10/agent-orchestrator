@@ -66,7 +66,7 @@ async function runProvider(provider: ProviderId, adapters: ProviderAdapter[]): P
 
     const submitted = orch.submit(
       'boilerplate',
-      `Append exactly this line to notes.txt: hello from ${provider}. Do not run any shell commands. Then reply done.`,
+      `Append one new line to notes.txt. The line is exactly the four words between the brackets, with no full stop: [hello from ${provider}] Do not run any shell commands. Then reply done.`,
       provider,
       true
     )

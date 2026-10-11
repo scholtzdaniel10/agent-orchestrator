@@ -1,4 +1,4 @@
-import type { JobType } from '../types'
+import { isJobAccess, type JobAccess, type JobType } from '../types'
 import type { JobRecord, Orchestrator } from '../router'
 import type { BridgeTool } from './server'
 
@@ -15,39 +15,56 @@ const JOB_TYPE_SCHEMA: Record<string, unknown> = {
   properties: {
     type: { type: 'string', enum: [...JOB_TYPES] },
     prompt: { type: 'string', minLength: 1, maxLength: MAX_PROMPT },
-    edit: { type: 'boolean' }
+    edit: { type: 'boolean' },
+    access: { type: 'string', enum: ['read', 'edit', 'full'] }
   }
+}
+
+const ACCESS_RANK: Record<JobAccess, number> = { read: 0, edit: 1, full: 2 }
+const ACCESS_LABEL: Record<JobAccess, string> = {
+  read: 'read only',
+  edit: 'edit files',
+  full: 'do anything'
 }
 
 export function createOrchestratorTools(
   orch: Orchestrator,
-  leadTurn?: () => string | null
+  leadTurn?: () => string | null,
+  maxAccess?: () => JobAccess
 ): BridgeTool[] {
+  const ceiling = (): JobAccess => {
+    const value = maxAccess?.()
+    return isJobAccess(value) ? value : 'read'
+  }
   return [
     {
       name: 'list_workers',
-      description: 'Who can run jobs right now and how much allowance each has left.',
+      description:
+        'Who can run jobs right now, how much allowance each has left, and the access ceiling the person set (read, edit, or full). A job cannot be given more than that.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       async handler(args) {
         rejectUnknown(args, [])
-        return orch.workers().map((worker) => ({
-          provider: worker.id,
-          available: worker.available,
-          headroom: round2(worker.headroom),
-          resting_until:
-            worker.restingUntil === null ? null : new Date(worker.restingUntil).toISOString(),
-          busy: worker.busy,
-          queued: worker.queued
-        }))
+        return {
+          max_access: ceiling(),
+          workers: orch.workers().map((worker) => ({
+            provider: worker.id,
+            available: worker.available,
+            headroom: round2(worker.headroom),
+            resting_until:
+              worker.restingUntil === null ? null : new Date(worker.restingUntil).toISOString(),
+            busy: worker.busy,
+            queued: worker.queued
+          }))
+        }
       }
     },
     {
       name: 'send_job',
       description:
-        'Hand one job to a worker and return its id immediately. The router chooses the worker. Workers are read-only (they can read files and answer, not edit). The prompt must be self-contained because the worker sees nothing else. Set edit to true only when the job has to change files; its changes go to a separate worktree and wait for the user to review and merge them.',
+        'Hand one job to a worker and return its id immediately. The router chooses the worker. The prompt must be self-contained because the worker sees nothing else. Access is read (files only), edit (change files in a separate worktree the user reviews and merges), or full (edit plus commands, without asking). The person sets a ceiling; a request above it is lowered. Pass access as that string, or the old edit boolean (true means edit).',
       inputSchema: JOB_TYPE_SCHEMA,
       async handler(args) {
-        rejectUnknown(args, ['type', 'prompt', 'edit'])
+        rejectUnknown(args, ['type', 'prompt', 'edit', 'access'])
         if (!isJobType(args.type)) {
           throw new Error('type must be planning, debugging, review, refactor, or boilerplate')
         }
@@ -59,15 +76,30 @@ export function createOrchestratorTools(
         if (args.edit !== undefined && typeof args.edit !== 'boolean') {
           throw new Error('edit must be a boolean')
         }
+        if (args.access !== undefined && !isJobAccess(args.access)) {
+          throw new Error('access must be read, edit, or full')
+        }
+        const requested = requestedAccess(args)
+        const max = ceiling()
+        const granted = ACCESS_RANK[requested] > ACCESS_RANK[max] ? max : requested
         const turn = leadTurn?.() ?? null
         const job = orch.submit(
           args.type,
           args.prompt,
           undefined,
-          typeof args.edit === 'boolean' ? args.edit : undefined,
+          granted,
           turn !== null ? { leadMessage: turn } : undefined
         )
-        return { id: job.id, provider: job.provider, status: job.status }
+        const result: {
+          id: string
+          provider: JobRecord['provider']
+          status: JobRecord['status']
+          note?: string
+        } = { id: job.id, provider: job.provider, status: job.status }
+        if (granted !== requested) {
+          result.note = `Access lowered to ${granted}: the person allows ${ACCESS_LABEL[granted]}.`
+        }
+        return result
       }
     },
     {
@@ -196,6 +228,12 @@ function waitMilliseconds(value: unknown): number {
 
 function isTerminal(status: JobRecord['status']): boolean {
   return status === 'done' || status === 'failed'
+}
+
+function requestedAccess(args: Record<string, unknown>): JobAccess {
+  if (isJobAccess(args.access)) return args.access
+  if (args.edit === true) return 'edit'
+  return 'read'
 }
 
 function isJobType(value: unknown): value is JobType {

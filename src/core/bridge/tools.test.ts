@@ -25,6 +25,10 @@ class FakeAdapter implements ProviderAdapter {
     return this.installed
   }
 
+  async version(): Promise<string | null> {
+    return null
+  }
+
   async isSignedIn(): Promise<boolean> {
     return this.signedIn
   }
@@ -104,13 +108,19 @@ function tool(tools: BridgeTool[], name: string): BridgeTool {
 test('send_job passes leadMessage when leadTurn returns an id', async () => {
   const claude = new FakeAdapter('claude', [ok('done')])
   await withOrch([claude], async (orch) => {
-    const withTurn = tool(createOrchestratorTools(orch, () => 'm-turn'), 'send_job')
+    const withTurn = tool(
+      createOrchestratorTools(orch, () => 'm-turn'),
+      'send_job'
+    )
     const linked = (await withTurn.handler({ type: 'planning', prompt: 'delegated' })) as {
       id: string
     }
     expect(orch.get(linked.id)?.leadMessage).toBe('m-turn')
 
-    const nullTurn = tool(createOrchestratorTools(orch, () => null), 'send_job')
+    const nullTurn = tool(
+      createOrchestratorTools(orch, () => null),
+      'send_job'
+    )
     const omitted = (await nullTurn.handler({ type: 'planning', prompt: 'plain' })) as {
       id: string
     }
@@ -313,24 +323,27 @@ test('list_workers reports availability, headroom, rest, busy, and queued', asyn
         await tool(tools, 'send_job').handler({ type: 'planning', prompt: 'one' })
         await tool(tools, 'send_job').handler({ type: 'planning', prompt: 'two' })
         const listed = await tool(tools, 'list_workers').handler({})
-        expect(listed).toEqual([
-          {
-            provider: 'claude',
-            available: true,
-            headroom: 1,
-            resting_until: null,
-            busy: true,
-            queued: 1
-          },
-          {
-            provider: 'cursor',
-            available: false,
-            headroom: 0,
-            resting_until: new Date(now + 60_000).toISOString(),
-            busy: false,
-            queued: 0
-          }
-        ])
+        expect(listed).toEqual({
+          max_access: 'read',
+          workers: [
+            {
+              provider: 'claude',
+              available: true,
+              headroom: 1,
+              resting_until: null,
+              busy: true,
+              queued: 1
+            },
+            {
+              provider: 'cursor',
+              available: false,
+              headroom: 0,
+              resting_until: new Date(now + 60_000).toISOString(),
+              busy: false,
+              queued: 0
+            }
+          ]
+        })
       } finally {
         held.open()
         await orch.idle()
@@ -415,10 +428,10 @@ test('send_job passes edit through and get_result reports the change', async () 
   })
   try {
     await orch.init()
-    const tools = createOrchestratorTools(orch)
+    const tools = createOrchestratorTools(orch, undefined, () => 'edit')
     const send = tool(tools, 'send_job')
     expect(send.description).toContain(
-      'Set edit to true only when the job has to change files; its changes go to a separate worktree and wait for the user to review and merge them.'
+      'Access is read (files only), edit (change files in a separate worktree the user reviews and merges), or full'
     )
     await expect(send.handler({ type: 'planning', prompt: 'x', edit: 'yes' })).rejects.toThrow(
       'edit must be a boolean'
@@ -435,6 +448,110 @@ test('send_job passes edit through and get_result reports the change', async () 
       edit: true,
       change: sent.id.slice(0, 8)
     })
+  } finally {
+    store.close()
+  }
+})
+
+test('send_job access passes through when allowed, is lowered, and rejects a bad value', async () => {
+  const claude = new FakeAdapter('claude', [
+    ok('read'),
+    ok('edited'),
+    ok('full'),
+    ok('old'),
+    ok('down-read'),
+    ok('down-edit')
+  ])
+  const store = new Store(':memory:')
+  const worktrees = {
+    async create(_project: string, jobId: string) {
+      const id = jobId.slice(0, 8)
+      return { id, path: 'wt', branch: `orch/${id}` }
+    }
+  } as unknown as Worktrees
+  const orch = new Orchestrator({
+    adapters: [claude],
+    store,
+    rules: loadRules(),
+    cwd: '.',
+    worktrees
+  })
+  try {
+    await orch.init()
+    const sendRead = tool(
+      createOrchestratorTools(orch, undefined, () => 'read'),
+      'send_job'
+    )
+    const sendEdit = tool(
+      createOrchestratorTools(orch, undefined, () => 'edit'),
+      'send_job'
+    )
+    const sendFull = tool(
+      createOrchestratorTools(orch, undefined, () => 'full'),
+      'send_job'
+    )
+
+    await expect(
+      sendRead.handler({ type: 'planning', prompt: 'x', access: 'write' })
+    ).rejects.toThrow('access must be read, edit, or full')
+
+    const listed = await tool(
+      createOrchestratorTools(orch, undefined, () => 'edit'),
+      'list_workers'
+    ).handler({})
+    expect(listed).toMatchObject({ max_access: 'edit' })
+
+    const readOk = (await sendRead.handler({
+      type: 'planning',
+      prompt: 'look',
+      access: 'read'
+    })) as { id: string; note?: string }
+    expect(readOk).not.toHaveProperty('note')
+    expect(orch.get(readOk.id)).toMatchObject({ access: 'read' })
+    expect(orch.get(readOk.id)?.edit).toBeUndefined()
+
+    const editOk = (await sendEdit.handler({
+      type: 'boilerplate',
+      prompt: 'change',
+      access: 'edit'
+    })) as { id: string }
+    expect(editOk).not.toHaveProperty('note')
+    expect(orch.get(editOk.id)).toMatchObject({ access: 'edit', edit: true })
+
+    const fullOk = (await sendFull.handler({
+      type: 'boilerplate',
+      prompt: 'go',
+      access: 'full'
+    })) as { id: string }
+    expect(fullOk).not.toHaveProperty('note')
+    expect(orch.get(fullOk.id)).toMatchObject({ access: 'full', edit: true })
+
+    const oldBool = (await sendEdit.handler({
+      type: 'boilerplate',
+      prompt: 'legacy',
+      edit: true
+    })) as { id: string }
+    expect(oldBool).not.toHaveProperty('note')
+    expect(orch.get(oldBool.id)).toMatchObject({ access: 'edit', edit: true })
+
+    const loweredRead = (await sendRead.handler({
+      type: 'boilerplate',
+      prompt: 'too much',
+      access: 'full'
+    })) as { id: string; note: string }
+    expect(loweredRead.note).toBe('Access lowered to read: the person allows read only.')
+    expect(orch.get(loweredRead.id)).toMatchObject({ access: 'read' })
+    expect(orch.get(loweredRead.id)?.edit).toBeUndefined()
+
+    const loweredEdit = (await sendEdit.handler({
+      type: 'boilerplate',
+      prompt: 'almost',
+      access: 'full'
+    })) as { id: string; note: string }
+    expect(loweredEdit.note).toBe('Access lowered to edit: the person allows edit files.')
+    expect(orch.get(loweredEdit.id)).toMatchObject({ access: 'edit', edit: true })
+
+    await orch.idle()
   } finally {
     store.close()
   }

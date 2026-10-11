@@ -1,4 +1,6 @@
 import { expect, test } from 'vitest'
+import { JOB_STALE_MS } from '../worktree-guard'
+import { TESTED_VERSIONS, unknownFormatMessage } from '../providers/versions'
 import type {
   AgentEvent,
   Job,
@@ -9,7 +11,7 @@ import type {
   RunOptions
 } from '../types'
 import type { Worktrees } from '../worktrees'
-import { Orchestrator, type JobRecord } from './orchestrator'
+import { JOB_HEARTBEAT_MS, JOB_WATCH_MS, Orchestrator, type JobRecord } from './orchestrator'
 import { headroom, loadRules } from './router'
 import { Store } from './store'
 
@@ -22,6 +24,7 @@ interface Script {
   pause?: Promise<void>
   exitCode?: number | null
   stderr?: string
+  unreadable?: boolean
   throwOnRun?: boolean
   onStart?: () => void
 }
@@ -33,15 +36,21 @@ class FakeAdapter implements ProviderAdapter {
   readonly options: Array<RunOptions | undefined> = []
   installed = true
   signedIn = true
+  cliVersion: string | null
   private readonly scripts: Script[]
 
   constructor(id: ProviderId, scripts: Script[]) {
     this.id = id
     this.scripts = [...scripts]
+    this.cliVersion = TESTED_VERSIONS[id]
   }
 
   async isInstalled(): Promise<boolean> {
     return this.installed
+  }
+
+  async version(): Promise<string | null> {
+    return this.cliVersion
   }
 
   async isSignedIn(): Promise<boolean> {
@@ -79,7 +88,8 @@ class FakeAdapter implements ProviderAdapter {
       events,
       exit: Promise.resolve({
         code: script.exitCode === undefined ? 0 : script.exitCode,
-        stderr: script.stderr ?? ''
+        stderr: script.stderr ?? '',
+        ...(script.unreadable === true ? { unreadable: true } : {})
       }),
       kill(): void {
         killed = true
@@ -130,6 +140,9 @@ async function withOrch(
     worktrees?: Worktrees
     onChanges?: () => void
     rules?: RouterRules
+    ownerId?: string
+    setInterval?: (fn: () => void, ms: number) => unknown
+    clearInterval?: (id: unknown) => void
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -142,7 +155,10 @@ async function withOrch(
       now,
       modelFor,
       worktrees: extra?.worktrees,
-      onChanges: extra?.onChanges
+      onChanges: extra?.onChanges,
+      ownerId: extra?.ownerId,
+      setInterval: extra?.setInterval ?? ((): number => 0),
+      clearInterval: extra?.clearInterval ?? ((): void => {})
     })
     await orch.init()
     await fn(orch, store)
@@ -456,6 +472,23 @@ test('onUpdate receives copies and unsubscribe stops them', async () => {
     await orch.idle()
     expect(snaps).toHaveLength(n)
     expect(orch.list()[1].status).toBe('done')
+  })
+})
+
+test('a model the CLI does not know fails with a message that says so', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [],
+      exitCode: 1,
+      stderr: '[claude-code:unrecognized_model] {"model":"claude-opus-5-5","query_source":"sdk"}'
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'one')
+    await orch.idle()
+    expect(orch.list()[0].error).toBe(
+      'This CLI version does not know the model claude-opus-5-5. Update the CLI, or pick another model in Usage.'
+    )
   })
 })
 
@@ -1063,6 +1096,57 @@ test('failover of an editing job keeps the folder and adds the handoff line', as
   )
 })
 
+test('a full-access job runs in its worktree and passes access through', async () => {
+  const claude = new FakeAdapter('claude', [ok('ran')])
+  const worktrees = fakeWorktrees(async (_project, jobId) => {
+    const id = jobId.slice(0, 8)
+    return { id, path: `wt/${id}`, branch: `orch/${id}` }
+  })
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const submitted = orch.submit('boilerplate', 'do it', undefined, 'full')
+      expect(submitted).toMatchObject({ access: 'full', edit: true })
+      await orch.idle()
+      const id = submitted.id.slice(0, 8)
+      expect(orch.get(submitted.id)).toMatchObject({
+        status: 'done',
+        access: 'full',
+        edit: true,
+        change: id
+      })
+      expect(claude.cwds).toEqual([`wt/${id}`])
+      expect(claude.options[0]).toMatchObject({ access: 'full', edit: true })
+    },
+    undefined,
+    undefined,
+    { worktrees }
+  )
+})
+
+test('an old saved job with edit true and no access comes back as edit', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/proj', 100, {
+      id: 'old-edit',
+      type: 'boilerplate',
+      prompt: 'legacy',
+      provider: 'claude',
+      status: 'done',
+      output: 'ok',
+      failedOver: [],
+      edit: true,
+      change: 'old-edit'
+    })
+    orch.restore('/proj')
+    expect(orch.list()[0]).toMatchObject({
+      id: 'old-edit',
+      access: 'edit',
+      edit: true,
+      change: 'old-edit'
+    })
+  })
+})
+
 test('onChanges fires after an editing run of any outcome', async () => {
   const claude = new FakeAdapter('claude', [
     ok('edited'),
@@ -1484,7 +1568,10 @@ test('cancel kills a running job without failover or resting the plan', async ()
   const claude = new FakeAdapter('claude', [
     {
       gate: held.promise,
-      events: [{ kind: 'text', text: 'partial' }, { kind: 'limit', message: 'should not apply' }]
+      events: [
+        { kind: 'text', text: 'partial' },
+        { kind: 'limit', message: 'should not apply' }
+      ]
     }
   ])
   const cursor = new FakeAdapter('cursor', [ok('failover')])
@@ -1539,6 +1626,71 @@ test('cancel of one running job with maxParallel 2 starts the next queued job', 
   )
 })
 
+test('a limit event keeps its message even when the stream is also unreadable', async () => {
+  const now = 1_700_000_000_000
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [{ kind: 'limit', message: 'spent', resetsAt: 1_900_000_000 }],
+      unreadable: true
+    }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('moved')])
+  await withOrch(
+    [claude, cursor],
+    async (orch, store) => {
+      orch.submit('planning', 'go')
+      await orch.idle()
+      expect(orch.list()[0]).toMatchObject({
+        status: 'done',
+        provider: 'cursor',
+        failedOver: ['claude']
+      })
+      expect(store.restingUntil('claude')).toBe(1_900_000_000_000)
+      expect(store.runs('claude')[0].outcome).toBe('limit')
+    },
+    () => now
+  )
+})
+
+test('unreadable CLI output fails the job with a readable message and does not rest the plan', async () => {
+  const claude = new FakeAdapter('claude', [
+    { events: [{ kind: 'text', text: '??' }], unreadable: true }
+  ])
+  const cursor = new FakeAdapter('cursor', [ok('should-not-run')])
+  await withOrch([claude, cursor], async (orch, store) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    expect(orch.list()[0]).toMatchObject({
+      status: 'failed',
+      error: unknownFormatMessage('claude', TESTED_VERSIONS.claude),
+      provider: 'claude',
+      failedOver: []
+    })
+    expect(store.restingUntil('claude')).toBeNull()
+    expect(store.runs().map((run) => run.outcome)).toEqual(['error'])
+    expect(cursor.received).toHaveLength(0)
+  })
+})
+
+test('workers report CLI version and tested status', async () => {
+  const claude = new FakeAdapter('claude', [])
+  const cursor = new FakeAdapter('cursor', [])
+  claude.cliVersion = '2.2.0'
+  cursor.cliVersion = null
+  await withOrch([claude, cursor], async (orch) => {
+    expect(orch.workers()[0]).toMatchObject({
+      id: 'claude',
+      version: '2.2.0',
+      versionStatus: 'newer'
+    })
+    expect(orch.workers()[1]).toMatchObject({
+      id: 'cursor',
+      version: null,
+      versionStatus: 'unknown'
+    })
+  })
+})
+
 test('cancel of a finished or unknown job throws', async () => {
   const claude = new FakeAdapter('claude', [ok('a')])
   await withOrch([claude], async (orch) => {
@@ -1547,5 +1699,410 @@ test('cancel of a finished or unknown job throws', async () => {
     expect(orch.get(job.id)?.status).toBe('done')
     expect(() => orch.cancel(job.id)).toThrow('job is not running')
     expect(() => orch.cancel('missing-id')).toThrow('job is not running')
+  })
+})
+
+function step(
+  partial: Partial<Extract<AgentEvent, { kind: 'step' }>> &
+    Pick<Extract<AgentEvent, { kind: 'step' }>, 'id' | 'phase' | 'title'>
+): Extract<AgentEvent, { kind: 'step' }> {
+  return {
+    kind: 'step',
+    tool: 'read',
+    ...partial
+  }
+}
+
+test('step start and end pair on the job, and a lone end is stored finished', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'r1', phase: 'start', title: 'Read src/app.ts' }),
+        step({
+          id: 'r1',
+          phase: 'end',
+          title: 'Read src/app.ts',
+          ok: true,
+          detail: 'contents'
+        }),
+        step({ id: 'r2', phase: 'end', title: 'Read other.ts', ok: true }),
+        { kind: 'result', ok: true, text: 'done' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.steps).toEqual([
+      expect.objectContaining({
+        id: 'r1',
+        tool: 'read',
+        title: 'Read src/app.ts',
+        status: 'done',
+        detail: 'contents'
+      }),
+      expect.objectContaining({
+        id: 'r2',
+        title: 'Read other.ts',
+        status: 'done'
+      })
+    ])
+    expect(job.stepsDropped).toBe(0)
+  })
+})
+
+test('a failed tool end marks the step failed; a still-running step follows the job', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'ok', phase: 'start', title: 'Read a' }),
+        step({ id: 'ok', phase: 'end', title: 'Read a', ok: true }),
+        step({ id: 'bad', phase: 'start', title: 'Read b' }),
+        step({ id: 'bad', phase: 'end', title: 'Read b', ok: false, detail: 'nope' }),
+        step({ id: 'hang', phase: 'start', title: 'Read c' }),
+        { kind: 'result', ok: false, text: 'boom' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.status).toBe('failed')
+    expect(job.steps?.map((item) => `${item.id}:${item.status}`)).toEqual([
+      'ok:done',
+      'bad:failed',
+      'hang:failed'
+    ])
+  })
+})
+
+test('thinking that arrives in fragments is one step until something else happens', async () => {
+  const think = (id: string, detail: string): Extract<AgentEvent, { kind: 'step' }> =>
+    step({ id, phase: 'end', tool: 'think', title: detail.trim(), detail })
+  const cursor = new FakeAdapter('cursor', [
+    {
+      events: [
+        think('t1', 'I need to append'),
+        think('t2', ' the line,'),
+        think('t3', '\nthen run git status.'),
+        step({ id: 'r1', phase: 'end', title: 'Read notes.txt' }),
+        think('t4', 'The file exists.'),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([cursor], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const steps = orch.list()[0].steps ?? []
+    expect(steps.map((item) => item.tool)).toEqual(['think', 'read', 'think'])
+    expect(steps[0]).toMatchObject({
+      id: 't1',
+      title: 'I need to append the line,',
+      detail: 'I need to append the line,\nthen run git status.',
+      status: 'done'
+    })
+    expect(steps[2]).toMatchObject({ id: 't4', title: 'The file exists.' })
+  })
+})
+
+test('a successful job marks a hanging step done', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({ id: 'hang', phase: 'start', title: 'Read c' }),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    expect(orch.list()[0].steps?.[0]).toMatchObject({ id: 'hang', status: 'done' })
+  })
+})
+
+test('keeps the last 400 steps and counts the dropped ones', async () => {
+  const events: AgentEvent[] = []
+  for (let i = 0; i < 405; i++) {
+    events.push(step({ id: `s${String(i)}`, phase: 'end', title: `Read ${String(i)}`, ok: true }))
+  }
+  events.push({ kind: 'result', ok: true, text: 'ok' })
+  const claude = new FakeAdapter('claude', [{ events }])
+  await withOrch([claude], async (orch) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const job = orch.list()[0]
+    expect(job.steps).toHaveLength(400)
+    expect(job.stepsDropped).toBe(5)
+    expect(job.steps?.[0]?.id).toBe('s5')
+    expect(job.steps?.[399]?.id).toBe('s404')
+  })
+})
+
+test('old saved jobs without steps load with an empty list', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch, store) => {
+    store.saveJob('/proj', 100, {
+      id: 'old',
+      type: 'planning',
+      prompt: 'go',
+      provider: 'claude',
+      status: 'done',
+      output: 'ok',
+      failedOver: []
+    })
+    orch.restore('/proj')
+    expect(orch.list()[0]).toMatchObject({
+      id: 'old',
+      steps: [],
+      stepsDropped: 0
+    })
+  })
+})
+
+test('saved steps come back after restore', async () => {
+  const claude = new FakeAdapter('claude', [
+    {
+      events: [
+        step({
+          id: 'e1',
+          phase: 'end',
+          tool: 'edit',
+          title: 'Edited src/app.ts',
+          ok: true,
+          edit: { path: 'src/app.ts', added: 4, removed: 1 }
+        }),
+        { kind: 'result', ok: true, text: 'ok' }
+      ]
+    }
+  ])
+  await withOrch([claude], async (orch, store) => {
+    orch.submit('planning', 'go')
+    await orch.idle()
+    const saved = store.jobs(CWD, 10)[0]
+    expect(saved.steps?.[0]).toMatchObject({
+      id: 'e1',
+      tool: 'edit',
+      title: 'Edited src/app.ts',
+      edit: { path: 'src/app.ts', added: 4, removed: 1 }
+    })
+    const again = new Orchestrator({
+      adapters: [new FakeAdapter('claude', [])],
+      store,
+      rules: loadRules(),
+      cwd: CWD
+    })
+    await again.init()
+    again.restore(CWD)
+    expect(again.list()[0].steps?.[0]).toMatchObject({
+      id: 'e1',
+      title: 'Edited src/app.ts',
+      edit: { path: 'src/app.ts', added: 4, removed: 1 }
+    })
+  })
+})
+
+test('step updates are batched to about five per second', async () => {
+  const events: AgentEvent[] = []
+  for (let i = 0; i < 20; i++) {
+    events.push(step({ id: `s${String(i)}`, phase: 'end', title: `Read ${String(i)}`, ok: true }))
+  }
+  events.push({ kind: 'result', ok: true, text: 'ok' })
+  const claude = new FakeAdapter('claude', [{ events }])
+  const now = 1_700_000_000_000
+  await withOrch(
+    [claude],
+    async (orch) => {
+      const snaps: JobRecord[] = []
+      orch.onUpdate((job) => snaps.push(job))
+      orch.submit('planning', 'go')
+      await orch.idle()
+      const withSteps = snaps.filter((job) => (job.steps?.length ?? 0) > 0)
+      expect(withSteps.length).toBeLessThan(20)
+      expect(orch.list()[0].steps).toHaveLength(20)
+    },
+    () => now
+  )
+})
+
+class ManualClock {
+  constructor(readonly time: { ms: number }) {}
+
+  private nextHandle = 1
+  private readonly intervals = new Map<number, { fn: () => void; period: number; next: number }>()
+
+  now = (): number => this.time.ms
+
+  setInterval = (fn: () => void, period: number): number => {
+    const id = this.nextHandle++
+    this.intervals.set(id, { fn, period, next: this.time.ms + period })
+    return id
+  }
+
+  clearInterval = (id: unknown): void => {
+    this.intervals.delete(id as number)
+  }
+
+  clearAll(): void {
+    this.intervals.clear()
+  }
+
+  tick(amount: number): void {
+    const end = this.time.ms + amount
+    while (true) {
+      let due: { id: number; fn: () => void; period: number; next: number } | undefined
+      for (const [id, item] of this.intervals) {
+        if (item.next <= end && (due === undefined || item.next < due.next)) {
+          due = { id, ...item }
+        }
+      }
+      if (due === undefined) break
+      this.time.ms = due.next
+      const item = this.intervals.get(due.id)
+      if (item === undefined) continue
+      item.next = due.next + item.period
+      item.fn()
+    }
+    this.time.ms = end
+  }
+}
+
+async function twoOrchs(
+  fn: (args: {
+    store: Store
+    clockA: ManualClock
+    clockB: ManualClock
+    orchA: Orchestrator
+    orchB: Orchestrator
+    claudeA: FakeAdapter
+    claudeB: FakeAdapter
+    hold: { promise: Promise<void>; open: () => void }
+  }) => Promise<void>
+): Promise<void> {
+  const store = new Store(':memory:')
+  const time = { ms: 1_000_000 }
+  const clockA = new ManualClock(time)
+  const clockB = new ManualClock(time)
+  const hold = gate()
+  const claudeA = new FakeAdapter('claude', [
+    {
+      gate: hold.promise,
+      events: [
+        step({ id: 's1', phase: 'end', title: 'Read a.ts', ok: true }),
+        { kind: 'result', ok: true, text: 'from-a', costUsd: 1, tokens: 1 }
+      ]
+    }
+  ])
+  const claudeB = new FakeAdapter('claude', [])
+  const orchA = new Orchestrator({
+    adapters: [claudeA],
+    store,
+    rules: loadRules(),
+    cwd: '/proj',
+    now: clockA.now,
+    ownerId: 'owner-a',
+    setInterval: clockA.setInterval,
+    clearInterval: clockA.clearInterval
+  })
+  const orchB = new Orchestrator({
+    adapters: [claudeB],
+    store,
+    rules: loadRules(),
+    cwd: '/proj',
+    now: clockB.now,
+    ownerId: 'owner-b',
+    setInterval: clockB.setInterval,
+    clearInterval: clockB.clearInterval
+  })
+  try {
+    await orchA.init()
+    await orchB.init()
+    await fn({ store, clockA, clockB, orchA, orchB, claudeA, claudeB, hold })
+  } finally {
+    clockA.clearAll()
+    clockB.clearAll()
+    store.close()
+  }
+}
+
+test('restore while another process is running leaves that job running and follows it', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockB, hold }) => {
+    const snaps: JobRecord[] = []
+    orchB.onUpdate((job) => snaps.push(job))
+    const submitted = orchA.submit('planning', 'keep going')
+    expect(submitted).toMatchObject({ status: 'running', ownerId: 'owner-a' })
+    orchB.restore('/proj')
+    expect(orchB.get(submitted.id)).toMatchObject({
+      id: submitted.id,
+      status: 'running',
+      ownerId: 'owner-a'
+    })
+    expect(orchB.get(submitted.id)?.error).toBeUndefined()
+    expect(orchB.busy()).toBe(false)
+    hold.open()
+    await orchA.idle()
+    clockB.tick(JOB_WATCH_MS)
+    expect(orchB.get(submitted.id)).toMatchObject({
+      status: 'done',
+      output: 'from-a',
+      steps: [expect.objectContaining({ id: 's1', title: 'Read a.ts' })]
+    })
+    expect(snaps.some((snap) => snap.status === 'done' && snap.id === submitted.id)).toBe(true)
+  })
+})
+
+test('a dead process is marked interrupted after its heartbeat goes stale', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockA, clockB, hold }) => {
+    const submitted = orchA.submit('planning', 'ghost')
+    orchB.restore('/proj')
+    expect(orchB.get(submitted.id)?.status).toBe('running')
+    clockA.clearAll()
+    clockB.tick(JOB_STALE_MS)
+    expect(orchB.get(submitted.id)).toMatchObject({
+      status: 'failed',
+      error: 'interrupted when the app closed'
+    })
+    hold.open()
+    await orchA.idle()
+  })
+})
+
+test('cancel of a foreign job asks the owner to stop it', async () => {
+  await twoOrchs(async ({ store, orchA, orchB, clockA, hold }) => {
+    const submitted = orchA.submit('planning', 'stop me')
+    orchB.restore('/proj')
+    const asked = orchB.cancel(submitted.id)
+    expect(asked).toMatchObject({ status: 'running', cancelRequested: true })
+    expect(store.isCancelRequested(submitted.id)).toBe(true)
+    expect(orchA.get(submitted.id)?.status).toBe('running')
+    clockA.tick(JOB_HEARTBEAT_MS)
+    await waitFor(() => orchA.get(submitted.id)?.status === 'failed')
+    expect(orchA.get(submitted.id)).toMatchObject({ status: 'failed', error: 'stopped' })
+    hold.open()
+    await orchA.idle()
+  })
+})
+
+test('watchStore picks up a job started in another process', async () => {
+  await twoOrchs(async ({ orchA, orchB, clockB, hold }) => {
+    orchB.restore('/proj')
+    expect(orchB.list()).toEqual([])
+    const stop = orchB.watchStore()
+    const submitted = orchA.submit('planning', 'new from a')
+    expect(orchB.list()).toEqual([])
+    clockB.tick(JOB_WATCH_MS)
+    expect(orchB.list()).toEqual([
+      expect.objectContaining({
+        id: submitted.id,
+        status: 'running',
+        prompt: 'new from a',
+        ownerId: 'owner-a'
+      })
+    ])
+    stop()
+    hold.open()
+    await orchA.idle()
   })
 })

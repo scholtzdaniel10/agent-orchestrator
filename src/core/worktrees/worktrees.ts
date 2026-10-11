@@ -18,9 +18,11 @@ interface ListedWorktree {
 
 export class Worktrees {
   private readonly root: string
+  private readonly delay: (ms: number) => Promise<void>
 
-  constructor(opts: { root: string }) {
+  constructor(opts: { root: string; delay?: (ms: number) => Promise<void> }) {
     this.root = opts.root
+    this.delay = opts.delay ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   }
 
   /** Never throws. A missing folder or a non-repo is `isRepo: false`. */
@@ -64,6 +66,35 @@ export class Worktrees {
       throw err
     }
     return located
+  }
+
+  /** Every orch worktree id for this project, including ones with no changed files. */
+  async ids(project: string): Promise<string[]> {
+    const about = await this.info(project)
+    if (!about.isRepo) return []
+    let porcelain: string
+    try {
+      porcelain = await git(['-C', project, 'worktree', 'list', '--porcelain'], project)
+    } catch {
+      return []
+    }
+    const ids: string[] = []
+    for (const entry of parseWorktrees(porcelain)) {
+      const match = entry.branch?.match(BRANCH_RE)
+      if (!match) continue
+      const id = match[1]
+      if (!id) continue
+      const listed = isAbsolute(entry.path) ? entry.path : resolve(project, entry.path)
+      if (!this.pathInsideRoot(listed)) continue
+      ids.push(id)
+    }
+    ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    return ids
+  }
+
+  /** Path of this change's worktree folder. Throws on a bad id. */
+  folder(id: string): string {
+    return this.locate(id).path
   }
 
   async list(project: string): Promise<ChangeSet[]> {
@@ -136,7 +167,13 @@ export class Worktrees {
 
   async discard(project: string, id: string): Promise<void> {
     const located = this.locate(id)
-    await gitAllowMissing(['-C', project, 'worktree', 'remove', '--force', located.path], project)
+    await removeWorktreeWithRetries(
+      async () => {
+        await git(['-C', project, 'worktree', 'remove', '--force', located.path], project)
+      },
+      () => !existsSync(located.path),
+      this.delay
+    )
     await gitAllowMissing(['-C', project, 'branch', '-D', located.branch], project)
     await gitAllowMissing(['-C', project, 'worktree', 'prune'], project)
   }
@@ -166,12 +203,16 @@ export class Worktrees {
     if (current !== located.branch) throw new Error('not a change worktree')
   }
 
+  /**
+   * Compared by real path, so neither `..` nor a link can point outside the root. The real path
+   * also undoes a Windows short name (`RUNNER~1`) in the root, which git never reports back.
+   * A path that does not exist yet has no real path and is compared as written.
+   */
   private pathInsideRoot(target: string): boolean {
-    if (!isInside(resolve(this.root), resolve(target))) return false
     try {
-      return isInside(realpathSync(this.root), realpathSync(target))
+      return isInside(realpathSync.native(this.root), realpathSync.native(target))
     } catch {
-      return true
+      return isInside(resolve(this.root), resolve(target))
     }
   }
 
@@ -219,6 +260,26 @@ export class Worktrees {
       deletions
     }
   }
+}
+
+const WINDOWS_LOCK_MESSAGE =
+  'Windows still has files open in this worktree. Close programs using it and try again.'
+
+export async function removeWorktreeWithRetries(
+  remove: () => Promise<void>,
+  folderGone: () => boolean,
+  delay: (ms: number) => Promise<void>
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await remove()
+    } catch {
+      // Folder still present: wait and try again. Already gone: treat as success.
+    }
+    if (folderGone()) return
+    if (attempt < 2) await delay(300)
+  }
+  throw new Error(WINDOWS_LOCK_MESSAGE)
 }
 
 function idFromJob(jobId: string): string {

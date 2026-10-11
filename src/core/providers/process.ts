@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process'
 import type { AgentEvent, RunHandle } from '../types'
 
+/** A parsed NDJSON line: an event (or several), a known type the adapter skips, or unrecognised. */
+export type LineParse = AgentEvent | AgentEvent[] | 'ignored' | null
+
 /** Executable to spawn. Extra args are placed before the per-call args. */
 export interface Bin {
   command: string
@@ -52,6 +55,15 @@ export function runCaptured(bin: Bin, args: string[]): Promise<CapturedRun> {
 }
 
 /**
+ * True when a CLI exited 0 without a final `result` event this app can read. Unknown lines
+ * beside a readable result are fine: newer CLIs add event types.
+ */
+export function isUnreadableOutput(code: number | null, hadResult: boolean): boolean {
+  if (code !== 0) return false
+  return !hadResult
+}
+
+/**
  * Spawn a provider CLI, write the prompt on stdin, and parse stdout NDJSON.
  * `events` finishes after the process closes and stdout is drained.
  * `exit` never rejects. Spawn failure (ENOENT) resolves `{ code: null, stderr: message }`.
@@ -61,7 +73,7 @@ export function spawnCli(
   args: string[],
   prompt: string,
   cwd: string,
-  parse: (line: string) => AgentEvent | null,
+  parse: (line: string) => LineParse,
   env?: NodeJS.ProcessEnv
 ): RunHandle {
   const queue = createEventQueue()
@@ -72,22 +84,38 @@ export function spawnCli(
   let eventsEnded = false
   let spawnError: string | null = null
   let settled = false
-  let resolveExit: (value: { code: number | null; stderr: string }) => void = () => {}
-  const exit = new Promise<{ code: number | null; stderr: string }>((resolve) => {
-    resolveExit = resolve
-  })
+  let hadResult = false
+  let resolveExit: (value: {
+    code: number | null
+    stderr: string
+    unreadable?: boolean
+  }) => void = () => {}
+  const exit = new Promise<{ code: number | null; stderr: string; unreadable?: boolean }>(
+    (resolve) => {
+      resolveExit = resolve
+    }
+  )
 
   const settle = (code: number | null, errText: string): void => {
     if (settled) return
     settled = true
-    resolveExit({ code, stderr: errText })
+    resolveExit({
+      code,
+      stderr: errText,
+      unreadable: isUnreadableOutput(code, hadResult)
+    })
   }
 
   const emitLine = (line: string): void => {
     const trimmed = line.trim()
     if (!trimmed) return
-    const event = parse(trimmed)
-    if (event) queue.push(event)
+    const parsed = parse(trimmed)
+    if (parsed === null || parsed === 'ignored') return
+    const events = Array.isArray(parsed) ? parsed : [parsed]
+    for (const event of events) {
+      if (event.kind === 'result') hadResult = true
+      queue.push(event)
+    }
   }
 
   const flush = (): void => {

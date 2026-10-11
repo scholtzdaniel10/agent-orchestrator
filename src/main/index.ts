@@ -1,19 +1,28 @@
 import { execFile } from 'node:child_process'
-import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
-import { statSync } from 'fs'
+import { randomUUID } from 'node:crypto'
+import { app, shell, BrowserWindow, dialog, ipcMain, screen } from 'electron'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { startAutoUpdate } from './updater'
+import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
+import { Files } from '../core/files'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
+import { TESTED_VERSIONS } from '../core/providers/versions'
+import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
+import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
+  ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -22,21 +31,57 @@ import type {
   ProviderId
 } from '../core/types'
 import { Worktrees } from '../core/worktrees'
+import { mergeListedChanges } from '../core/changes'
+import { assertWorktreeIdle } from '../core/worktree-guard'
 import type { PlanStatus } from '../preload/api-types'
 
-let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
+let stopStoreWatch: () => void = () => {}
+const poppedOut = new PoppedOutRegistry()
+const poppedWindows = new Map<string, BrowserWindow>()
+const terminalClaims = new TerminalClaims()
 
-function createWindow(): void {
+function broadcast(channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) continue
+    win.webContents.send(channel, ...args)
+  }
+}
+
+function publishPopped(): void {
+  broadcast('terminals:popped', poppedOut.list())
+}
+
+function createWindow(opts?: {
+  from?: BrowserWindow | null
+  width?: number
+  height?: number
+  title?: string
+  query?: Record<string, string>
+}): BrowserWindow {
+  const from = opts?.from
+  const origin =
+    from !== undefined && from !== null && !from.isDestroyed() ? from.getBounds() : null
+  const askedWidth = opts?.width ?? origin?.width ?? 1400
+  const askedHeight = opts?.height ?? origin?.height ?? 820
+  const placed =
+    origin !== null
+      ? cascadeBounds(
+          origin,
+          { width: askedWidth, height: askedHeight },
+          screen.getDisplayMatching(origin).workArea
+        )
+      : null
   const win = new BrowserWindow({
-    width: 1400,
-    height: 820,
+    width: placed?.width ?? askedWidth,
+    height: placed?.height ?? askedHeight,
+    ...(placed !== null ? { x: placed.x, y: placed.y } : {}),
     show: false,
     autoHideMenuBar: true,
-    title: 'agent-orchestrator',
+    title: opts?.title ?? 'Legate',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -46,7 +91,11 @@ function createWindow(): void {
       webviewTag: false
     }
   })
-  mainWindow = win
+
+  const contentsId = win.webContents.id
+  win.on('closed', () => {
+    terminalClaims.releaseWindow(contentsId)
+  })
 
   win.on('ready-to-show', () => {
     win.show()
@@ -73,14 +122,39 @@ function createWindow(): void {
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    if (opts?.query !== undefined) {
+      for (const [key, value] of Object.entries(opts.query)) {
+        url.searchParams.set(key, value)
+      }
+    }
+    win.loadURL(url.toString())
+  } else if (opts?.query !== undefined) {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { query: opts.query })
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  return win
+}
+
+// One copy of the app per data folder. A second start shows the first one's window instead of
+// opening the same database twice.
+const firstInstance = app.requestSingleInstanceLock()
+if (!firstInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win === undefined) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
 }
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('dev.agent-orchestrator')
+  if (!firstInstance) return
+  electronApp.setAppUserModelId('dev.legate.app')
+  bringOldData()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -104,19 +178,26 @@ app.whenReady().then(async () => {
     root: process.env.ORCH_WORKTREES ?? join(app.getPath('home'), '.orchestrator', 'wt')
   })
   const github = new Github(runGh)
+  const files = new Files(runGh)
+  const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
+
+  async function listedChanges(project: string): Promise<ChangeSet[]> {
+    const listed = await worktrees.list(project)
+    const ids = await worktrees.ids(project)
+    const named = shared.worktreeNames(project)
+    return mergeListedChanges({
+      listed,
+      ids,
+      names: named,
+      folder: (id) => worktrees.folder(id),
+      setup: (id) => setupByChange.get(id)
+    })
+  }
 
   function pushChanges(): void {
-    void worktrees
-      .list(projectDir())
+    void listedChanges(projectDir())
       .then((list) => {
-        if (
-          mainWindow === null ||
-          mainWindow.isDestroyed() ||
-          mainWindow.webContents.isDestroyed()
-        ) {
-          return
-        }
-        mainWindow.webContents.send('changes:update', list)
+        broadcast('changes:update', list)
       })
       .catch((err: unknown) => {
         console.error(err)
@@ -140,10 +221,20 @@ app.whenReady().then(async () => {
     }
   })
   await orch.init()
+  const routines = new Routines({
+    store: shared,
+    project: projectDir,
+    submit: (type, prompt, provider, access, extra) =>
+      orch.submit(type, prompt, provider, access, extra)
+  })
 
   const leadRef: { current: Lead | null } = { current: null }
   const started = await startBridge(
-    createOrchestratorTools(orch, () => leadRef.current?.currentTurn() ?? null)
+    createOrchestratorTools(
+      orch,
+      () => leadRef.current?.currentTurn() ?? null,
+      () => settings.leadAccess()
+    )
   )
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
@@ -175,6 +266,7 @@ app.whenReady().then(async () => {
   } catch (err: unknown) {
     console.error(err)
   }
+  stopStoreWatch = orch.watchStore()
 
   function plans(): PlanStatus[] {
     return orch.workers().map((worker) => {
@@ -189,7 +281,10 @@ app.whenReady().then(async () => {
         windows: worker.windows,
         busy: worker.busy,
         running: worker.running,
-        queued: worker.queued
+        queued: worker.queued,
+        version: worker.version,
+        versionStatus: worker.versionStatus,
+        testedVersion: TESTED_VERSIONS[worker.id]
       }
       if (worker.problem !== undefined) status.problem = worker.problem
       return status
@@ -197,26 +292,27 @@ app.whenReady().then(async () => {
   }
 
   function publishPlans(): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('plans:update', plans())
+    broadcast('plans:update', plans())
   }
 
   function publish(job: JobRecord): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('jobs:update', job)
+    broadcast('jobs:update', job)
     publishPlans()
     // The orchestrator frees a plan just after a job's last update; look again once it has,
     // or the plan stays "busy" on screen until something else happens.
     setTimeout(publishPlans, 0)
+    if (job.status === 'done') {
+      try {
+        routines.onJobFinished(job)
+      } catch (err: unknown) {
+        console.error(err)
+      }
+    }
   }
 
   function publishLead(message: LeadMessage, chatId: string | null): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('lead:update', message, chatId)
-    if (message.status !== 'streaming') mainWindow.webContents.send('plans:update', plans())
+    broadcast('lead:update', message, chatId)
+    if (message.status !== 'streaming') broadcast('plans:update', plans())
   }
 
   ipcMain.handle(
@@ -226,7 +322,7 @@ app.whenReady().then(async () => {
       type: JobType,
       prompt: string,
       provider?: unknown,
-      edit?: unknown,
+      access?: unknown,
       group?: unknown
     ) => {
       if (typeof type !== 'string' || !Object.hasOwn(rules.rules, type)) {
@@ -241,18 +337,15 @@ app.whenReady().then(async () => {
       ) {
         throw new Error('unknown provider')
       }
-      if (edit !== undefined && edit !== null && typeof edit !== 'boolean') {
-        throw new Error('edit must be true or false')
-      }
       const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
-      const editing = typeof edit === 'boolean' ? edit : undefined
+      const granted = parseJobAccess(access)
       const grouping =
         typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
       return orch.submit(
         type,
         prompt,
         chosen,
-        editing,
+        granted,
         grouping !== undefined ? { group: grouping } : undefined
       )
     }
@@ -279,13 +372,18 @@ app.whenReady().then(async () => {
     if (plan !== null && plan !== 'claude' && plan !== 'cursor') throw new Error('unknown plan')
     settings.setLeadPlan(plan)
   })
+  ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
+  ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {
+    if (access !== 'read' && access !== 'edit' && access !== 'full') {
+      throw new Error('access must be read, edit, or full')
+    }
+    settings.setLeadAccess(access)
+  })
   ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
     if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
     if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
     settings.setModel(provider, model)
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
-    mainWindow.webContents.send('plans:update', plans())
+    broadcast('plans:update', plans())
   })
   ipcMain.handle('lead:send', (_event, text: unknown) => {
     if (typeof text !== 'string' || text === '') throw new Error('empty message')
@@ -312,39 +410,91 @@ app.whenReady().then(async () => {
   })
 
   function publishProjectLists(): void {
-    if (mainWindow === null || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed())
-      return
     for (const job of orch.list()) {
-      mainWindow.webContents.send('jobs:update', job)
+      broadcast('jobs:update', job)
     }
     for (const message of lead.messages()) {
-      mainWindow.webContents.send('lead:update', message)
+      broadcast('lead:update', message)
     }
     publishPlans()
   }
   const terms = new PtyHost({
-    launch: (provider, model) =>
-      provider === 'claude' ? claude.interactive(model) : cursor.interactive(model),
+    launch: (provider, opts) =>
+      provider === 'claude' ? claude.interactive(opts) : cursor.interactive(opts),
     cwd: projectDir,
     modelFor,
-    store: shared
+    store: shared,
+    createChat: async () => {
+      const spec = cursor.interactive()
+      const result = await runCaptured({ command: spec.command, args: spec.args }, ['create-chat'])
+      return result.stdout
+    }
   })
   terminals = terms
 
-  function canSend(): boolean {
-    return mainWindow !== null && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()
-  }
-
-  ipcMain.handle('terminals:open', (_event, provider: unknown, cols: unknown, rows: unknown) => {
-    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
-    return terms.open(provider, cols as number, rows as number)
-  })
-  ipcMain.on('terminals:write', (_event, id: unknown, data: unknown) => {
+  ipcMain.handle(
+    'terminals:open',
+    async (
+      _event,
+      provider: unknown,
+      cols: unknown,
+      rows: unknown,
+      worktree: unknown,
+      prompt: unknown
+    ) => {
+      if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+      let task: string | undefined
+      if (prompt !== undefined && prompt !== null) {
+        if (typeof prompt !== 'string' || prompt.includes('\0')) throw new Error('invalid prompt')
+        const trimmed = prompt.trim()
+        if (trimmed.length < 1 || trimmed.length > 8000) throw new Error('invalid prompt')
+        task = trimmed
+      }
+      let opts: { cwd?: string; change?: string; prompt?: string } | undefined
+      if (worktree !== undefined && worktree !== null) {
+        if (worktree === 'new') {
+          const about = await worktrees.info(projectDir())
+          if (!about.isRepo) {
+            throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+          }
+          const created = await worktrees.create(projectDir(), randomUUID())
+          if (!shared.worktreeNames(projectDir()).some((row) => row.id === created.id)) {
+            shared.setWorktreeName({
+              id: created.id,
+              project: projectDir(),
+              name: '',
+              created_at: Date.now()
+            })
+          }
+          opts = { cwd: created.path, change: created.id }
+          startWorktreeSetup(created, cols as number, rows as number)
+        } else {
+          const id = requireChangeId(worktree)
+          const folder = worktrees.folder(id)
+          if (!isFolder(folder)) {
+            throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+          }
+          opts = { cwd: folder, change: id }
+        }
+      }
+      if (task !== undefined) opts = { ...opts, prompt: task }
+      const info = await terms.open(provider, cols as number, rows as number, opts)
+      if (worktree !== undefined && worktree !== null) pushChanges()
+      return info
+    }
+  )
+  ipcMain.on('terminals:write', (event, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return
+    terminalClaims.claim(id, event.sender.id)
     terms.write(id, data)
   })
-  ipcMain.on('terminals:resize', (_event, id: unknown, cols: unknown, rows: unknown) => {
+  ipcMain.on('terminals:claim', (event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) return
+    terminalClaims.claim(id, event.sender.id)
+  })
+  ipcMain.on('terminals:resize', (event, id: unknown, cols: unknown, rows: unknown) => {
     if (typeof id !== 'string' || !Number.isInteger(cols) || !Number.isInteger(rows)) return
+    if (!terminalClaims.allowResize(id, event.sender.id)) return
     terms.resize(id, cols as number, rows as number)
   })
   ipcMain.handle('terminals:close', (_event, id: unknown) => {
@@ -355,6 +505,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('terminals:snapshot', (_event, id: unknown) => {
     if (typeof id !== 'string') return ''
     return terms.snapshot(id)
+  })
+  ipcMain.handle('terminals:restore', (_event, cols: unknown, rows: unknown) => {
+    if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 2 || cols > 1000) {
+      throw new Error('invalid cols')
+    }
+    if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 2 || rows > 1000) {
+      throw new Error('invalid rows')
+    }
+    return terms.restore(projectDir(), cols, rows)
   })
   function assertProjectIdle(): void {
     // Open terminals keep the folder they started in, so only jobs block a project change.
@@ -371,7 +530,7 @@ app.whenReady().then(async () => {
     for (const path of paths) {
       try {
         const info = await worktrees.info(path)
-        const changes = (await worktrees.list(path)).length
+        const changes = (await listedChanges(path)).length
         entries.push({ ...info, active: path === active, changes })
       } catch {
         entries.push({
@@ -386,7 +545,7 @@ app.whenReady().then(async () => {
     if (entries.length === 0) {
       try {
         const info = await worktrees.info(active)
-        const changes = (await worktrees.list(active)).length
+        const changes = (await listedChanges(active)).length
         return [{ ...info, active: true, changes }]
       } catch {
         return [{ path: active, isRepo: false, branch: null, active: true, changes: 0 }]
@@ -406,10 +565,11 @@ app.whenReady().then(async () => {
     return worktrees.info(path)
   }
 
-  ipcMain.handle('project:choose', async () => {
+  ipcMain.handle('project:choose', async (event) => {
     assertProjectIdle()
-    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
-    const picked = await dialog.showOpenDialog(mainWindow, {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, {
       properties: ['openDirectory'],
       defaultPath: projectDir()
     })
@@ -431,16 +591,20 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('github:available', () => github.available())
   ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
-  ipcMain.handle('github:clone', async (_event, nameWithOwner: unknown) => {
-    if (typeof nameWithOwner !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)) {
+  ipcMain.handle('github:clone', async (event, nameWithOwner: unknown) => {
+    if (
+      typeof nameWithOwner !== 'string' ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(nameWithOwner)
+    ) {
       throw new Error('invalid repository name')
     }
     if (nameWithOwner.startsWith('-') || nameWithOwner.includes('/-')) {
       throw new Error('invalid repository name')
     }
     assertProjectIdle()
-    if (mainWindow === null || mainWindow.isDestroyed()) throw new Error('no window')
-    const picked = await dialog.showOpenDialog(mainWindow, {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, {
       properties: ['openDirectory'],
       defaultPath: projectDir()
     })
@@ -450,33 +614,241 @@ app.whenReady().then(async () => {
     const path = await github.clone(nameWithOwner, parent)
     return activateProject(path)
   })
-  ipcMain.handle('changes:list', () => worktrees.list(projectDir()))
+  ipcMain.handle('github:openPr', async (_event, title: unknown, body: unknown) => {
+    if (
+      typeof title !== 'string' ||
+      title.trim() === '' ||
+      title.length > 120 ||
+      /[\r\n]/.test(title)
+    ) {
+      throw new Error('invalid title')
+    }
+    if (typeof body !== 'string' || body.length > 4000) {
+      throw new Error('invalid description')
+    }
+    assertProjectIdle()
+    const result = await github.openPr(projectDir(), title, body)
+    pushChanges()
+    return result
+  })
+  ipcMain.handle('changes:list', () => listedChanges(projectDir()))
   ipcMain.handle('changes:diff', (_event, id: unknown) => {
     return worktrees.diff(projectDir(), requireChangeId(id))
   })
   ipcMain.handle('changes:merge', async (_event, id: unknown) => {
-    const result = await worktrees.merge(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    assertWorktreeIdle([...orch.list(), ...shared.jobs(projectDir(), 200)], changeId, Date.now())
+    await terms.closeChange(changeId)
+    const result = await worktrees.merge(projectDir(), changeId)
+    if (result.ok) {
+      shared.deleteWorktreeName(changeId)
+      setupByChange.delete(changeId)
+    }
     pushChanges()
     return result
   })
   ipcMain.handle('changes:discard', async (_event, id: unknown) => {
-    await worktrees.discard(projectDir(), requireChangeId(id))
+    const changeId = requireChangeId(id)
+    assertWorktreeIdle([...orch.list(), ...shared.jobs(projectDir(), 200)], changeId, Date.now())
+    await terms.closeChange(changeId)
+    await worktrees.discard(projectDir(), changeId)
+    shared.deleteWorktreeName(changeId)
+    setupByChange.delete(changeId)
+    pushChanges()
+  })
+  ipcMain.handle('files:list', (_event, where: unknown) => {
+    return files.list(filesRoot(where))
+  })
+  ipcMain.handle('files:read', (_event, where: unknown, path: unknown) => {
+    return files.read(filesRoot(where), requireFilePath(path))
+  })
+  ipcMain.handle('files:diff', (_event, where: unknown, path: unknown) => {
+    return files.diff(filesRoot(where), requireFilePath(path))
+  })
+  ipcMain.handle('files:open', async (_event, where: unknown, path: unknown) => {
+    const abs = files.resolve(filesRoot(where), requireFilePath(path))
+    let info: ReturnType<typeof statSync>
+    try {
+      info = statSync(abs)
+    } catch {
+      throw new Error('That file is missing.')
+    }
+    if (!info.isFile()) throw new Error('That is not a file.')
+    const message = await shell.openPath(abs)
+    if (message !== '') throw new Error(message)
+  })
+  function filesRoot(where: unknown): string {
+    if (where === null) return projectDir()
+    const id = requireChangeId(where)
+    const folder = worktrees.folder(id)
+    if (!isFolder(folder)) {
+      throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+    }
+    return folder
+  }
+  ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
+    const about = await worktrees.info(projectDir())
+    if (!about.isRepo) {
+      throw new Error('This folder is not a git repository, so it cannot have worktrees.')
+    }
+    const label = parseWorktreeName(name, false) ?? ''
+    const created = await worktrees.create(projectDir(), randomUUID())
+    shared.setWorktreeName({
+      id: created.id,
+      project: projectDir(),
+      name: label,
+      created_at: Date.now()
+    })
+    startWorktreeSetup(label !== '' ? { ...created, name: label } : created, 100, 30)
+    const list = await listedChanges(projectDir())
+    pushChanges()
+    const entry = list.find((change) => change.id === created.id)
+    if (entry === undefined) {
+      throw new Error('The worktree was created, but it did not appear in the list. Try again.')
+    }
+    return entry
+  })
+  ipcMain.handle('worktrees:rename', async (_event, id: unknown, name: unknown) => {
+    const changeId = requireChangeId(id)
+    const label = parseWorktreeName(name, true)
+    if (label === undefined) throw new Error('Name must be 1 to 40 characters on one line.')
+    const folder = worktrees.folder(changeId)
+    if (!isFolder(folder)) {
+      throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+    }
+    const existing = shared.worktreeNames(projectDir()).find((row) => row.id === changeId)
+    shared.setWorktreeName({
+      id: changeId,
+      project: projectDir(),
+      name: label,
+      created_at: existing?.created_at ?? Date.now()
+    })
     pushChanges()
   })
 
+  function closePoppedWindow(id: string): void {
+    const win = poppedWindows.get(id)
+    if (win !== undefined && !win.isDestroyed()) {
+      win.close()
+      return
+    }
+    if (!poppedOut.has(id)) return
+    poppedWindows.delete(id)
+    poppedOut.remove(id)
+    publishPopped()
+  }
+
+  function openPoppedWindow(id: string, title: string, from: BrowserWindow | null): void {
+    if (!poppedOut.add(id)) throw new Error('Already open in its own window.')
+    publishPopped()
+    const win = createWindow({
+      from,
+      width: 900,
+      height: 600,
+      title,
+      query: { terminal: id }
+    })
+    poppedWindows.set(id, win)
+    win.on('closed', () => {
+      if (poppedWindows.get(id) !== win) return
+      poppedWindows.delete(id)
+      poppedOut.remove(id)
+      publishPopped()
+    })
+  }
+
+  ipcMain.handle('windows:new', (event) => {
+    const blocked = refuseWindow(BrowserWindow.getAllWindows().length)
+    if (blocked !== null) throw new Error(blocked)
+    createWindow({ from: BrowserWindow.fromWebContents(event.sender) })
+  })
+  ipcMain.handle('terminals:popOut', (event, id: unknown) => {
+    const terminalId = requireTerminalId(id)
+    if (poppedOut.has(terminalId)) {
+      closePoppedWindow(terminalId)
+      return
+    }
+    const info = terms.list().find((item) => item.id === terminalId)
+    if (info === undefined) throw new Error('This terminal has closed.')
+    const blocked = refuseWindow(BrowserWindow.getAllWindows().length)
+    if (blocked !== null) throw new Error(blocked)
+    openPoppedWindow(terminalId, info.title, BrowserWindow.fromWebContents(event.sender))
+  })
+  ipcMain.handle('terminals:poppedOut', () => poppedOut.list())
+
+  ipcMain.handle('setup:get', () => shared.getProjectSetup(projectDir()))
+  ipcMain.handle('setup:set', (_event, commands: unknown) => {
+    shared.setProjectSetup(projectDir(), parseSetupCommands(commands))
+  })
+  ipcMain.handle('routines:list', () => routines.list())
+  ipcMain.handle('routines:save', (_event, value: unknown) => {
+    routines.save(value)
+  })
+  ipcMain.handle('routines:remove', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('invalid routine id')
+    routines.remove(id)
+  })
+  ipcMain.handle('routines:run', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) {
+      throw new Error('invalid routine id')
+    }
+    return routines.run(id)
+  })
+
+  function startWorktreeSetup(
+    change: { id: string; path: string; name?: string },
+    cols: number,
+    rows: number
+  ): void {
+    const commands = shared.getProjectSetup(projectDir())
+    if (commands.length === 0) return
+    const label = change.name !== undefined && change.name !== '' ? change.name : change.id
+    setupByChange.set(change.id, 'running')
+    try {
+      terms.openShell({
+        cwd: change.path,
+        change: change.id,
+        title: `setup · ${label}`,
+        commands,
+        cols,
+        rows
+      })
+    } catch (err: unknown) {
+      console.error(err)
+      setupByChange.set(change.id, 'failed')
+    }
+  }
+
   terms.onData((id, data) => {
-    if (!canSend()) return
-    mainWindow?.webContents.send('terminals:data', id, data)
+    broadcast('terminals:data', id, data)
   })
   terms.onUpdate((info, removed) => {
-    if (!canSend()) return
-    mainWindow?.webContents.send('terminals:update', info, removed)
+    if (removed) closePoppedWindow(info.id)
+    if (info.provider === 'shell' && info.change !== undefined) {
+      if (removed && setupByChange.get(info.change) === 'running') {
+        setupByChange.set(info.change, 'failed')
+        pushChanges()
+      } else if (!removed && info.status === 'exited') {
+        setupByChange.set(info.change, info.exitCode === 0 ? 'done' : 'failed')
+        pushChanges()
+      }
+    }
+    broadcast('terminals:update', info, removed)
   })
+
+  // An agent in a terminal edits files without telling the app. While a worktree has one open,
+  // look at the worktrees again every few seconds so their change totals stay true.
+  const changeWatch = setInterval(() => {
+    const busy = terms.list().some((info) => info.change !== undefined && info.status === 'running')
+    if (busy) pushChanges()
+  }, 8_000)
+  changeWatch.unref()
 
   orch.onUpdate(publish)
   lead.onUpdate(publishLead)
 
   createWindow()
+  startAutoUpdate({ isPackaged: app.isPackaged, log: console.log })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -484,6 +856,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  stopStoreWatch()
   terminals?.closeAll()
   if (bridge) void bridge.close()
   store?.close()
@@ -495,6 +868,25 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+/**
+ * The app was called agent-orchestrator before 1.0 and kept its data under that name.
+ * Copy the saved chats, jobs and settings across once, so a rename does not look like data loss.
+ */
+function bringOldData(): void {
+  const next = app.getPath('userData')
+  const old = join(app.getPath('appData'), 'agent-orchestrator')
+  if (next === old || !existsSync(join(old, 'orchestrator.sqlite'))) return
+  if (existsSync(join(next, 'orchestrator.sqlite'))) return
+  try {
+    mkdirSync(next, { recursive: true })
+    for (const file of ['orchestrator.sqlite', 'settings.json']) {
+      if (existsSync(join(old, file))) copyFileSync(join(old, file), join(next, file))
+    }
+  } catch (err: unknown) {
+    console.error(err)
+  }
+}
 
 function isFolder(path: string): boolean {
   try {
@@ -521,12 +913,7 @@ function runGh(
         encoding: 'utf8'
       },
       (err, stdout, stderr) => {
-        const code =
-          err === null
-            ? 0
-            : typeof err.code === 'number'
-              ? err.code
-              : 1
+        const code = err === null ? 0 : typeof err.code === 'number' ? err.code : 1
         resolve({
           code,
           stdout: String(stdout ?? ''),
@@ -537,9 +924,64 @@ function runGh(
   })
 }
 
+function parseJobAccess(value: unknown): JobAccess | undefined {
+  if (value === undefined || value === null) return undefined
+  if (value === true) return 'edit'
+  if (value === false) return 'read'
+  if (value === 'read' || value === 'edit' || value === 'full') return value
+  throw new Error('access must be read, edit, or full')
+}
+
 function requireChangeId(id: unknown): string {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
   return id
+}
+
+function requireFilePath(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length < 1 ||
+    value.length > 1024 ||
+    value.includes('\0')
+  ) {
+    throw new Error('invalid path')
+  }
+  return value
+}
+
+function requireTerminalId(id: unknown): string {
+  if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid terminal id')
+  return id
+}
+
+function parseSetupCommands(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('commands must be an array')
+  if (value.length > 5) throw new Error('at most 5 setup commands')
+  const out: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string' || item.length < 1 || item.length > 300 || /[\r\n]/.test(item)) {
+      throw new Error('each command must be 1 to 300 characters on one line')
+    }
+    out.push(item)
+  }
+  return out
+}
+
+function parseWorktreeName(value: unknown, required: boolean): string | undefined {
+  if (value === undefined || value === null) {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (typeof value !== 'string' || /[\r\n]/.test(value)) {
+    throw new Error('Name must be 1 to 40 characters on one line.')
+  }
+  const trimmed = value.trim()
+  if (trimmed === '') {
+    if (required) throw new Error('Name must be 1 to 40 characters on one line.')
+    return undefined
+  }
+  if (trimmed.length > 40) throw new Error('Name must be 1 to 40 characters on one line.')
+  return trimmed
 }
 
 function clamp01(value: number): number {

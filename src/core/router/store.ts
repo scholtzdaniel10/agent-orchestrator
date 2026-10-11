@@ -34,6 +34,36 @@ export interface ChatRow {
   session_provider: string | null
 }
 
+export interface TerminalRow {
+  id: string
+  project: string
+  provider: string
+  model: string | null
+  session_id: string | null
+  title: string
+  created_at: number
+  updated_at: number
+  scrollback: string
+  cwd: string | null
+  change_id: string | null
+}
+
+export interface WorktreeNameRow {
+  id: string
+  project: string
+  name: string
+  created_at: number
+}
+
+export interface RoutineRow {
+  id: string
+  project: string
+  position: number
+  data: string
+}
+
+export const TERMINAL_SCROLLBACK_CAP = 200_000
+
 const MIGRATIONS: string[] = [
   `
       CREATE TABLE IF NOT EXISTS runs (
@@ -87,6 +117,52 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX jobs_project ON jobs (project, created_at);
+    `,
+  `
+      CREATE TABLE terminals (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT,
+        session_id TEXT,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        scrollback TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX terminals_project ON terminals (project, created_at);
+    `,
+  `
+      ALTER TABLE terminals ADD COLUMN cwd TEXT;
+      ALTER TABLE terminals ADD COLUMN change_id TEXT;
+    `,
+  `
+      CREATE TABLE worktree_names (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `,
+  `
+      CREATE TABLE project_setup (
+        project TEXT PRIMARY KEY,
+        commands TEXT NOT NULL
+      );
+    `,
+  `
+      CREATE TABLE routines (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX routines_project ON routines (project, position);
+    `,
+  `
+      ALTER TABLE jobs ADD COLUMN owner_id TEXT;
+      ALTER TABLE jobs ADD COLUMN heartbeat_at INTEGER;
+      ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
     `
 ]
 
@@ -99,6 +175,8 @@ export class Store {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path)
+    // The app and the command can have this file open together. Wait instead of failing at once.
+    this.db.exec('PRAGMA busy_timeout = 5000')
     this.migrate()
   }
 
@@ -322,15 +400,175 @@ export class Store {
     return out
   }
 
+  saveTerminal(row: TerminalRow): void {
+    const scrollback = capScrollback(row.scrollback)
+    this.db
+      .prepare(
+        `INSERT INTO terminals (
+           id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+           cwd, change_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           provider = excluded.provider,
+           model = excluded.model,
+           session_id = excluded.session_id,
+           title = excluded.title,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at,
+           scrollback = excluded.scrollback,
+           cwd = excluded.cwd,
+           change_id = excluded.change_id`
+      )
+      .run(
+        row.id,
+        row.project,
+        row.provider,
+        row.model,
+        row.session_id,
+        row.title,
+        row.created_at,
+        row.updated_at,
+        scrollback,
+        row.cwd,
+        row.change_id
+      )
+  }
+
+  updateTerminalScrollback(id: string, scrollback: string, updatedAt: number): void {
+    this.db
+      .prepare(`UPDATE terminals SET scrollback = ?, updated_at = ? WHERE id = ?`)
+      .run(capScrollback(scrollback), updatedAt, id)
+  }
+
+  /** Oldest first. */
+  terminals(project: string): TerminalRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, provider, model, session_id, title, created_at, updated_at, scrollback,
+                cwd, change_id
+         FROM terminals WHERE project = ? ORDER BY created_at ASC`
+      )
+      .all(project)
+    return rows.map((row) => mapTerminal(row as Row))
+  }
+
+  deleteTerminal(id: string): void {
+    this.db.prepare('DELETE FROM terminals WHERE id = ?').run(id)
+  }
+
+  setWorktreeName(row: WorktreeNameRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO worktree_names (id, project, name, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           name = excluded.name`
+      )
+      .run(row.id, row.project, row.name, row.created_at)
+  }
+
+  /** Newest first. */
+  worktreeNames(project: string): WorktreeNameRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, name, created_at
+         FROM worktree_names WHERE project = ? ORDER BY created_at DESC`
+      )
+      .all(project)
+    return rows.map((row) => mapWorktreeName(row as Row))
+  }
+
+  deleteWorktreeName(id: string): void {
+    this.db.prepare('DELETE FROM worktree_names WHERE id = ?').run(id)
+  }
+
+  getProjectSetup(project: string): string[] {
+    const row = this.db.prepare(`SELECT commands FROM project_setup WHERE project = ?`).get(project)
+    if (!row) return []
+    try {
+      const parsed: unknown = JSON.parse(String((row as Row).commands))
+      if (!Array.isArray(parsed)) return []
+      const out: string[] = []
+      for (const item of parsed) {
+        if (typeof item !== 'string' || item.length < 1 || item.length > 300) continue
+        if (/[\r\n]/.test(item)) continue
+        out.push(item)
+        if (out.length >= 5) break
+      }
+      return out
+    } catch {
+      return []
+    }
+  }
+
+  setProjectSetup(project: string, commands: string[]): void {
+    this.db
+      .prepare(
+        `INSERT INTO project_setup (project, commands) VALUES (?, ?)
+         ON CONFLICT(project) DO UPDATE SET commands = excluded.commands`
+      )
+      .run(project, JSON.stringify(commands))
+  }
+
+  /** Lowest position first. */
+  listRoutines(project: string): RoutineRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, project, position, data
+         FROM routines WHERE project = ? ORDER BY position ASC`
+      )
+      .all(project)
+    return rows.map((row) => mapRoutine(row as Row))
+  }
+
+  saveRoutine(row: RoutineRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO routines (id, project, position, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           position = excluded.position,
+           data = excluded.data`
+      )
+      .run(row.id, row.project, row.position, row.data)
+  }
+
+  deleteRoutine(id: string): void {
+    this.db.prepare('DELETE FROM routines WHERE id = ?').run(id)
+  }
+
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
-        `INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)
+        `INSERT INTO jobs (id, project, created_at, data, owner_id, heartbeat_at, cancel_requested)
+         VALUES (?, ?, ?, ?, ?, ?, 0)
          ON CONFLICT(id) DO UPDATE SET
            project = excluded.project,
-           data = excluded.data`
+           data = excluded.data,
+           owner_id = excluded.owner_id,
+           heartbeat_at = excluded.heartbeat_at`
       )
-      .run(job.id, project, createdAt, JSON.stringify(job))
+      .run(
+        job.id,
+        project,
+        createdAt,
+        JSON.stringify(job),
+        job.ownerId ?? null,
+        job.heartbeatAt ?? null
+      )
+  }
+
+  /** Sets the cancel flag without rewriting the job JSON the owner is saving. */
+  requestCancel(id: string): void {
+    this.db.prepare('UPDATE jobs SET cancel_requested = 1 WHERE id = ?').run(id)
+  }
+
+  isCancelRequested(id: string): boolean {
+    const row = this.db.prepare('SELECT cancel_requested FROM jobs WHERE id = ?').get(id)
+    if (!row) return false
+    return Number((row as Row).cancel_requested) === 1
   }
 
   /**
@@ -340,7 +578,7 @@ export class Store {
   jobs(project: string, limit: number): JobRecord[] {
     const rows = this.db
       .prepare(
-        `SELECT data FROM jobs
+        `SELECT data, owner_id, heartbeat_at, cancel_requested FROM jobs
          WHERE project = ?
          ORDER BY created_at DESC
          LIMIT ?`
@@ -348,11 +586,36 @@ export class Store {
       .all(project, limit)
     const newest: JobRecord[] = []
     for (const row of rows) {
-      const parsed = parseJsonRow(row as Row)
-      if (parsed !== null) newest.push(parsed as JobRecord)
+      const parsed = jobFromRow(row as Row)
+      if (parsed !== null) newest.push(parsed)
     }
     newest.reverse()
     return newest
+  }
+
+  /** Newest `limit` jobs for the project, newest first. Corrupt rows are skipped. */
+  jobsNewest(project: string, limit: number): { createdAt: number; job: JobRecord }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT data, created_at, owner_id, heartbeat_at, cancel_requested FROM jobs
+         WHERE project = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(project, limit)
+    const out: { createdAt: number; job: JobRecord }[] = []
+    for (const row of rows) {
+      const record = row as Row
+      const parsed = jobFromRow(record)
+      if (parsed === null) continue
+      const created = record.created_at
+      const createdAt = typeof created === 'number' ? created : Number(created)
+      out.push({
+        createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+        job: parsed
+      })
+    }
+    return out
   }
 
   close(): void {
@@ -361,6 +624,21 @@ export class Store {
 }
 
 type Row = Record<string, string | number | bigint | null | Uint8Array>
+
+function jobFromRow(row: Row): JobRecord | null {
+  const parsed = parseJsonRow(row)
+  if (parsed === null) return null
+  const job = parsed as JobRecord
+  const owner = row.owner_id
+  if (typeof owner === 'string' && owner !== '') job.ownerId = owner
+  const beat = row.heartbeat_at
+  if (beat !== null && beat !== undefined) {
+    const n = Number(beat)
+    if (Number.isFinite(n)) job.heartbeatAt = n
+  }
+  if (Number(row.cancel_requested) === 1) job.cancelRequested = true
+  return job
+}
 
 function parseJsonRow(row: Row): { id: string } | null {
   try {
@@ -374,6 +652,46 @@ function parseJsonRow(row: Row): { id: string } | null {
   }
 }
 
+function capScrollback(text: string): string {
+  if (text.length <= TERMINAL_SCROLLBACK_CAP) return text
+  return text.slice(-TERMINAL_SCROLLBACK_CAP)
+}
+
+function mapTerminal(row: Row): TerminalRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    provider: String(row.provider),
+    model: row.model === null || row.model === undefined ? null : String(row.model),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    title: String(row.title),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+    scrollback: String(row.scrollback ?? ''),
+    cwd: row.cwd === null || row.cwd === undefined ? null : String(row.cwd),
+    change_id: row.change_id === null || row.change_id === undefined ? null : String(row.change_id)
+  }
+}
+
+function mapWorktreeName(row: Row): WorktreeNameRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    name: String(row.name),
+    created_at: Number(row.created_at)
+  }
+}
+
+function mapRoutine(row: Row): RoutineRow {
+  return {
+    id: String(row.id),
+    project: String(row.project),
+    position: Number(row.position),
+    data: String(row.data)
+  }
+}
+
 function mapChat(row: Row): ChatRow {
   return {
     id: String(row.id),
@@ -381,7 +699,8 @@ function mapChat(row: Row): ChatRow {
     title: String(row.title),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
-    session_id: row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
+    session_id:
+      row.session_id === null || row.session_id === undefined ? null : String(row.session_id),
     session_provider:
       row.session_provider === null || row.session_provider === undefined
         ? null

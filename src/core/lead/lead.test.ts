@@ -59,6 +59,10 @@ class FakeAdapter implements ProviderAdapter {
     return this.installed
   }
 
+  async version(): Promise<string | null> {
+    return null
+  }
+
   async isSignedIn(): Promise<boolean> {
     return this.signedIn
   }
@@ -231,7 +235,7 @@ function waitUntil(check: () => boolean): Promise<void> {
 
 test('instructions tell the lead when a worker may edit and not to wait on jobs', () => {
   expect(LEAD_INSTRUCTIONS).toContain(
-    'A worker only reads files unless you pass edit: true; then it may change files, in a separate worktree, and the user reviews and merges that change themselves.'
+    "A worker's access is read, edit, or full, and cannot go above the ceiling the person set (see list_workers)."
   )
   expect(LEAD_INSTRUCTIONS).toContain('Do not wait for results')
   expect(LEAD_INSTRUCTIONS).not.toContain('read-only for now')

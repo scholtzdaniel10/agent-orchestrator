@@ -1,6 +1,7 @@
 import type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
@@ -8,9 +9,11 @@ import type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
-  TerminalInfo
+  TerminalInfo,
+  VersionStatus
 } from '../core/types'
 import type { JobRecord } from '../core/router'
+import type { Routine } from '../core/routines'
 
 /** Why a plan cannot be used. */
 export type PlanProblem = 'not-installed' | 'signed-out'
@@ -40,6 +43,11 @@ export interface PlanStatus {
   model: string | null
   /** Each allowance window the plan reports (empty when only an estimate exists). */
   windows: PlanWindow[]
+  /** Token from the CLI's `--version`, or null when unknown. */
+  version: string | null
+  versionStatus: VersionStatus
+  /** The CLI version this app was tested with. */
+  testedVersion: string
 }
 
 /** One allowance window of a plan, e.g. Claude's five-hour and weekly windows. */
@@ -52,6 +60,25 @@ export interface PlanWindow {
   resetsAt: number | null
 }
 
+export type FileStatus =
+  'clean' | 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+
+export interface FileEntry {
+  path: string
+  status: FileStatus
+}
+
+export interface FileList {
+  entries: FileEntry[]
+  truncated: boolean
+}
+
+export type FileContent =
+  | { kind: 'text'; text: string; bytes: number }
+  | { kind: 'binary'; bytes: number }
+  | { kind: 'too-large'; bytes: number }
+  | { kind: 'missing' }
+
 /** Everything the renderer can ask of the main process: `window.api`. */
 export interface OrchestratorApi {
   /** `provider` hands the job to that plan instead of letting the router choose. */
@@ -59,8 +86,8 @@ export interface OrchestratorApi {
     type: JobType,
     prompt: string,
     provider?: ProviderId,
-    /** Let the job edit files, in a git worktree of its own. */
-    edit?: boolean,
+    /** read, edit, or full. The job's file changes still wait in Changes. */
+    access?: JobAccess,
     /** Shared id for jobs submitted together to compare plans. */
     group?: string
   ): Promise<JobRecord>
@@ -98,6 +125,11 @@ export interface OrchestratorApi {
    * Resolves null when the folder picker is cancelled. Refused while work is running.
    */
   githubClone(nameWithOwner: string): Promise<ProjectInfo | null>
+  /**
+   * Commits staged changes on a new branch, pushes, and opens a pull request.
+   * Refused while jobs are running.
+   */
+  githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }>
 
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
@@ -108,11 +140,32 @@ export interface OrchestratorApi {
   mergeChange(id: string): Promise<{ ok: boolean; message: string }>
   /** Deletes the worktree and its branch. */
   discardChange(id: string): Promise<void>
+  /** Create an empty worktree of the active project. Name is optional. */
+  createWorktree(name?: string): Promise<ChangeSet>
+  /** Rename a worktree. Pushes the change list. */
+  renameWorktree(id: string, name: string): Promise<void>
+  /** Files of the active project (`where` null) or a worktree. */
+  listFiles(where: string | null): Promise<FileList>
+  readFile(where: string | null, path: string): Promise<FileContent>
+  /** Unified diff of one file against HEAD. Empty when unchanged. */
+  fileDiff(where: string | null, path: string): Promise<string>
+  /** Open an existing file in the system's default program. */
+  openFile(where: string | null, path: string): Promise<void>
+  /** Command lines that run in each worktree created by hand. */
+  getProjectSetup(): Promise<string[]>
+  setProjectSetup(commands: string[]): Promise<void>
+  listRoutines(): Promise<Routine[]>
+  saveRoutine(routine: Routine): Promise<void>
+  removeRoutine(id: string): Promise<void>
+  runRoutine(id: string): Promise<JobRecord>
 
   /** Plan the person chose to run the lead; null means the one with the most headroom. */
   getLeadPlan(): Promise<ProviderId | null>
   /** Takes effect on the next message; switching plans starts a fresh lead session. */
   setLeadPlan(plan: ProviderId | null): Promise<void>
+  /** Ceiling for jobs the lead hands out. */
+  getLeadAccess(): Promise<JobAccess>
+  setLeadAccess(access: JobAccess): Promise<void>
 
   sendLead(text: string): Promise<LeadMessage>
   listLeadMessages(): Promise<LeadMessage[]>
@@ -126,23 +179,44 @@ export interface OrchestratorApi {
   onLeadUpdate(cb: (message: LeadMessage, chatId: string | null) => void): () => void
 
   /** Start an interactive CLI session for a plan, sized to the pane that will show it. */
-  openTerminal(provider: ProviderId, cols: number, rows: number): Promise<TerminalInfo>
+  openTerminal(
+    provider: ProviderId,
+    cols: number,
+    rows: number,
+    worktree?: 'new' | string,
+    prompt?: string
+  ): Promise<TerminalInfo>
   /** Keystrokes for a terminal. Fire and forget. */
   writeTerminal(id: string, data: string): void
+  /** This window is focused on the terminal; the pty takes its size from here. */
+  claimTerminal(id: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>
   listTerminals(): Promise<TerminalInfo[]>
+  /** Reopen this project's saved Claude and Cursor terminal sessions. */
+  restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]>
   /** Recent output of a terminal, to repaint a pane that attaches late. */
   terminalSnapshot(id: string): Promise<string>
   onTerminalData(cb: (id: string, data: string) => void): () => void
   /** Fires when a terminal opens, exits or is removed (`removed: true`). */
   onTerminalUpdate(cb: (info: TerminalInfo, removed: boolean) => void): () => void
+  /** Open another window of the app. Refused when six are already open. */
+  newWindow(): Promise<void>
+  /**
+   * Open this terminal in a window of its own, or close that window if it is already open.
+   * Closing the window does not stop the session.
+   */
+  popOutTerminal(id: string): Promise<void>
+  /** Terminal ids that currently have a window of their own. */
+  poppedOut(): Promise<string[]>
+  onPoppedOut(cb: (ids: string[]) => void): () => void
 }
 
 export type {
   ChangeSet,
   GithubRepo,
+  JobAccess,
   JobRecord,
   JobType,
   LeadChat,
@@ -151,5 +225,6 @@ export type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
+  Routine,
   TerminalInfo
 }

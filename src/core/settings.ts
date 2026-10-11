@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { ProviderId } from './types'
+import { isJobAccess, type JobAccess, type ProviderId } from './types'
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/=,[\]-]*$/
 
@@ -62,6 +62,17 @@ export class Settings {
   setLeadPlan(plan: ProviderId | null): void {
     if (plan === null) delete this.data.lead
     else this.data.lead = plan
+    this.persist()
+  }
+
+  leadAccess(): JobAccess {
+    const value = this.data.leadAccess
+    return isJobAccess(value) ? value : 'read'
+  }
+
+  setLeadAccess(value: JobAccess): void {
+    if (!isJobAccess(value)) throw new Error('access must be read, edit, or full')
+    this.data.leadAccess = value
     this.persist()
   }
 

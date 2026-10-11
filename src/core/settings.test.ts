@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import { isValidModel, Settings } from './settings'
+import type { JobAccess } from './types'
 
 function tempFile(): { root: string; path: string } {
   const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
@@ -120,6 +121,34 @@ test('leadPlan round-trips, null clears, and an invalid stored value is ignored'
   }
 })
 
+test('leadAccess defaults to read, round-trips, and rejects a bad value', () => {
+  const { root, path } = tempFile()
+  try {
+    writeFileSync(path, JSON.stringify({ leadAccess: 'nope', models: { claude: 'opus' } }))
+    const settings = new Settings(path)
+    expect(settings.leadAccess()).toBe('read')
+    expect(settings.model('claude')).toBe('opus')
+
+    settings.setLeadAccess('edit')
+    expect(new Settings(path).leadAccess()).toBe('edit')
+    settings.setLeadAccess('full')
+    expect(new Settings(path).leadAccess()).toBe('full')
+    settings.setLeadAccess('read')
+    const again = new Settings(path)
+    expect(again.leadAccess()).toBe('read')
+    expect(again.model('claude')).toBe('opus')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      models: { claude: 'opus' },
+      leadAccess: 'read'
+    })
+    expect(() => settings.setLeadAccess('write' as JobAccess)).toThrow(
+      'access must be read, edit, or full'
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('project round-trips and ignores a stored value that is not a non-empty string', () => {
   const { root, path } = tempFile()
   try {
@@ -171,10 +200,7 @@ test('projects de-duplicates and keeps order', () => {
 test('projects ignores junk values', () => {
   const { root, path } = tempFile()
   try {
-    writeFileSync(
-      path,
-      JSON.stringify({ projects: ['/ok', '', 4, null, '  ', '/also', { x: 1 }] })
-    )
+    writeFileSync(path, JSON.stringify({ projects: ['/ok', '', 4, null, '  ', '/also', { x: 1 }] }))
     expect(new Settings(path).projects()).toEqual(['/ok', '/also'])
   } finally {
     rmSync(root, { recursive: true, force: true })
