@@ -11,8 +11,10 @@ import {
   emptyPaneForTerminal,
   emptySlots,
   fillPanes,
+  paneCount,
   placeNewTerminal,
   placeTerminalInPane,
+  resolvedPaneLayout,
   seatUnplaced,
   requestLayoutFit,
   type PaneLayoutId
@@ -21,7 +23,7 @@ import Routines from './Routines'
 import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
-import { terminalDisplayTitle } from './worktree-label'
+import { terminalDisplayTitle, terminalsInSidebarOrder } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -318,15 +320,17 @@ function Workers({
   initialTerminalIds,
   changes,
   selectedWorktree,
+  selectedWorktrees,
   placeTerminal,
+  showPanes,
   onSelectWorktree,
   isRepo,
   project,
   bus,
   showJob,
-  focusMode,
+  terminalsMode,
   paneLayout,
-  onToggleFocus,
+  onToggleTerminals,
   onPaneLayout,
   onJob,
   onTerminal
@@ -337,15 +341,17 @@ function Workers({
   initialTerminalIds: ReadonlySet<string> | null
   changes: ChangeSet[]
   selectedWorktree: string | null
+  selectedWorktrees: ReadonlySet<string | null>
   placeTerminal: { id: string; nonce: number } | null
+  showPanes: number
   onSelectWorktree: (id: string | null) => void
   isRepo: boolean
   project: string
   bus: TerminalBus
   showJob?: { id: string; nonce: number } | null
-  focusMode: boolean
+  terminalsMode: boolean
   paneLayout: PaneLayoutId
-  onToggleFocus: () => void
+  onToggleTerminals: () => void
   onPaneLayout: (layout: PaneLayoutId) => void
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
@@ -369,7 +375,16 @@ function Workers({
   const stoppingRef = useRef(false)
   const [seenShowJob, setSeenShowJob] = useState<number | null>(null)
   const [seenPlace, setSeenPlace] = useState<number | null>(null)
-  const [paneWorktree, setPaneWorktree] = useState(selectedWorktree)
+  const [seenShowPanes, setSeenShowPanes] = useState(0)
+  const selectionKey = [...selectedWorktrees]
+    .map((id) => id ?? '')
+    .sort()
+    .join('\0')
+  const [paneSelection, setPaneSelection] = useState(selectionKey)
+  const [wasTerminals, setWasTerminals] = useState(false)
+  const [stageBeforeTerminals, setStageBeforeTerminals] = useState<
+    'jobs' | 'changes' | 'routines' | 'panes'
+  >('jobs')
 
   if (showJob != null && showJob.nonce !== seenShowJob) {
     setSeenShowJob(showJob.nonce)
@@ -377,19 +392,24 @@ function Workers({
     if (selectedJobId !== showJob.id) setSelectedJobId(showJob.id)
   }
 
-  const visibleTerminals = terminals.filter((info) =>
-    selectedWorktree === null ? info.change === undefined : info.change === selectedWorktree
+  const visibleTerminals = terminalsInSidebarOrder(
+    terminals.filter((info) =>
+      selectedWorktrees.has(info.change === undefined ? null : info.change)
+    ),
+    changes
   )
   const visibleIds = visibleTerminals.map((info) => info.id)
   const liveIds = new Set(visibleIds)
-  const selectionChanged = paneWorktree !== selectedWorktree
+  const shownLayout = resolvedPaneLayout(paneLayout, visibleIds.length)
+  const selectionChanged = paneSelection !== selectionKey
   if (selectionChanged) {
-    setPaneWorktree(selectedWorktree)
+    setPaneSelection(selectionKey)
     setFocusedIndex(0)
   }
-  const baseSlots = selectionChanged
-    ? fillPanes(paneLayout, visibleIds, visibleIds[0] ?? null)
-    : slots
+  const baseSlots =
+    selectionChanged || slots.length !== paneCount(shownLayout)
+      ? fillPanes(paneLayout, visibleIds, visibleIds[0] ?? null)
+      : slots
   // Seat the ones that arrived without a click: restored after a restart, or opened from Changes.
   const liveSlots = seatUnplaced(dropMissingTerminals(baseSlots, liveIds), visibleIds)
   if (liveSlots !== slots) setSlots(liveSlots)
@@ -401,6 +421,22 @@ function Workers({
     setFocusTick((tick) => tick + 1)
     const placed = liveSlots.indexOf(placeTerminal.id)
     if (placed >= 0) setFocusedIndex(placed)
+  }
+
+  if (showPanes !== seenShowPanes) {
+    setSeenShowPanes(showPanes)
+    if (showPanes > 0 && stage !== 'panes') setStage('panes')
+  }
+
+  if (terminalsMode && !wasTerminals) {
+    setWasTerminals(true)
+    setStageBeforeTerminals(stage)
+    if (stage !== 'panes') setStage('panes')
+  } else if (!terminalsMode && wasTerminals) {
+    setWasTerminals(false)
+    if (stage !== stageBeforeTerminals) setStage(stageBeforeTerminals)
+  } else if (terminalsMode && stage !== 'panes') {
+    setStage('panes')
   }
 
   if (
@@ -606,14 +642,6 @@ function Workers({
           <Star size={12} />
           <h2 id="workers-heading">Workers</h2>
         </div>
-        <button
-          type="button"
-          className="btn btn-quiet btn-compact workers-focus"
-          aria-pressed={focusMode}
-          onClick={onToggleFocus}
-        >
-          Focus
-        </button>
       </div>
       <TerminalTabs
         terminals={visibleTerminals}
@@ -623,6 +651,7 @@ function Workers({
         changeCount={changes.length}
         paneLayout={paneLayout}
         opening={opening}
+        terminalsMode={terminalsMode}
         onSelect={(id, source) => {
           if (id === 'jobs' || id === 'changes' || id === 'routines') {
             showMain(id)
@@ -635,6 +664,7 @@ function Workers({
           void openProvider(provider, openWorktree ?? worktree)
         }}
         onPaneLayout={changePaneLayout}
+        onToggleTerminals={onToggleTerminals}
       />
       {openError !== null ? (
         <p className="field-error" role="alert">
@@ -908,7 +938,7 @@ function Workers({
         </div>
         <div
           className={
-            stage === 'panes' ? `terminal-stage is-${paneLayout}` : 'terminal-stage is-inactive'
+            stage === 'panes' ? `terminal-stage is-${shownLayout}` : 'terminal-stage is-inactive'
           }
           inert={stage === 'panes' ? undefined : true}
         >

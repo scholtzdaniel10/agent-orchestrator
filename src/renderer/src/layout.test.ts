@@ -9,17 +9,20 @@ import {
   MIN_USAGE,
   MIN_WORKERS,
   assignTabToPane,
+  autoPaneLayout,
   clampSizes,
   dropMissingTerminals,
   emptyPaneForTerminal,
   emptySlots,
   fillPanes,
+  isTerminalsShortcut,
   loadLayout,
   maxSize,
   paneCount,
   parseLayout,
   placeNewTerminal,
   placeTerminalInPane,
+  resolvedPaneLayout,
   seatUnplaced,
   type PaneSlots,
   saveLayout,
@@ -65,10 +68,22 @@ test('parseLayout validates field by field and keeps good values', () => {
   expect(parsed.shown.lead).toBe(true)
   expect(parsed.shown.usage).toBe(false)
   expect(parsed.paneLayout).toBe('4-grid')
+  expect(parsed.terminalsMode).toBe(false)
 })
 
 test('parseLayout falls back for an unknown pane layout', () => {
-  expect(parseLayout({ paneLayout: 'split' }).paneLayout).toBe('1')
+  expect(parseLayout({ paneLayout: 'split' }).paneLayout).toBe('auto')
+})
+
+test('parseLayout keeps auto and a saved concrete pane layout', () => {
+  expect(parseLayout({ paneLayout: 'auto' }).paneLayout).toBe('auto')
+  expect(parseLayout({ paneLayout: '1' }).paneLayout).toBe('1')
+})
+
+test('parseLayout reads terminalsMode and defaults old saves to off', () => {
+  expect(parseLayout({ terminalsMode: true }).terminalsMode).toBe(true)
+  expect(parseLayout({ terminalsMode: false }).terminalsMode).toBe(false)
+  expect(parseLayout({ paneLayout: '2-side' }).terminalsMode).toBe(false)
 })
 
 test('parseLayout raises sizes below the minimums', () => {
@@ -91,6 +106,7 @@ test('loadLayout reads JSON and falls back when storage throws', () => {
   })
   expect(loadLayout(storage).paneLayout).toBe('2-side')
   expect(loadLayout(storage).shown.flow).toBe(false)
+  expect(loadLayout(storage).terminalsMode).toBe(false)
   const blocked: LayoutStorage = {
     getItem(): string | null {
       throw new Error('blocked')
@@ -109,14 +125,16 @@ test('saveLayout writes one JSON object', () => {
     {
       sizes: { sidebar: 180, lead: 300, usage: 220, flow: 110 },
       shown: { projects: false, flow: true, lead: true, usage: true },
-      paneLayout: '6-grid'
+      paneLayout: '6-grid',
+      terminalsMode: true
     },
     storage
   )
   expect(JSON.parse(storage.data['orch.layout']!)).toEqual({
     sizes: { sidebar: 180, lead: 300, usage: 220, flow: 110 },
     shown: { projects: false, flow: true, lead: true, usage: true },
-    paneLayout: '6-grid'
+    paneLayout: '6-grid',
+    terminalsMode: true
   })
 })
 
@@ -184,6 +202,34 @@ test('fillPanes with no terminals is all empty', () => {
   expect(fillPanes('2-side', [], null)).toEqual([null, null])
   expect(emptySlots('1')).toEqual([null])
   expect(paneCount('6-grid')).toBe(6)
+})
+
+test('autoPaneLayout picks the smallest fitting grid and caps at six', () => {
+  expect(autoPaneLayout(0)).toBe('1')
+  expect(autoPaneLayout(1)).toBe('1')
+  expect(autoPaneLayout(2)).toBe('2-side')
+  expect(autoPaneLayout(3)).toBe('3-side')
+  expect(autoPaneLayout(4)).toBe('4-grid')
+  expect(autoPaneLayout(5)).toBe('6-grid')
+  expect(autoPaneLayout(6)).toBe('6-grid')
+  expect(autoPaneLayout(9)).toBe('6-grid')
+  expect(resolvedPaneLayout('2-stack', 5)).toBe('2-stack')
+  expect(resolvedPaneLayout('auto', 3)).toBe('3-side')
+})
+
+test('isTerminalsShortcut is Ctrl+Shift+T', () => {
+  const base = { key: 'T', ctrlKey: true, shiftKey: true, altKey: false, metaKey: false }
+  expect(isTerminalsShortcut(base)).toBe(true)
+  expect(isTerminalsShortcut({ ...base, key: 't' })).toBe(true)
+  expect(isTerminalsShortcut({ ...base, shiftKey: false })).toBe(false)
+  expect(isTerminalsShortcut({ ...base, ctrlKey: false })).toBe(false)
+})
+
+test('fillPanes auto uses the smallest fitting layout', () => {
+  expect(fillPanes('auto', ['a', 'b'], 'a')).toEqual(['a', 'b'])
+  expect(fillPanes('auto', ['a', 'b', 'c', 'd', 'e'], 'a')).toEqual(['a', 'b', 'c', 'd', 'e', null])
+  expect(emptySlots('auto')).toEqual([null])
+  expect(paneCount('auto', 5)).toBe(6)
 })
 
 test('assignTabToPane swaps when the terminal is already shown', () => {

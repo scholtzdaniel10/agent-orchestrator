@@ -19,3 +19,24 @@ export function terminalDisplayTitle(
   }
   return info.title
 }
+
+/** Project-folder terminals first, then sidebar worktree order, then original order. */
+export function terminalsInSidebarOrder<T extends { change?: string }>(
+  terminals: readonly T[],
+  changes: readonly { id: string }[]
+): T[] {
+  const order = new Map<string | undefined, number>()
+  order.set(undefined, 0)
+  for (let i = 0; i < changes.length; i += 1) {
+    order.set(changes[i].id, i + 1)
+  }
+  return terminals
+    .map((info, index) => ({ info, index }))
+    .sort((a, b) => {
+      const rankA = order.get(a.info.change) ?? Number.MAX_SAFE_INTEGER
+      const rankB = order.get(b.info.change) ?? Number.MAX_SAFE_INTEGER
+      if (rankA !== rankB) return rankA - rankB
+      return a.index - b.index
+    })
+    .map((item) => item.info)
+}
