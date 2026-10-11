@@ -25,10 +25,10 @@ test('compareToTested treats equal Claude numeric versions as tested', () => {
 
 test('compareToTested ranks Claude by numeric dot parts', () => {
   expect(compareToTested('claude', '2.2.0')).toBe('newer')
-  expect(compareToTested('claude', '2.1.259')).toBe('newer')
+  expect(compareToTested('claude', '2.1.293')).toBe('newer')
   expect(compareToTested('claude', '3.0.0')).toBe('newer')
   expect(compareToTested('claude', '2.0.1')).toBe('older')
-  expect(compareToTested('claude', '2.1.257')).toBe('older')
+  expect(compareToTested('claude', '2.1.291')).toBe('older')
   expect(compareToTested('claude', '2.1')).toBe('older')
   expect(compareToTested('claude', '2.1.292.1')).toBe('newer')
 })
