@@ -65,7 +65,7 @@ Everything runs locally, per person. There is no server and no account.
    winget install --id GitHub.cli -e
    gh auth login
    ```
-5. **Open Legate** and add a project folder. The Usage tab shows each plan as ready, or says what is missing.
+5. **Open Legate.** On first start it opens **Setup**, which lists these tools, shows what each still needs, gives the install command, and runs each tool's own sign-in in a terminal on the screen. So steps 2 to 4 can also be done from there. Then add a project folder.
 
 You sign in to each tool yourself, in that tool's own sign-in. Legate never sees a password or a token.
 

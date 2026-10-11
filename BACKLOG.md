@@ -29,6 +29,7 @@ Ordered. The top item is the next one to build.
 - Command line: `legate` runs the same jobs, changes, and routines from a terminal.
 - Terminal UI: `legate` with no arguments, or `legate ui`, hands out jobs, watches every step, and reviews changes.
 - New worktrees can start Claude or Cursor on a task so the agent is already working.
+- First-run setup screen: install and sign in to Git, Claude Code, the Cursor CLI, and optionally the GitHub CLI without leaving the app.
 
 ## Next
 

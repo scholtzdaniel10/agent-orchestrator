@@ -122,23 +122,28 @@ function WarnGlyph(): React.JSX.Element {
   )
 }
 
-function UsageHeading(): React.JSX.Element {
+function UsageHeading({ onOpenSetup }: { onOpenSetup: () => void }): React.JSX.Element {
   return (
     <div className="panel-head">
       <div className="panel-title">
         <Star size={12} />
         <h2 id="usage-heading">Usage</h2>
       </div>
+      <button type="button" className="btn btn-quiet btn-compact" onClick={onOpenSetup}>
+        Setup
+      </button>
     </div>
   )
 }
 
 function UsageMeter({
   plans,
-  now
+  now,
+  onOpenSetup
 }: {
   plans: PlanStatus[] | null
   now: number
+  onOpenSetup: () => void
 }): React.JSX.Element {
   const [checking, setChecking] = useState(false)
   const checkingRef = useRef(false)
@@ -158,7 +163,7 @@ function UsageMeter({
   if (plans === null) {
     return (
       <div className="usage">
-        <UsageHeading />
+        <UsageHeading onOpenSetup={onOpenSetup} />
         <p className="hint">Checking plans…</p>
       </div>
     )
@@ -167,7 +172,7 @@ function UsageMeter({
   if (plans.length === 0) {
     return (
       <div className="usage">
-        <UsageHeading />
+        <UsageHeading onOpenSetup={onOpenSetup} />
         <p className="hint">No plans found. Sign in to the claude or agent CLI.</p>
       </div>
     )
@@ -175,7 +180,7 @@ function UsageMeter({
 
   return (
     <div className="usage">
-      <UsageHeading />
+      <UsageHeading onOpenSetup={onOpenSetup} />
       <div className="usage-list">
         {plans.map((plan) => {
           const word = planWord(plan, now)
