@@ -647,6 +647,23 @@ test('interactive is the resolved node entry with no -p', () => {
     args: ['index.js', '--model', 'fast'],
     env: cursorEnv(process.platform, process.env)
   })
+  expect(plain.interactive({ model: 'composer-2.5', prompt: 'fix the login' })).toEqual({
+    command: 'agent',
+    args: ['--model', 'composer-2.5', 'fix the login'],
+    env: cursorEnv(process.platform, process.env)
+  })
+  expect(
+    wrapped.interactive({ sessionId: 'chat-1', model: 'fast', prompt: 'fix the login' })
+  ).toEqual({
+    command: 'node.exe',
+    args: ['index.js', '--resume', 'chat-1', '--model', 'fast', 'fix the login'],
+    env: cursorEnv(process.platform, process.env)
+  })
+  expect(plain.interactive({ resume: 'chat-2', prompt: 'fix the login' })).toEqual({
+    command: 'agent',
+    args: ['--resume', 'chat-2'],
+    env: cursorEnv(process.platform, process.env)
+  })
 })
 
 test('cursorEnv drops the Git Bash markers on Windows only', () => {

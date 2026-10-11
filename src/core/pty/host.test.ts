@@ -97,7 +97,8 @@ function makeHost(partial?: {
         args: [
           ...(opts.resume ? ['--resume', opts.resume] : []),
           ...(opts.sessionId ? ['--session-id', opts.sessionId] : []),
-          ...(opts.model ? ['--model', opts.model] : [])
+          ...(opts.model ? ['--model', opts.model] : []),
+          ...(opts.prompt ? [opts.prompt] : [])
         ]
       })),
     killTree: partial?.killTree ?? ((proc) => proc.kill()),
@@ -939,6 +940,35 @@ test('close during a pending cursor relaunch starts no process and deletes the r
     await flushMicrotasks()
     expect(calls).toHaveLength(1)
     expect(store.terminals('work')).toEqual([])
+  } finally {
+    store.close()
+  }
+})
+
+test('open passes a prompt last; restore of the same terminal does not', async () => {
+  const store = new Store(':memory:')
+  try {
+    const first = makeHost({
+      store,
+      cwd: 'work',
+      now: () => 10,
+      createChat: async () => 'cursor-chat-01'
+    })
+    const claude = await first.host.open('claude', 80, 24, { prompt: 'fix the login' })
+    expect(first.calls[0].args.at(-1)).toBe('fix the login')
+    expect(first.calls[0].args[0]).toBe('--session-id')
+    const cursor = await first.host.open('cursor', 80, 24, { prompt: 'fix the login' })
+    expect(first.calls[1].args.at(-1)).toBe('fix the login')
+    expect(first.calls[1].args).toEqual(['--session-id', 'cursor-chat-01', 'fix the login'])
+    first.host.closeAll()
+
+    const second = makeHost({ store, cwd: 'work', now: () => 20 })
+    const restored = second.host.restore('work', 80, 24)
+    expect(restored.map((info) => info.id)).toEqual([claude.id, cursor.id])
+    expect(second.calls[0].args).not.toContain('fix the login')
+    expect(second.calls[1].args).not.toContain('fix the login')
+    expect(second.calls[0].args[0]).toBe('--resume')
+    expect(second.calls[1].args[0]).toBe('--resume')
   } finally {
     store.close()
   }

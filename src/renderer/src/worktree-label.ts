@@ -1,3 +1,14 @@
+/** Name a worktree from its task: first 32 characters, cut at a word boundary. */
+export function worktreeNameFromTask(task: string): string {
+  const text = task.trim().replace(/\s+/g, ' ')
+  if (text.length <= 32) return text
+  const slice = text.slice(0, 32)
+  if (text[32] === ' ') return slice
+  const breakAt = slice.lastIndexOf(' ')
+  if (breakAt <= 0) return slice
+  return slice.slice(0, breakAt)
+}
+
 /** Display name of a worktree: the saved name when present, otherwise its id. */
 export function worktreeLabel(change: { id: string; name?: string }): string {
   const name = change.name

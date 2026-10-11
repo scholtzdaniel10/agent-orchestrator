@@ -196,9 +196,10 @@ const api: OrchestratorApi = {
     provider: ProviderId,
     cols: number,
     rows: number,
-    worktree?: 'new' | string
+    worktree?: 'new' | string,
+    prompt?: string
   ): Promise<TerminalInfo> {
-    return ipcRenderer.invoke('terminals:open', provider, cols, rows, worktree)
+    return ipcRenderer.invoke('terminals:open', provider, cols, rows, worktree, prompt)
   },
   writeTerminal(id: string, data: string): void {
     ipcRenderer.send('terminals:write', id, data)

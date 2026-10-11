@@ -419,9 +419,23 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'terminals:open',
-    async (_event, provider: unknown, cols: unknown, rows: unknown, worktree: unknown) => {
+    async (
+      _event,
+      provider: unknown,
+      cols: unknown,
+      rows: unknown,
+      worktree: unknown,
+      prompt: unknown
+    ) => {
       if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
-      let opts: { cwd?: string; change?: string } | undefined
+      let task: string | undefined
+      if (prompt !== undefined && prompt !== null) {
+        if (typeof prompt !== 'string' || prompt.includes('\0')) throw new Error('invalid prompt')
+        const trimmed = prompt.trim()
+        if (trimmed.length < 1 || trimmed.length > 8000) throw new Error('invalid prompt')
+        task = trimmed
+      }
+      let opts: { cwd?: string; change?: string; prompt?: string } | undefined
       if (worktree !== undefined && worktree !== null) {
         if (worktree === 'new') {
           const about = await worktrees.info(projectDir())
@@ -448,8 +462,9 @@ app.whenReady().then(async () => {
           opts = { cwd: folder, change: id }
         }
       }
+      if (task !== undefined) opts = { ...opts, prompt: task }
       const info = await terms.open(provider, cols as number, rows as number, opts)
-      if (opts !== undefined) pushChanges()
+      if (worktree !== undefined && worktree !== null) pushChanges()
       return info
     }
   )

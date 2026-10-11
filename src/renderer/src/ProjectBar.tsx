@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Star } from './Star'
-import { worktreeLabel } from './worktree-label'
+import { worktreeLabel, worktreeNameFromTask } from './worktree-label'
 
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
@@ -484,16 +484,23 @@ function WorktreesSection({
   cursorAvailable: boolean
   onSelect: (id: WorktreeId, mode?: WorktreeSelectMode) => void
   onSelectAll: () => void
-  onCreate: (name: string | undefined, count: number, start: ProviderId | null) => void
+  onCreate: (
+    name: string | undefined,
+    count: number,
+    start: ProviderId | null,
+    prompt?: string
+  ) => void
   onRename: (id: string, name: string) => void
   onDiscard: (id: string) => void
   onOpen: (provider: ProviderId, worktree: string | null) => void
 }): React.JSX.Element {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
+  const [task, setTask] = useState('')
   const [howMany, setHowMany] = useState(1)
   const [start, setStart] = useState<'' | ProviderId>('')
   const createRef = useRef<HTMLInputElement>(null)
+  const canTask = start === 'claude' || start === 'cursor'
 
   useEffect(() => {
     if (!creating) return
@@ -504,11 +511,16 @@ function WorktreesSection({
     const next = draft.trim()
     const count = Math.min(6, Math.max(1, Math.round(howMany)))
     const agent = start === '' ? null : start
+    const taskText = task.trim()
+    const named = next !== '' ? next : taskText !== '' ? worktreeNameFromTask(taskText) : undefined
+    const prompt = agent !== null && taskText !== '' ? taskText : undefined
     setCreating(false)
     setDraft('')
+    setTask('')
     setHowMany(1)
     setStart('')
-    if (save) onCreate(next === '' ? undefined : next, count, agent)
+    if (save)
+      onCreate(named === undefined || named === '' ? undefined : named, count, agent, prompt)
   }
 
   function onRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
@@ -560,6 +572,7 @@ function WorktreesSection({
           aria-label="New worktree"
           onClick={() => {
             setDraft('')
+            setTask('')
             setHowMany(1)
             setStart('')
             setCreating(true)
@@ -582,17 +595,45 @@ function WorktreesSection({
             }
           }}
         >
-          <input
-            ref={createRef}
-            className="project-worktree-rename"
-            value={draft}
-            aria-label="New worktree name"
-            placeholder="Name (optional)"
-            maxLength={40}
-            onChange={(event) => {
-              setDraft(event.target.value)
-            }}
-          />
+          <label className="project-worktree-field">
+            Name (optional)
+            <input
+              ref={createRef}
+              className="project-worktree-rename"
+              value={draft}
+              aria-label="New worktree name"
+              maxLength={40}
+              onChange={(event) => {
+                setDraft(event.target.value)
+              }}
+            />
+          </label>
+          <label className="project-worktree-field">
+            Task
+            <textarea
+              className="project-worktree-task"
+              value={task}
+              rows={2}
+              maxLength={8000}
+              disabled={!canTask}
+              placeholder={canTask ? 'What should the agent do? (optional)' : undefined}
+              aria-label="Task"
+              onChange={(event) => {
+                setTask(event.target.value)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && event.ctrlKey) {
+                  event.preventDefault()
+                  finishCreate(true)
+                }
+              }}
+            />
+            {!canTask ? (
+              <span className="project-worktree-task-hint">
+                Choose an agent under Start to give it a task.
+              </span>
+            ) : null}
+          </label>
           <label className="project-worktree-how">
             How many
             <input
@@ -892,7 +933,12 @@ function ProjectBar({
   onRemoveChat: (id: string) => void
   onSelectWorktree: (id: WorktreeId, mode?: WorktreeSelectMode) => void
   onSelectAllWorktrees: () => void
-  onCreateWorktree: (name: string | undefined, count: number, start: ProviderId | null) => void
+  onCreateWorktree: (
+    name: string | undefined,
+    count: number,
+    start: ProviderId | null,
+    prompt?: string
+  ) => void
   onRenameWorktree: (id: string, name: string) => void
   onDiscardWorktree: (id: string) => void
   onOpenInWorktree: (provider: ProviderId, worktree: string | null) => void

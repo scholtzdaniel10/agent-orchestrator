@@ -4807,3 +4807,65 @@ button.job-step {
   letter-spacing: 0.04em;
   text-align: center;
 }
+
+.project-worktree-create {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 10px 8px 10px;
+  box-sizing: border-box;
+}
+
+.project-worktree-create .project-worktree-field,
+.project-worktree-create .project-worktree-how,
+.project-worktree-create .project-worktree-start {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.project-worktree-create .project-worktree-rename,
+.project-worktree-create .project-worktree-task,
+.project-worktree-create .project-worktree-how input,
+.project-worktree-create .project-worktree-start select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.project-worktree-create .project-worktree-task {
+  min-height: calc(2 * 1.4em + 12px);
+  border: 0;
+  border-left: 2px solid var(--signal);
+  border-radius: 0;
+  background: var(--selected);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.project-worktree-create .project-worktree-task:focus {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+
+.project-worktree-task-hint {
+  color: var(--muted);
+  font-size: 11px;
+}

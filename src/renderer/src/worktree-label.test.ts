@@ -1,5 +1,24 @@
 import { expect, test } from 'vitest'
-import { terminalDisplayTitle, terminalsInSidebarOrder, worktreeLabel } from './worktree-label'
+import {
+  terminalDisplayTitle,
+  terminalsInSidebarOrder,
+  worktreeLabel,
+  worktreeNameFromTask
+} from './worktree-label'
+
+test('worktreeNameFromTask takes the first 32 characters, cut at a word', () => {
+  expect(worktreeNameFromTask('fix the login')).toBe('fix the login')
+  expect(worktreeNameFromTask('  Fix the login form validation on the settings page  ')).toBe(
+    'Fix the login form validation on'
+  )
+  expect(worktreeNameFromTask('one two three four five six seven eight')).toBe(
+    'one two three four five six'
+  )
+  expect(worktreeNameFromTask('abcdefghijklmnopqrstuvwxyz0123456789')).toBe(
+    'abcdefghijklmnopqrstuvwxyz012345'
+  )
+  expect(worktreeNameFromTask('line one\nline two')).toBe('line one line two')
+})
 
 test('worktreeLabel uses the name when present, else the id', () => {
   expect(worktreeLabel({ id: '3fa9c1d2' })).toBe('3fa9c1d2')
