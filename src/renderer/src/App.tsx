@@ -1187,6 +1187,7 @@ function App(): React.JSX.Element {
         error={projectError === null ? null : projectError.text}
         githubAvailable={githubAvailable}
         changes={changes}
+        jobs={jobs}
         terminals={terminals}
         selectedWorktrees={selectedWorktrees}
         claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}

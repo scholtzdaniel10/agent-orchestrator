@@ -89,7 +89,7 @@ legate --help | -h
 legate --version | -v
 ```
 
-The app and the command share one database; a job started from the command line shows in the app the next time the app loads that project.
+The app and the command share one database; both see each other's jobs within a few seconds.
 
 ## Develop
 

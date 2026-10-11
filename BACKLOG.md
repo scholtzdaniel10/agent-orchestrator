@@ -31,7 +31,6 @@ Ordered. The top item is the next one to build.
 1. Run the lead chat and a Claude job against the real CLIs from an installed build (the Cursor path is covered by `GATE_WORKERS=cursor pnpm gate worktrees`).
 2. Sign the Windows installer so SmartScreen stops warning.
 3. macOS and Linux builds.
-4. Show jobs started from the command line in the open app at once.
 
 ## Later
 

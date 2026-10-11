@@ -191,6 +191,9 @@ const api: OrchestratorApi = {
   writeTerminal(id: string, data: string): void {
     ipcRenderer.send('terminals:write', id, data)
   },
+  claimTerminal(id: string): void {
+    ipcRenderer.send('terminals:claim', id)
+  },
   resizeTerminal(id: string, cols: number, rows: number): void {
     ipcRenderer.send('terminals:resize', id, cols, rows)
   },

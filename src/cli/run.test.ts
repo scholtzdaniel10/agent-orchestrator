@@ -594,6 +594,68 @@ test('changes, diff, merge, and discard', async () => {
   expect(discarded).toBe(true)
 })
 
+test('merge and discard refuse a worktree with a running job', async () => {
+  const change: ChangeSet = {
+    id: 'abcd1234',
+    branch: 'orch/abcd1234',
+    path: '/wt/abcd1234',
+    files: [{ path: 'a.ts', insertions: 1, deletions: 0 }],
+    insertions: 1,
+    deletions: 0
+  }
+  const rows = [
+    {
+      createdAt: 1,
+      job: job({ id: 'j1', status: 'running', change: 'abcd1234' })
+    }
+  ]
+  let merged = false
+  const blockedMerge = capture()
+  expect(
+    await run(
+      ['merge', 'abcd'],
+      ctx(blockedMerge, {
+        store: { jobsNewest: () => rows },
+        worktrees: {
+          list: () => Promise.resolve([change]),
+          ids: () => Promise.resolve(['abcd1234']),
+          merge: () => {
+            merged = true
+            return Promise.resolve({ ok: true, message: 'applied' })
+          }
+        }
+      })
+    )
+  ).toBe(1)
+  expect(blockedMerge.err).toContain(
+    'A job is still running in this worktree. Stop it first, or wait for it to finish.'
+  )
+  expect(merged).toBe(false)
+
+  let discarded = false
+  const blockedDiscard = capture()
+  expect(
+    await run(
+      ['discard', 'abcd', '--yes'],
+      ctx(blockedDiscard, {
+        store: { jobsNewest: () => rows },
+        worktrees: {
+          list: () => Promise.resolve([change]),
+          ids: () => Promise.resolve(['abcd1234']),
+          discard: () => {
+            discarded = true
+            return Promise.resolve()
+          }
+        }
+      })
+    )
+  ).toBe(1)
+  expect(blockedDiscard.err).toContain(
+    'A job is still running in this worktree. Stop it first, or wait for it to finish.'
+  )
+  expect(discarded).toBe(false)
+})
+
 test('pull requests and worktrees', async () => {
   const pr = capture()
   expect(await run(['pr', 'Add login', '--body', 'please'], ctx(pr))).toBe(0)

@@ -276,6 +276,14 @@ function TerminalPane({
     term.focus()
   }, [visible, focusNonce])
 
+  useLayoutEffect(() => {
+    if (!visible || popped || !focused) return
+    window.api.claimTerminal(info.id)
+    const term = termRef.current
+    if (term === null) return
+    window.api.resizeTerminal(info.id, term.cols, term.rows)
+  }, [visible, popped, focused, info.id])
+
   return (
     <div
       className={paneClass(placement, focused)}

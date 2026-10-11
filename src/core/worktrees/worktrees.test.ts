@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { Worktrees } from './worktrees'
+import { Worktrees, removeWorktreeWithRetries } from './worktrees'
 
 const DIFF_CAP = 400_000
 
@@ -392,4 +392,42 @@ describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
       await cleanup(root)
     }
   })
+})
+
+test('removeWorktreeWithRetries tries three times then names the Windows lock', async () => {
+  const delays: number[] = []
+  let attempts = 0
+  await expect(
+    removeWorktreeWithRetries(
+      async () => {
+        attempts += 1
+        throw new Error('busy')
+      },
+      () => false,
+      async (ms) => {
+        delays.push(ms)
+      }
+    )
+  ).rejects.toThrow(
+    'Windows still has files open in this worktree. Close programs using it and try again.'
+  )
+  expect(attempts).toBe(3)
+  expect(delays).toEqual([300, 300])
+})
+
+test('removeWorktreeWithRetries stops when the folder is gone and never delays then', async () => {
+  const delays: number[] = []
+  let attempts = 0
+  await removeWorktreeWithRetries(
+    async () => {
+      attempts += 1
+      if (attempts < 2) throw new Error('busy')
+    },
+    () => attempts >= 2,
+    async (ms) => {
+      delays.push(ms)
+    }
+  )
+  expect(attempts).toBe(2)
+  expect(delays).toEqual([300])
 })

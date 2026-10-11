@@ -158,6 +158,11 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX routines_project ON routines (project, position);
+    `,
+  `
+      ALTER TABLE jobs ADD COLUMN owner_id TEXT;
+      ALTER TABLE jobs ADD COLUMN heartbeat_at INTEGER;
+      ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
     `
 ]
 
@@ -537,12 +542,33 @@ export class Store {
   saveJob(project: string, createdAt: number, job: JobRecord): void {
     this.db
       .prepare(
-        `INSERT INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)
+        `INSERT INTO jobs (id, project, created_at, data, owner_id, heartbeat_at, cancel_requested)
+         VALUES (?, ?, ?, ?, ?, ?, 0)
          ON CONFLICT(id) DO UPDATE SET
            project = excluded.project,
-           data = excluded.data`
+           data = excluded.data,
+           owner_id = excluded.owner_id,
+           heartbeat_at = excluded.heartbeat_at`
       )
-      .run(job.id, project, createdAt, JSON.stringify(job))
+      .run(
+        job.id,
+        project,
+        createdAt,
+        JSON.stringify(job),
+        job.ownerId ?? null,
+        job.heartbeatAt ?? null
+      )
+  }
+
+  /** Sets the cancel flag without rewriting the job JSON the owner is saving. */
+  requestCancel(id: string): void {
+    this.db.prepare('UPDATE jobs SET cancel_requested = 1 WHERE id = ?').run(id)
+  }
+
+  isCancelRequested(id: string): boolean {
+    const row = this.db.prepare('SELECT cancel_requested FROM jobs WHERE id = ?').get(id)
+    if (!row) return false
+    return Number((row as Row).cancel_requested) === 1
   }
 
   /**
@@ -552,7 +578,7 @@ export class Store {
   jobs(project: string, limit: number): JobRecord[] {
     const rows = this.db
       .prepare(
-        `SELECT data FROM jobs
+        `SELECT data, owner_id, heartbeat_at, cancel_requested FROM jobs
          WHERE project = ?
          ORDER BY created_at DESC
          LIMIT ?`
@@ -560,8 +586,8 @@ export class Store {
       .all(project, limit)
     const newest: JobRecord[] = []
     for (const row of rows) {
-      const parsed = parseJsonRow(row as Row)
-      if (parsed !== null) newest.push(parsed as JobRecord)
+      const parsed = jobFromRow(row as Row)
+      if (parsed !== null) newest.push(parsed)
     }
     newest.reverse()
     return newest
@@ -571,7 +597,7 @@ export class Store {
   jobsNewest(project: string, limit: number): { createdAt: number; job: JobRecord }[] {
     const rows = this.db
       .prepare(
-        `SELECT data, created_at FROM jobs
+        `SELECT data, created_at, owner_id, heartbeat_at, cancel_requested FROM jobs
          WHERE project = ?
          ORDER BY created_at DESC
          LIMIT ?`
@@ -580,13 +606,13 @@ export class Store {
     const out: { createdAt: number; job: JobRecord }[] = []
     for (const row of rows) {
       const record = row as Row
-      const parsed = parseJsonRow(record)
+      const parsed = jobFromRow(record)
       if (parsed === null) continue
       const created = record.created_at
       const createdAt = typeof created === 'number' ? created : Number(created)
       out.push({
         createdAt: Number.isFinite(createdAt) ? createdAt : 0,
-        job: parsed as JobRecord
+        job: parsed
       })
     }
     return out
@@ -598,6 +624,21 @@ export class Store {
 }
 
 type Row = Record<string, string | number | bigint | null | Uint8Array>
+
+function jobFromRow(row: Row): JobRecord | null {
+  const parsed = parseJsonRow(row)
+  if (parsed === null) return null
+  const job = parsed as JobRecord
+  const owner = row.owner_id
+  if (typeof owner === 'string' && owner !== '') job.ownerId = owner
+  const beat = row.heartbeat_at
+  if (beat !== null && beat !== undefined) {
+    const n = Number(beat)
+    if (Number.isFinite(n)) job.heartbeatAt = n
+  }
+  if (Number(row.cancel_requested) === 1) job.cancelRequested = true
+  return job
+}
 
 function parseJsonRow(row: Row): { id: string } | null {
   try {

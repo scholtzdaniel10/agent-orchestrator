@@ -56,6 +56,33 @@ export class PoppedOutRegistry {
   }
 }
 
+/** Which window last typed in or claimed each terminal; that window owns the pty size. */
+export class TerminalClaims {
+  private readonly owners = new Map<string, number>()
+
+  claim(terminalId: string, webContentsId: number): void {
+    this.owners.set(terminalId, webContentsId)
+  }
+
+  /**
+   * True when this window owns the terminal, or nobody does (and then this window takes it).
+   */
+  allowResize(terminalId: string, webContentsId: number): boolean {
+    const owner = this.owners.get(terminalId)
+    if (owner === undefined) {
+      this.owners.set(terminalId, webContentsId)
+      return true
+    }
+    return owner === webContentsId
+  }
+
+  releaseWindow(webContentsId: number): void {
+    for (const [id, owner] of this.owners) {
+      if (owner === webContentsId) this.owners.delete(id)
+    }
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (max < min) return min
   if (value < min) return min

@@ -24,6 +24,12 @@ function jobTypeFor(jobs: readonly JobRecord[], id: string): string {
   return match === undefined ? 'earlier session' : match.type
 }
 
+function worktreeJobRunning(jobs: readonly JobRecord[], id: string): boolean {
+  return jobs.some(
+    (job) => job.change === id && (job.status === 'queued' || job.status === 'running')
+  )
+}
+
 function fileLabel(count: number): string {
   return count === 1 ? '1 file' : `${count} files`
 }
@@ -292,6 +298,8 @@ function ChangesTab({
   }
 
   const confirming = selected !== null && armedId === selected.id
+  const jobRunning = selected !== null && worktreeJobRunning(jobs, selected.id)
+  const jobRunningTitle = jobRunning ? 'job running' : undefined
   const okNotice = notice !== null && notice.tone === 'ok' ? notice.text : null
   const badNotice =
     notice !== null && notice.tone === 'bad' && selected !== null && notice.id === selected.id
@@ -450,7 +458,8 @@ function ChangesTab({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={busy}
+                    disabled={busy || jobRunning}
+                    title={jobRunningTitle}
                     onClick={onMerge}
                   >
                     Merge
@@ -459,11 +468,13 @@ function ChangesTab({
                 <button
                   type="button"
                   className={confirming ? 'btn btn-quiet is-danger-label' : 'btn btn-quiet'}
-                  disabled={busy}
+                  disabled={busy || jobRunning}
+                  title={jobRunningTitle}
                   onClick={onDiscard}
                 >
                   {confirming ? 'Discard for good?' : 'Discard'}
                 </button>
+                {jobRunning ? <span className="change-help">job running</span> : null}
                 {claudeAvailable ? (
                   <button
                     type="button"
