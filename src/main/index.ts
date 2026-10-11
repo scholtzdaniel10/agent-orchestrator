@@ -836,6 +836,14 @@ app.whenReady().then(async () => {
     broadcast('terminals:update', info, removed)
   })
 
+  // An agent in a terminal edits files without telling the app. While a worktree has one open,
+  // look at the worktrees again every few seconds so their change totals stay true.
+  const changeWatch = setInterval(() => {
+    const busy = terms.list().some((info) => info.change !== undefined && info.status === 'running')
+    if (busy) pushChanges()
+  }, 8_000)
+  changeWatch.unref()
+
   orch.onUpdate(publish)
   lead.onUpdate(publishLead)
 
