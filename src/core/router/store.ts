@@ -170,6 +170,8 @@ export class Store {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path)
+    // The app and the command can have this file open together. Wait instead of failing at once.
+    this.db.exec('PRAGMA busy_timeout = 5000')
     this.migrate()
   }
 
@@ -563,6 +565,31 @@ export class Store {
     }
     newest.reverse()
     return newest
+  }
+
+  /** Newest `limit` jobs for the project, newest first. Corrupt rows are skipped. */
+  jobsNewest(project: string, limit: number): { createdAt: number; job: JobRecord }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT data, created_at FROM jobs
+         WHERE project = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(project, limit)
+    const out: { createdAt: number; job: JobRecord }[] = []
+    for (const row of rows) {
+      const record = row as Row
+      const parsed = parseJsonRow(record)
+      if (parsed === null) continue
+      const created = record.created_at
+      const createdAt = typeof created === 'number' ? created : Number(created)
+      out.push({
+        createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+        job: parsed as JobRecord
+      })
+    }
+    return out
   }
 
   close(): void {

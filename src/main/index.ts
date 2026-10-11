@@ -30,6 +30,7 @@ import type {
   ProviderId
 } from '../core/types'
 import { Worktrees } from '../core/worktrees'
+import { mergeListedChanges } from '../core/changes'
 import type { PlanStatus } from '../preload/api-types'
 
 let store: Store | null = null
@@ -157,37 +158,15 @@ app.whenReady().then(async () => {
 
   async function listedChanges(project: string): Promise<ChangeSet[]> {
     const listed = await worktrees.list(project)
-    const byId = new Map(listed.map((change) => [change.id, change]))
     const ids = await worktrees.ids(project)
     const named = shared.worktreeNames(project)
-    const nameById = new Map(named.map((row) => [row.id, row]))
-    const merged: ChangeSet[] = []
-    for (const id of ids) {
-      const existing = byId.get(id)
-      const row = nameById.get(id)
-      const entry: ChangeSet =
-        existing !== undefined
-          ? { ...existing }
-          : {
-              id,
-              branch: `orch/${id}`,
-              path: worktrees.folder(id),
-              files: [],
-              insertions: 0,
-              deletions: 0
-            }
-      if (row !== undefined && row.name !== '') entry.name = row.name
-      const setup = setupByChange.get(id)
-      if (setup !== undefined) entry.setup = setup
-      merged.push(entry)
-    }
-    merged.sort((a, b) => {
-      const ta = nameById.get(a.id)?.created_at ?? 0
-      const tb = nameById.get(b.id)?.created_at ?? 0
-      if (ta !== tb) return tb - ta
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    return mergeListedChanges({
+      listed,
+      ids,
+      names: named,
+      folder: (id) => worktrees.folder(id),
+      setup: (id) => setupByChange.get(id)
     })
-    return merged
   }
 
   function pushChanges(): void {

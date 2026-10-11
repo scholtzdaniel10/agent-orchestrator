@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "description": "Desktop app that routes coding jobs across your own Claude Code and Cursor subscriptions",
   "main": "./out/main/index.js",
+  "bin": {
+    "legate": "./bin/legate.mjs"
+  },
   "author": "scholtzdaniel10",
   "repository": {
     "type": "git",
@@ -24,6 +27,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
+    "cli": "node ./bin/legate.mjs",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "build:unpack": "npm run build && electron-builder --dir",
