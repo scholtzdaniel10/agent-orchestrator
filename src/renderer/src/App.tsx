@@ -950,7 +950,8 @@ function App(): React.JSX.Element {
   async function createWorktree(
     name?: string,
     count = 1,
-    start: ProviderId | null = null
+    start: ProviderId | null = null,
+    prompt?: string
   ): Promise<void> {
     const n = Math.min(6, Math.max(1, Math.floor(count)))
     const made: string[] = []
@@ -964,7 +965,7 @@ function App(): React.JSX.Element {
           commitChanges(state, state.changes.concat(created), setChanges, setEvents)
         }
         if (start !== null) {
-          const info = await window.api.openTerminal(start, 100, 30, created.id)
+          const info = await window.api.openTerminal(start, 100, 30, created.id, prompt)
           const next = applyTerminalUpdate(state.terminals, info, false)
           state.terminals = next
           setTerminals(next)
@@ -1255,8 +1256,8 @@ function App(): React.JSX.Element {
               }}
               onSelectWorktree={selectWorktree}
               onSelectAllWorktrees={selectAllWorktrees}
-              onCreateWorktree={(name, count, start) => {
-                void createWorktree(name, count, start)
+              onCreateWorktree={(name, count, start, prompt) => {
+                void createWorktree(name, count, start, prompt)
               }}
               onRenameWorktree={(id, name) => {
                 void renameWorktree(id, name)

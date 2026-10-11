@@ -26,6 +26,7 @@ Ordered. The top item is the next one to build.
 - Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
 - Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
 - Command line: `legate` runs the same jobs, changes, and routines from a terminal.
+- New worktrees can start Claude or Cursor on a task so the agent is already working.
 
 ## Next
 

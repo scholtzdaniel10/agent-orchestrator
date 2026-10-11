@@ -471,6 +471,20 @@ test('interactive is the resolved binary with no -p', () => {
     command: 'node.exe',
     args: ['cli.js', '--model', 'sonnet']
   })
+  expect(plain.interactive({ model: 'opus', prompt: 'fix the login' })).toEqual({
+    command: 'claude.exe',
+    args: ['--model', 'opus', 'fix the login']
+  })
+  expect(
+    wrapped.interactive({ sessionId: 'sess-1', model: 'sonnet', prompt: 'fix the login' })
+  ).toEqual({
+    command: 'node.exe',
+    args: ['cli.js', '--session-id', 'sess-1', '--model', 'sonnet', 'fix the login']
+  })
+  expect(plain.interactive({ resume: 'sess-2', prompt: 'fix the login' })).toEqual({
+    command: 'claude.exe',
+    args: ['--resume', 'sess-2']
+  })
 })
 
 test('unknown-format fixture is unreadable and has no result event', async () => {

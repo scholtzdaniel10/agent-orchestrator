@@ -67,7 +67,9 @@ export class CursorAdapter implements ProviderAdapter {
   }
 
   /** Interactive session: the same node + index.js as `run`, with no `-p`. */
-  interactive(modelOrOpts?: string | { model?: string; sessionId?: string; resume?: string }): {
+  interactive(
+    modelOrOpts?: string | { model?: string; sessionId?: string; resume?: string; prompt?: string }
+  ): {
     command: string
     args: string[]
     env?: NodeJS.ProcessEnv
@@ -77,6 +79,7 @@ export class CursorAdapter implements ProviderAdapter {
     const resume = opts.resume ?? opts.sessionId
     if (resume) args.push('--resume', resume)
     if (opts.model) args.push('--model', opts.model)
+    if (opts.prompt && !opts.resume) args.push(opts.prompt)
     return {
       command: this.bin.command,
       args,

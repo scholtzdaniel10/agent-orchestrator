@@ -157,7 +157,8 @@ export interface OrchestratorApi {
     provider: ProviderId,
     cols: number,
     rows: number,
-    worktree?: 'new' | string
+    worktree?: 'new' | string,
+    prompt?: string
   ): Promise<TerminalInfo>
   /** Keystrokes for a terminal. Fire and forget. */
   writeTerminal(id: string, data: string): void
