@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import type * as NodePty from 'node-pty'
 import { TERMINAL_SCROLLBACK_CAP, type Store } from '../router/store'
-import type { ProviderId, TerminalInfo } from '../types'
+import type { ProviderId, TerminalInfo, TerminalProvider } from '../types'
 
 export interface Launch {
   command: string
@@ -82,6 +82,7 @@ interface PtyHostOptions {
   createChat?: CreateChat
   maxTerminals?: number
   exists?: (path: string) => boolean
+  platform?: NodeJS.Platform
 }
 
 /** Drop a "no colour" choice inherited from whoever launched the app, and ask for true colour. */
@@ -111,6 +112,7 @@ export class PtyHost {
   private readonly createChat: CreateChat | undefined
   private readonly maxTerminals: number
   private readonly exists: (path: string) => boolean
+  private readonly platform: NodeJS.Platform
   private readonly sessions: Session[] = []
   private readonly byId = new Map<string, Session>()
   private readonly opened: Record<ProviderId, number> = { claude: 0, cursor: 0 }
@@ -130,6 +132,7 @@ export class PtyHost {
     this.createChat = opts.createChat
     this.maxTerminals = opts.maxTerminals ?? DEFAULT_MAX_TERMINALS
     this.exists = opts.exists ?? existsSync
+    this.platform = opts.platform ?? process.platform
   }
 
   async open(
@@ -169,6 +172,35 @@ export class PtyHost {
     return info
   }
 
+  openShell(opts: {
+    cwd: string
+    change?: string
+    title: string
+    commands: string[]
+    cols: number
+    rows: number
+  }): TerminalInfo {
+    if (this.liveCount() >= this.maxTerminals) {
+      throw new Error('too many terminals')
+    }
+    const info = this.boot({
+      id: randomUUID(),
+      provider: 'shell',
+      title: opts.title,
+      model: undefined,
+      launchOpts: {},
+      launchSpec: setupLaunch(opts.commands, this.platform),
+      cols: opts.cols,
+      rows: opts.rows,
+      snapshot: '',
+      startedAt: this.now(),
+      cwd: opts.cwd,
+      change: opts.change
+    })
+    this.persistOpen(info, null)
+    return info
+  }
+
   restore(project: string, cols: number, rows: number): TerminalInfo[] {
     const store = this.store
     if (!store) return []
@@ -176,6 +208,10 @@ export class PtyHost {
     for (const row of store.terminals(project)) {
       if (this.liveCount() >= this.maxTerminals) break
       if (this.byId.has(row.id)) continue
+      if (row.provider === 'shell') {
+        store.deleteTerminal(row.id)
+        continue
+      }
       const provider = asProvider(row.provider)
       if (provider === null) continue
       const model = row.model ?? undefined
@@ -346,10 +382,11 @@ export class PtyHost {
 
   private boot(args: {
     id: string
-    provider: ProviderId
+    provider: TerminalProvider
     title: string
     model: string | undefined
     launchOpts: LaunchOpts
+    launchSpec?: Launch
     cols: number
     rows: number
     snapshot: string
@@ -362,7 +399,7 @@ export class PtyHost {
     const size = clampSize(args.cols, args.rows)
     const cwd = args.cwd ?? this.projectDir()
     const project = args.project ?? this.projectDir()
-    const spec = this.launch(args.provider, args.launchOpts)
+    const spec = args.launchSpec ?? this.launch(asAgentProvider(args.provider), args.launchOpts)
     let proc: PtyProcess
     try {
       proc = this.spawnPty(spec.command, spec.args, {
@@ -578,7 +615,7 @@ export class PtyHost {
 
   private respawn(session: Session, launchOpts: LaunchOpts): void {
     const size = clampSize(session.cols, session.rows)
-    const spec = this.launch(session.info.provider, launchOpts)
+    const spec = this.launch(asAgentProvider(session.info.provider), launchOpts)
     session.proc = this.spawnPty(spec.command, spec.args, {
       name: 'xterm-256color',
       cols: size.cols,
@@ -608,6 +645,7 @@ export class PtyHost {
     session.info.status = 'exited'
     session.info.exitCode =
       typeof exitCode === 'number' && Number.isFinite(exitCode) ? exitCode : null
+    if (session.info.provider === 'shell') this.store?.deleteTerminal(session.info.id)
     if (!session.removed) this.emitUpdate(copyInfo(session.info), false)
     this.writeRun(session)
     this.forget(session)
@@ -652,6 +690,7 @@ export class PtyHost {
   private writeRun(session: Session): void {
     if (session.logged) return
     session.logged = true
+    if (session.info.provider === 'shell') return
     if (!this.store) return
     const code = session.info.exitCode
     const outcome = session.closedByHost || code === 0 ? 'ok' : 'error'
@@ -711,6 +750,29 @@ function clampInt(value: number, min: number, max: number): number {
 function asProvider(value: string): ProviderId | null {
   if (value === 'claude' || value === 'cursor') return value
   return null
+}
+
+function asAgentProvider(value: TerminalProvider): ProviderId {
+  if (value === 'claude' || value === 'cursor') return value
+  throw new Error('shell sessions have no CLI')
+}
+
+function setupLaunch(commands: string[], platform: NodeJS.Platform): Launch {
+  if (platform === 'win32') {
+    const lines: string[] = []
+    for (const command of commands) {
+      lines.push(command)
+      lines.push('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }')
+    }
+    return {
+      command: 'powershell.exe',
+      args: ['-NoLogo', '-NoProfile', '-Command', lines.join('\n')]
+    }
+  }
+  return {
+    command: 'sh',
+    args: ['-c', commands.join(' && ')]
+  }
 }
 
 function parseSessionId(text: string): string | null {

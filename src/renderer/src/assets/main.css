@@ -4387,3 +4387,94 @@ button.job-step {
 .terminal-popped p {
   margin: 0;
 }
+
+.workers-routines {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.workers-routines.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.setup-failed {
+  color: var(--bad);
+}
+
+.routines-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.routines-heading {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.routines-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.routines-setup textarea {
+  width: 100%;
+  min-height: 0;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.routines-setup-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.routines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.routines-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: 0;
+}
+
+.routines-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.routines-form input,
+.routines-form textarea {
+  width: 100%;
+}
+
+.routines-form-actions {
+  display: flex;
+  gap: 8px;
+}

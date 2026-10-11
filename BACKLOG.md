@@ -22,6 +22,7 @@ Ordered. The top item is the next one to build.
 - Free layout: resizable and hidable panels, a workers focus mode, and a grid of terminal panes.
 - Worktrees in the sidebar: name them, open several, and work in each one.
 - More than one window, and a terminal in a window of its own.
+- Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
 
 ## Next
 

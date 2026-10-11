@@ -58,6 +58,8 @@ export interface JobRecord {
   group?: string
   /** Id of the lead chat message whose turn created this job. */
   leadMessage?: string
+  /** Name of the routine that started this job, when it did. */
+  routine?: string
   error?: string
 }
 
@@ -85,6 +87,8 @@ interface InternalJob {
   group?: string
   /** Id of the lead chat message whose turn created this job. */
   leadMessage?: string
+  /** Name of the routine that started this job, when it did. */
+  routine?: string
   error?: string
   /** Project folder when the job was submitted. */
   project: string
@@ -208,7 +212,7 @@ export class Orchestrator {
     prompt: string,
     provider?: ProviderId,
     access?: JobAccess | boolean,
-    extra?: { group?: string; leadMessage?: string }
+    extra?: { group?: string; leadMessage?: string; routine?: string }
   ): JobRecord {
     const granted = submitAccess(access)
     const job: InternalJob = {
@@ -228,7 +232,8 @@ export class Orchestrator {
       stepsDropped: 0,
       ...(granted !== 'read' ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
-      ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {})
+      ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {}),
+      ...(extra?.routine !== undefined ? { routine: extra.routine } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -935,6 +940,7 @@ function copy(job: InternalJob): JobRecord {
   if (job.change !== undefined) record.change = job.change
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
+  if (job.routine !== undefined) record.routine = job.routine
   return record
 }
 
@@ -975,7 +981,8 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     ...(access !== 'read' ? { edit: true } : {}),
     ...(record.change !== undefined ? { change: record.change } : {}),
     ...(record.group !== undefined ? { group: record.group } : {}),
-    ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {})
+    ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {}),
+    ...(record.routine !== undefined ? { routine: record.routine } : {})
   }
 }
 

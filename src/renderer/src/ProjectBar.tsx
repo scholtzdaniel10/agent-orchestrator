@@ -569,14 +569,20 @@ function WorktreesSection({
               titleMono={!named}
               subtitle={null}
               stats={
-                noChanges ? (
-                  <span>no changes yet</span>
-                ) : (
-                  <span>
-                    <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
-                    <span className="stat-del">{`−${String(item.deletions)}`}</span>
-                  </span>
-                )
+                <>
+                  {item.setup === 'running' ? <span>setting up…</span> : null}
+                  {item.setup === 'failed' ? (
+                    <span className="setup-failed">setup failed</span>
+                  ) : null}
+                  {noChanges ? (
+                    <span>no changes yet</span>
+                  ) : (
+                    <span>
+                      <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
+                      <span className="stat-del">{`−${String(item.deletions)}`}</span>
+                    </span>
+                  )}
+                </>
               }
               terminals={countTerminals(terminals, item.id)}
               claudeAvailable={claudeAvailable}

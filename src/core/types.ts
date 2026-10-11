@@ -1,10 +1,21 @@
 export type ProviderId = 'claude' | 'cursor'
+export type TerminalProvider = ProviderId | 'shell'
 export type JobType = 'planning' | 'debugging' | 'review' | 'refactor' | 'boilerplate'
 export type JobAccess = 'read' | 'edit' | 'full'
 export type VersionStatus = 'tested' | 'newer' | 'older' | 'unknown'
 
 export function isJobAccess(value: unknown): value is JobAccess {
   return value === 'read' || value === 'edit' || value === 'full'
+}
+
+export function isJobType(value: unknown): value is JobType {
+  return (
+    value === 'planning' ||
+    value === 'debugging' ||
+    value === 'review' ||
+    value === 'refactor' ||
+    value === 'boilerplate'
+  )
 }
 
 /** A record with `edit: true` and no `access` is `edit`; neither is `read`. */
@@ -175,7 +186,7 @@ export interface LeadChat {
 /** One interactive CLI session, shown as a terminal tab. */
 export interface TerminalInfo {
   id: string
-  provider: ProviderId
+  provider: TerminalProvider
   /** Short label, e.g. "claude 1". */
   title: string
   status: 'running' | 'exited'
@@ -209,6 +220,8 @@ export interface ChangeSet {
   deletions: number
   /** Saved display name; absent when the worktree was never named. */
   name?: string
+  /** Hand-created worktree: setup commands are running, failed, or finished. */
+  setup?: 'running' | 'failed' | 'done'
 }
 
 /** The folder jobs and terminals work in. */

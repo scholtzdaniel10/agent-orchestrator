@@ -15,6 +15,7 @@ import { CursorAdapter } from '../core/providers/cursor'
 import { TESTED_VERSIONS } from '../core/providers/versions'
 import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
+import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
@@ -152,6 +153,7 @@ app.whenReady().then(async () => {
     root: process.env.ORCH_WORKTREES ?? join(app.getPath('home'), '.orchestrator', 'wt')
   })
   const github = new Github(runGh)
+  const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
 
   async function listedChanges(project: string): Promise<ChangeSet[]> {
     const listed = await worktrees.list(project)
@@ -175,6 +177,8 @@ app.whenReady().then(async () => {
               deletions: 0
             }
       if (row !== undefined && row.name !== '') entry.name = row.name
+      const setup = setupByChange.get(id)
+      if (setup !== undefined) entry.setup = setup
       merged.push(entry)
     }
     merged.sort((a, b) => {
@@ -213,6 +217,12 @@ app.whenReady().then(async () => {
     }
   })
   await orch.init()
+  const routines = new Routines({
+    store: shared,
+    project: projectDir,
+    submit: (type, prompt, provider, access, extra) =>
+      orch.submit(type, prompt, provider, access, extra)
+  })
 
   const leadRef: { current: Lead | null } = { current: null }
   const started = await startBridge(
@@ -286,6 +296,13 @@ app.whenReady().then(async () => {
     // The orchestrator frees a plan just after a job's last update; look again once it has,
     // or the plan stays "busy" on screen until something else happens.
     setTimeout(publishPlans, 0)
+    if (job.status === 'done') {
+      try {
+        routines.onJobFinished(job)
+      } catch (err: unknown) {
+        console.error(err)
+      }
+    }
   }
 
   function publishLead(message: LeadMessage, chatId: string | null): void {
@@ -431,6 +448,7 @@ app.whenReady().then(async () => {
             })
           }
           opts = { cwd: created.path, change: created.id }
+          startWorktreeSetup(created, cols as number, rows as number)
         } else {
           const id = requireChangeId(worktree)
           const folder = worktrees.folder(id)
@@ -595,7 +613,10 @@ app.whenReady().then(async () => {
     const changeId = requireChangeId(id)
     await terms.closeChange(changeId)
     const result = await worktrees.merge(projectDir(), changeId)
-    if (result.ok) shared.deleteWorktreeName(changeId)
+    if (result.ok) {
+      shared.deleteWorktreeName(changeId)
+      setupByChange.delete(changeId)
+    }
     pushChanges()
     return result
   })
@@ -604,6 +625,7 @@ app.whenReady().then(async () => {
     await terms.closeChange(changeId)
     await worktrees.discard(projectDir(), changeId)
     shared.deleteWorktreeName(changeId)
+    setupByChange.delete(changeId)
     pushChanges()
   })
   ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
@@ -619,6 +641,7 @@ app.whenReady().then(async () => {
       name: label,
       created_at: Date.now()
     })
+    startWorktreeSetup(label !== '' ? { ...created, name: label } : created, 100, 30)
     const list = await listedChanges(projectDir())
     pushChanges()
     const entry = list.find((change) => change.id === created.id)
@@ -695,11 +718,63 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('terminals:poppedOut', () => poppedOut.list())
 
+  ipcMain.handle('setup:get', () => shared.getProjectSetup(projectDir()))
+  ipcMain.handle('setup:set', (_event, commands: unknown) => {
+    shared.setProjectSetup(projectDir(), parseSetupCommands(commands))
+  })
+  ipcMain.handle('routines:list', () => routines.list())
+  ipcMain.handle('routines:save', (_event, value: unknown) => {
+    routines.save(value)
+  })
+  ipcMain.handle('routines:remove', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('invalid routine id')
+    routines.remove(id)
+  })
+  ipcMain.handle('routines:run', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) {
+      throw new Error('invalid routine id')
+    }
+    return routines.run(id)
+  })
+
+  function startWorktreeSetup(
+    change: { id: string; path: string; name?: string },
+    cols: number,
+    rows: number
+  ): void {
+    const commands = shared.getProjectSetup(projectDir())
+    if (commands.length === 0) return
+    const label = change.name !== undefined && change.name !== '' ? change.name : change.id
+    setupByChange.set(change.id, 'running')
+    try {
+      terms.openShell({
+        cwd: change.path,
+        change: change.id,
+        title: `setup · ${label}`,
+        commands,
+        cols,
+        rows
+      })
+    } catch (err: unknown) {
+      console.error(err)
+      setupByChange.set(change.id, 'failed')
+    }
+  }
+
   terms.onData((id, data) => {
     broadcast('terminals:data', id, data)
   })
   terms.onUpdate((info, removed) => {
     if (removed) closePoppedWindow(info.id)
+    if (info.provider === 'shell' && info.change !== undefined) {
+      if (removed && setupByChange.get(info.change) === 'running') {
+        setupByChange.set(info.change, 'failed')
+        pushChanges()
+      } else if (!removed && info.status === 'exited') {
+        setupByChange.set(info.change, info.exitCode === 0 ? 'done' : 'failed')
+        pushChanges()
+      }
+    }
     broadcast('terminals:update', info, removed)
   })
 
@@ -798,6 +873,19 @@ function requireChangeId(id: unknown): string {
 function requireTerminalId(id: unknown): string {
   if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid terminal id')
   return id
+}
+
+function parseSetupCommands(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('commands must be an array')
+  if (value.length > 5) throw new Error('at most 5 setup commands')
+  const out: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string' || item.length < 1 || item.length > 300 || /[\r\n]/.test(item)) {
+      throw new Error('each command must be 1 to 300 characters on one line')
+    }
+    out.push(item)
+  }
+  return out
 }
 
 function parseWorktreeName(value: unknown, required: boolean): string | undefined {

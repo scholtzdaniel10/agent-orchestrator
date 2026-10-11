@@ -17,6 +17,7 @@ import {
   requestLayoutFit,
   type PaneLayoutId
 } from './layout'
+import Routines from './Routines'
 import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
@@ -149,6 +150,7 @@ function jobMetaParts(job: JobRecord): ReactNode[] {
   const parts: ReactNode[] = [job.type]
   if (job.group !== undefined) parts.push('compare')
   if (job.leadMessage !== undefined) parts.push('from lead')
+  if (job.routine !== undefined) parts.push('routine')
   const mark = accessMark(job)
   if (mark !== null) parts.push(mark)
   if (job.reason) parts.push(<span className="job-reason-mono">{job.reason}</span>)
@@ -354,7 +356,7 @@ function Workers({
   const [worker, setWorker] = useState<PlanChoice>('auto')
   const [access, setAccess] = useState<JobAccess>(loadAccess)
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
-  const [stage, setStage] = useState<'jobs' | 'changes' | 'panes'>('jobs')
+  const [stage, setStage] = useState<'jobs' | 'changes' | 'routines' | 'panes'>('jobs')
   const [slots, setSlots] = useState(() => emptySlots(paneLayout))
   const [focusedIndex, setFocusedIndex] = useState(0)
   const [opening, setOpening] = useState(false)
@@ -430,7 +432,14 @@ function Workers({
     (worker === 'both' && !bothReady)
   const submitDisabled = promptEmpty || noPlanReady || choiceBlocked
   const focusedId = slots[focusedIndex] ?? null
-  const tabActive = stage === 'panes' ? (focusedId ?? '') : stage === 'changes' ? 'changes' : 'jobs'
+  const tabActive =
+    stage === 'panes'
+      ? (focusedId ?? '')
+      : stage === 'changes'
+        ? 'changes'
+        : stage === 'routines'
+          ? 'routines'
+          : 'jobs'
 
   async function stopJob(id: string): Promise<void> {
     if (stoppingRef.current) return
@@ -568,8 +577,9 @@ function Workers({
 
   const showJobs = stage === 'jobs'
   const showChanges = stage === 'changes'
+  const showRoutines = stage === 'routines'
 
-  function showMain(tab: 'jobs' | 'changes'): void {
+  function showMain(tab: 'jobs' | 'changes' | 'routines'): void {
     setStage(tab)
   }
 
@@ -614,7 +624,7 @@ function Workers({
         paneLayout={paneLayout}
         opening={opening}
         onSelect={(id, source) => {
-          if (id === 'jobs' || id === 'changes') {
+          if (id === 'jobs' || id === 'changes' || id === 'routines') {
             showMain(id)
             return
           }
@@ -880,6 +890,19 @@ function Workers({
             opening={opening}
             onOpenHere={(provider, changeId) => {
               void openProvider(provider, changeId, { cols: 120, rows: 30 })
+            }}
+          />
+        </div>
+        <div
+          className={showRoutines ? 'workers-routines' : 'workers-routines is-hidden'}
+          inert={showRoutines ? undefined : true}
+        >
+          <Routines
+            project={project}
+            onRun={(job) => {
+              onJob(job)
+              setSelectedJobId(job.id)
+              setStage('jobs')
             }}
           />
         </div>

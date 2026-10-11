@@ -214,7 +214,7 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 })
     expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
       name: 'terminals'
     })
@@ -222,6 +222,14 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
       check.prepare(`SELECT name FROM sqlite_master WHERE name = 'worktree_names'`).get()
     ).toEqual({
       name: 'worktree_names'
+    })
+    expect(
+      check.prepare(`SELECT name FROM sqlite_master WHERE name = 'project_setup'`).get()
+    ).toEqual({
+      name: 'project_setup'
+    })
+    expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'routines'`).get()).toEqual({
+      name: 'routines'
     })
     const cols = check
       .prepare(`SELECT name FROM pragma_table_info('terminals') ORDER BY name`)
@@ -467,6 +475,42 @@ test('worktree names set, list newest first per project, rename, and delete', as
     expect(store.worktreeNames('/a').map((row) => row.id)).toEqual(['aaaaaaaa'])
     store.deleteWorktreeName('missing')
     expect(store.worktreeNames('/a')).toHaveLength(1)
+  })
+})
+
+test('project setup upserts a JSON command list per project', async () => {
+  await withStore((store) => {
+    expect(store.getProjectSetup('/a')).toEqual([])
+    store.setProjectSetup('/a', ['pnpm install', 'pnpm build'])
+    store.setProjectSetup('/b', ['echo hi'])
+    expect(store.getProjectSetup('/a')).toEqual(['pnpm install', 'pnpm build'])
+    expect(store.getProjectSetup('/b')).toEqual(['echo hi'])
+    store.setProjectSetup('/a', ['pnpm test'])
+    expect(store.getProjectSetup('/a')).toEqual(['pnpm test'])
+    store.setProjectSetup('/a', [])
+    expect(store.getProjectSetup('/a')).toEqual([])
+  })
+})
+
+test('routines list in position order, upsert, and delete per project', async () => {
+  await withStore((store) => {
+    store.saveRoutine({ id: 'r2', project: '/a', position: 1, data: '{"name":"two"}' })
+    store.saveRoutine({ id: 'r1', project: '/a', position: 0, data: '{"name":"one"}' })
+    store.saveRoutine({ id: 'r3', project: '/b', position: 0, data: '{"name":"other"}' })
+    expect(store.listRoutines('/a').map((row) => row.id)).toEqual(['r1', 'r2'])
+    expect(store.listRoutines('/a')[0]).toMatchObject({
+      project: '/a',
+      position: 0,
+      data: '{"name":"one"}'
+    })
+    expect(store.listRoutines('/b').map((row) => row.id)).toEqual(['r3'])
+    store.saveRoutine({ id: 'r1', project: '/a', position: 0, data: '{"name":"one-again"}' })
+    expect(store.listRoutines('/a')[0].data).toBe('{"name":"one-again"}')
+    store.deleteRoutine('r1')
+    expect(store.listRoutines('/a').map((row) => row.id)).toEqual(['r2'])
+    store.deleteRoutine('missing')
+    expect(store.listRoutines('/a')).toHaveLength(1)
+    expect(store.listRoutines('/missing')).toEqual([])
   })
 })
 
