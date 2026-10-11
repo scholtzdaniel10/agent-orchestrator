@@ -63,6 +63,34 @@ You are responsible for staying within each provider's terms.
 
 Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**. You need the `claude` and/or Cursor `agent` CLI installed and signed in. Updates download in the background and install themselves when you quit.
 
+## Command line
+
+`legate` drives the same jobs, changes, and routines as the app from a terminal.
+
+In a checkout, run `pnpm cli -- status`. In an installed copy, add the `resources\bin` folder to PATH.
+
+```
+legate status
+legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor]
+                      [--access read|edit|full] [--json] [--quiet]
+legate jobs [--limit N]
+legate show <job-id>
+legate changes
+legate diff <change-id>
+legate merge <change-id>
+legate discard <change-id>
+legate pr "<title>" [--body "<text>"]
+legate worktree create [name]
+legate worktree list
+legate worktree path <change-id-or-name>
+legate routine list
+legate routine run "<name>"
+legate --help | -h
+legate --version | -v
+```
+
+The app and the command share one database; a job started from the command line shows in the app the next time the app loads that project.
+
 ## Develop
 
 Requires Node 22+ and pnpm.

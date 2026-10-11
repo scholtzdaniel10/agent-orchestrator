@@ -1,0 +1,10 @@
+#!/bin/sh
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+CLI="$HERE/../../../app.asar/out/main/cli.js"
+if [ "$(uname -s)" = "Darwin" ]; then
+  EXEC="$HERE/../../../../MacOS/Legate"
+else
+  EXEC="$HERE/../../../../agent-orchestrator"
+fi
+export ELECTRON_RUN_AS_NODE=1
+exec "$EXEC" "$CLI" "$@"

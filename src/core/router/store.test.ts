@@ -552,3 +552,22 @@ test('a corrupt data row is skipped', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('a busy database waits up to 5 seconds', () => {
+  const store = new Store(':memory:')
+  const db = (store as unknown as { db: DatabaseSync }).db
+  expect(db.prepare('PRAGMA busy_timeout').get()).toEqual({ timeout: 5000 })
+  store.close()
+})
+
+test('jobsNewest returns the newest jobs first, with their times', () => {
+  const store = new Store(':memory:')
+  store.saveJob('/p', 10, job({ id: 'old' }))
+  store.saveJob('/p', 30, job({ id: 'new' }))
+  store.saveJob('/p', 20, job({ id: 'mid' }))
+  expect(store.jobsNewest('/p', 2).map((row) => [row.job.id, row.createdAt])).toEqual([
+    ['new', 30],
+    ['mid', 20]
+  ])
+  store.close()
+})

@@ -24,12 +24,14 @@ Ordered. The top item is the next one to build.
 - More than one window, and a terminal in a window of its own.
 - Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
 - Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
+- Command line: `legate` runs the same jobs, changes, and routines from a terminal.
 
 ## Next
 
 1. Run the lead chat and a Claude job against the real CLIs from an installed build (the Cursor path is covered by `GATE_WORKERS=cursor pnpm gate worktrees`).
 2. Sign the Windows installer so SmartScreen stops warning.
 3. macOS and Linux builds.
+4. Show jobs started from the command line in the open app at once.
 
 ## Later
 
