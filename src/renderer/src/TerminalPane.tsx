@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { LAYOUT_FIT_EVENT, TOGGLE_TERMINALS_EVENT, isTerminalsShortcut } from './layout'
+import { LAYOUT_FIT_EVENT, dispatchLayoutShortcut, layoutShortcut } from './layout'
 import type { TerminalBus } from './terminal-bus'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
@@ -150,11 +150,12 @@ function TerminalPane({
     termRef.current = term
     term.options.disableStdin = exitedRef.current
     term.attachCustomKeyEventHandler((event) => {
-      if (!isTerminalsShortcut(event)) return true
+      const kind = layoutShortcut(event)
+      if (kind === null) return true
       if (event.type === 'keydown') {
         event.preventDefault()
         event.stopPropagation()
-        window.dispatchEvent(new Event(TOGGLE_TERMINALS_EVENT))
+        dispatchLayoutShortcut(kind)
       }
       return false
     })

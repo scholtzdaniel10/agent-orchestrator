@@ -78,6 +78,11 @@ function Routines({
   const [setupError, setSetupError] = useState<string | null>(null)
   const [armedId, setArmedId] = useState<string | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [setupSaving, setSetupSaving] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [runningId, setRunningId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -85,16 +90,25 @@ function Routines({
       (list) => {
         if (active) setCommands(list.join('\n'))
       },
-      () => {
-        if (active) setCommands('')
+      (err: unknown) => {
+        if (active) {
+          setCommands('')
+          setLoadError(errorText(err))
+        }
       }
     )
     void window.api.listRoutines().then(
       (list) => {
-        if (active) setRoutines(list)
+        if (!active) return
+        setRoutines(list)
+        setLoadError(null)
+        setLoading(false)
       },
-      () => {
-        if (active) setRoutines([])
+      (err: unknown) => {
+        if (!active) return
+        setRoutines([])
+        setLoadError(errorText(err))
+        setLoading(false)
       }
     )
     return () => {
@@ -114,12 +128,15 @@ function Routines({
       .map((line) => line.trim())
       .filter((line) => line !== '')
       .slice(0, 5)
+    setSetupSaving(true)
     try {
       await window.api.setProjectSetup(lines)
       setCommands(lines.join('\n'))
       setSetupError(null)
     } catch (err: unknown) {
       setSetupError(errorText(err))
+    } finally {
+      setSetupSaving(false)
     }
   }
 
@@ -130,7 +147,8 @@ function Routines({
 
   async function saveDraft(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (draft === null) return
+    if (draft === null || saving) return
+    setSaving(true)
     try {
       const routine: Routine = {
         id: draft.id ?? crypto.randomUUID(),
@@ -147,16 +165,22 @@ function Routines({
       setFormError(null)
     } catch (err: unknown) {
       setFormError(errorText(err))
+    } finally {
+      setSaving(false)
     }
   }
 
   async function run(id: string): Promise<void> {
+    if (runningId !== null) return
+    setRunningId(id)
     try {
       const job = await window.api.runRoutine(id)
       setRunError(null)
       onRun(job)
     } catch (err: unknown) {
       setRunError(errorText(err))
+    } finally {
+      setRunningId(null)
     }
   }
 
@@ -209,8 +233,13 @@ function Routines({
           <p className="hint">
             Runs in each worktree you create by hand, in a terminal you can watch.
           </p>
-          <button type="button" className="btn btn-primary" onClick={() => void saveSetup()}>
-            Save
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={setupSaving}
+            onClick={() => void saveSetup()}
+          >
+            {setupSaving ? 'Saving…' : 'Save'}
           </button>
         </div>
         {setupTooLong ? (
@@ -226,50 +255,56 @@ function Routines({
       </section>
 
       <section className="routines-list" aria-label="Routines">
-        {routines.length === 0 && draft === null ? (
+        {loading ? <p className="hint">Loading routines…</p> : null}
+        {loadError !== null ? (
+          <p className="field-error" role="alert">
+            {loadError}
+          </p>
+        ) : null}
+        {!loading && routines.length === 0 && draft === null ? (
           <p className="hint">
             A routine is a saved job you run with one click, or after a job of a chosen type
             finishes.
           </p>
-        ) : (
-          routines.map((routine) => (
-            <div key={routine.id} className="job-row">
-              <div className="job-main">
-                <span className="job-title">{routine.name}</span>
-              </div>
-              <div className="job-meta">
-                {`${routine.type} · ${routine.worker} · ${routine.access}${afterLabel(routine.after)}`}
-              </div>
-              <div className="routines-row-actions">
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-compact"
-                  onClick={() => void run(routine.id)}
-                >
-                  Run
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-compact"
-                  onClick={() => startEdit(routine)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={
-                    armedId === routine.id
-                      ? 'btn btn-quiet btn-compact is-danger-label'
-                      : 'btn btn-quiet btn-compact'
-                  }
-                  onClick={() => void remove(routine.id)}
-                >
-                  {armedId === routine.id ? 'Delete?' : 'Delete'}
-                </button>
-              </div>
+        ) : null}
+        {routines.map((routine) => (
+          <div key={routine.id} className="job-row">
+            <div className="job-main">
+              <span className="job-title">{routine.name}</span>
             </div>
-          ))
-        )}
+            <div className="job-meta">
+              {`${routine.type} · ${routine.worker} · ${routine.access}${afterLabel(routine.after)}`}
+            </div>
+            <div className="routines-row-actions">
+              <button
+                type="button"
+                className="btn btn-quiet btn-compact"
+                disabled={runningId !== null}
+                onClick={() => void run(routine.id)}
+              >
+                {runningId === routine.id ? 'Running…' : 'Run'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-compact"
+                onClick={() => startEdit(routine)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className={
+                  armedId === routine.id
+                    ? 'btn btn-quiet btn-compact is-danger-label'
+                    : 'btn btn-quiet btn-compact'
+                }
+                onClick={() => void remove(routine.id)}
+              >
+                {armedId === routine.id ? 'Delete?' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        ))}
         {runError !== null ? (
           <p className="field-error" role="alert">
             {runError}
@@ -361,8 +396,8 @@ function Routines({
               </select>
             </div>
             <div className="routines-form-actions">
-              <button type="submit" className="btn btn-primary">
-                Save
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
               <button
                 type="button"

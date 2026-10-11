@@ -4,6 +4,7 @@ Ordered. The top item is the next one to build.
 
 ## Done
 
+- Workspace-first window: terminals in the centre, a right-hand panel for Lead, Jobs, Changes, Routines, Usage and Activity, and a status bar.
 - Worker access: read, edit, or full. Full access may run commands, still in a worktree; the person sets a ceiling for jobs the lead hands out.
 - Saved chats and jobs, per project, with past chats listed in the sidebar.
 - Parallel jobs per plan (`maxParallel` in `rules.json`).

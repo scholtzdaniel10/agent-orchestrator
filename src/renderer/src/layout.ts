@@ -1,14 +1,14 @@
 export const LAYOUT_KEY = 'orch.layout'
 export const LAYOUT_FIT_EVENT = 'layoutfit'
-export const TOGGLE_TERMINALS_EVENT = 'toggleterminals'
+export const LAYOUT_SHORTCUT_EVENT = 'layoutshortcut'
 
 export const MIN_SIDEBAR = 160
-export const MIN_LEAD = 280
-export const MIN_USAGE = 200
-export const MIN_FLOW = 96
+export const MAX_SIDEBAR = 480
+export const MIN_DRAWER = 320
+export const MAX_DRAWER = 720
 export const MIN_WORKERS = 360
 export const HEADER_HEIGHT = 40
-export const FLOW_REST = 80
+export const STATUS_HEIGHT = 28
 
 export const PANE_LAYOUT_IDS = [
   'auto',
@@ -45,25 +45,37 @@ export const PANE_COUNTS: Record<ConcretePaneLayoutId, number> = {
   '6-grid': 6
 }
 
-export interface LayoutSizes {
-  sidebar: number
-  lead: number
-  usage: number
-  flow: number
+export const DRAWER_TABS = ['lead', 'jobs', 'changes', 'routines', 'usage', 'activity'] as const
+
+export type DrawerTab = (typeof DRAWER_TABS)[number]
+
+export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
+  lead: 'Lead',
+  jobs: 'Jobs',
+  changes: 'Changes',
+  routines: 'Routines',
+  usage: 'Usage',
+  activity: 'Activity'
 }
 
-export interface PanelVisibility {
-  projects: boolean
-  flow: boolean
-  lead: boolean
-  usage: boolean
+export type LayoutShortcut = 'drawer' | 'sidebar' | DrawerTab
+
+export interface LayoutSizes {
+  sidebar: number
+  drawer: number
+}
+
+export interface LayoutFlags {
+  sidebarShown: boolean
+  drawerOpen: boolean
 }
 
 export interface LayoutState {
   sizes: LayoutSizes
-  shown: PanelVisibility
+  sidebarShown: boolean
+  drawerOpen: boolean
+  drawerTab: DrawerTab
   paneLayout: PaneLayoutId
-  terminalsMode: boolean
 }
 
 export interface LayoutStorage {
@@ -74,34 +86,29 @@ export interface LayoutStorage {
 export type PaneSlots = (string | null)[]
 
 export type SizeKey = keyof LayoutSizes
-export type PanelKey = keyof PanelVisibility
-export type RowMode = 'wide' | 'medium' | 'narrow'
 
 export const DEFAULT_SIZES: LayoutSizes = {
-  sidebar: 200,
-  lead: 360,
-  usage: 230,
-  flow: 190
-}
-
-export const DEFAULT_SHOWN: PanelVisibility = {
-  projects: true,
-  flow: true,
-  lead: true,
-  usage: true
+  sidebar: 240,
+  drawer: 420
 }
 
 export const DEFAULT_LAYOUT: LayoutState = {
   sizes: { ...DEFAULT_SIZES },
-  shown: { ...DEFAULT_SHOWN },
-  paneLayout: 'auto',
-  terminalsMode: false
+  sidebarShown: true,
+  drawerOpen: true,
+  drawerTab: 'lead',
+  paneLayout: 'auto'
 }
 
 const PANE_LAYOUT_SET: ReadonlySet<string> = new Set(PANE_LAYOUT_IDS)
+const DRAWER_TAB_SET: ReadonlySet<string> = new Set(DRAWER_TABS)
 
 export function isPaneLayout(value: string): value is PaneLayoutId {
   return PANE_LAYOUT_SET.has(value)
+}
+
+export function isDrawerTab(value: string): value is DrawerTab {
+  return DRAWER_TAB_SET.has(value)
 }
 
 export function paneCount(layout: PaneLayoutId, terminalCount = 0): number {
@@ -126,15 +133,9 @@ export function resolvedPaneLayout(
   return layout
 }
 
-export function rowMode(width: number): RowMode {
-  if (width < 700) return 'narrow'
-  if (width < 900) return 'medium'
-  return 'wide'
-}
-
-function asNumber(value: unknown, fallback: number, min: number): number {
+function asNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.max(min, Math.round(value))
+  return Math.min(max, Math.max(min, Math.round(value)))
 }
 
 function asBool(value: unknown, fallback: boolean): boolean {
@@ -151,36 +152,36 @@ export function parseLayout(raw: unknown): LayoutState {
   if (root === null) {
     return {
       sizes: { ...DEFAULT_SIZES },
-      shown: { ...DEFAULT_SHOWN },
-      paneLayout: DEFAULT_LAYOUT.paneLayout,
-      terminalsMode: DEFAULT_LAYOUT.terminalsMode
+      sidebarShown: DEFAULT_LAYOUT.sidebarShown,
+      drawerOpen: DEFAULT_LAYOUT.drawerOpen,
+      drawerTab: DEFAULT_LAYOUT.drawerTab,
+      paneLayout: DEFAULT_LAYOUT.paneLayout
     }
   }
 
   const sizesRaw = asRecord(root.sizes)
   const sizes: LayoutSizes = {
-    sidebar: asNumber(sizesRaw?.sidebar, DEFAULT_SIZES.sidebar, MIN_SIDEBAR),
-    lead: asNumber(sizesRaw?.lead, DEFAULT_SIZES.lead, MIN_LEAD),
-    usage: asNumber(sizesRaw?.usage, DEFAULT_SIZES.usage, MIN_USAGE),
-    flow: asNumber(sizesRaw?.flow, DEFAULT_SIZES.flow, MIN_FLOW)
+    sidebar: asNumber(sizesRaw?.sidebar, DEFAULT_SIZES.sidebar, MIN_SIDEBAR, MAX_SIDEBAR),
+    drawer: asNumber(sizesRaw?.drawer, DEFAULT_SIZES.drawer, MIN_DRAWER, MAX_DRAWER)
   }
 
   const shownRaw = asRecord(root.shown)
-  const shown: PanelVisibility = {
-    projects: asBool(shownRaw?.projects, DEFAULT_SHOWN.projects),
-    flow: asBool(shownRaw?.flow, DEFAULT_SHOWN.flow),
-    lead: asBool(shownRaw?.lead, DEFAULT_SHOWN.lead),
-    usage: asBool(shownRaw?.usage, DEFAULT_SHOWN.usage)
-  }
+  const sidebarShown = asBool(
+    root.sidebarShown,
+    asBool(shownRaw?.projects, DEFAULT_LAYOUT.sidebarShown)
+  )
+  const drawerOpen = asBool(root.drawerOpen, DEFAULT_LAYOUT.drawerOpen)
+  const drawerTab =
+    typeof root.drawerTab === 'string' && isDrawerTab(root.drawerTab)
+      ? root.drawerTab
+      : DEFAULT_LAYOUT.drawerTab
 
   const paneLayout =
     typeof root.paneLayout === 'string' && isPaneLayout(root.paneLayout)
       ? root.paneLayout
       : DEFAULT_LAYOUT.paneLayout
 
-  const terminalsMode = asBool(root.terminalsMode, DEFAULT_LAYOUT.terminalsMode)
-
-  return { sizes, shown, paneLayout, terminalsMode }
+  return { sizes, sidebarShown, drawerOpen, drawerTab, paneLayout }
 }
 
 function liveStorage(): LayoutStorage {
@@ -209,18 +210,20 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
     if (raw === null) {
       return {
         sizes: { ...DEFAULT_SIZES },
-        shown: { ...DEFAULT_SHOWN },
-        paneLayout: DEFAULT_LAYOUT.paneLayout,
-        terminalsMode: DEFAULT_LAYOUT.terminalsMode
+        sidebarShown: DEFAULT_LAYOUT.sidebarShown,
+        drawerOpen: DEFAULT_LAYOUT.drawerOpen,
+        drawerTab: DEFAULT_LAYOUT.drawerTab,
+        paneLayout: DEFAULT_LAYOUT.paneLayout
       }
     }
     return parseLayout(JSON.parse(raw) as unknown)
   } catch {
     return {
       sizes: { ...DEFAULT_SIZES },
-      shown: { ...DEFAULT_SHOWN },
-      paneLayout: DEFAULT_LAYOUT.paneLayout,
-      terminalsMode: DEFAULT_LAYOUT.terminalsMode
+      sidebarShown: DEFAULT_LAYOUT.sidebarShown,
+      drawerOpen: DEFAULT_LAYOUT.drawerOpen,
+      drawerTab: DEFAULT_LAYOUT.drawerTab,
+      paneLayout: DEFAULT_LAYOUT.paneLayout
     }
   }
 }
@@ -231,9 +234,10 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
       LAYOUT_KEY,
       JSON.stringify({
         sizes: state.sizes,
-        shown: state.shown,
-        paneLayout: state.paneLayout,
-        terminalsMode: state.terminalsMode
+        sidebarShown: state.sidebarShown,
+        drawerOpen: state.drawerOpen,
+        drawerTab: state.drawerTab,
+        paneLayout: state.paneLayout
       })
     )
   } catch {
@@ -241,91 +245,45 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
   }
 }
 
-function takeFromStart(parts: number[], mins: number[], need: number): number[] {
-  const next = parts.slice()
-  let rest = need
-  for (let i = 0; i < next.length && rest > 0; i += 1) {
-    const extra = next[i] - mins[i]
-    if (extra <= 0) continue
-    const take = Math.min(extra, rest)
-    next[i] -= take
-    rest -= take
-  }
-  return next
+export function drawerOverlays(
+  sizes: LayoutSizes,
+  viewport: { width: number },
+  flags: LayoutFlags
+): boolean {
+  if (!flags.drawerOpen) return false
+  const width = Math.max(1, Math.round(viewport.width))
+  const sidebar = flags.sidebarShown ? sizes.sidebar : 0
+  return sidebar + MIN_WORKERS + sizes.drawer > width
 }
 
 export function clampSizes(
   sizes: LayoutSizes,
   viewport: { width: number; height: number },
-  shown: PanelVisibility
+  flags: LayoutFlags
 ): LayoutSizes {
   const width = Math.max(1, Math.round(viewport.width))
-  const height = Math.max(1, Math.round(viewport.height))
-  const maxFlow = Math.max(MIN_FLOW, height - HEADER_HEIGHT - FLOW_REST)
-  const flow = shown.flow
-    ? Math.min(maxFlow, Math.max(MIN_FLOW, Math.round(sizes.flow)))
-    : Math.max(MIN_FLOW, Math.round(sizes.flow))
+  let sidebar = asNumber(sizes.sidebar, DEFAULT_SIZES.sidebar, MIN_SIDEBAR, MAX_SIDEBAR)
+  const drawer = asNumber(sizes.drawer, DEFAULT_SIZES.drawer, MIN_DRAWER, MAX_DRAWER)
 
-  let sidebar = Math.max(MIN_SIDEBAR, Math.round(sizes.sidebar))
-  let lead = Math.max(MIN_LEAD, Math.round(sizes.lead))
-  let usage = Math.max(MIN_USAGE, Math.round(sizes.usage))
-
-  const mode = rowMode(width)
-  const parts: number[] = []
-  const mins: number[] = []
-  if (shown.projects) {
-    parts.push(sidebar)
-    mins.push(MIN_SIDEBAR)
-  }
-  if (mode !== 'narrow' && shown.lead) {
-    parts.push(lead)
-    mins.push(MIN_LEAD)
-  }
-  if (mode === 'wide' && shown.usage) {
-    parts.push(usage)
-    mins.push(MIN_USAGE)
-  }
-
-  const used = parts.reduce((sum, value) => sum + value, 0)
-  const leftover = width - used
-  if (leftover < MIN_WORKERS && parts.length > 0) {
-    const fitted = takeFromStart(parts, mins, MIN_WORKERS - leftover)
-    let index = 0
-    if (shown.projects) {
-      sidebar = fitted[index]
-      index += 1
-    }
-    if (mode !== 'narrow' && shown.lead) {
-      lead = fitted[index]
-      index += 1
-    }
-    if (mode === 'wide' && shown.usage) {
-      usage = fitted[index]
+  if (flags.sidebarShown) {
+    const overlay = drawerOverlays({ sidebar, drawer }, { width }, flags)
+    const reserved = overlay || !flags.drawerOpen ? 0 : drawer
+    const leftover = width - sidebar - reserved
+    if (leftover < MIN_WORKERS) {
+      sidebar = Math.max(MIN_SIDEBAR, sidebar - (MIN_WORKERS - leftover))
     }
   }
 
-  if (mode === 'narrow' && shown.lead) {
-    const cap = Math.max(MIN_LEAD, width - (shown.projects ? sidebar : 0))
-    lead = Math.min(lead, cap)
-  }
-  if (mode !== 'wide' && shown.usage) {
-    const cap = Math.max(MIN_USAGE, width - (shown.projects ? sidebar : 0))
-    usage = Math.min(usage, cap)
-  }
-
-  return { sidebar, lead, usage, flow }
+  return { sidebar, drawer }
 }
 
 export function maxSize(
   key: SizeKey,
   sizes: LayoutSizes,
   viewport: { width: number; height: number },
-  shown: PanelVisibility
+  flags: LayoutFlags
 ): number {
-  if (key === 'flow') {
-    return Math.max(MIN_FLOW, Math.round(viewport.height) - HEADER_HEIGHT - FLOW_REST)
-  }
-  return clampSizes({ ...sizes, [key]: 10_000 }, viewport, shown)[key]
+  return clampSizes({ ...sizes, [key]: 10_000 }, viewport, flags)[key]
 }
 
 export function emptySlots(layout: PaneLayoutId, terminalCount = 0): PaneSlots {
@@ -429,20 +387,39 @@ export function requestLayoutFit(): void {
   window.dispatchEvent(new Event(LAYOUT_FIT_EVENT))
 }
 
-export function isTerminalsShortcut(event: {
-  key: string
+export function dispatchLayoutShortcut(kind: LayoutShortcut): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent<LayoutShortcut>(LAYOUT_SHORTCUT_EVENT, { detail: kind }))
+}
+
+function modifierPlain(event: {
   ctrlKey: boolean
   shiftKey: boolean
   altKey: boolean
   metaKey: boolean
 }): boolean {
-  return (
-    (event.key === 'T' || event.key === 't') &&
-    event.ctrlKey &&
-    event.shiftKey &&
-    !event.altKey &&
-    !event.metaKey
-  )
+  return event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey
+}
+
+export function layoutShortcut(event: {
+  key: string
+  code?: string
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+  metaKey: boolean
+}): LayoutShortcut | null {
+  if (!modifierPlain(event)) return null
+  if (event.key === 'b' || event.key === 'B') return 'drawer'
+  if (event.key === '\\' || event.key === 'Backslash' || event.code === 'Backslash')
+    return 'sidebar'
+  if (event.key === '1') return 'lead'
+  if (event.key === '2') return 'jobs'
+  if (event.key === '3') return 'changes'
+  if (event.key === '4') return 'routines'
+  if (event.key === '5') return 'usage'
+  if (event.key === '6') return 'activity'
+  return null
 }
 
 /**

@@ -311,7 +311,7 @@ function LeadChat({
             <BotAvatar bot="lead" state="idle" size={40} />
             <p className="hint">
               {noPlanReady
-                ? 'No plan is ready. See Usage on the right.'
+                ? 'No plan is ready. See Usage in the panel.'
                 : 'Ask the lead for something and it will split the work across your plans.'}
             </p>
           </div>

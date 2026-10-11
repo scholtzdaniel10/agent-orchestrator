@@ -28,9 +28,6 @@ function reveal(element: HTMLElement): void {
 }
 
 function tabElementId(active: string): string {
-  if (active === 'jobs') return 'worker-tab-jobs'
-  if (active === 'changes') return 'worker-tab-changes'
-  if (active === 'routines') return 'worker-tab-routines'
   return `worker-tab-${active}`
 }
 
@@ -51,31 +48,25 @@ function TerminalTabs({
   changes,
   project,
   active,
-  changeCount,
   paneLayout,
   opening,
-  terminalsMode,
   onSelect,
   onClose,
   onOpen,
-  onPaneLayout,
-  onToggleTerminals
+  onPaneLayout
 }: {
   terminals: readonly TerminalInfo[]
   changes: readonly ChangeSet[]
   /** Active project folder; restore runs when this changes. */
   project: string
-  /** `jobs`, `changes`, `routines`, or a terminal id. */
+  /** Active terminal id, or empty when none. */
   active: string
-  changeCount: number
   paneLayout: PaneLayoutId
   opening: boolean
-  terminalsMode: boolean
   onSelect: (id: string, source: 'click' | 'arrow') => void
   onClose: (id: string) => void
   onOpen: (provider: ProviderId, worktree?: 'new') => void
   onPaneLayout: (layout: PaneLayoutId) => void
-  onToggleTerminals: () => void
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
   const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
@@ -93,21 +84,12 @@ function TerminalTabs({
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    if (terminals.length === 0) return
     event.preventDefault()
-    const prefix = terminalsMode ? 0 : 3
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    const last = terminals.length + prefix - 1
+    const last = terminals.length - 1
     if (next < 0 || next > last) return
-    const id =
-      prefix === 0
-        ? terminals[next].id
-        : next === 0
-          ? 'jobs'
-          : next === 1
-            ? 'changes'
-            : next === 2
-              ? 'routines'
-              : terminals[next - 3].id
+    const id = terminals[next].id
     onSelect(id, 'arrow')
     const element = document.getElementById(tabElementId(id))
     if (element instanceof HTMLButtonElement) element.focus()
@@ -115,58 +97,9 @@ function TerminalTabs({
 
   return (
     <div className="tab-bar">
-      <div className="tab-scroll" role="tablist" aria-label="Worker views">
-        <button
-          id="worker-tab-jobs"
-          type="button"
-          role="tab"
-          className={active === 'jobs' ? 'tab is-selected' : 'tab'}
-          aria-selected={active === 'jobs'}
-          tabIndex={active === 'jobs' ? 0 : -1}
-          onClick={() => {
-            onSelect('jobs', 'click')
-          }}
-          onKeyDown={(event) => onTabKeyDown(event, 0)}
-        >
-          Jobs
-        </button>
-        <button
-          id="worker-tab-changes"
-          type="button"
-          role="tab"
-          className={active === 'changes' ? 'tab is-selected' : 'tab'}
-          aria-selected={active === 'changes'}
-          tabIndex={active === 'changes' ? 0 : -1}
-          onClick={() => {
-            onSelect('changes', 'click')
-          }}
-          onKeyDown={(event) => onTabKeyDown(event, 1)}
-        >
-          {'Changes'}
-          {changeCount > 0 ? (
-            <>
-              {' '}
-              <span className="tab-badge">{changeCount}</span>
-            </>
-          ) : null}
-        </button>
-        <button
-          id="worker-tab-routines"
-          type="button"
-          role="tab"
-          className={active === 'routines' ? 'tab is-selected' : 'tab'}
-          aria-selected={active === 'routines'}
-          tabIndex={active === 'routines' ? 0 : -1}
-          onClick={() => {
-            onSelect('routines', 'click')
-          }}
-          onKeyDown={(event) => onTabKeyDown(event, 2)}
-        >
-          Routines
-        </button>
+      <div className="tab-scroll" role="tablist" aria-label="Terminals">
         {terminals.map((info, index) => {
           const selected = info.id === active
-          const tabIndex = index + (terminalsMode ? 0 : 3)
           const heading = terminalDisplayTitle(info, changes)
           return (
             <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
@@ -180,7 +113,7 @@ function TerminalTabs({
                 onClick={() => {
                   onSelect(info.id, 'click')
                 }}
-                onKeyDown={(event) => onTabKeyDown(event, tabIndex)}
+                onKeyDown={(event) => onTabKeyDown(event, index)}
               >
                 {info.provider === 'claude' || info.provider === 'cursor' ? (
                   <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
@@ -205,24 +138,28 @@ function TerminalTabs({
         <button
           type="button"
           className="btn btn-quiet tab-new"
-          aria-label="New claude terminal"
+          aria-label="New Claude terminal"
           disabled={opening}
           onClick={() => {
             onOpen('claude', newWorktree ? 'new' : undefined)
           }}
         >
-          <BotAvatar bot="claude" state="idle" size={16} />+ claude
+          <BotAvatar bot="claude" state="idle" size={16} />
+          <span className="tab-new-plus">+</span>
+          <span className="tab-new-label">Claude</span>
         </button>
         <button
           type="button"
           className="btn btn-quiet tab-new"
-          aria-label="New cursor terminal"
+          aria-label="New Cursor terminal"
           disabled={opening}
           onClick={() => {
             onOpen('cursor', newWorktree ? 'new' : undefined)
           }}
         >
-          <BotAvatar bot="cursor" state="idle" size={16} />+ cursor
+          <BotAvatar bot="cursor" state="idle" size={16} />
+          <span className="tab-new-plus">+</span>
+          <span className="tab-new-label">Cursor</span>
         </button>
         <button
           type="button"
@@ -262,15 +199,6 @@ function TerminalTabs({
             ))}
           </select>
         </div>
-        <button
-          type="button"
-          className="btn btn-quiet btn-compact workers-focus"
-          aria-pressed={terminalsMode}
-          title="Terminals (Ctrl+Shift+T)"
-          onClick={onToggleTerminals}
-        >
-          Terminals
-        </button>
       </div>
     </div>
   )
