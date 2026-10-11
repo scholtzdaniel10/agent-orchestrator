@@ -16,6 +16,7 @@ import FilesPanel from './FilesPanel'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
 import Routines from './Routines'
+import SetupScreen from './SetupScreen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
@@ -449,6 +450,8 @@ function App(): React.JSX.Element {
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
   const [termOpening, setTermOpening] = useState(false)
   const [leadUnseen, setLeadUnseen] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
+  const skippedSetup = useRef(false)
   const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
   const [layout] = useState(loadLayout)
   const [sizes, setSizes] = useState<LayoutSizes>(layout.sizes)
@@ -660,6 +663,25 @@ function App(): React.JSX.Element {
     return () => {
       active = false
       unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void window.api.setupStatus().then(
+      (list) => {
+        if (!active || skippedSetup.current) return
+        const git = list.find((row) => row.id === 'git')
+        const claude = list.find((row) => row.id === 'claude')
+        const cursor = list.find((row) => row.id === 'cursor')
+        const ready =
+          git?.state === 'ready' && (claude?.state === 'ready' || cursor?.state === 'ready')
+        if (!ready) setSetupOpen(true)
+      },
+      () => {}
+    )
+    return () => {
+      active = false
     }
   }, [])
 
@@ -1297,7 +1319,9 @@ function App(): React.JSX.Element {
         <section className="workspace" aria-label="Workspace">
           <ErrorBoundary className="workspace-slot">
             <Workers
-              terminals={terminals}
+              terminals={terminals.filter(
+                (info) => !(info.provider === 'shell' && info.change === undefined)
+              )}
               initialTerminalIds={initialTerminalIds}
               changes={changes}
               selectedWorktree={selectedWorktree}
@@ -1476,7 +1500,13 @@ function App(): React.JSX.Element {
                 inert={drawerTab === 'usage' ? undefined : true}
               >
                 <ErrorBoundary>
-                  <UsageMeter plans={plans} now={now} />
+                  <UsageMeter
+                    plans={plans}
+                    now={now}
+                    onOpenSetup={() => {
+                      setSetupOpen(true)
+                    }}
+                  />
                 </ErrorBoundary>
               </div>
               <div
@@ -1510,6 +1540,10 @@ function App(): React.JSX.Element {
               type="button"
               className={label.bad ? 'status-bar-item is-bad' : 'status-bar-item'}
               onClick={() => {
+                if (plan.problem !== undefined) {
+                  setSetupOpen(true)
+                  return
+                }
                 openPanel('usage')
               }}
             >
@@ -1546,6 +1580,20 @@ function App(): React.JSX.Element {
           {latestActivity === '' ? 'No activity yet' : `last: ${latestActivity}`}
         </button>
       </footer>
+      {setupOpen ? (
+        <ErrorBoundary className="setup-slot">
+          <SetupScreen
+            bus={terminalBus}
+            onClose={() => {
+              setSetupOpen(false)
+            }}
+            onSkip={() => {
+              skippedSetup.current = true
+              setSetupOpen(false)
+            }}
+          />
+        </ErrorBoundary>
+      ) : null}
     </div>
   )
 }

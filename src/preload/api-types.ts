@@ -14,6 +14,7 @@ import type {
 } from '../core/types'
 import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
+import type { Requirement } from '../core/setup'
 
 /** Why a plan cannot be used. */
 export type PlanProblem = 'not-installed' | 'signed-out'
@@ -131,6 +132,14 @@ export interface OrchestratorApi {
    */
   githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }>
 
+  /** Git, Claude Code, the Cursor CLI, and the GitHub CLI: installed, signed in, or not. */
+  setupStatus(): Promise<Requirement[]>
+  /**
+   * Opens that tool's own sign-in in a visible terminal. Claude, Cursor, or gh only.
+   * Legate never sees the password or token.
+   */
+  setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo>
+
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
   onChangesUpdate(cb: (changes: ChangeSet[]) => void): () => void
@@ -225,6 +234,7 @@ export type {
   ProjectEntry,
   ProjectInfo,
   ProviderId,
+  Requirement,
   Routine,
   TerminalInfo
 }

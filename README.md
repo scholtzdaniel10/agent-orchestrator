@@ -62,7 +62,18 @@ You are responsible for staying within each provider's terms.
 
 ## Install
 
-Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**. You need the `claude` and/or Cursor `agent` CLI installed and signed in. Updates download in the background and install themselves when you quit.
+1. Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). Windows only for now. Windows SmartScreen will warn because the installer is not signed: click **More info**, then **Run anyway**.
+2. Open Legate. The app shows a Setup screen.
+3. Install Git, then Claude Code and/or the Cursor CLI, and sign in to each one. The GitHub CLI is optional (clone your repos and open pull requests). Windows:
+
+   - Git: `winget install --id Git.Git -e`
+   - Claude Code: `winget install --id Anthropic.ClaudeCode -e`
+   - Cursor CLI: `irm 'https://cursor.com/install?win32=true' | iex`
+   - GitHub CLI: `winget install --id GitHub.cli -e`
+
+   Sign in from Setup. Legate never sees a password or token.
+
+Updates download in the background and install themselves when you quit.
 
 ## Command line
 

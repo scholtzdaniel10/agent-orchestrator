@@ -385,6 +385,67 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    setupStatus: ok([
+      {
+        id: 'git',
+        label: 'Git',
+        need: 'required',
+        state: 'ready',
+        version: '2.45.1',
+        install: {
+          command: 'winget install --id Git.Git -e',
+          url: 'https://git-scm.com/downloads'
+        },
+        signIn: null,
+        note: 'Ready.'
+      },
+      {
+        id: 'claude',
+        label: 'Claude Code',
+        need: 'plan',
+        state: noplans ? 'missing' : 'ready',
+        version: noplans ? null : '2.1.292',
+        install: {
+          command: 'winget install --id Anthropic.ClaudeCode -e',
+          url: 'https://claude.com/claude-code'
+        },
+        signIn: 'claude auth login',
+        note: noplans ? 'Install Claude Code, then sign in.' : 'Ready.'
+      },
+      {
+        id: 'cursor',
+        label: 'Cursor CLI',
+        need: 'plan',
+        state: noplans ? 'signed-out' : 'ready',
+        version: '2026.10.01-e373342',
+        install: {
+          command: "irm 'https://cursor.com/install?win32=true' | iex",
+          url: 'https://cursor.com/cli'
+        },
+        signIn: 'agent login',
+        note: noplans ? 'Installed. Sign in to use your Cursor plan.' : 'Ready.'
+      },
+      {
+        id: 'gh',
+        label: 'GitHub CLI',
+        need: 'optional',
+        state: 'ready',
+        version: '2.62.0',
+        install: { command: 'winget install --id GitHub.cli -e', url: 'https://cli.github.com' },
+        signIn: 'gh auth login',
+        note: 'Ready.'
+      }
+    ]),
+    setupSignIn: (id) =>
+      Promise.resolve({
+        id: 'setup-signin',
+        provider: 'shell',
+        title: 'sign in · ' + id,
+        status: 'running',
+        exitCode: null,
+        model: null,
+        startedAt: now
+      }),
     listChanges: ok(changes),
     onChangesUpdate: off,
     changeDiff: ok(diff),

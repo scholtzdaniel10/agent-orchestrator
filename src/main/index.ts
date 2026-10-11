@@ -10,6 +10,7 @@ import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from '
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
 import { Github } from '../core/github'
+import { Setup } from '../core/setup'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
@@ -180,6 +181,7 @@ app.whenReady().then(async () => {
   const github = new Github(runGh)
   const files = new Files(runGh)
   const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
+  const signInIds = new Set<string>()
 
   async function listedChanges(project: string): Promise<ChangeSet[]> {
     const listed = await worktrees.list(project)
@@ -208,6 +210,7 @@ app.whenReady().then(async () => {
   const rules = loadRules(process.env.ORCH_RULES)
   const claude = new ClaudeAdapter()
   const cursor = new CursorAdapter()
+  const setup = new Setup(runGh, claude, cursor, process.platform)
   const adapters = [claude, cursor]
   const orch = new Orchestrator({
     adapters,
@@ -686,6 +689,23 @@ app.whenReady().then(async () => {
     }
     return folder
   }
+  ipcMain.handle('setup:status', () => setup.status())
+  ipcMain.handle('setup:signIn', (_event, id: unknown) => {
+    if (id !== 'claude' && id !== 'cursor' && id !== 'gh') {
+      throw new Error('unknown setup tool')
+    }
+    const label = id === 'claude' ? 'Claude Code' : id === 'cursor' ? 'Cursor CLI' : 'GitHub CLI'
+    const command = signInCommand(id, claude, cursor)
+    const info = terms.openShell({
+      cwd: app.getPath('home'),
+      title: `sign in · ${label}`,
+      commands: [command],
+      cols: 100,
+      rows: 28
+    })
+    signInIds.add(info.id)
+    return info
+  })
   ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
     const about = await worktrees.info(projectDir())
     if (!about.isRepo) {
@@ -824,6 +844,18 @@ app.whenReady().then(async () => {
   })
   terms.onUpdate((info, removed) => {
     if (removed) closePoppedWindow(info.id)
+    if (signInIds.has(info.id) && (removed || info.status === 'exited')) {
+      signInIds.delete(info.id)
+      void orch
+        .recheck()
+        .then(() => lead.recheck())
+        .then(() => {
+          publishPlans()
+        })
+        .catch((err: unknown) => {
+          console.error(err)
+        })
+    }
     if (info.provider === 'shell' && info.change !== undefined) {
       if (removed && setupByChange.get(info.change) === 'running') {
         setupByChange.set(info.change, 'failed')
@@ -988,4 +1020,29 @@ function clamp01(value: number): number {
   if (value < 0) return 0
   if (value > 1) return 1
   return value
+}
+
+function signInCommand(
+  id: 'claude' | 'cursor' | 'gh',
+  claude: ClaudeAdapter,
+  cursor: CursorAdapter
+): string {
+  if (id === 'gh') return shellCommandLine('gh', ['auth', 'login'])
+  if (id === 'claude') {
+    const spec = claude.interactive()
+    return shellCommandLine(spec.command, [...spec.args, 'auth', 'login'])
+  }
+  const spec = cursor.interactive()
+  return shellCommandLine(spec.command, [...spec.args, 'login'])
+}
+
+function shellCommandLine(command: string, args: string[]): string {
+  const parts = [quoteShellArg(command), ...args.map(quoteShellArg)]
+  if (process.platform === 'win32') return `& ${parts.join(' ')}`
+  return parts.join(' ')
+}
+
+function quoteShellArg(value: string): string {
+  if (/^[A-Za-z0-9_./:\\-]+$/.test(value)) return value
+  return `'${value.replace(/'/g, "''")}'`
 }

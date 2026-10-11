@@ -14,7 +14,7 @@ import type {
   ProviderId,
   TerminalInfo
 } from '../core/types'
-import type { FileContent, FileList, OrchestratorApi, PlanStatus } from './api-types'
+import type { FileContent, FileList, OrchestratorApi, PlanStatus, Requirement } from './api-types'
 
 const api: OrchestratorApi = {
   submitJob(
@@ -88,6 +88,12 @@ const api: OrchestratorApi = {
   },
   githubOpenPr(title: string, body: string): Promise<{ url: string; branch: string }> {
     return ipcRenderer.invoke('github:openPr', title, body)
+  },
+  setupStatus(): Promise<Requirement[]> {
+    return ipcRenderer.invoke('setup:status')
+  },
+  setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('setup:signIn', id)
   },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
