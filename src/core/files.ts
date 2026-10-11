@@ -129,7 +129,8 @@ export class Files {
   resolve(root: string, path: string): string {
     assertSafeRelative(path)
     const rootReal = tryRealpath(this.fs, root) ?? resolve(root)
-    const target = resolve(root, path)
+    // Built on the real root: a root spelled with a Windows short name never contains its long paths.
+    const target = resolve(rootReal, path)
     const realTarget = tryRealpath(this.fs, target)
     if (realTarget !== null) {
       if (!isInside(rootReal, realTarget)) throw new Error(OUTSIDE_PROJECT)
