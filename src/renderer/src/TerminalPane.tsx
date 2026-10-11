@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -47,7 +47,8 @@ function TerminalPane({
   focused,
   focusNonce,
   onActivate,
-  onClose
+  onClose,
+  ownWindow = false
 }: {
   info: TerminalInfo
   heading?: string
@@ -58,6 +59,7 @@ function TerminalPane({
   focusNonce: number
   onActivate: () => void
   onClose: () => void
+  ownWindow?: boolean
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -66,9 +68,29 @@ function TerminalPane({
   const sizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const applyFitRef = useRef<() => void>(() => {})
   const focusedTick = useRef(0)
+  const [poppedIds, setPoppedIds] = useState<string[]>([])
   const visible = placement !== 'hidden'
+  const popped = !ownWindow && poppedIds.includes(info.id)
   const exitLabel = info.exitCode === null ? '—' : String(info.exitCode)
   const label = heading ?? info.title
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = window.api.onPoppedOut((ids) => {
+      setPoppedIds(ids)
+    })
+    void window.api.poppedOut().then(
+      (ids) => {
+        if (!active) return
+        setPoppedIds(ids)
+      },
+      () => {}
+    )
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -82,6 +104,7 @@ function TerminalPane({
   }, [info.status])
 
   useLayoutEffect(() => {
+    if (popped) return
     const host = hostRef.current
     if (host === null) return
     const element = host
@@ -97,6 +120,19 @@ function TerminalPane({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(element)
+    term.attachCustomKeyEventHandler((event) => {
+      if (
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (event.key === 'N' || event.key === 'n')
+      ) {
+        if (event.type === 'keydown') void window.api.newWindow()
+        return false
+      }
+      return true
+    })
 
     let webgl: WebglAddon | null = null
     try {
@@ -216,12 +252,12 @@ function TerminalPane({
       termRef.current = null
       applyFitRef.current = () => {}
     }
-  }, [bus, info.id, restore])
+  }, [bus, info.id, restore, popped])
 
   useLayoutEffect(() => {
-    if (!visible) return
+    if (!visible || popped) return
     applyFitRef.current()
-  }, [visible])
+  }, [visible, popped])
 
   useLayoutEffect(() => {
     if (!visible || focusNonce === 0 || focusNonce === focusedTick.current) return
@@ -243,6 +279,20 @@ function TerminalPane({
       {visible ? (
         <div className="terminal-pane-head">
           <span className="terminal-pane-title">{label}</span>
+          {ownWindow ? null : (
+            <button
+              type="button"
+              className="tab-close"
+              title="Open in its own window"
+              aria-label="Open in its own window"
+              onClick={(event) => {
+                event.stopPropagation()
+                void window.api.popOutTerminal(info.id)
+              }}
+            >
+              ↗
+            </button>
+          )}
           <button
             type="button"
             className="tab-close"
@@ -256,12 +306,30 @@ function TerminalPane({
           </button>
         </div>
       ) : null}
-      {info.status === 'exited' ? (
-        <p className="terminal-banner">
-          Session ended (exit code {exitLabel}). Close the tab or open a new one.
-        </p>
-      ) : null}
-      <div ref={hostRef} className="terminal-host" />
+      {popped ? (
+        <div className="terminal-popped">
+          <p>Open in its own window</p>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={(event) => {
+              event.stopPropagation()
+              void window.api.popOutTerminal(info.id)
+            }}
+          >
+            Bring back
+          </button>
+        </div>
+      ) : (
+        <>
+          {info.status === 'exited' ? (
+            <p className="terminal-banner">
+              Session ended (exit code {exitLabel}). Close the tab or open a new one.
+            </p>
+          ) : null}
+          <div ref={hostRef} className="terminal-host" />
+        </>
+      )}
     </div>
   )
 }

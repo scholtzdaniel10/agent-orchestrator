@@ -701,6 +701,22 @@ function App(): React.JSX.Element {
   }, [shown, focusMode, paneLayout])
 
   useEffect(() => {
+    function onNewWindow(event: KeyboardEvent): void {
+      if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return
+      if (event.key !== 'N' && event.key !== 'n') return
+      event.preventDefault()
+      event.stopPropagation()
+      void window.api.newWindow().catch((err: unknown) => {
+        setProjectError({ text: errorText(err), at: Date.now() })
+      })
+    }
+    window.addEventListener('keydown', onNewWindow, true)
+    return () => {
+      window.removeEventListener('keydown', onNewWindow, true)
+    }
+  }, [])
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (isTerminalTarget(event.target)) return
       if (event.key === 'Escape' && focusMode) {
@@ -974,6 +990,17 @@ function App(): React.JSX.Element {
           <div className="app-name">Legate</div>
         </div>
         <div className="app-header-tools">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={() => {
+              void window.api.newWindow().catch((err: unknown) => {
+                setProjectError({ text: errorText(err), at: Date.now() })
+              })
+            }}
+          >
+            Window
+          </button>
           <div className="layout-toggles">
             {PANEL_ORDER.map((key) => (
               <button

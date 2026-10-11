@@ -21,6 +21,7 @@ The screenshots use fake data and are made with `pnpm shots`. The app has seven 
 - **Saved chats and jobs.** Conversations and the job list are kept per project in a local SQLite file, and past chats are listed in the sidebar.
 - **Terminals.** Open a full Claude or Cursor session in a tab and talk to it directly. Open tabs come back after a restart with their conversation; a tab that cannot resume starts a new session. Turn on Worktree to start a session in its own git worktree, or open one from Changes.
 - **Layout.** Drag the borders between Projects, Flow, Lead, Workers and Usage to resize them, or hide Projects, Flow, Lead or Usage from the header; Focus shows only Workers. Terminals can sit in a grid of up to six panes, and the sizes and which panels are shown come back next time.
+- **Windows.** Window (Ctrl+Shift+N) opens another view of the same app, up to six windows. A terminal can be opened in a window of its own; closing that window does not stop the session.
 - **Projects.** A sidebar lists the folders you work in; one is active at a time, and jobs and the lead run there. Under a git project you can open several worktrees, name them, and start Claude or Cursor in each; if the GitHub CLI (`gh`) is signed in, you can also clone one of your repos as a project.
 - **Workers.** You can also hand a job straight to a worker and pick its type (planning, debugging, review, refactor, boilerplate) and its access (Read only, Edit files, or Full access). Each plan runs up to three jobs at once, and a job can be stopped. Full access runs commands without asking, still in a worktree; only use it in folders you trust.
 - **Steps.** Every file a worker reads or edits and every command it runs is listed live under its job, with the diff of each edited file.
@@ -49,7 +50,7 @@ You are responsible for staying within each provider's terms.
 ## Security
 
 - Everyone uses their own plans. The app has no accounts, no server and no way to reach anyone else's login.
-- The window is sandboxed, cannot navigate away from the app, and reaches the main process only through a fixed list of functions.
+- Every window is created by one function with the same sandbox and guards: it cannot navigate away from the app, and reaches the main process only through a fixed list of functions.
 - A worker is Read only, Edit files, or Full access. Read only cannot change files. Edit files writes inside its own git worktree and cannot run shell commands. Full access writes in that same worktree and runs commands without asking; use it only in folders you trust.
   - Claude workers never get your own MCP servers. Read only and Edit files deny the shell, and deny writes unless the job may edit. Full access uses bypassPermissions. This holds whatever your own Claude settings allow.
   - Cursor Read only and Edit files jobs are started without `--force`; an Edit files job gets a permission file that denies the shell. Full access passes `--force` and does not write that file. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
