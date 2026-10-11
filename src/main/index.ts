@@ -8,6 +8,7 @@ import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
+import { Files } from '../core/files'
 import { Github } from '../core/github'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
@@ -154,6 +155,7 @@ app.whenReady().then(async () => {
     root: process.env.ORCH_WORKTREES ?? join(app.getPath('home'), '.orchestrator', 'wt')
   })
   const github = new Github(runGh)
+  const files = new Files(runGh)
   const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
 
   async function listedChanges(project: string): Promise<ChangeSet[]> {
@@ -607,6 +609,36 @@ app.whenReady().then(async () => {
     setupByChange.delete(changeId)
     pushChanges()
   })
+  ipcMain.handle('files:list', (_event, where: unknown) => {
+    return files.list(filesRoot(where))
+  })
+  ipcMain.handle('files:read', (_event, where: unknown, path: unknown) => {
+    return files.read(filesRoot(where), requireFilePath(path))
+  })
+  ipcMain.handle('files:diff', (_event, where: unknown, path: unknown) => {
+    return files.diff(filesRoot(where), requireFilePath(path))
+  })
+  ipcMain.handle('files:open', async (_event, where: unknown, path: unknown) => {
+    const abs = files.resolve(filesRoot(where), requireFilePath(path))
+    let info: ReturnType<typeof statSync>
+    try {
+      info = statSync(abs)
+    } catch {
+      throw new Error('That file is missing.')
+    }
+    if (!info.isFile()) throw new Error('That is not a file.')
+    const message = await shell.openPath(abs)
+    if (message !== '') throw new Error(message)
+  })
+  function filesRoot(where: unknown): string {
+    if (where === null) return projectDir()
+    const id = requireChangeId(where)
+    const folder = worktrees.folder(id)
+    if (!isFolder(folder)) {
+      throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+    }
+    return folder
+  }
   ipcMain.handle('worktrees:create', async (_event, name: unknown) => {
     const about = await worktrees.info(projectDir())
     if (!about.isRepo) {
@@ -847,6 +879,18 @@ function parseJobAccess(value: unknown): JobAccess | undefined {
 function requireChangeId(id: unknown): string {
   if (typeof id !== 'string' || !/^[0-9a-f]{8}$/.test(id)) throw new Error('invalid change id')
   return id
+}
+
+function requireFilePath(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length < 1 ||
+    value.length > 1024 ||
+    value.includes('\0')
+  ) {
+    throw new Error('invalid path')
+  }
+  return value
 }
 
 function requireTerminalId(id: unknown): string {

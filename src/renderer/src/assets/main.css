@@ -4573,3 +4573,269 @@ button.job-step {
   padding: 2px 6px;
   font-size: 12px;
 }
+
+.files-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.files-head,
+.files-tools,
+.files-preview-head,
+.files-preview-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.files-head {
+  justify-content: space-between;
+  padding: 4px 2px 0;
+}
+
+.files-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-count {
+  flex: 1;
+  min-width: 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.files-tools {
+  padding: 0 2px;
+}
+
+.files-filter {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--deep);
+  color: var(--text);
+}
+
+.files-filter::placeholder {
+  color: var(--faint);
+}
+
+.files-panel .btn[aria-pressed='true'] {
+  border-color: var(--signal);
+}
+
+.files-status {
+  flex: none;
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--muted);
+}
+
+.files-error {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.files-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.files-tree {
+  min-height: 0;
+  overflow: auto;
+  background: var(--deep);
+}
+
+.files-tree-inner {
+  position: relative;
+  width: 100%;
+}
+
+.files-tree-window {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.files-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.files-row.is-selected,
+.files-row.is-focused {
+  background: var(--selected);
+}
+
+.files-row.is-deleted .files-name {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.files-chevron {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent var(--muted);
+}
+
+.files-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.files-chevron-gap {
+  flex: none;
+  width: 6px;
+}
+
+.files-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  background: var(--signal);
+}
+
+.files-mark {
+  flex: none;
+  width: 12px;
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+}
+
+.files-mark.is-added {
+  color: var(--diff-add);
+}
+
+.files-mark.is-deleted,
+.files-mark.is-conflicted {
+  color: var(--diff-del);
+}
+
+.files-mark.is-modified,
+.files-mark.is-untracked,
+.files-mark.is-renamed {
+  color: var(--signal);
+}
+
+.files-split {
+  flex: none;
+  height: 6px;
+  cursor: row-resize;
+  background: var(--border);
+}
+
+.files-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.files-preview-head {
+  flex-wrap: wrap;
+  padding: 4px 8px 0;
+}
+
+.files-preview-path {
+  flex: 1 1 80px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-preview-size {
+  flex: none;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.files-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.files-preview-body .diff-block {
+  min-height: 0;
+  height: 100%;
+}
+
+.files-text {
+  min-width: 100%;
+  width: max-content;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.files-text-line {
+  display: flex;
+  min-width: 100%;
+  width: max-content;
+  white-space: pre;
+}
+
+.files-text-n {
+  flex: none;
+  width: 44px;
+  padding: 0 8px 0 6px;
+  color: var(--faint);
+  text-align: right;
+  user-select: none;
+}
+
+.files-text-src {
+  flex: 1;
+  padding-right: 8px;
+}

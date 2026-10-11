@@ -401,6 +401,27 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         name: typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
       }),
     renameWorktree: ok(undefined),
+    listFiles: ok({
+      entries: [
+        { path: 'README.md', status: 'clean' },
+        { path: 'old.txt', status: 'deleted' },
+        { path: 'src/app.ts', status: 'modified' },
+        { path: 'src/new.ts', status: 'added' },
+        { path: 'tmp.log', status: 'untracked' }
+      ],
+      truncated: false
+    }),
+    readFile: (_where, path) => {
+      if (path === 'old.txt') return Promise.resolve({ kind: 'missing' })
+      if (typeof path === 'string' && path.endsWith('.bin')) {
+        return Promise.resolve({ kind: 'binary', bytes: 12 })
+      }
+      return Promise.resolve({ kind: 'text', text: 'hello\nworld\n', bytes: 12 })
+    },
+    fileDiff: ok(
+      'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
+    ),
+    openFile: ok(undefined),
     getProjectSetup: ok([]),
     setProjectSetup: ok(undefined),
     listRoutines: ok([]),

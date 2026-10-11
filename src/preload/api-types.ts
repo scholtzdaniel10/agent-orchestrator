@@ -60,6 +60,25 @@ export interface PlanWindow {
   resetsAt: number | null
 }
 
+export type FileStatus =
+  'clean' | 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+
+export interface FileEntry {
+  path: string
+  status: FileStatus
+}
+
+export interface FileList {
+  entries: FileEntry[]
+  truncated: boolean
+}
+
+export type FileContent =
+  | { kind: 'text'; text: string; bytes: number }
+  | { kind: 'binary'; bytes: number }
+  | { kind: 'too-large'; bytes: number }
+  | { kind: 'missing' }
+
 /** Everything the renderer can ask of the main process: `window.api`. */
 export interface OrchestratorApi {
   /** `provider` hands the job to that plan instead of letting the router choose. */
@@ -125,6 +144,13 @@ export interface OrchestratorApi {
   createWorktree(name?: string): Promise<ChangeSet>
   /** Rename a worktree. Pushes the change list. */
   renameWorktree(id: string, name: string): Promise<void>
+  /** Files of the active project (`where` null) or a worktree. */
+  listFiles(where: string | null): Promise<FileList>
+  readFile(where: string | null, path: string): Promise<FileContent>
+  /** Unified diff of one file against HEAD. Empty when unchanged. */
+  fileDiff(where: string | null, path: string): Promise<string>
+  /** Open an existing file in the system's default program. */
+  openFile(where: string | null, path: string): Promise<void>
   /** Command lines that run in each worktree created by hand. */
   getProjectSetup(): Promise<string[]>
   setProjectSetup(commands: string[]): Promise<void>
