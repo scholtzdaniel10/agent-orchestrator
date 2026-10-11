@@ -45,11 +45,20 @@ export const PANE_COUNTS: Record<ConcretePaneLayoutId, number> = {
   '6-grid': 6
 }
 
-export const DRAWER_TABS = ['lead', 'jobs', 'changes', 'routines', 'usage', 'activity'] as const
+export const DRAWER_TABS = [
+  'files',
+  'lead',
+  'jobs',
+  'changes',
+  'routines',
+  'usage',
+  'activity'
+] as const
 
 export type DrawerTab = (typeof DRAWER_TABS)[number]
 
 export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
+  files: 'Files',
   lead: 'Lead',
   jobs: 'Jobs',
   changes: 'Changes',
@@ -96,7 +105,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
   sizes: { ...DEFAULT_SIZES },
   sidebarShown: true,
   drawerOpen: true,
-  drawerTab: 'lead',
+  drawerTab: 'files',
   paneLayout: 'auto'
 }
 
@@ -413,12 +422,13 @@ export function layoutShortcut(event: {
   if (event.key === 'b' || event.key === 'B') return 'drawer'
   if (event.key === '\\' || event.key === 'Backslash' || event.code === 'Backslash')
     return 'sidebar'
-  if (event.key === '1') return 'lead'
-  if (event.key === '2') return 'jobs'
-  if (event.key === '3') return 'changes'
-  if (event.key === '4') return 'routines'
-  if (event.key === '5') return 'usage'
-  if (event.key === '6') return 'activity'
+  if (event.key === '1') return 'files'
+  if (event.key === '2') return 'lead'
+  if (event.key === '3') return 'jobs'
+  if (event.key === '4') return 'changes'
+  if (event.key === '5') return 'routines'
+  if (event.key === '6') return 'usage'
+  if (event.key === '7') return 'activity'
   return null
 }
 

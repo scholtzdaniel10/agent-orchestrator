@@ -12,6 +12,7 @@ import ChangesTab from './ChangesTab'
 import ErrorBoundary from './ErrorBoundary'
 import FlowView from './FlowView'
 import JobsPanel from './JobsPanel'
+import FilesPanel from './FilesPanel'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
 import Routines from './Routines'
@@ -1101,6 +1102,11 @@ function App(): React.JSX.Element {
   const jobBadge = running + queued
   const latestActivity = activityLine(events)
   const projectLabel = project === null ? '' : folderName(project.path)
+  // The Files tab shows whichever row is the primary one in the sidebar.
+  const filesLabel =
+    selectedWorktree === null
+      ? projectLabel
+      : (changes.find((change) => change.id === selectedWorktree)?.name ?? selectedWorktree)
   const branchLabel = project?.branch ?? null
   const appStyle = {
     '--layout-sidebar': sidebarShown ? `${String(displayed.sidebar)}px` : '0px',
@@ -1364,6 +1370,14 @@ function App(): React.JSX.Element {
               })}
             </div>
             <div className="drawer-body">
+              <div
+                className={drawerTab === 'files' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'files' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  <FilesPanel where={selectedWorktree} label={filesLabel} />
+                </ErrorBoundary>
+              </div>
               <div
                 className={drawerTab === 'lead' ? 'drawer-page' : 'drawer-page is-hidden'}
                 inert={drawerTab === 'lead' ? undefined : true}

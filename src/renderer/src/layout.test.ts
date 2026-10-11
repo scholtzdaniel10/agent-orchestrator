@@ -70,7 +70,7 @@ test('parseLayout validates field by field and keeps good values', () => {
 
 test('parseLayout falls back for an unknown pane layout and drawer tab', () => {
   expect(parseLayout({ paneLayout: 'split' }).paneLayout).toBe('auto')
-  expect(parseLayout({ drawerTab: 'flow' }).drawerTab).toBe('lead')
+  expect(parseLayout({ drawerTab: 'flow' }).drawerTab).toBe('files')
 })
 
 test('parseLayout keeps auto and a saved concrete pane layout', () => {
@@ -89,7 +89,7 @@ test('parseLayout reads old saves without error and fills new defaults', () => {
   expect(parsed.sizes.drawer).toBe(DEFAULT_SIZES.drawer)
   expect(parsed.sidebarShown).toBe(false)
   expect(parsed.drawerOpen).toBe(true)
-  expect(parsed.drawerTab).toBe('lead')
+  expect(parsed.drawerTab).toBe('files')
   expect(parsed.paneLayout).toBe('2-side')
 })
 
@@ -220,13 +220,14 @@ test('autoPaneLayout picks the smallest fitting grid and caps at six', () => {
   expect(resolvedPaneLayout('auto', 3)).toBe('3-side')
 })
 
-test('layoutShortcut maps Ctrl+B, Ctrl+\\, and Ctrl+1 through Ctrl+6', () => {
+test('layoutShortcut maps Ctrl+B, Ctrl+\\, and Ctrl+1 through Ctrl+7', () => {
   const base = { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false }
   expect(layoutShortcut({ ...base, key: 'b' })).toBe('drawer')
   expect(layoutShortcut({ ...base, key: 'B' })).toBe('drawer')
   expect(layoutShortcut({ ...base, key: '\\' })).toBe('sidebar')
-  expect(layoutShortcut({ ...base, key: '1' })).toBe('lead')
-  expect(layoutShortcut({ ...base, key: '6' })).toBe('activity')
+  expect(layoutShortcut({ ...base, key: '1' })).toBe('files')
+  expect(layoutShortcut({ ...base, key: '2' })).toBe('lead')
+  expect(layoutShortcut({ ...base, key: '7' })).toBe('activity')
   expect(layoutShortcut({ ...base, key: 'b', shiftKey: true })).toBe(null)
   expect(layoutShortcut({ ...base, key: 't' })).toBe(null)
   expect(layoutShortcut({ ...base, key: '0' })).toBe(null)
