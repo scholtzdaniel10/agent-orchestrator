@@ -294,6 +294,7 @@ function Workers({
   changes,
   isRepo,
   bus,
+  terminalFontSize,
   showJob,
   onJob,
   onTerminal
@@ -305,6 +306,7 @@ function Workers({
   changes: ChangeSet[]
   isRepo: boolean
   bus: TerminalBus
+  terminalFontSize: number
   showJob?: { id: string; nonce: number } | null
   onJob: (job: JobRecord) => void
   onTerminal: (info: TerminalInfo) => void
@@ -799,6 +801,7 @@ function Workers({
                     restore={initialTerminalIds.has(info.id)}
                     placement={placement}
                     focusNonce={focusTermId === info.id ? focusTick : 0}
+                    fontSize={terminalFontSize}
                     onActivate={() => {
                       if (shownId === info.id) return
                       selectTab(info.id, 'click')

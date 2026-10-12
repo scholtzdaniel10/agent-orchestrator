@@ -40,6 +40,7 @@ function TerminalPane({
   restore,
   placement,
   focusNonce,
+  fontSize,
   onActivate
 }: {
   info: TerminalInfo
@@ -47,6 +48,7 @@ function TerminalPane({
   restore: boolean
   placement: PanePlacement
   focusNonce: number
+  fontSize: number
   onActivate: () => void
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -56,8 +58,10 @@ function TerminalPane({
   const sizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const applyFitRef = useRef<() => void>(() => {})
   const focusedTick = useRef(0)
+  const fontSizeRef = useRef(fontSize)
   const visible = placement !== 'hidden'
   const exitLabel = info.exitCode === null ? '—' : String(info.exitCode)
+  fontSizeRef.current = fontSize
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -77,7 +81,7 @@ function TerminalPane({
 
     const term = new Terminal({
       fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
-      fontSize: 13,
+      fontSize: fontSizeRef.current,
       cursorBlink: true,
       scrollback: 5000,
       allowProposedApi: false,
@@ -197,7 +201,15 @@ function TerminalPane({
       termRef.current = null
       applyFitRef.current = () => {}
     }
+    // fontSize is applied live below; recreate only when the session identity changes.
   }, [bus, info.id, restore])
+
+  useLayoutEffect(() => {
+    const term = termRef.current
+    if (term === null) return
+    term.options.fontSize = fontSize
+    applyFitRef.current()
+  }, [fontSize])
 
   useLayoutEffect(() => {
     if (!visible) return

@@ -1,5 +1,11 @@
 // Fake window.api so the built renderer can be screenshotted without Electron or real CLIs.
 ;(() => {
+  try {
+    localStorage.removeItem('ao.sidebar-collapsed')
+    localStorage.setItem('ao.chats-open', '1')
+  } catch {
+    // Ignore private-mode failures.
+  }
   const now = Date.now()
   const H = 3600_000
   const params = new URLSearchParams(location.search)
@@ -271,7 +277,13 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           isRepo: true,
           branch: 'main',
           active: true,
-          changes: changes.length
+          changes: changes.length,
+          insertions: 0,
+          deletions: 0,
+          dirty: 0,
+          ahead: 0,
+          behind: 0,
+          chats: 0
         }
       ]
     : [
@@ -280,23 +292,55 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           isRepo: true,
           branch: 'main',
           active: true,
-          changes: changes.length
+          changes: changes.length,
+          insertions: 120,
+          deletions: 14,
+          dirty: 3,
+          ahead: 2,
+          behind: 0,
+          chats: 3
         },
         {
           path: 'C:/Users/dev/projects/estate-agents',
           isRepo: true,
           branch: 'feature/search',
           active: false,
-          changes: 2
+          changes: 2,
+          insertions: 48,
+          deletions: 6,
+          dirty: 0,
+          ahead: 0,
+          behind: 1,
+          chats: 2
         },
         {
           path: 'C:/Users/dev/projects/notes',
           isRepo: false,
           branch: null,
           active: false,
-          changes: 0
+          changes: 0,
+          insertions: 0,
+          deletions: 0,
+          dirty: 0,
+          ahead: 0,
+          behind: 0,
+          chats: 0
         }
       ]
+  let prefs = {
+    theme: 'system',
+    maxParallel: null,
+    terminalFontSize: 13,
+    notify: true,
+    cloneDir: 'C:/Users/dev/projects'
+  }
+  const prefsListeners = []
+  const appInfo = {
+    version: '0.1.0',
+    dataDir: 'C:/Users/dev/AppData/Roaming/agent-orchestrator',
+    worktreesDir: 'C:/Users/dev/.orchestrator/wt',
+    rulesMaxParallel: 3
+  }
   const off = () => () => {}
   const ok = (value) => () => Promise.resolve(value)
   window.api = {
@@ -340,6 +384,23 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       return Promise.resolve({ path: entry.path, isRepo: entry.isRepo, branch: entry.branch })
     },
     removeProject: ok(undefined),
+    revealProject: ok(undefined),
+    getPrefs: () => Promise.resolve({ ...prefs }),
+    setPrefs: (patch) => {
+      prefs = { ...prefs, ...patch }
+      for (const cb of prefsListeners) cb({ ...prefs })
+      return Promise.resolve({ ...prefs })
+    },
+    chooseCloneDir: ok(null),
+    onPrefsUpdate: (cb) => {
+      prefsListeners.push(cb)
+      return () => {
+        const index = prefsListeners.indexOf(cb)
+        if (index !== -1) prefsListeners.splice(index, 1)
+      }
+    },
+    getAppInfo: ok(appInfo),
+    openDataDir: ok(undefined),
     githubAvailable: ok(true),
     githubRepos: ok([
       {

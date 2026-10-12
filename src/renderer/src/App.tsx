@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import FlowView from './FlowView'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
+import SettingsPage from './SettingsPage'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
@@ -10,14 +11,30 @@ import { createTerminalBus, type TerminalBus } from './terminal-bus'
 
 export { RayBurst, Star } from './Star'
 
+type AppInfo = Awaited<ReturnType<Window['api']['getAppInfo']>>
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+type Prefs = Awaited<ReturnType<Window['api']['getPrefs']>>
 type ProjectInfo = Awaited<ReturnType<Window['api']['getProject']>>
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
+type ProviderId = PlanStatus['id']
+type PlanChoice = 'auto' | ProviderId
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+
+const SIDEBAR_COLLAPSED_KEY = 'ao.sidebar-collapsed'
+
+function readSidebarCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (raw === null) return false
+    return raw === '1' || raw === 'true'
+  } catch {
+    return false
+  }
+}
 
 const terminalBus: TerminalBus = createTerminalBus((listener) =>
   window.api.onTerminalData(listener)
@@ -300,11 +317,17 @@ function App(): React.JSX.Element {
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
   const [showJob, setShowJob] = useState<{ id: string; nonce: number } | null>(null)
+  const [prefs, setPrefs] = useState<Prefs | null>(null)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [leadPlan, setLeadPlan] = useState<PlanChoice>('auto')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
   const showJobNonce = useRef(0)
   const acceptList = useRef(true)
   const choosing = useRef(false)
   const bag = useRef(createBag())
   const viewChatId = useRef<string | null>(null)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
 
   function refreshChats(): void {
     void window.api.listLeadChats().then(
@@ -512,8 +535,61 @@ function App(): React.JSX.Element {
         setGithubAvailable(false)
       }
     )
+    void window.api.getPrefs().then(
+      (next) => {
+        if (!active) return
+        setPrefs(next)
+      },
+      () => {}
+    )
+    void window.api.getAppInfo().then(
+      (next) => {
+        if (!active) return
+        setAppInfo(next)
+      },
+      () => {}
+    )
+    void window.api.getLeadPlan().then(
+      (plan) => {
+        if (!active) return
+        setLeadPlan(plan ?? 'auto')
+      },
+      () => {}
+    )
+    const offPrefs = window.api.onPrefsUpdate((next) => {
+      if (!active) return
+      setPrefs(next)
+    })
     return () => {
       active = false
+      offPrefs()
+    }
+  }, [])
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent): void {
+      const mod = event.ctrlKey || event.metaKey
+      if (mod && event.key === ',') {
+        event.preventDefault()
+        setSettingsOpen(true)
+        return
+      }
+      if (mod && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        setSidebarCollapsed((current) => {
+          const next = !current
+          try {
+            localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+          } catch {
+            // Ignore quota / private-mode failures.
+          }
+          return next
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
     }
   }, [])
 
@@ -605,6 +681,25 @@ function App(): React.JSX.Element {
     }
   }
 
+  async function revealProject(path: string): Promise<void> {
+    try {
+      await window.api.revealProject(path)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
+  }
+
+  function openSettings(): void {
+    setSettingsOpen(true)
+  }
+
+  function closeSettings(): void {
+    setSettingsOpen(false)
+    window.requestAnimationFrame(() => {
+      settingsButtonRef.current?.focus()
+    })
+  }
+
   async function cloneFromGithub(nameWithOwner: string): Promise<boolean> {
     if (choosing.current) return false
     choosing.current = true
@@ -673,8 +768,16 @@ function App(): React.JSX.Element {
   const queued = jobs.filter((job) => job.status === 'queued').length
   const leadBusy = messages.some((message) => message.status === 'streaming')
 
+  const appClass = [
+    'app',
+    sidebarCollapsed ? 'is-sidebar-collapsed' : null,
+    settingsOpen ? 'is-settings-open' : null
+  ]
+    .filter((item): item is string => item !== null)
+    .join(' ')
+
   return (
-    <div className="app">
+    <div className={appClass}>
       <header className="app-header">
         <div className="app-brand">
           <RayBurst />
@@ -685,95 +788,127 @@ function App(): React.JSX.Element {
         </div>
         <AppSummary ready={ready} running={running} queued={queued} />
       </header>
-      <ProjectBar
-        projects={projects}
-        chats={chats}
-        busy={running > 0 || queued > 0}
-        leadBusy={leadBusy}
-        now={now}
-        error={projectError === null ? null : projectError.text}
-        githubAvailable={githubAvailable}
-        onAdd={() => {
-          void changeProject()
-        }}
-        onGithubClone={cloneFromGithub}
-        onSwitch={(path) => {
-          void switchProject(path)
-        }}
-        onRemove={(path) => {
-          void removeProject(path)
-        }}
-        onOpenChat={(id) => {
-          void openLeadChat(id)
-        }}
-        onNewChat={() => {
-          void resetLead()
-        }}
-        onRenameChat={(id, title) => {
-          void renameLeadChat(id, title)
-        }}
-        onRemoveChat={(id) => {
-          void removeLeadChat(id)
-        }}
-      />
-      <section className="panel panel-flow" aria-labelledby="flow-heading">
-        <RayBurst />
-        <FlowView
-          jobs={jobs}
-          plans={plans ?? EMPTY_PLANS}
-          lead={messages}
-          terminals={terminals}
-          changes={changes}
-          events={events}
+      <div className="app-desk" inert={settingsOpen ? true : undefined}>
+        <ProjectBar
+          projects={projects}
+          chats={chats}
+          busy={running > 0 || queued > 0}
+          leadBusy={leadBusy}
           now={now}
-          starts={starts}
-          flashes={flashes}
+          error={projectError === null ? null : projectError.text}
+          githubAvailable={githubAvailable}
+          collapsed={sidebarCollapsed}
+          settingsButtonRef={settingsButtonRef}
+          onCollapsed={(next) => {
+            try {
+              localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+            } catch {
+              // Ignore quota / private-mode failures.
+            }
+            setSidebarCollapsed(next)
+          }}
+          onAdd={() => {
+            void changeProject()
+          }}
+          onGithubClone={cloneFromGithub}
+          onSwitch={(path) => {
+            void switchProject(path)
+          }}
+          onRemove={(path) => {
+            void removeProject(path)
+          }}
+          onReveal={(path) => {
+            void revealProject(path)
+          }}
+          onOpenSettings={openSettings}
+          onOpenChat={(id) => {
+            void openLeadChat(id)
+          }}
+          onNewChat={() => {
+            void resetLead()
+          }}
+          onRenameChat={(id, title) => {
+            void renameLeadChat(id, title)
+          }}
+          onRemoveChat={(id) => {
+            void removeLeadChat(id)
+          }}
         />
-      </section>
-      <section className="panel panel-lead" aria-labelledby="lead-heading">
-        <LeadChat
-          messages={messages}
-          jobs={jobs}
+        <section className="panel panel-flow" aria-labelledby="flow-heading">
+          <RayBurst />
+          <FlowView
+            jobs={jobs}
+            plans={plans ?? EMPTY_PLANS}
+            lead={messages}
+            terminals={terminals}
+            changes={changes}
+            events={events}
+            now={now}
+            starts={starts}
+            flashes={flashes}
+          />
+        </section>
+        <section className="panel panel-lead" aria-labelledby="lead-heading">
+          <LeadChat
+            messages={messages}
+            jobs={jobs}
+            plans={plans}
+            leadPlan={leadPlan}
+            onLeadPlan={setLeadPlan}
+            onReset={resetLead}
+            onShowJob={(id) => {
+              showJobNonce.current += 1
+              setShowJob({ id, nonce: showJobNonce.current })
+            }}
+          />
+        </section>
+        <section className="panel panel-workers" aria-labelledby="workers-heading">
+          <Workers
+            jobs={jobs}
+            plans={plans}
+            terminals={terminals}
+            initialTerminalIds={initialTerminalIds}
+            changes={changes}
+            isRepo={project?.isRepo === true}
+            bus={terminalBus}
+            terminalFontSize={prefs?.terminalFontSize ?? 13}
+            showJob={showJob}
+            onJob={(job) => {
+              commitJobs(
+                bag.current,
+                mergeJob(bag.current.jobs, job),
+                setJobs,
+                setStarts,
+                setFlashes,
+                setEvents
+              )
+            }}
+            onTerminal={(info) => {
+              const state = bag.current
+              const next = applyTerminalUpdate(state.terminals, info, false)
+              state.terminals = next
+              setTerminals(next)
+              publish(state, setEvents)
+            }}
+          />
+        </section>
+        <section className="panel panel-usage" aria-labelledby="usage-heading">
+          <UsageMeter plans={plans} now={now} />
+        </section>
+      </div>
+      {prefs !== null && appInfo !== null && settingsOpen ? (
+        <SettingsPage
+          prefs={prefs}
+          appInfo={appInfo}
           plans={plans}
-          onReset={resetLead}
-          onShowJob={(id) => {
-            showJobNonce.current += 1
-            setShowJob({ id, nonce: showJobNonce.current })
-          }}
+          projects={projects}
+          leadPlan={leadPlan}
+          onPrefs={setPrefs}
+          onLeadPlan={setLeadPlan}
+          onProjects={setProjects}
+          onClose={closeSettings}
         />
-      </section>
-      <section className="panel panel-workers" aria-labelledby="workers-heading">
-        <Workers
-          jobs={jobs}
-          plans={plans}
-          terminals={terminals}
-          initialTerminalIds={initialTerminalIds}
-          changes={changes}
-          isRepo={project?.isRepo === true}
-          bus={terminalBus}
-          showJob={showJob}
-          onJob={(job) => {
-            commitJobs(
-              bag.current,
-              mergeJob(bag.current.jobs, job),
-              setJobs,
-              setStarts,
-              setFlashes,
-              setEvents
-            )
-          }}
-          onTerminal={(info) => {
-            const state = bag.current
-            const next = applyTerminalUpdate(state.terminals, info, false)
-            state.terminals = next
-            setTerminals(next)
-            publish(state, setEvents)
-          }}
-        />
-      </section>
-      <section className="panel panel-usage" aria-labelledby="usage-heading">
-        <UsageMeter plans={plans} now={now} />
-      </section>
+      ) : null}
     </div>
   )
 }

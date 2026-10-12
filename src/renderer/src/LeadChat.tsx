@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import RichText from './RichText'
@@ -86,56 +86,39 @@ function LeadChat({
   messages,
   jobs,
   plans,
+  leadPlan,
+  onLeadPlan,
   onReset,
   onShowJob
 }: {
   messages: LeadMessage[]
   jobs: JobRecord[]
   plans: PlanStatus[] | null
+  leadPlan: PlanChoice
+  onLeadPlan: (value: PlanChoice) => void
   onReset: () => Promise<void>
   onShowJob: (id: string) => void
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
-  const [choice, setChoice] = useState<PlanChoice>('auto')
   const [planError, setPlanError] = useState<string | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const sending = useRef(false)
   const resetting = useRef(false)
-  const choiceRef = useRef<PlanChoice>('auto')
-  const picked = useRef(false)
-
-  useEffect(() => {
-    let active = true
-    void window.api.getLeadPlan().then(
-      (plan) => {
-        if (!active || picked.current) return
-        const value: PlanChoice = plan ?? 'auto'
-        choiceRef.current = value
-        setChoice(value)
-      },
-      (err: unknown) => {
-        if (!active || picked.current) return
-        setPlanError(errorText(err))
-      }
-    )
-    return () => {
-      active = false
-    }
-  }, [])
+  const choiceRef = useRef<PlanChoice>(leadPlan)
+  choiceRef.current = leadPlan
 
   async function changePlan(value: PlanChoice): Promise<void> {
     const previous = choiceRef.current
-    picked.current = true
     choiceRef.current = value
-    setChoice(value)
+    onLeadPlan(value)
     setPlanError(null)
     try {
       await window.api.setLeadPlan(value === 'auto' ? null : value)
     } catch (err: unknown) {
       if (choiceRef.current !== value) return
       choiceRef.current = previous
-      setChoice(previous)
+      onLeadPlan(previous)
       setPlanError(errorText(err))
     }
   }
@@ -203,7 +186,7 @@ function LeadChat({
             id="lead-plan"
             className="plan-choice"
             title="Switching plans starts a fresh lead session."
-            value={choice}
+            value={leadPlan}
             disabled={leadStreaming}
             aria-invalid={planError !== null ? true : undefined}
             aria-describedby={planError !== null ? 'lead-plan-error' : undefined}

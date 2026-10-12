@@ -38,7 +38,9 @@ const scenes = {
     'dark',
     "[...document.querySelectorAll('[role=tab],button')].find((e) => /^Changes/.test(e.textContent))?.click()"
   ],
-  narrow: ['', 'dark', firstJob, '1024,700']
+  narrow: ['', 'dark', firstJob, '1024,700'],
+  settings: ['', 'dark', "document.querySelector('.project-settings-btn')?.click()"],
+  rail: ['', 'dark', "document.querySelector('.project-collapse')?.click()"]
 }
 
 let script = ''
