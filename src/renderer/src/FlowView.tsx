@@ -153,11 +153,11 @@ function round(value: number): string {
   return value.toFixed(1)
 }
 
-function sidePoint(root: DOMRect, el: HTMLElement, side: 'left' | 'right'): Point {
+function edgePoint(root: DOMRect, el: HTMLElement, edge: 'top' | 'bottom'): Point {
   const rect = el.getBoundingClientRect()
   return {
-    x: (side === 'left' ? rect.left : rect.right) - root.left,
-    y: rect.top + rect.height / 2 - root.top
+    x: rect.left + rect.width / 2 - root.left,
+    y: (edge === 'top' ? rect.top : rect.bottom) - root.top
   }
 }
 
@@ -165,8 +165,8 @@ function straight(from: Point, to: Point): string {
   return `M ${round(from.x)} ${round(from.y)} L ${round(to.x)} ${round(to.y)}`
 }
 
-function elbow(from: Point, to: Point, busX: number): string {
-  return `M ${round(from.x)} ${round(from.y)} H ${round(busX)} V ${round(to.y)} H ${round(to.x)}`
+function tee(from: Point, to: Point, busY: number): string {
+  return `M ${round(from.x)} ${round(from.y)} V ${round(busY)} H ${round(to.x)} V ${round(to.y)}`
 }
 
 function paint(root: HTMLElement, name: string, d: string): void {
@@ -292,31 +292,31 @@ function Topology({
         paint(
           root,
           'you-lead',
-          straight(sidePoint(base, you, 'right'), sidePoint(base, leadBox, 'left'))
+          straight(edgePoint(base, you, 'bottom'), edgePoint(base, leadBox, 'top'))
         )
       }
       if (leadBox !== null && router !== null) {
         paint(
           root,
           'lead-router',
-          straight(sidePoint(base, leadBox, 'right'), sidePoint(base, router, 'left'))
+          straight(edgePoint(base, leadBox, 'bottom'), edgePoint(base, router, 'top'))
         )
       }
       if (router === null) return
-      const from = sidePoint(base, router, 'right')
+      const from = edgePoint(base, router, 'bottom')
       const targets: Array<{ id: string; point: Point }> = []
       for (const plan of plans) {
         const box = findBox(root, `worker-${plan.id}`)
         if (box === null) continue
-        targets.push({ id: plan.id, point: sidePoint(base, box, 'left') })
+        targets.push({ id: plan.id, point: edgePoint(base, box, 'top') })
       }
-      const busX =
+      const busY =
         targets.length === 0
-          ? from.x
-          : (from.x + targets.reduce((sum, target) => sum + target.point.x, 0) / targets.length) / 2
+          ? from.y
+          : (from.y + targets.reduce((sum, target) => sum + target.point.y, 0) / targets.length) / 2
       for (const target of targets) {
-        const aligned = targets.length === 1 && Math.abs(from.y - target.point.y) <= 1
-        const d = aligned ? straight(from, target.point) : elbow(from, target.point, busX)
+        const aligned = targets.length === 1 && Math.abs(from.x - target.point.x) <= 1
+        const d = aligned ? straight(from, target.point) : tee(from, target.point, busY)
         paint(root, `worker-${target.id}`, d)
       }
     }

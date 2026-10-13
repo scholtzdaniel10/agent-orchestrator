@@ -37,15 +37,15 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
-    --bg: rgb(242, 242, 242);
+    --bg: rgb(248, 244, 238);
     --brand: rgb(214, 38, 46);
-    --text: var(--brand);
+    --text: rgb(32, 22, 20);
     --ray: var(--brand);
-    --on-accent: rgb(242, 242, 242);
-    --signal: rgb(180, 120, 0);
-    --bad: rgb(180, 50, 40);
-    --diff-add: rgb(0, 110, 55);
-    --diff-del: rgb(180, 50, 40);
+    --on-accent: rgb(255, 255, 255);
+    --signal: rgb(140, 88, 0);
+    --bad: rgb(160, 32, 24);
+    --diff-add: rgb(0, 100, 50);
+    --diff-del: rgb(160, 32, 24);
     --bot-claude: rgb(200, 90, 30);
     --bot-cursor: rgb(0, 130, 95);
     --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
@@ -77,15 +77,15 @@
 
 :root[data-theme='paper'] {
   color-scheme: light;
-  --bg: rgb(242, 242, 242);
+  --bg: rgb(248, 244, 238);
   --brand: rgb(214, 38, 46);
-  --text: var(--brand);
+  --text: rgb(32, 22, 20);
   --ray: var(--brand);
-  --on-accent: rgb(242, 242, 242);
-  --signal: rgb(180, 120, 0);
-  --bad: rgb(180, 50, 40);
-  --diff-add: rgb(0, 110, 55);
-  --diff-del: rgb(180, 50, 40);
+  --on-accent: rgb(255, 255, 255);
+  --signal: rgb(140, 88, 0);
+  --bad: rgb(160, 32, 24);
+  --diff-add: rgb(0, 100, 50);
+  --diff-del: rgb(160, 32, 24);
   --bot-claude: rgb(200, 90, 30);
   --bot-cursor: rgb(0, 130, 95);
   --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
@@ -5060,4 +5060,32 @@ button.job-step {
 
 .setup-footer {
   padding-top: 4px;
+}
+
+.topo {
+  gap: 16px;
+  overflow: hidden;
+}
+
+.topo-overlay {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.topo-you {
+  align-self: center;
+}
+
+.topo-workers {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.topo-workers > .flow-box {
+  flex: 1 1 0;
+  min-width: 0;
 }
