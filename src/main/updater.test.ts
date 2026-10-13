@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { startAutoUpdate, type AutoUpdaterSubset } from './updater'
+import { startAutoUpdate, type AutoUpdaterSubset, pickAutoUpdater } from './updater'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -57,4 +57,12 @@ test('logs a rejected check and does not throw', async () => {
   }).not.toThrow()
   await vi.advanceTimersByTimeAsync(10_000)
   expect(lines).toEqual(['update failed'])
+})
+
+test('the updater is found whether the module exports it by name or under default', () => {
+  const updater = { autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates: () => null }
+  expect(pickAutoUpdater({ autoUpdater: updater })).toBe(updater)
+  expect(pickAutoUpdater({ default: { autoUpdater: updater } })).toBe(updater)
+  expect(() => pickAutoUpdater({ default: {} })).toThrow('The updater could not be loaded.')
+  expect(() => pickAutoUpdater(null)).toThrow('The updater could not be loaded.')
 })

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Updates work. 1.0.0 and 1.0.1 never checked for a new version, so they have to be updated by hand once: download and run this installer. From 1.0.2 on, a new version downloads in the background and installs when you quit.
+
 ## 1.0.1
 
 - A first-run setup screen: install and sign in to each tool without leaving the app.
