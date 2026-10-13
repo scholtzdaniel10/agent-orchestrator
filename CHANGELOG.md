@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+- A first-run setup screen: install and sign in to each tool without leaving the app.
+- The Paper look is readable: its text now has strong contrast.
+- The Activity tab draws the flow as a diagram again.
+- Worktree change totals follow an agent working in a terminal within about two seconds.
+- The release is published as one draft with all its files.
+
 ## 1.1.0
 
 - Three worker access levels (read, edit, full). Full access runs commands without asking, in a git worktree; the person sets a ceiling for jobs the lead hands out.
