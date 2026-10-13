@@ -5,6 +5,24 @@
   const params = new URLSearchParams(location.search)
   const empty = params.has('empty')
   const noplans = params.has('noplans')
+  const theme = params.get('theme')
+  const tab = params.get('tab') ?? 'files'
+  try {
+    if (theme) localStorage.setItem('orch.theme', theme)
+    else localStorage.removeItem('orch.theme')
+    localStorage.setItem(
+      'orch.layout',
+      JSON.stringify({
+        sizes: { sidebar: 240, drawer: 420 },
+        sidebarShown: true,
+        drawerOpen: true,
+        drawerTab: tab,
+        paneLayout: 'auto'
+      })
+    )
+  } catch {
+    // Private mode can block storage; the look still applies from nativeTheme.
+  }
   const plans = noplans
     ? [
         {
@@ -95,7 +113,54 @@
           reason: 'first choice',
           leadMessage: 'm2',
           edit: true,
-          change: 'a1b2c3d4'
+          access: 'edit',
+          change: 'a1b2c3d4',
+          steps: [
+            {
+              id: 's1',
+              tool: 'read',
+              title: 'Read src/core/router/orchestrator.ts',
+              status: 'done',
+              startedAt: now - 80_000,
+              endedAt: now - 74_000
+            },
+            {
+              id: 's2',
+              tool: 'edit',
+              title: 'Edited src/core/router/queue.ts',
+              status: 'done',
+              startedAt: now - 70_000,
+              endedAt: now - 52_000,
+              edit: { path: 'src/core/router/queue.ts', added: 84, removed: 0 }
+            },
+            {
+              id: 's3',
+              tool: 'edit',
+              title: 'Edited src/core/router/orchestrator.ts',
+              status: 'done',
+              startedAt: now - 50_000,
+              endedAt: now - 31_000,
+              edit: { path: 'src/core/router/orchestrator.ts', added: 12, removed: 131 }
+            },
+            {
+              id: 's4',
+              tool: 'edit',
+              title: 'Edited src/core/router/failover.ts',
+              status: 'done',
+              startedAt: now - 30_000,
+              endedAt: now - 18_000,
+              edit: { path: 'src/core/router/failover.ts', added: 52, removed: 0 }
+            },
+            {
+              id: 's5',
+              tool: 'shell',
+              title: 'Ran pnpm test',
+              detail: '✓ 48 tests passed',
+              status: 'done',
+              startedAt: now - 16_000,
+              endedAt: now - 4_000
+            }
+          ]
         },
         {
           id: 'b2c3d4e5-0000',
@@ -107,7 +172,26 @@
           failedOver: [],
           model: 'claude-opus-5-5',
           reason: 'first choice',
-          leadMessage: 'm2'
+          leadMessage: 'm2',
+          change: 'b2c3d4e5',
+          steps: [
+            {
+              id: 'r1',
+              tool: 'read',
+              title: 'Read src/core/pty/host.ts',
+              status: 'done',
+              startedAt: now - 40_000,
+              endedAt: now - 36_000
+            },
+            {
+              id: 'r2',
+              tool: 'search',
+              title: 'Search resize handler',
+              detail: 'host.ts: resize, kill, spawn',
+              status: 'running',
+              startedAt: now - 12_000
+            }
+          ]
         },
         {
           id: 'b2c3d4e5-0001',
@@ -198,6 +282,15 @@
             { path: 'src/core/router/failover.ts', insertions: 52, deletions: 0 }
           ],
           name: 'split router'
+        },
+        {
+          id: 'b2c3d4e5',
+          branch: 'orch/b2c3d4e5',
+          path: 'C:/tmp/orch/b2c3d4e5',
+          insertions: 24,
+          deletions: 8,
+          files: [{ path: 'src/core/pty/host.ts', insertions: 24, deletions: 8 }],
+          name: 'pty leak'
         }
       ]
   const diff = `diff --git a/src/core/router/queue.ts b/src/core/router/queue.ts
@@ -310,6 +403,50 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           changes: 0
         }
       ]
+  const terminals = empty
+    ? []
+    : [
+        {
+          id: 't1',
+          provider: 'claude',
+          title: 'claude 1',
+          status: 'running',
+          exitCode: null,
+          model: 'claude-opus-5-5',
+          startedAt: now - 0.3 * H
+        },
+        {
+          id: 't2',
+          provider: 'cursor',
+          title: 'cursor 1',
+          status: 'running',
+          exitCode: null,
+          model: 'gpt-5',
+          startedAt: now - 0.2 * H
+        }
+      ]
+  const snapshots = {
+    t1: [
+      'claude 1',
+      '',
+      '> Split orchestrator.ts into queue and failover modules',
+      '',
+      'Reading src/core/router/orchestrator.ts',
+      'Edited src/core/router/queue.ts  +84 −0',
+      'Edited src/core/router/failover.ts  +52 −0',
+      '',
+      'Tests pass. Ready for review.'
+    ].join('\r\n'),
+    t2: [
+      'cursor 1',
+      '',
+      '> Why does the pty host leak a process when a terminal is closed mid-resize?',
+      '',
+      'Reading src/core/pty/host.ts',
+      'The kill path waits on resize; a second close is ignored.',
+      'I will split dispose out of the resize handler.'
+    ].join('\r\n')
+  }
   const off = () => () => {}
   const ok = (value) => () => Promise.resolve(value)
   window.api = {
@@ -477,6 +614,14 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       if (typeof path === 'string' && path.endsWith('.bin')) {
         return Promise.resolve({ kind: 'binary', bytes: 12 })
       }
+      if (path === 'README.md') {
+        const text = '# Legate\n\nOne lead, every plan you already pay for.\n'
+        return Promise.resolve({ kind: 'text', text, bytes: text.length })
+      }
+      if (path === 'src/app.ts') {
+        const text = "export function boot(): void {\n  console.log('ready')\n}\n"
+        return Promise.resolve({ kind: 'text', text, bytes: text.length })
+      }
       return Promise.resolve({ kind: 'text', text: 'hello\nworld\n', bytes: 12 })
     },
     fileDiff: ok(
@@ -527,9 +672,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     claimTerminal: () => {},
     resizeTerminal: () => {},
     closeTerminal: ok(undefined),
-    listTerminals: ok([]),
-    restoreTerminals: ok([]),
-    terminalSnapshot: ok(''),
+    listTerminals: ok(terminals),
+    restoreTerminals: ok(terminals),
+    terminalSnapshot: (id) => Promise.resolve(snapshots[id] ?? ''),
     onTerminalData: off,
     onTerminalUpdate: off,
     newWindow: ok(undefined),
