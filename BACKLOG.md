@@ -4,7 +4,7 @@ Ordered. The top item is the next one to build.
 
 ## Done
 
-- Workspace-first window: terminals in the centre, a right-hand panel for Lead, Jobs, Changes, Routines, Usage and Activity, and a status bar.
+- Workspace-first window: terminals in the centre, a right-hand panel for Files, Lead, Jobs, Changes, Routines, Usage and Activity, and a status bar.
 - Worker access: read, edit, or full. Full access may run commands, still in a worktree; the person sets a ceiling for jobs the lead hands out.
 - Saved chats and jobs, per project, with past chats listed in the sidebar.
 - Parallel jobs per plan (`maxParallel` in `rules.json`).
@@ -28,14 +28,16 @@ Ordered. The top item is the next one to build.
 - Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
 - Command line: `legate` runs the same jobs, changes, and routines from a terminal.
 - Terminal UI: `legate` with no arguments, or `legate ui`, hands out jobs, watches every step, and reviews changes.
+- Job ownership so the app and the `legate` command share jobs safely.
 - New worktrees can start Claude or Cursor on a task so the agent is already working.
 - First-run setup screen: install and sign in to Git, Claude Code, the Cursor CLI, and optionally the GitHub CLI without leaving the app.
 
 ## Next
 
-1. Run the lead chat and a Claude job against the real CLIs from an installed build (the Cursor path is covered by `GATE_WORKERS=cursor pnpm gate worktrees`).
+1. Publish 1.0.0 and check the installer on a clean machine.
 2. Sign the Windows installer so SmartScreen stops warning.
 3. macOS and Linux builds.
+4. Open a pull request against real GitHub from an installed build.
 
 ## Later
 
