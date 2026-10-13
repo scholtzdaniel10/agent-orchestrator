@@ -1,0 +1,201 @@
+// Screenshots of the built renderer with a fake window.api, captured by Electron itself.
+// Run `pnpm shots`; PNGs land in .orchestrator/shots/.
+const { createServer } = require('node:http')
+const { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } = require('node:fs')
+const { extname, join } = require('node:path')
+const { app, BrowserWindow, nativeTheme } = require('electron')
+
+app.disableHardwareAcceleration()
+app.on('window-all-closed', () => {})
+
+const here = __dirname
+const root = join(here, '..', 'out', 'renderer')
+const outDir = join(here, '..', '.orchestrator', 'shots')
+const types = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' }
+const SETTLE_MS = 1200
+const MIN_BYTES = 10 * 1024
+
+if (!existsSync(join(root, 'index.html'))) {
+  console.error('Build first: pnpm build')
+  process.exit(1)
+}
+
+const openFile = `(async () => {
+  const deadline = Date.now() + 4000
+  let row
+  while (Date.now() < deadline) {
+    row = [...document.querySelectorAll('.files-row')].find((el) =>
+      (el.textContent || '').includes('README.md')
+    )
+    if (row) break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  row?.click()
+})()`
+
+const scenes = {
+  workspace: { query: '', scheme: 'dark', size: [1440, 900], script: openFile },
+  jobs: {
+    query: '?tab=jobs',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let row
+      while (Date.now() < deadline) {
+        row = document.getElementById('job-a1b2c3d4-0000')
+        if (row) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      row?.click()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      document.querySelector('.job-steps-head')?.click()
+    })()`
+  },
+  lead: { query: '?tab=lead', scheme: 'dark', size: [1440, 900], script: '' },
+  changes: { query: '?tab=changes', scheme: 'dark', size: [1440, 900], script: '' },
+  setup: { query: '?noplans', scheme: 'dark', size: [1440, 900], script: '' },
+  paper: { query: '?theme=paper', scheme: 'light', size: [1440, 900], script: openFile },
+  ultramarine: {
+    query: '?theme=ultramarine',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: openFile
+  },
+  narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function createStaticServer() {
+  return createServer((req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname)
+    if (path === '/__stub.js') {
+      res.writeHead(200, { 'content-type': 'text/javascript' })
+      return res.end(readFileSync(join(here, 'shots-stub.js')))
+    }
+    if (path === '/' || path === '/index.html') {
+      const html = readFileSync(join(root, 'index.html'), 'utf8')
+        .replace(/<meta\s+http-equiv="Content-Security-Policy"[\s\S]*?\/>/, '')
+        .replace('<head>', '<head><script src="/__stub.js"></script>')
+      res.writeHead(200, { 'content-type': 'text/html' })
+      return res.end(html)
+    }
+    const rel = path.replace(/^\/+/, '')
+    const file = join(root, rel)
+    if (!file.startsWith(root) || !existsSync(file)) {
+      res.writeHead(404)
+      return res.end()
+    }
+    res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' })
+    res.end(readFileSync(file))
+  })
+}
+
+function listen(server) {
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve())
+  })
+}
+
+function loadUrl(win, url) {
+  return new Promise((resolve, reject) => {
+    const onDone = () => {
+      cleanup()
+      resolve()
+    }
+    const onFail = (_event, code, desc, failedUrl, isMainFrame) => {
+      if (!isMainFrame) return
+      cleanup()
+      reject(new Error(`Load failed (${String(code)}): ${desc} ${failedUrl}`))
+    }
+    function cleanup() {
+      win.webContents.off('did-finish-load', onDone)
+      win.webContents.off('did-fail-load', onFail)
+    }
+    win.webContents.once('did-finish-load', onDone)
+    win.webContents.once('did-fail-load', onFail)
+    win.loadURL(url)
+  })
+}
+
+function sceneArgs() {
+  const script = process.argv.findIndex((arg) => arg.endsWith('shots-electron.cjs'))
+  const from = script >= 0 ? script + 1 : 2
+  return process.argv.slice(from).filter((arg) => !arg.startsWith('-'))
+}
+
+async function run() {
+  const wanted = sceneArgs()
+  const server = createStaticServer()
+  await listen(server)
+  const base = `http://127.0.0.1:${String(server.address().port)}/`
+  mkdirSync(outDir, { recursive: true })
+
+  const win = new BrowserWindow({
+    show: false,
+    width: 1440,
+    height: 900,
+    useContentSize: true,
+    autoHideMenuBar: true,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: 'shots'
+    }
+  })
+  win.webContents.setBackgroundThrottling(false)
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`renderer gone: ${details.reason} (${String(details.exitCode)})`)
+  })
+
+  const written = []
+  try {
+    for (const [name, scene] of Object.entries(scenes)) {
+      if (wanted.length > 0 && !wanted.includes(name)) continue
+      const [width, height] = scene.size
+      win.setContentSize(width, height)
+      nativeTheme.themeSource = scene.scheme === 'light' ? 'light' : 'dark'
+      await loadUrl(win, base + scene.query)
+      if (scene.script) await win.webContents.executeJavaScript(scene.script)
+      await sleep(SETTLE_MS)
+      const file = join(outDir, `${name}.png`)
+      const image = await win.webContents.capturePage()
+      writeFileSync(file, image.toPNG())
+      written.push(file)
+    }
+  } finally {
+    if (!win.isDestroyed()) win.close()
+    server.close()
+  }
+
+  const wantedNames =
+    wanted.length > 0 ? wanted.filter((name) => Object.hasOwn(scenes, name)) : Object.keys(scenes)
+  const missing = []
+  for (const name of wantedNames) {
+    const file = join(outDir, `${name}.png`)
+    const size = existsSync(file) ? statSync(file).size : 0
+    if (size <= MIN_BYTES) missing.push(`${name}.png (${String(size)} bytes)`)
+    else process.stdout.write(`${file}  ${String(size)} bytes\n`)
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Screenshot too small or missing (need > ${String(MIN_BYTES)} bytes): ${missing.join(', ')}`
+    )
+  }
+  return written
+}
+
+app.whenReady().then(() => {
+  run()
+    .then(() => {
+      app.exit(0)
+    })
+    .catch((err) => {
+      console.error(err instanceof Error ? err.message : err)
+      app.exit(1)
+    })
+})

@@ -124,6 +124,7 @@ pnpm install
 pnpm dev              # run the app
 pnpm test             # unit tests, no real CLIs
 pnpm build            # typecheck + build (also builds the legate command)
+pnpm shots            # screenshots of the UI with fake data, in .orchestrator/shots/
 pnpm cli -- status    # the legate command from this checkout
 pnpm build:win        # the Windows installer, in dist/
 pnpm gate router      # acceptance: 10 real jobs + one forced failover
