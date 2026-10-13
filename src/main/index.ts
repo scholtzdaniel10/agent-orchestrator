@@ -6,6 +6,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
+import { ChangeRefresh } from './debounce'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
@@ -41,6 +42,7 @@ let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
 let stopStoreWatch: () => void = () => {}
+let changeRefresh: ChangeRefresh | null = null
 const poppedOut = new PoppedOutRegistry()
 const poppedWindows = new Map<string, BrowserWindow>()
 const terminalClaims = new TerminalClaims()
@@ -841,6 +843,8 @@ app.whenReady().then(async () => {
 
   terms.onData((id, data) => {
     broadcast('terminals:data', id, data)
+    const info = terms.list().find((item) => item.id === id)
+    if (info !== undefined && info.change !== undefined) changeRefresh?.note(info.change)
   })
   terms.onUpdate((info, removed) => {
     if (removed) closePoppedWindow(info.id)
@@ -868,13 +872,29 @@ app.whenReady().then(async () => {
     broadcast('terminals:update', info, removed)
   })
 
-  // An agent in a terminal edits files without telling the app. While a worktree has one open,
-  // look at the worktrees again every few seconds so their change totals stay true.
-  const changeWatch = setInterval(() => {
-    const busy = terms.list().some((info) => info.change !== undefined && info.status === 'running')
-    if (busy) pushChanges()
-  }, 8_000)
-  changeWatch.unref()
+  // An agent in a terminal edits files without telling the app. After output from a
+  // worktree terminal, look at the worktrees again once the stream has been quiet.
+  changeRefresh = new ChangeRefresh({
+    push: pushChanges,
+    busy: () => terms.list().some((info) => info.change !== undefined && info.status === 'running'),
+    now: () => Date.now(),
+    setTimeout: (fn, ms) => {
+      const timer = setTimeout(fn, ms)
+      timer.unref()
+      return timer
+    },
+    clearTimeout: (id) => {
+      clearTimeout(id as ReturnType<typeof setTimeout>)
+    },
+    setInterval: (fn, ms) => {
+      const timer = setInterval(fn, ms)
+      timer.unref()
+      return timer
+    },
+    clearInterval: (id) => {
+      clearInterval(id as ReturnType<typeof setInterval>)
+    }
+  })
 
   orch.onUpdate(publish)
   lead.onUpdate(publishLead)
@@ -889,6 +909,8 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   stopStoreWatch()
+  changeRefresh?.clear()
+  changeRefresh = null
   terminals?.closeAll()
   if (bridge) void bridge.close()
   store?.close()
