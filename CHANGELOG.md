@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Setup opens on the first start of an install, also when every tool is already in place, so a new person sees what Legate needs and that each tool is signed in. After that it opens only when something is missing.
+
 ## 1.0.2
 
 - Updates work. 1.0.0 and 1.0.1 never checked for a new version, so they have to be updated by hand once: download and run this installer. From 1.0.2 on, a new version downloads in the background and installs when you quit.
