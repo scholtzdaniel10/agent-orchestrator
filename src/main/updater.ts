@@ -33,6 +33,18 @@ function wait(ms: number): Promise<void> {
 }
 
 async function loadAutoUpdater(): Promise<AutoUpdaterSubset> {
-  const { autoUpdater } = await import('electron-updater')
-  return autoUpdater
+  return pickAutoUpdater(await import('electron-updater'))
+}
+
+/**
+ * electron-updater is a CommonJS module. Loaded from the built app, its exports arrive under
+ * `default`; loaded by a test runner they are named. 1.0.0 and 1.0.1 read only the named one,
+ * got nothing, and never checked for an update.
+ */
+export function pickAutoUpdater(loaded: unknown): AutoUpdaterSubset {
+  const named = (loaded as { autoUpdater?: AutoUpdaterSubset } | null)?.autoUpdater
+  if (named !== undefined) return named
+  const inner = (loaded as { default?: { autoUpdater?: AutoUpdaterSubset } } | null)?.default
+  if (inner?.autoUpdater !== undefined) return inner.autoUpdater
+  throw new Error('The updater could not be loaded.')
 }
