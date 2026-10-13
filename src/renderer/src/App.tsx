@@ -17,6 +17,7 @@ import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
 import Routines from './Routines'
 import SetupScreen from './SetupScreen'
+import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import Workers from './Workers'
@@ -450,7 +451,9 @@ function App(): React.JSX.Element {
   const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null)
   const [termOpening, setTermOpening] = useState(false)
   const [leadUnseen, setLeadUnseen] = useState(false)
-  const [setupOpen, setSetupOpen] = useState(false)
+  // The first start of an install always opens Setup, so a new person sees what Legate needs and
+  // that it is in place. After that it opens only when something is missing.
+  const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
   const skippedSetup = useRef(false)
   const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
   const [layout] = useState(loadLayout)
@@ -1585,9 +1588,11 @@ function App(): React.JSX.Element {
           <SetupScreen
             bus={terminalBus}
             onClose={() => {
+              markSetupSeen()
               setSetupOpen(false)
             }}
             onSkip={() => {
+              markSetupSeen()
               skippedSetup.current = true
               setSetupOpen(false)
             }}
