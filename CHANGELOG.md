@@ -8,10 +8,6 @@
 - Worktree change totals follow an agent working in a terminal within about two seconds.
 - The release is published as one draft with all its files.
 
-## 1.1.0
-
-- Three worker access levels (read, edit, full). Full access runs commands without asking, in a git worktree; the person sets a ceiling for jobs the lead hands out.
-
 ## 1.0.0
 
 - Lead chat that splits a request into jobs, hands them to workers, and reports back when they finish.
@@ -30,3 +26,4 @@
 - Each plan shows its CLI version against the tested one; a job fails with a readable message when a CLI's output is not understood.
 - Claude workers are denied a shell and the person's MCP servers, whatever their own settings allow.
 - Windows installer, with updates from GitHub Releases installed on quit.
+- Three worker access levels (read, edit, full). Full access runs commands without asking, in a git worktree; the person sets a ceiling for jobs the lead hands out.
