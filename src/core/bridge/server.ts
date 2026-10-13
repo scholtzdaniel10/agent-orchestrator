@@ -339,15 +339,39 @@ function authorized(header: string | string[] | undefined, token: string): boole
   return timingSafeEqual(got, want)
 }
 
+const DRAIN_MS = 2_000
+const DRAIN_MAX_BYTES = 8 * 1024 * 1024
+
 function endRequest(
   req: IncomingMessage,
   res: ServerResponse,
   status: number,
   headers?: Record<string, string>
 ): void {
-  res.writeHead(status, { Connection: 'close', ...headers })
-  res.end()
-  // Drain the unread upload so this status is delivered. The bytes are not buffered.
+  let sent = false
+  const send = (): void => {
+    if (sent) return
+    sent = true
+    clearTimeout(timer)
+    res.writeHead(status, { Connection: 'close', ...headers })
+    res.end()
+  }
+  // Answer only once the upload has been read off the socket. Closing while the client is still
+  // sending resets the connection on Windows, and the client then never sees this status.
+  // The bytes are not kept, and a sender that will not stop is cut off by size or by time.
+  const timer = setTimeout(send, DRAIN_MS)
+  if (req.complete) {
+    send()
+    return
+  }
+  let drained = 0
+  req.on('data', (chunk: Buffer | string) => {
+    drained += chunk.length
+    if (drained > DRAIN_MAX_BYTES) send()
+  })
+  req.once('end', send)
+  req.once('error', send)
+  req.once('close', send)
   req.resume()
 }
 
