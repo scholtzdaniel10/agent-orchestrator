@@ -131,6 +131,12 @@ const api: OrchestratorApi = {
   fileDiff(where: string | null, path: string): Promise<string> {
     return ipcRenderer.invoke('files:diff', where, path)
   },
+  revealProject(path: string): Promise<void> {
+    return ipcRenderer.invoke('project:reveal', path)
+  },
+  revealFolder(where: string | null): Promise<void> {
+    return ipcRenderer.invoke('files:reveal', where)
+  },
   openFile(where: string | null, path: string): Promise<void> {
     return ipcRenderer.invoke('files:open', where, path)
   },

@@ -62,7 +62,13 @@ const scenes = {
     size: [1440, 900],
     script: openFile
   },
-  narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile }
+  narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile },
+  sidebar: {
+    query: '',
+    scheme: 'dark',
+    script:
+      "document.getElementById('worktree-row-a1b2c3d4')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 150, clientY: 330 }))"
+  }
 }
 
 function sleep(ms) {

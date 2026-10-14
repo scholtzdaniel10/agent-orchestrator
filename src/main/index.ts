@@ -594,6 +594,17 @@ app.whenReady().then(async () => {
     if (typeof path !== 'string') throw new Error('unknown project')
     settings.removeProject(path)
   })
+  ipcMain.handle('project:reveal', async (_event, path: unknown) => {
+    if (typeof path !== 'string' || !settings.projects().includes(path) || !isFolder(path)) {
+      throw new Error('unknown project')
+    }
+    const message = await shell.openPath(path)
+    if (message !== '') throw new Error(message)
+  })
+  ipcMain.handle('files:reveal', async (_event, where: unknown) => {
+    const message = await shell.openPath(filesRoot(where))
+    if (message !== '') throw new Error(message)
+  })
   ipcMain.handle('github:available', () => github.available())
   ipcMain.handle('github:repos', (): Promise<GithubRepo[]> => github.repos())
   ipcMain.handle('github:clone', async (event, nameWithOwner: unknown) => {

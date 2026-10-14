@@ -443,6 +443,27 @@ function App(): React.JSX.Element {
   const [githubAvailable, setGithubAvailable] = useState(false)
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
+
+  // When each terminal last printed, batched to one update a second, for the sidebar's status dots.
+  useEffect(() => {
+    let pending: Record<string, number> = {}
+    let timer: number | undefined
+    const off = window.api.onTerminalData((id) => {
+      pending[id] = Date.now()
+      if (timer !== undefined) return
+      timer = window.setTimeout(() => {
+        timer = undefined
+        const batch = pending
+        pending = {}
+        setTerminalActivity((prev) => ({ ...prev, ...batch }))
+      }, 1000)
+    })
+    return () => {
+      off()
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [])
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [starts, setStarts] = useState<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, number>>({})
@@ -1298,6 +1319,17 @@ function App(): React.JSX.Element {
               }}
               onOpenInWorktree={(provider, worktree) => {
                 void openInWorktree(provider, worktree)
+              }}
+              activity={terminalActivity}
+              onReveal={(worktree) => {
+                window.api.revealFolder(worktree).catch((err: unknown) => {
+                  setProjectError({ text: errorText(err), at: Date.now() })
+                })
+              }}
+              onRevealProject={(path) => {
+                window.api.revealProject(path).catch((err: unknown) => {
+                  setProjectError({ text: errorText(err), at: Date.now() })
+                })
               }}
             />
           </ErrorBoundary>

@@ -160,6 +160,10 @@ export interface OrchestratorApi {
   fileDiff(where: string | null, path: string): Promise<string>
   /** Open an existing file in the system's default program. */
   openFile(where: string | null, path: string): Promise<void>
+  /** Open a listed project's folder in the file manager. */
+  revealProject(path: string): Promise<void>
+  /** Open the active project's folder (null) or a worktree's folder in the file manager. */
+  revealFolder(where: string | null): Promise<void>
   /** Command lines that run in each worktree created by hand. */
   getProjectSetup(): Promise<string[]>
   setProjectSetup(commands: string[]): Promise<void>

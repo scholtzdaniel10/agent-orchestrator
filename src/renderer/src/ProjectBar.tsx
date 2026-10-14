@@ -1,5 +1,16 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import BotAvatar from './BotAvatar'
+import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import { Star } from './Star'
+import {
+  arrangeCards,
+  cardStatus,
+  readOptions,
+  type Card,
+  type CardInput,
+  type CardStatus,
+  type SidebarOptions
+} from './sidebar-cards'
 import { worktreeLabel, worktreeNameFromTask } from './worktree-label'
 
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
@@ -232,239 +243,242 @@ function ChatRow({
   )
 }
 
-function countTerminals(terminals: readonly TerminalInfo[], change: string | null): number {
-  let n = 0
-  for (const info of terminals) {
-    if (change === null) {
-      if (info.change === undefined) n += 1
-    } else if (info.change === change) {
-      n += 1
+function terminalsIn(terminals: readonly TerminalInfo[], change: string | null): TerminalInfo[] {
+  return terminals.filter((info) =>
+    change === null ? info.change === undefined : info.change === change
+  )
+}
+
+function worktreeJobRunning(jobs: readonly JobRecord[], id: string | null): boolean {
+  return jobs.some(
+    (job) =>
+      (id === null ? job.change === undefined : job.change === id) &&
+      (job.status === 'queued' || job.status === 'running')
+  )
+}
+
+const STATUS_TEXT: Record<CardStatus, string> = {
+  working: 'agent working',
+  unread: 'new output since you looked',
+  idle: 'quiet'
+}
+
+function readJson(key: string): unknown {
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw === null ? null : (JSON.parse(raw) as unknown)
+  } catch {
+    return null
+  }
+}
+
+function writeJson(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage blocked: the choice lasts for this session only.
+  }
+}
+
+/** Pins and "last looked at" times, per project, kept in this browser's storage. */
+interface WorktreeMarks {
+  pinned: string[]
+  seen: Record<string, number>
+}
+
+function readMarks(project: string): WorktreeMarks {
+  const raw = readJson(`legate.sidebar.marks:${project}`)
+  const value = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+  const pinned = Array.isArray(value.pinned)
+    ? value.pinned.filter((item): item is string => typeof item === 'string')
+    : []
+  const seen: Record<string, number> = {}
+  if (typeof value.seen === 'object' && value.seen !== null) {
+    for (const [key, at] of Object.entries(value.seen as Record<string, unknown>)) {
+      if (typeof at === 'number') seen[key] = at
     }
   }
-  return n
+  return { pinned, seen }
 }
 
-function worktreeRowId(index: number, changes: readonly ChangeSet[]): string {
-  if (index === 0) return 'worktree-row-all'
-  if (index === 1) return 'worktree-row-project'
-  const item = changes[index - 2]
-  return item === undefined ? 'worktree-row-project' : `worktree-row-${item.id}`
+/** Storage key of a worktree: its id, or "" for the project folder. */
+function markKey(key: string | null): string {
+  return key ?? ''
 }
 
-function WorktreeRow({
+function MoreGlyph(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M3 7h2v2H3zM7 7h2v2H7zM11 7h2v2h-2z" />
+    </svg>
+  )
+}
+
+function WorktreeCard({
+  card,
   rowId,
-  selected,
-  title,
-  titleMono,
-  subtitle,
-  stats,
+  compact,
   terminals,
-  claudeAvailable,
-  cursorAvailable,
-  canRename,
-  canDiscard,
-  discardBlocked,
-  currentName,
+  stats,
+  menuLabel,
   onSelect,
   onKeyDown,
-  onOpen,
-  onRename,
-  onDiscard
+  onMenu
 }: {
+  card: Card
   rowId: string
-  selected: boolean
-  title: string
-  titleMono: boolean
-  subtitle: string | null
+  compact: boolean
+  terminals: readonly TerminalInfo[]
   stats: React.JSX.Element | null
-  terminals: number
-  claudeAvailable: boolean
-  cursorAvailable: boolean
-  canRename: boolean
-  canDiscard: boolean
-  discardBlocked?: boolean
-  currentName: string
+  menuLabel: string
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
-  onOpen?: (provider: ProviderId) => void
-  onRename?: (name: string) => void
-  onDiscard?: () => void
+  onMenu: (at: { x: number; y: number }) => void
 }): React.JSX.Element {
-  const [mode, setMode] = useState<'idle' | 'rename' | 'confirm'>('idle')
-  const [draft, setDraft] = useState(currentName)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (mode !== 'rename') return
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [mode])
-
-  function saveRename(): void {
-    const next = draft.trim()
-    setMode('idle')
-    if (next === '' || next === currentName) {
-      setDraft(currentName)
-      return
-    }
-    onRename?.(next)
-  }
-
-  if (mode === 'confirm') {
-    return (
-      <li className="project-worktree-item">
-        <div className="project-chat-confirm" role="group" aria-label={`Discard ${title}?`}>
-          <span className="project-chat-confirm-text">Discard this worktree?</span>
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact is-danger-label"
-            onClick={() => {
-              setMode('idle')
-              onDiscard?.()
-            }}
-          >
-            Discard
-          </button>
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            onClick={() => {
-              setMode('idle')
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </li>
-    )
-  }
-
-  if (mode === 'rename') {
-    return (
-      <li className="project-worktree-item">
-        <input
-          ref={inputRef}
-          className="project-worktree-rename"
-          value={draft}
-          aria-label={`Rename ${title}`}
-          maxLength={40}
-          onChange={(event) => {
-            setDraft(event.target.value)
-          }}
-          onBlur={() => {
-            saveRename()
-          }}
-          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              saveRename()
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              setDraft(currentName)
-              setMode('idle')
-            }
-          }}
-        />
-      </li>
-    )
-  }
-
+  const agents = terminals.filter((info) => info.status === 'running')
   return (
-    <li className="project-worktree-item">
+    <li
+      className={`project-worktree-item is-${card.status}${compact ? ' is-compact' : ''}`}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onMenu({ x: event.clientX, y: event.clientY })
+      }}
+    >
       <button
         id={rowId}
         type="button"
-        className={`project-worktree-row${selected ? ' is-selected' : ''}`}
-        title={title}
-        aria-current={selected ? 'true' : undefined}
+        className={`project-worktree-row${card.selected ? ' is-selected' : ''}`}
+        title={card.key === null ? 'Project folder' : card.title}
+        aria-current={card.selected ? 'true' : undefined}
         onClick={onSelect}
         onKeyDown={onKeyDown}
       >
+        <span
+          className={`worktree-dot is-${card.status}`}
+          role="img"
+          aria-label={STATUS_TEXT[card.status]}
+          title={STATUS_TEXT[card.status]}
+        />
         <span className="project-worktree-body">
-          <span className={titleMono ? 'project-worktree-id' : 'project-worktree-name'}>
-            {title}
+          <span className="project-worktree-line">
+            <span
+              className={
+                card.key !== null && card.title === card.key
+                  ? 'project-worktree-id'
+                  : 'project-worktree-name'
+              }
+            >
+              {card.title}
+            </span>
+            {card.pinned ? (
+              <span className="worktree-pin" aria-label="pinned" title="Pinned">
+                ▲
+              </span>
+            ) : null}
+            {agents.length > 0 ? (
+              <span className="worktree-agents" aria-label={`${String(agents.length)} agents open`}>
+                {agents.slice(0, 3).map((info) =>
+                  info.provider === 'claude' || info.provider === 'cursor' ? (
+                    <BotAvatar
+                      key={info.id}
+                      bot={info.provider}
+                      state={card.status === 'working' ? 'working' : 'idle'}
+                      size={14}
+                    />
+                  ) : (
+                    <span key={info.id} className="worktree-shell" aria-hidden="true">
+                      $
+                    </span>
+                  )
+                )}
+              </span>
+            ) : null}
           </span>
-          {subtitle !== null ? <span className="project-worktree-sub">{subtitle}</span> : null}
-          {stats !== null || terminals > 0 ? (
+          {!compact ? (
             <span className="project-worktree-meta">
-              {stats}
-              {terminals > 0 ? (
-                <span className="project-worktree-terms">
-                  {terminals === 1 ? '1 terminal' : `${String(terminals)} terminals`}
-                </span>
+              {card.key === null ? <span>project folder</span> : null}
+              {card.branch !== null ? (
+                <span className="project-worktree-branch">{card.branch}</span>
               ) : null}
+              {stats}
             </span>
           ) : null}
         </span>
       </button>
-      <div className="project-worktree-actions">
-        {claudeAvailable ? (
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            title="Open Claude here"
-            onClick={() => {
-              onOpen?.('claude')
-            }}
-          >
-            + Claude
-          </button>
-        ) : null}
-        {cursorAvailable ? (
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            title="Open Cursor here"
-            onClick={() => {
-              onOpen?.('cursor')
-            }}
-          >
-            + Cursor
-          </button>
-        ) : null}
-        {canRename ? (
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            title="Rename"
-            onClick={() => {
-              setDraft(currentName)
-              setMode('rename')
-            }}
-          >
-            Rename
-          </button>
-        ) : null}
-        {canDiscard ? (
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            title={discardBlocked === true ? 'job running' : 'Discard'}
-            disabled={discardBlocked === true}
-            onClick={() => {
-              setMode('confirm')
-            }}
-          >
-            Discard
-          </button>
-        ) : null}
-        {discardBlocked === true ? <span className="project-worktree-sub">job running</span> : null}
-      </div>
+      <button
+        type="button"
+        className="worktree-more"
+        aria-label={menuLabel}
+        title="More actions"
+        aria-haspopup="menu"
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          onMenu({ x: rect.left, y: rect.bottom })
+        }}
+      >
+        <MoreGlyph />
+      </button>
     </li>
   )
 }
 
-function worktreeJobRunning(jobs: readonly JobRecord[], id: string): boolean {
-  return jobs.some(
-    (job) => job.change === id && (job.status === 'queued' || job.status === 'running')
+function WorktreeRenameRow({
+  title,
+  currentName,
+  onDone
+}: {
+  title: string
+  currentName: string
+  onDone: (name: string | null) => void
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(currentName)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  function save(): void {
+    const next = draft.trim()
+    onDone(next === '' || next === currentName ? null : next)
+  }
+
+  return (
+    <li className="project-worktree-item">
+      <input
+        ref={inputRef}
+        className="project-worktree-rename"
+        value={draft}
+        aria-label={`Rename ${title}`}
+        maxLength={40}
+        onChange={(event) => {
+          setDraft(event.target.value)
+        }}
+        onBlur={save}
+        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            save()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            onDone(null)
+          }
+        }}
+      />
+    </li>
   )
 }
 
 function WorktreesSection({
+  project,
   branch,
   changes,
   jobs,
   terminals,
+  activity,
+  options,
+  filter,
   selectedWorktrees,
   claudeAvailable,
   cursorAvailable,
@@ -473,12 +487,17 @@ function WorktreesSection({
   onCreate,
   onRename,
   onDiscard,
-  onOpen
+  onOpen,
+  onReveal
 }: {
+  project: string
   branch: string | null
   changes: ChangeSet[]
   jobs: readonly JobRecord[]
   terminals: readonly TerminalInfo[]
+  activity: Readonly<Record<string, number>>
+  options: SidebarOptions
+  filter: string
   selectedWorktrees: ReadonlySet<WorktreeId>
   claudeAvailable: boolean
   cursorAvailable: boolean
@@ -493,19 +512,62 @@ function WorktreesSection({
   onRename: (id: string, name: string) => void
   onDiscard: (id: string) => void
   onOpen: (provider: ProviderId, worktree: string | null) => void
+  onReveal: (worktree: string | null) => void
 }): React.JSX.Element {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
   const [task, setTask] = useState('')
   const [howMany, setHowMany] = useState(1)
   const [start, setStart] = useState<'' | ProviderId>('')
+  const [marks, setMarks] = useState<WorktreeMarks>(() => readMarks(project))
+  const [marksFor, setMarksFor] = useState(project)
+  const [menu, setMenu] = useState<{ key: WorktreeId; at: { x: number; y: number } } | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [clock, setClock] = useState(() => Date.now())
   const createRef = useRef<HTMLInputElement>(null)
   const canTask = start === 'claude' || start === 'cursor'
+
+  // Another project's pins: reload while rendering, the pattern React recommends over an effect.
+  if (marksFor !== project) {
+    setMarksFor(project)
+    setMarks(readMarks(project))
+  }
 
   useEffect(() => {
     if (!creating) return
     createRef.current?.focus()
   }, [creating])
+
+  // Re-read the clock so "working" turns back to quiet once output stops.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setClock(Date.now())
+    }, 2000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  function saveMarks(next: WorktreeMarks): void {
+    setMarks(next)
+    writeJson(`legate.sidebar.marks:${project}`, next)
+  }
+
+  function markSeen(keys: Iterable<WorktreeId>): void {
+    const seen = { ...marks.seen }
+    // Seen up to its latest output; the clock covers worktrees with none.
+    for (const key of keys) {
+      const card = cards.find((entry) => entry.key === key)
+      seen[markKey(key)] = Math.max(clock, card?.lastActive ?? 0)
+    }
+    saveMarks({ ...marks, seen })
+  }
+
+  function select(id: WorktreeId, mode: WorktreeSelectMode): void {
+    markSeen([...selectedWorktrees, id])
+    onSelect(id, mode)
+  }
 
   function finishCreate(save: boolean): void {
     const next = draft.trim()
@@ -523,63 +585,298 @@ function WorktreesSection({
       onCreate(named === undefined || named === '' ? undefined : named, count, agent, prompt)
   }
 
-  function onRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
-    if (index === 0) {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        onSelectAll()
-        return
-      }
-    } else {
-      const id = index === 1 ? null : (changes[index - 2]?.id ?? null)
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        onSelect(id, 'only')
-        return
-      }
-      if (event.key === ' ') {
-        event.preventDefault()
-        onSelect(id, 'toggle')
-        return
-      }
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    event.preventDefault()
-    const next = event.key === 'ArrowDown' ? index + 1 : index - 1
-    if (next < 0 || next > changes.length + 1) return
-    const element = document.getElementById(worktreeRowId(next, changes))
-    if (element instanceof HTMLButtonElement) element.focus()
-  }
-
-  const folderLabel = branch ?? 'HEAD'
+  const inputs: CardInput[] = [
+    {
+      key: null,
+      title: branch ?? 'HEAD',
+      branch: null,
+      terminalIds: terminalsIn(terminals, null).map((info) => info.id),
+      jobRunning: worktreeJobRunning(jobs, null),
+      hasChanges: false,
+      createdIndex: 0,
+      pinned: marks.pinned.includes(''),
+      seenAt: marks.seen[''] ?? 0,
+      selected: selectedWorktrees.has(null)
+    },
+    ...changes.map((item, index) => ({
+      key: item.id,
+      title: worktreeLabel(item),
+      branch: item.branch,
+      terminalIds: terminalsIn(terminals, item.id).map((info) => info.id),
+      jobRunning: worktreeJobRunning(jobs, item.id),
+      hasChanges: item.files.length > 0,
+      createdIndex: index + 1,
+      pinned: marks.pinned.includes(item.id),
+      seenAt: marks.seen[item.id] ?? 0,
+      selected: selectedWorktrees.has(item.id)
+    }))
+  ]
+  const cards = inputs.map((input) => cardStatus(input, activity, clock))
+  const groups = arrangeCards(cards, options, filter)
+  const order = groups.flatMap((group) => group.cards)
   const keys = worktreeKeys(changes)
   const allSelected = keys.every((key) => selectedWorktrees.has(key))
   const shownCount = selectedWorktrees.size
+  const working = cards.filter((card) => card.status === 'working').length
 
+  function rowId(key: WorktreeId): string {
+    return key === null ? 'worktree-row-project' : `worktree-row-${key}`
+  }
+
+  function onRowKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    const card = order[index]
+    if (card === undefined) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      select(card.key, 'only')
+      return
+    }
+    if (event.key === ' ') {
+      event.preventDefault()
+      select(card.key, 'toggle')
+      return
+    }
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      setMenu({ key: card.key, at: { x: rect.left + 20, y: rect.bottom } })
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const next = order[event.key === 'ArrowDown' ? index + 1 : index - 1]
+    if (next === undefined) return
+    const element = document.getElementById(rowId(next.key))
+    if (element instanceof HTMLButtonElement) element.focus()
+  }
+
+  function statsFor(card: Card): React.JSX.Element | null {
+    const item = card.key === null ? undefined : changes.find((change) => change.id === card.key)
+    const open = terminalsIn(terminals, card.key).length
+    const parts: React.JSX.Element[] = []
+    if (item?.setup === 'running') parts.push(<span key="setup">setting up…</span>)
+    if (item?.setup === 'failed')
+      parts.push(
+        <span key="setup" className="setup-failed">
+          setup failed
+        </span>
+      )
+    if (item !== undefined) {
+      parts.push(
+        item.files.length === 0 ? (
+          <span key="diff">no changes yet</span>
+        ) : (
+          <span key="diff">
+            <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
+            <span className="stat-del">{`−${String(item.deletions)}`}</span>
+          </span>
+        )
+      )
+    }
+    if (open > 0)
+      parts.push(
+        <span key="terms" className="project-worktree-terms">
+          {open === 1 ? '1 terminal' : `${String(open)} terminals`}
+        </span>
+      )
+    return parts.length === 0 ? null : <>{parts}</>
+  }
+
+  function menuEntries(key: WorktreeId): MenuEntry[] {
+    const item = key === null ? undefined : changes.find((change) => change.id === key)
+    const path = item?.path ?? project
+    const pinned = marks.pinned.includes(markKey(key))
+    const card = cards.find((entry) => entry.key === key)
+    const blocked = key !== null && worktreeJobRunning(jobs, key)
+    const entries: MenuEntry[] = [
+      {
+        label: 'Open Claude here',
+        disabled: !claudeAvailable,
+        onSelect: () => {
+          select(key, 'only')
+          onOpen('claude', key)
+        }
+      },
+      {
+        label: 'Open Cursor here',
+        disabled: !cursorAvailable,
+        onSelect: () => {
+          select(key, 'only')
+          onOpen('cursor', key)
+        }
+      },
+      {
+        label: pinned ? 'Unpin' : 'Pin to top',
+        separator: true,
+        onSelect: () => {
+          const id = markKey(key)
+          saveMarks({
+            ...marks,
+            pinned: pinned ? marks.pinned.filter((entry) => entry !== id) : [...marks.pinned, id]
+          })
+        }
+      },
+      card?.status === 'unread'
+        ? {
+            label: 'Mark as read',
+            onSelect: () => {
+              markSeen([key])
+            }
+          }
+        : {
+            label: 'Mark as unread',
+            disabled: card === undefined || card.lastActive === 0,
+            onSelect: () => {
+              saveMarks({ ...marks, seen: { ...marks.seen, [markKey(key)]: 0 } })
+            }
+          },
+      {
+        label: 'Open folder',
+        separator: true,
+        onSelect: () => {
+          onReveal(key)
+        }
+      },
+      {
+        label: 'Copy path',
+        onSelect: () => {
+          void navigator.clipboard.writeText(path)
+        }
+      }
+    ]
+    if (item !== undefined) {
+      entries.push(
+        {
+          label: 'Copy branch name',
+          onSelect: () => {
+            void navigator.clipboard.writeText(item.branch)
+          }
+        },
+        {
+          label: 'Rename…',
+          separator: true,
+          onSelect: () => {
+            setRenaming(item.id)
+          }
+        },
+        {
+          label: blocked ? 'Discard (a job is running)' : 'Discard worktree…',
+          danger: true,
+          disabled: blocked,
+          onSelect: () => {
+            setConfirming(item.id)
+          }
+        }
+      )
+    }
+    return entries
+  }
+
+  function renderCard(card: Card, index: number): React.JSX.Element {
+    const item = card.key === null ? undefined : changes.find((change) => change.id === card.key)
+    if (item !== undefined && renaming === item.id) {
+      return (
+        <WorktreeRenameRow
+          key={item.id}
+          title={card.title}
+          currentName={item.name ?? ''}
+          onDone={(name) => {
+            setRenaming(null)
+            if (name !== null) onRename(item.id, name)
+          }}
+        />
+      )
+    }
+    if (item !== undefined && confirming === item.id) {
+      return (
+        <li key={item.id} className="project-worktree-item">
+          <div className="project-chat-confirm" role="group" aria-label={`Discard ${card.title}?`}>
+            <span className="project-chat-confirm-text">Discard this worktree?</span>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact is-danger-label"
+              autoFocus
+              onClick={() => {
+                setConfirming(null)
+                onDiscard(item.id)
+              }}
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              onClick={() => {
+                setConfirming(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </li>
+      )
+    }
+    return (
+      <WorktreeCard
+        key={card.key ?? ''}
+        card={card}
+        rowId={rowId(card.key)}
+        compact={options.layout === 'compact'}
+        terminals={terminalsIn(terminals, card.key)}
+        stats={statsFor(card)}
+        menuLabel={`Actions for ${card.title}`}
+        onSelect={(event) => {
+          select(card.key, clickSelectMode(event))
+        }}
+        onKeyDown={(event) => {
+          onRowKeyDown(event, index)
+        }}
+        onMenu={(at) => {
+          setMenu({ key: card.key, at })
+        }}
+      />
+    )
+  }
+
+  const position = new Map(order.map((card, at) => [card.key, at]))
   return (
     <div className="project-worktrees">
       <div className="project-chats-head">
         <span className="project-chats-label">
           Worktrees
+          {working > 0 ? (
+            <span className="project-worktree-shown">{`${String(working)} working`}</span>
+          ) : null}
           {shownCount > 1 ? (
             <span className="project-worktree-shown">{`${String(shownCount)} shown`}</span>
           ) : null}
         </span>
-        <button
-          type="button"
-          className="btn btn-quiet btn-compact"
-          title="New worktree"
-          aria-label="New worktree"
-          onClick={() => {
-            setDraft('')
-            setTask('')
-            setHowMany(1)
-            setStart('')
-            setCreating(true)
-          }}
-        >
-          +
-        </button>
+        <span className="head-actions">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Show every worktree side by side"
+            aria-pressed={allSelected}
+            onClick={onSelectAll}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="New worktree"
+            aria-label="New worktree"
+            onClick={() => {
+              setDraft('')
+              setTask('')
+              setHowMany(1)
+              setStart('')
+              setCreating(true)
+            }}
+          >
+            +
+          </button>
+        </span>
       </div>
       {creating ? (
         <form
@@ -667,106 +964,32 @@ function WorktreesSection({
           </label>
         </form>
       ) : null}
-      <ul className="project-worktrees-list">
-        <WorktreeRow
-          rowId={worktreeRowId(0, changes)}
-          selected={allSelected}
-          title="All"
-          titleMono={false}
-          subtitle={null}
-          stats={null}
-          terminals={0}
-          claudeAvailable={false}
-          cursorAvailable={false}
-          canRename={false}
-          canDiscard={false}
-          currentName=""
-          onSelect={() => {
-            onSelectAll()
-          }}
-          onKeyDown={(event) => {
-            onRowKeyDown(event, 0)
-          }}
-        />
-        <WorktreeRow
-          rowId={worktreeRowId(1, changes)}
-          selected={selectedWorktrees.has(null)}
-          title={folderLabel}
-          titleMono={false}
-          subtitle="project folder"
-          stats={null}
-          terminals={countTerminals(terminals, null)}
-          claudeAvailable={claudeAvailable}
-          cursorAvailable={cursorAvailable}
-          canRename={false}
-          canDiscard={false}
-          currentName=""
-          onSelect={(event) => {
-            onSelect(null, clickSelectMode(event))
-          }}
-          onKeyDown={(event) => {
-            onRowKeyDown(event, 1)
-          }}
-          onOpen={(provider) => {
-            onSelect(null, 'only')
-            onOpen(provider, null)
+      <div className="project-worktrees-list">
+        {groups.length === 0 ? <p className="project-empty">No worktrees match.</p> : null}
+        {groups.map((group) => (
+          <div key={group.label ?? 'all'} role="group" aria-label={group.label ?? 'Worktrees'}>
+            {group.label !== null ? (
+              <div className="worktree-group-label">
+                {group.label}
+                <span className="worktree-group-count">{group.cards.length}</span>
+              </div>
+            ) : null}
+            <ul className="worktree-group-list">
+              {group.cards.map((card) => renderCard(card, position.get(card.key) ?? 0))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {menu !== null ? (
+        <SidebarMenu
+          label="Worktree actions"
+          at={menu.at}
+          entries={menuEntries(menu.key)}
+          onClose={() => {
+            setMenu(null)
           }}
         />
-        {changes.map((item, index) => {
-          const label = worktreeLabel(item)
-          const named = typeof item.name === 'string' && item.name !== ''
-          const noChanges = item.files.length === 0
-          return (
-            <WorktreeRow
-              key={item.id}
-              rowId={worktreeRowId(index + 2, changes)}
-              selected={selectedWorktrees.has(item.id)}
-              title={label}
-              titleMono={!named}
-              subtitle={null}
-              stats={
-                <>
-                  {item.setup === 'running' ? <span>setting up…</span> : null}
-                  {item.setup === 'failed' ? (
-                    <span className="setup-failed">setup failed</span>
-                  ) : null}
-                  {noChanges ? (
-                    <span>no changes yet</span>
-                  ) : (
-                    <span>
-                      <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
-                      <span className="stat-del">{`−${String(item.deletions)}`}</span>
-                    </span>
-                  )}
-                </>
-              }
-              terminals={countTerminals(terminals, item.id)}
-              claudeAvailable={claudeAvailable}
-              cursorAvailable={cursorAvailable}
-              canRename={true}
-              canDiscard={true}
-              discardBlocked={worktreeJobRunning(jobs, item.id)}
-              currentName={named ? (item.name ?? '') : ''}
-              onSelect={(event) => {
-                onSelect(item.id, clickSelectMode(event))
-              }}
-              onKeyDown={(event) => {
-                onRowKeyDown(event, index + 2)
-              }}
-              onOpen={(provider) => {
-                onSelect(item.id, 'only')
-                onOpen(provider, item.id)
-              }}
-              onRename={(name) => {
-                onRename(item.id, name)
-              }}
-              onDiscard={() => {
-                onDiscard(item.id)
-              }}
-            />
-          )
-        })}
-      </ul>
+      ) : null}
     </div>
   )
 }
@@ -908,7 +1131,10 @@ function ProjectBar({
   onCreateWorktree,
   onRenameWorktree,
   onDiscardWorktree,
-  onOpenInWorktree
+  onOpenInWorktree,
+  activity,
+  onReveal,
+  onRevealProject
 }: {
   projects: ProjectEntry[]
   chats: LeadChat[]
@@ -942,8 +1168,143 @@ function ProjectBar({
   onRenameWorktree: (id: string, name: string) => void
   onDiscardWorktree: (id: string) => void
   onOpenInWorktree: (provider: ProviderId, worktree: string | null) => void
+  /** Terminal id → epoch ms of its latest output. */
+  activity: Readonly<Record<string, number>>
+  /** Open the active project's folder (null) or a worktree's folder in the file manager. */
+  onReveal: (worktree: string | null) => void
+  /** Open a listed project's folder in the file manager. */
+  onRevealProject: (path: string) => void
 }): React.JSX.Element {
-  const shown = chats.slice(0, 30)
+  const [search, setSearch] = useState('')
+  const [options, setOptions] = useState<SidebarOptions>(() =>
+    readOptions(readJson('legate.sidebar.options'))
+  )
+  const [optionsAt, setOptionsAt] = useState<{ x: number; y: number } | null>(null)
+  const [projectMenu, setProjectMenu] = useState<{
+    path: string
+    at: { x: number; y: number }
+  } | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const needle = search.trim().toLowerCase()
+  const shownProjects =
+    needle === ''
+      ? projects
+      : projects.filter((entry) => entry.active || entry.path.toLowerCase().includes(needle))
+  const shown = chats
+    .filter((chat) => needle === '' || chat.title.toLowerCase().includes(needle))
+    .slice(0, 30)
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return
+      if (event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
+  function setOption(patch: Partial<SidebarOptions>): void {
+    const next = { ...options, ...patch }
+    setOptions(next)
+    writeJson('legate.sidebar.options', next)
+  }
+
+  function optionEntries(): MenuEntry[] {
+    return [
+      { label: 'Group by', heading: true },
+      {
+        label: 'Nothing',
+        checked: options.groupBy === 'none',
+        onSelect: () => setOption({ groupBy: 'none' })
+      },
+      {
+        label: 'Status',
+        checked: options.groupBy === 'status',
+        onSelect: () => setOption({ groupBy: 'status' })
+      },
+      { label: 'Sort by', heading: true, separator: true },
+      {
+        label: 'Created',
+        checked: options.sortBy === 'created',
+        onSelect: () => setOption({ sortBy: 'created' })
+      },
+      {
+        label: 'Recent activity',
+        checked: options.sortBy === 'recent',
+        onSelect: () => setOption({ sortBy: 'recent' })
+      },
+      {
+        label: 'Name',
+        checked: options.sortBy === 'name',
+        onSelect: () => setOption({ sortBy: 'name' })
+      },
+      { label: 'Cards', heading: true, separator: true },
+      {
+        label: 'Detailed',
+        checked: options.layout === 'detailed',
+        onSelect: () => setOption({ layout: 'detailed' })
+      },
+      {
+        label: 'Compact',
+        checked: options.layout === 'compact',
+        onSelect: () => setOption({ layout: 'compact' })
+      },
+      {
+        label: 'Hide quiet worktrees',
+        separator: true,
+        checked: options.hideClean,
+        title: 'Hide worktrees with no changes, no terminals and nothing happening',
+        onSelect: () => setOption({ hideClean: !options.hideClean })
+      }
+    ]
+  }
+
+  function projectEntries(path: string): MenuEntry[] {
+    const entry = projects.find((item) => item.path === path)
+    const active = entry?.active === true
+    return [
+      {
+        label: active ? 'Open folder' : 'Switch to this project',
+        onSelect: () => {
+          if (active) onReveal(null)
+          else onSwitch(path)
+        }
+      },
+      ...(active
+        ? []
+        : [
+            {
+              label: 'Open folder',
+              onSelect: () => {
+                onRevealProject(path)
+              }
+            }
+          ]),
+      {
+        label: 'Copy path',
+        onSelect: () => {
+          void navigator.clipboard.writeText(path)
+        }
+      },
+      {
+        label: 'Remove from list',
+        separator: true,
+        danger: true,
+        disabled: active,
+        title: active
+          ? 'Switch to another project first'
+          : 'Removes it from this list. The folder is not deleted.',
+        onSelect: () => {
+          onRemove(path)
+        }
+      }
+    ]
+  }
   const [githubOpen, setGithubOpen] = useState(false)
   const [repos, setRepos] = useState<GithubRepo[]>([])
   const [reposLoading, setReposLoading] = useState(false)
@@ -1024,6 +1385,65 @@ function ProjectBar({
           ) : null}
         </div>
       </div>
+      <div className="project-search-row">
+        <input
+          ref={searchRef}
+          className="project-search"
+          type="search"
+          value={search}
+          placeholder="Search  Ctrl+K"
+          aria-label="Search projects, worktrees and chats"
+          onChange={(event) => {
+            setSearch(event.target.value)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && search !== '') {
+              event.preventDefault()
+              event.stopPropagation()
+              setSearch('')
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact project-options"
+          aria-label="View options"
+          title="Group, sort and card options"
+          aria-haspopup="menu"
+          aria-expanded={optionsAt !== null}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            setOptionsAt({ x: rect.left, y: rect.bottom })
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M1 3h8v1.5H1zM12 3h3v1.5h-3zM9.5 1.5H11v4H9.5zM1 11.5h3V13H1zM7 11.5h8V13H7zM4.5 10H6v4H4.5zM1 7.25h11v1.5H1zM13.5 6.25H15v3.5h-1.5z"
+            />
+          </svg>
+        </button>
+      </div>
+      {optionsAt !== null ? (
+        <SidebarMenu
+          label="View options"
+          at={optionsAt}
+          entries={optionEntries()}
+          onClose={() => {
+            setOptionsAt(null)
+          }}
+        />
+      ) : null}
+      {projectMenu !== null ? (
+        <SidebarMenu
+          label="Project actions"
+          at={projectMenu.at}
+          entries={projectEntries(projectMenu.path)}
+          onClose={() => {
+            setProjectMenu(null)
+          }}
+        />
+      ) : null}
       {githubOpen ? (
         <GithubPanel
           repos={repos}
@@ -1043,11 +1463,23 @@ function ProjectBar({
         />
       ) : null}
       <ul className="project-list">
-        {projects.map((entry) => {
+        {shownProjects.map((entry) => {
           const name = folderName(entry.path)
           const active = entry.active
           return (
-            <li key={entry.path} className="project-item">
+            <li
+              key={entry.path}
+              className="project-item"
+              onContextMenu={(event) => {
+                if (
+                  event.target instanceof Element &&
+                  event.target.closest('.project-worktrees, .project-chats')
+                )
+                  return
+                event.preventDefault()
+                setProjectMenu({ path: entry.path, at: { x: event.clientX, y: event.clientY } })
+              }}
+            >
               <button
                 type="button"
                 className={`project-row${active ? ' is-selected' : ''}`}
@@ -1084,21 +1516,26 @@ function ProjectBar({
                   </span>
                 ) : null}
               </button>
-              {!active ? (
-                <button
-                  type="button"
-                  className="project-remove"
-                  aria-label={`Remove ${name} from the list`}
-                  title="Remove from this list (does not delete the folder)"
-                  onClick={() => {
-                    onRemove(entry.path)
-                  }}
-                >
-                  ×
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="project-remove"
+                aria-label={`Actions for ${name}`}
+                title="More actions"
+                aria-haspopup="menu"
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  setProjectMenu({ path: entry.path, at: { x: rect.left, y: rect.bottom } })
+                }}
+              >
+                <MoreGlyph />
+              </button>
               {active && entry.isRepo ? (
                 <WorktreesSection
+                  project={entry.path}
+                  activity={activity}
+                  options={options}
+                  filter={search}
+                  onReveal={onReveal}
                   branch={entry.branch}
                   changes={changes}
                   jobs={jobs}

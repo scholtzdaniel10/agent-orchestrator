@@ -413,7 +413,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           status: 'running',
           exitCode: null,
           model: 'claude-opus-5-5',
-          startedAt: now - 0.3 * H
+          startedAt: now - 0.3 * H,
+          change: 'a1b2c3d4'
         },
         {
           id: 't2',
@@ -628,6 +629,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
     ),
     openFile: ok(undefined),
+    revealProject: ok(undefined),
+    revealFolder: ok(undefined),
     getProjectSetup: ok([]),
     setProjectSetup: ok(undefined),
     listRoutines: ok([]),
@@ -675,7 +678,12 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listTerminals: ok(terminals),
     restoreTerminals: ok(terminals),
     terminalSnapshot: (id) => Promise.resolve(snapshots[id] ?? ''),
-    onTerminalData: off,
+    onTerminalData: (cb) => {
+      // One busy agent (keeps printing) and one that printed once: working and new-output dots.
+      setTimeout(() => cb('t2', 'done'), 0)
+      const timer = setInterval(() => cb('t1', '.'), 700)
+      return () => clearInterval(timer)
+    },
     onTerminalUpdate: off,
     newWindow: ok(undefined),
     popOutTerminal: ok(undefined),
