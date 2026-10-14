@@ -261,3 +261,26 @@ test('setModel creates a missing parent folder', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('prefs default, validate and persist', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-settings-'))
+  try {
+    const path = join(root, 'settings.json')
+    const settings = new Settings(path)
+    expect(settings.prefs()).toEqual({
+      maxParallel: null,
+      terminalFontSize: 13,
+      notify: true,
+      cloneDir: null
+    })
+    settings.setPrefs({ maxParallel: 5, notify: false, unknown: 'x' })
+    expect(new Settings(path).prefs()).toMatchObject({ maxParallel: 5, notify: false })
+    expect(settings.setPrefs({ maxParallel: 99, terminalFontSize: 2 })).toMatchObject({
+      maxParallel: null,
+      terminalFontSize: 13
+    })
+    expect(() => settings.setPrefs('nope')).toThrow('invalid settings')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

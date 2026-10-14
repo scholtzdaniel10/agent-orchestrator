@@ -241,6 +241,15 @@ function TerminalPane({
     scheme.addEventListener('change', onScheme)
     window.addEventListener('themechange', onScheme)
 
+    // Text size from Settings, for this pane now and whenever it changes.
+    const applyFont = (prefs: { terminalFontSize: number }): void => {
+      if (cancelled || term.options.fontSize === prefs.terminalFontSize) return
+      term.options.fontSize = prefs.terminalFontSize
+      applyFit()
+    }
+    void window.api.getPrefs().then(applyFont, () => {})
+    const offPrefs = window.api.onPrefsUpdate(applyFont)
+
     return () => {
       cancelled = true
       focusedTick.current = 0
@@ -251,6 +260,7 @@ function TerminalPane({
       observer.disconnect()
       scheme.removeEventListener('change', onScheme)
       window.removeEventListener('themechange', onScheme)
+      offPrefs()
       onData.dispose()
       try {
         webgl?.dispose()

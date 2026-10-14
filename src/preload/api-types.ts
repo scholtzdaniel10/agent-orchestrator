@@ -1,4 +1,5 @@
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobAccess,
@@ -6,6 +7,7 @@ import type {
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
@@ -162,6 +164,16 @@ export interface OrchestratorApi {
   openFile(where: string | null, path: string): Promise<void>
   /** Open a listed project's folder in the file manager. */
   revealProject(path: string): Promise<void>
+
+  getPrefs(): Promise<Prefs>
+  /** Change some preferences; resolves the full, validated set. */
+  setPrefs(patch: Partial<Prefs>): Promise<Prefs>
+  /** Folder picker for where GitHub clones go. Resolves null when cancelled. */
+  chooseCloneDir(): Promise<Prefs | null>
+  onPrefsUpdate(cb: (prefs: Prefs) => void): () => void
+  getAppInfo(): Promise<AppInfo>
+  /** Open the folder that holds settings and saved chats in the file manager. */
+  openDataDir(): Promise<void>
   /** Open the active project's folder (null) or a worktree's folder in the file manager. */
   revealFolder(where: string | null): Promise<void>
   /** Command lines that run in each worktree created by hand. */

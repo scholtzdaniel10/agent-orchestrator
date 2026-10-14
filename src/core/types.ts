@@ -233,6 +233,27 @@ export interface ProjectInfo {
   branch: string | null
 }
 
+/** Preferences set on the Settings page. */
+export interface Prefs {
+  /** Jobs one plan may run at once, 1..8; null uses the rules file. */
+  maxParallel: number | null
+  /** Terminal text size in pixels, 10..22. */
+  terminalFontSize: number
+  /** Desktop notification when a job ends while no app window is focused. */
+  notify: boolean
+  /** Folder GitHub clones go into; null asks every time. */
+  cloneDir: string | null
+}
+
+/** Read-only facts for the Settings page. */
+export interface AppInfo {
+  version: string
+  dataDir: string
+  worktreesDir: string
+  /** Jobs per plan the rules file asks for. */
+  rulesMaxParallel: number
+}
+
 export interface ProjectEntry extends ProjectInfo {
   /** True for the folder jobs and the lead currently work in. */
   active: boolean

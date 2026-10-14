@@ -633,6 +633,29 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     ),
     openFile: ok(undefined),
     revealProject: ok(undefined),
+    getPrefs: ok({
+      maxParallel: null,
+      terminalFontSize: 13,
+      notify: true,
+      cloneDir: 'C:/Users/dev/projects'
+    }),
+    setPrefs: (patch) =>
+      Promise.resolve({
+        maxParallel: null,
+        terminalFontSize: 13,
+        notify: true,
+        cloneDir: null,
+        ...patch
+      }),
+    chooseCloneDir: ok(null),
+    onPrefsUpdate: off,
+    getAppInfo: ok({
+      version: '1.0.3',
+      dataDir: 'C:/Users/dev/AppData/Roaming/legate',
+      worktreesDir: 'C:/Users/dev/.orchestrator/wt',
+      rulesMaxParallel: 3
+    }),
+    openDataDir: ok(undefined),
     revealFolder: ok(undefined),
     getProjectSetup: ok([]),
     setProjectSetup: ok(undefined),

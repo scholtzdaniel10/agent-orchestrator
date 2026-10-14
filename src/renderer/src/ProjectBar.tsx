@@ -1134,7 +1134,8 @@ function ProjectBar({
   onOpenInWorktree,
   activity,
   onReveal,
-  onRevealProject
+  onRevealProject,
+  onOpenSettings
 }: {
   projects: ProjectEntry[]
   chats: LeadChat[]
@@ -1174,6 +1175,7 @@ function ProjectBar({
   onReveal: (worktree: string | null) => void
   /** Open a listed project's folder in the file manager. */
   onRevealProject: (path: string) => void
+  onOpenSettings: () => void
 }): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [options, setOptions] = useState<SidebarOptions>(() =>
@@ -1588,6 +1590,22 @@ function ProjectBar({
           {error}
         </p>
       ) : null}
+      <div className="project-foot">
+        <button
+          type="button"
+          className="project-foot-button"
+          title="Settings (Ctrl+,)"
+          onClick={onOpenSettings}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M7 1h2l.4 1.9 1.3.6 1.7-1 1.4 1.4-1 1.7.6 1.3L15 7v2l-1.9.4-.6 1.3 1 1.7-1.4 1.4-1.7-1-1.3.6L9 15H7l-.4-1.9-1.3-.6-1.7 1-1.4-1.4 1-1.7-.6-1.3L1 9V7l1.9-.4.6-1.3-1-1.7 1.4-1.4 1.7 1 1.3-.6zm1 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"
+            />
+          </svg>
+          <span className="project-foot-label">Settings</span>
+        </button>
+      </div>
     </aside>
   )
 }

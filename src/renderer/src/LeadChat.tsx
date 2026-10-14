@@ -114,13 +114,16 @@ function LeadChat({
   jobs,
   plans,
   onReset,
-  onShowJob
+  onShowJob,
+  settingsNonce = 0
 }: {
   messages: LeadMessage[]
   jobs: JobRecord[]
   plans: PlanStatus[] | null
   onReset: () => Promise<void>
   onShowJob: (id: string) => void
+  /** Bumped when Settings changes the lead plan or access, so they are read again. */
+  settingsNonce?: number
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
@@ -136,9 +139,10 @@ function LeadChat({
 
   useEffect(() => {
     let active = true
+    const fresh = settingsNonce > 0
     void window.api.getLeadPlan().then(
       (plan) => {
-        if (!active || picked.current) return
+        if (!active || (picked.current && !fresh)) return
         const value: PlanChoice = plan ?? 'auto'
         choiceRef.current = value
         setChoice(value)
@@ -162,7 +166,7 @@ function LeadChat({
     return () => {
       active = false
     }
-  }, [])
+  }, [settingsNonce])
 
   async function changeAccess(value: JobAccess): Promise<void> {
     const previous = accessRef.current

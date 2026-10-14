@@ -63,6 +63,22 @@ const scenes = {
     script: openFile
   },
   narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile },
+  settings: {
+    size: [1440, 900],
+    query: '',
+    scheme: 'dark',
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let button
+      while (Date.now() < deadline) {
+        button = document.querySelector('.project-foot-button')
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
   sidebar: {
     size: [1440, 900],
     query: '',
