@@ -10,6 +10,9 @@
   try {
     if (theme) localStorage.setItem('orch.theme', theme)
     else localStorage.removeItem('orch.theme')
+    // Setup opens on a first start; only the setup scene should land there.
+    if (noplans) localStorage.removeItem('orch.setupSeen')
+    else localStorage.setItem('orch.setupSeen', '1')
     localStorage.setItem(
       'orch.layout',
       JSON.stringify({

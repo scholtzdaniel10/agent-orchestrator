@@ -64,10 +64,26 @@ const scenes = {
   },
   narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile },
   sidebar: {
+    size: [1440, 900],
     query: '',
     scheme: 'dark',
-    script:
-      "document.getElementById('worktree-row-a1b2c3d4')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 150, clientY: 330 }))"
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let row
+      while (Date.now() < deadline) {
+        row = document.getElementById('worktree-row-a1b2c3d4')
+        if (row) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      const rect = row?.getBoundingClientRect()
+      row?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          clientX: 150,
+          clientY: (rect?.bottom ?? 300) + 4
+        })
+      )
+    })()`
   }
 }
 
