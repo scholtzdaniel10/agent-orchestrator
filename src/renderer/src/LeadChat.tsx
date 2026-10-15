@@ -10,6 +10,7 @@ import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import { editedFilesSummary, latestStepTitle } from './job-steps'
 import RichText from './RichText'
+import SidebarMenu from './SidebarMenu'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -113,14 +114,19 @@ function LeadChat({
   messages,
   jobs,
   plans,
+  mode,
   onReset,
+  onOpenTerminal,
   onShowJob,
   settingsNonce = 0
 }: {
   messages: LeadMessage[]
   jobs: JobRecord[]
   plans: PlanStatus[] | null
-  onReset: () => Promise<void>
+  /** Plan this chat talks to directly, or null for a lead chat. */
+  mode: ProviderId | null
+  onReset: (direct?: ProviderId) => Promise<void>
+  onOpenTerminal: (provider: ProviderId) => void
   onShowJob: (id: string) => void
   /** Bumped when Settings changes the lead plan or access, so they are read again. */
   settingsNonce?: number
@@ -136,6 +142,7 @@ function LeadChat({
   const resetting = useRef(false)
   const choiceRef = useRef<PlanChoice>('auto')
   const picked = useRef(false)
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -209,7 +216,9 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
-  const noPlanReady = plans !== null && !plans.some((plan) => plan.available)
+  const noPlanReady =
+    plans !== null &&
+    (mode === null ? !plans.some((plan) => plan.available) : !planAvailable(plans, mode))
   const sendDisabled = draftEmpty || leadStreaming || noPlanReady
 
   async function send(): Promise<void> {
@@ -228,11 +237,11 @@ function LeadChat({
     }
   }
 
-  async function newChat(): Promise<void> {
+  async function newChat(direct?: ProviderId): Promise<void> {
     if (leadStreaming || resetting.current) return
     resetting.current = true
     try {
-      await onReset()
+      await onReset(direct)
       setSendError(null)
     } catch (err: unknown) {
       setSendError(errorText(err))
@@ -252,55 +261,109 @@ function LeadChat({
       <div className="panel-head">
         <div className="panel-title">
           <Star size={12} />
-          <BotAvatar bot="lead" state={leadStreaming ? 'working' : 'idle'} size={20} />
-          <h2 id="lead-heading">Lead</h2>
+          <BotAvatar bot={mode ?? 'lead'} state={leadStreaming ? 'working' : 'idle'} size={20} />
+          <h2 id="lead-heading">{mode === null ? 'Lead' : `Just ${mode}`}</h2>
         </div>
         <div className="head-actions">
-          <label htmlFor="lead-plan">Runs on</label>
-          <select
-            id="lead-plan"
-            className="plan-choice"
-            title="Switching plans starts a fresh lead session."
-            value={choice}
-            disabled={leadStreaming}
-            aria-invalid={planError !== null ? true : undefined}
-            aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
-            onChange={(event) => {
-              void changePlan(asPlanChoice(event.target.value))
-            }}
-          >
-            <option value="auto">auto</option>
-            <option value="claude" disabled={!planAvailable(plans, 'claude')}>
-              claude
-            </option>
-            <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
-              cursor
-            </option>
-          </select>
-          <label htmlFor="lead-access">Workers may</label>
-          <select
-            id="lead-access"
-            className="plan-choice lead-access"
-            value={workerAccess}
-            disabled={leadStreaming}
-            onChange={(event) => {
-              void changeAccess(asAccess(event.target.value))
-            }}
-          >
-            <option value="read">read only</option>
-            <option value="edit">edit files</option>
-            <option value="full">do anything</option>
-          </select>
+          {mode !== null ? (
+            <>
+              <span
+                className="hint"
+                title="Reads the project. No edits, no commands, no delegation."
+              >
+                read only
+              </span>
+              <button
+                type="button"
+                className="btn btn-quiet"
+                title={`Open ${mode} in a terminal in this project`}
+                onClick={() => {
+                  onOpenTerminal(mode)
+                }}
+              >
+                Open in terminal
+              </button>
+            </>
+          ) : (
+            <>
+              <label htmlFor="lead-plan">Runs on</label>
+              <select
+                id="lead-plan"
+                className="plan-choice"
+                title="Switching plans starts a fresh lead session."
+                value={choice}
+                disabled={leadStreaming}
+                aria-invalid={planError !== null ? true : undefined}
+                aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
+                onChange={(event) => {
+                  void changePlan(asPlanChoice(event.target.value))
+                }}
+              >
+                <option value="auto">auto</option>
+                <option value="claude" disabled={!planAvailable(plans, 'claude')}>
+                  claude
+                </option>
+                <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
+                  cursor
+                </option>
+              </select>
+              <label htmlFor="lead-access">Workers may</label>
+              <select
+                id="lead-access"
+                className="plan-choice lead-access"
+                value={workerAccess}
+                disabled={leadStreaming}
+                onChange={(event) => {
+                  void changeAccess(asAccess(event.target.value))
+                }}
+              >
+                <option value="read">read only</option>
+                <option value="edit">edit files</option>
+                <option value="full">do anything</option>
+              </select>
+            </>
+          )}
           <button
             type="button"
             className="btn btn-quiet"
-            disabled={leadStreaming || messages.length === 0}
-            onClick={() => {
-              void newChat()
+            aria-haspopup="menu"
+            aria-expanded={newMenu !== null}
+            disabled={leadStreaming}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setNewMenu({ x: rect.left, y: rect.bottom + 4 })
             }}
           >
-            New chat
+            New chat ▾
           </button>
+          {newMenu !== null ? (
+            <SidebarMenu
+              label="New chat"
+              at={newMenu}
+              onClose={() => {
+                setNewMenu(null)
+              }}
+              entries={[
+                {
+                  label: 'Lead chat',
+                  title: 'The lead splits the work across your plans',
+                  onSelect: () => void newChat()
+                },
+                {
+                  label: 'Just claude',
+                  title: 'Talk straight to claude: read only, no delegation',
+                  disabled: !planAvailable(plans, 'claude'),
+                  onSelect: () => void newChat('claude')
+                },
+                {
+                  label: 'Just cursor',
+                  title: 'Talk straight to cursor: read only, no delegation',
+                  disabled: !planAvailable(plans, 'cursor'),
+                  onSelect: () => void newChat('cursor')
+                }
+              ]}
+            />
+          ) : null}
         </div>
       </div>
       {planError !== null ? (
@@ -316,7 +379,9 @@ function LeadChat({
             <p className="hint">
               {noPlanReady
                 ? 'No plan is ready. See Usage in the panel.'
-                : 'Ask the lead for something and it will split the work across your plans.'}
+                : mode === null
+                  ? 'Ask the lead for something and it will split the work across your plans.'
+                  : `Talk straight to ${mode}. It can read this project but not change files or run commands. For that, open it in a terminal.`}
             </p>
           </div>
         ) : (
@@ -421,7 +486,9 @@ function LeadChat({
           void send()
         }}
       >
-        <label htmlFor="lead-input">Message to the lead</label>
+        <label htmlFor="lead-input">
+          {mode === null ? 'Message to the lead' : `Message to ${mode}`}
+        </label>
         <div className="composer-box">
           <textarea
             id="lead-input"

@@ -445,6 +445,7 @@ function App(): React.JSX.Element {
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
+  const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 
   // When each terminal last printed, batched to one update a second, for the sidebar's status dots.
   useEffect(() => {
@@ -534,6 +535,7 @@ function App(): React.JSX.Element {
       },
       () => {}
     )
+    void window.api.getLeadMode().then(setLeadMode, () => {})
   }
 
   useEffect(() => {
@@ -880,6 +882,7 @@ function App(): React.JSX.Element {
     const jobList = await window.api.listJobs()
     commitJobs(state, jobList, setJobs, setStarts, setFlashes, setEvents)
     setChats(await window.api.listLeadChats())
+    setLeadMode(await window.api.getLeadMode())
     setProjects(await window.api.listProjects())
     publish(state, setEvents)
   }
@@ -936,8 +939,9 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function resetLead(): Promise<void> {
-    await window.api.resetLead()
+  async function resetLead(direct?: ProviderId): Promise<void> {
+    await window.api.resetLead(direct)
+    setLeadMode(direct ?? null)
     acceptList.current = false
     const state = bag.current
     state.lead = []
@@ -1466,7 +1470,11 @@ function App(): React.JSX.Element {
                     messages={messages}
                     jobs={jobs}
                     plans={plans}
+                    mode={leadMode}
                     onReset={resetLead}
+                    onOpenTerminal={(provider) => {
+                      void openInWorktree(provider, null)
+                    }}
                     settingsNonce={settingsNonce}
                     onShowJob={(id) => {
                       showJobNonce.current += 1

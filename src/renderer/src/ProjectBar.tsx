@@ -201,6 +201,9 @@ function ChatRow({
           onOpen(chat.id)
         }}
       >
+        {chat.direct !== undefined ? (
+          <BotAvatar bot={chat.direct} state="idle" size={14} title={`Just ${chat.direct}`} />
+        ) : null}
         <span className="project-chat-title">{chat.title}</span>
         <span className="project-chat-meta">
           {chat.pending === true ? (

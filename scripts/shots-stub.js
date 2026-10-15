@@ -680,6 +680,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listLeadChats: ok(chats),
     openLeadChat: ok(lead),
     resetLead: ok(undefined),
+    getLeadMode: ok(null),
     renameLeadChat: ok(undefined),
     removeLeadChat: ok(undefined),
     onLeadUpdate: off,
