@@ -31,6 +31,9 @@
   --font-display:
     'Bahnschrift', 'Avenir Next Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif;
   --font-ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --radius-sm: 4px;
+  --radius: 7px;
+  --radius-lg: 11px;
   --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
 }
 
@@ -177,7 +180,7 @@
 
 *::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 0;
+  border-radius: 999px;
 }
 
 *::-webkit-scrollbar-track {
@@ -247,6 +250,7 @@ textarea {
   inset: 6px;
   z-index: 40;
   border: 1px solid var(--frame);
+  border-radius: var(--radius-lg);
   pointer-events: none;
 }
 
@@ -372,7 +376,7 @@ textarea {
   flex: none;
   width: 6px;
   height: 6px;
-  border-radius: 0;
+  border-radius: 50%;
   translate: 0 -1px;
 }
 
@@ -462,6 +466,8 @@ textarea {
   flex-direction: column;
   align-items: stretch;
   min-width: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .project-row {
@@ -470,12 +476,11 @@ textarea {
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
-  margin: 0;
+  margin: 1px 6px;
   padding: 8px 10px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   border-left: 2px solid transparent;
-  border-bottom: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -576,7 +581,7 @@ textarea {
   height: 22px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--raised);
   color: var(--muted);
   font-size: 14px;
@@ -654,10 +659,10 @@ textarea {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
-  margin: 0;
+  margin: 1px 6px;
   padding: 6px 10px 6px 20px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
@@ -737,7 +742,7 @@ textarea {
   height: 22px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--raised);
   color: var(--muted);
   font-size: 12px;
@@ -762,7 +767,7 @@ textarea {
   padding: 6px 10px 6px 20px;
   border: 0;
   border-left: 2px solid var(--signal);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
   font: inherit;
@@ -829,7 +834,7 @@ textarea {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--inset);
   color: var(--text);
   font: inherit;
@@ -866,7 +871,7 @@ textarea {
   margin: 0;
   padding: 6px 8px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
@@ -1111,7 +1116,7 @@ textarea {
   min-height: 0;
   overflow: hidden;
   padding: 10px 14px;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 
@@ -1242,7 +1247,7 @@ label {
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--raised);
   color: var(--text);
   font-family: var(--font-display);
@@ -1309,7 +1314,7 @@ textarea:disabled {
 
 .composer-box {
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--deep);
 }
 
@@ -1319,7 +1324,7 @@ textarea {
   margin: 0;
   padding: 8px 12px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius);
   resize: none;
   background: transparent;
   font-family: var(--font-ui);
@@ -1386,7 +1391,7 @@ textarea {
   width: 14px;
   height: 14px;
   margin: 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   accent-color: var(--signal);
 }
 
@@ -1415,7 +1420,7 @@ input:not([type='checkbox']):not([type='radio']) {
 select {
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--deep);
 }
 
@@ -1464,7 +1469,7 @@ select {
   max-width: 220px;
   height: 32px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
 }
 
@@ -1536,7 +1541,7 @@ select {
   margin-right: 4px;
   padding: 0;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1575,7 +1580,7 @@ select {
   min-width: 0;
   height: auto;
   padding: 0;
-  border-radius: 0;
+  border-radius: 999px;
   background: transparent;
   color: var(--muted);
   font-size: 11px;
@@ -1624,7 +1629,7 @@ select {
   min-height: 0;
   padding: 8px;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 
@@ -1650,7 +1655,7 @@ select {
   flex: none;
   margin: 0;
   padding: 2px 8px;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--raised);
   color: var(--muted);
   font-size: 12px;
@@ -1711,7 +1716,7 @@ select {
   padding: 10px 0;
   border: none;
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
   overflow-wrap: anywhere;
 }
@@ -1758,7 +1763,7 @@ select {
 .dot {
   width: 4px;
   height: 4px;
-  border-radius: 0;
+  border-radius: 50%;
   background: var(--muted);
   opacity: 0.85;
   animation: dot-pulse 1.2s ease-in-out infinite;
@@ -1801,7 +1806,7 @@ select {
   padding: 8px;
   overflow: auto;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--deep);
   white-space: pre-wrap;
 }
@@ -1816,7 +1821,7 @@ select {
 
 .rich-text p code {
   padding: 0 4px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--deep);
 }
 
@@ -1841,7 +1846,7 @@ select {
   min-height: 0;
   overflow: hidden;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--deep);
 }
 
@@ -1860,7 +1865,7 @@ select {
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
-  border-radius: 0;
+  border-radius: var(--radius);
   border-bottom: 1px solid var(--border);
   border-left: 2px solid transparent;
   cursor: pointer;
@@ -1965,7 +1970,7 @@ select {
   padding: 8px 0 8px 10px;
   border: none;
   border-left: 2px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -2068,7 +2073,7 @@ select {
 .status-dot {
   width: 6px;
   height: 6px;
-  border-radius: 0;
+  border-radius: 50%;
   background: currentColor;
 }
 
@@ -2110,7 +2115,7 @@ select {
   gap: 5px;
   height: auto;
   padding: 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   font-size: 11px;
   line-height: 1;
@@ -2222,7 +2227,7 @@ select {
   margin: 0;
   padding: 8px;
   border: 1px solid var(--bad);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--bad);
   font: inherit;
@@ -2428,7 +2433,7 @@ select {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--inset);
   color: var(--text);
 }
@@ -2466,7 +2471,7 @@ select {
   min-height: 144px;
   overflow: auto;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--deep);
   line-height: 1.45;
 }
@@ -2534,7 +2539,7 @@ select {
   gap: 6px;
   padding: 0;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
 }
 
 .usage-head {
@@ -2608,13 +2613,13 @@ select {
 .meter {
   height: 6px;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: 999px;
   background: var(--inset);
 }
 
 .meter-fill {
   height: 100%;
-  border-radius: 0;
+  border-radius: 999px;
 }
 
 .meter-claude {
@@ -2690,7 +2695,7 @@ select {
   gap: 6px;
   margin: 0;
   padding: 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--signal);
   font-size: 11px;
@@ -2721,7 +2726,7 @@ select {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--deep);
   color: var(--text);
 }
@@ -2911,7 +2916,7 @@ select {
   gap: 5px;
   height: auto;
   padding: 0;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--text);
   font-family: var(--font-display);
@@ -2926,7 +2931,7 @@ select {
 .flow-live-dot {
   width: 6px;
   height: 6px;
-  border-radius: 0;
+  border-radius: 50%;
   background: var(--signal);
 }
 
@@ -2966,7 +2971,7 @@ select {
   overflow: hidden;
   border: none;
   border-top: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
 }
 
@@ -3103,7 +3108,7 @@ select {
   align-self: start;
   padding: 4px 10px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   color: var(--muted);
   background: transparent;
 }
@@ -3136,7 +3141,7 @@ select {
   max-width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
 }
 
@@ -3280,7 +3285,7 @@ select {
   height: auto;
   padding: 0;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--muted);
   font-family: var(--font-display);
@@ -3324,7 +3329,7 @@ select {
   left: 0;
   width: 6px;
   height: 6px;
-  border-radius: 0;
+  border-radius: 50%;
   offset-anchor: center;
   offset-rotate: 0deg;
   animation: flow-travel 1.4s linear infinite;
@@ -3464,7 +3469,7 @@ select {
   padding: 6px 10px;
   border: none;
   border-top: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -3555,7 +3560,7 @@ select {
   margin: 0;
   padding: 4px 0;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -3986,10 +3991,10 @@ button.job-step {
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
-  margin: 0;
+  margin: 1px 6px;
   padding: 6px 10px 6px 20px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
@@ -4075,7 +4080,7 @@ button.job-step {
   padding: 6px 10px 6px 20px;
   border: 0;
   border-left: 2px solid var(--signal);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
   font: inherit;
@@ -4467,7 +4472,7 @@ button.job-step {
   padding: 0 6px;
   overflow: hidden;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -4592,7 +4597,7 @@ button.job-step {
   margin: 0;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--deep);
   color: var(--text);
 }
@@ -4632,6 +4637,7 @@ button.job-step {
 .files-tree {
   min-height: 0;
   overflow: auto;
+  border-radius: var(--radius);
   background: var(--deep);
 }
 
@@ -4851,7 +4857,7 @@ button.job-step {
   min-height: calc(2 * 1.4em + 12px);
   border: 0;
   border-left: 2px solid var(--signal);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
   font: inherit;
@@ -5107,7 +5113,7 @@ button.job-step {
   height: 26px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--inset);
   color: var(--text);
   font: inherit;
@@ -5207,6 +5213,7 @@ button.job-step {
   height: 7px;
   margin-top: 6px;
   border: 1px solid var(--faint);
+  border-radius: 50%;
   background: transparent;
 }
 
@@ -5270,7 +5277,7 @@ button.job-step {
   margin: 4px 4px 0 0;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--raised);
   color: var(--muted);
   cursor: pointer;
@@ -5295,7 +5302,7 @@ button.job-step {
   margin: 0;
   padding: 4px 0;
   border: 1px solid var(--border-strong);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   background: var(--bg);
   list-style: none;
 }
@@ -5323,7 +5330,7 @@ button.job-step {
   width: 100%;
   padding: 5px 12px 5px 8px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -5368,7 +5375,7 @@ button.job-step {
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
   font-family: var(--font-display);
@@ -5446,11 +5453,12 @@ button.job-step {
 
 .settings-nav-item {
   display: block;
-  width: 100%;
+  width: calc(100% - 12px);
+  margin: 1px 6px;
   padding: 8px 14px;
   border: 0;
   border-left: 2px solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -5548,7 +5556,7 @@ button.job-step {
   min-width: 0;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--inset);
   color: var(--text);
   font: inherit;
