@@ -29,13 +29,21 @@ const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g
 
 export class CursorAdapter implements ProviderAdapter {
   readonly id = 'cursor' as const
-  private readonly bin: Bin
+  private foundBin: Bin | null
   private cachedModels: ModelOption[] | undefined
   private versionCapture: Promise<CapturedRun> | null = null
   private readonly steps = new StepParseState()
 
   constructor(bin?: Bin) {
-    this.bin = bin ?? resolveCursorBin()
+    this.foundBin = bin ?? null
+  }
+
+  /** Looked up again until found, so the Cursor CLI installed from Setup works without a restart. */
+  private get bin(): Bin {
+    if (this.foundBin !== null) return this.foundBin
+    const bin = resolveCursorBin()
+    if (bin.command !== 'agent') this.foundBin = bin
+    return bin
   }
 
   async isInstalled(): Promise<boolean> {

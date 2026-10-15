@@ -12,6 +12,7 @@ import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridg
 import { Files } from '../core/files'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
+import { refreshPath } from '../core/fresh-path'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
@@ -691,7 +692,10 @@ app.whenReady().then(async () => {
     }
     return folder
   }
-  ipcMain.handle('setup:status', () => setup.status())
+  ipcMain.handle('setup:status', async () => {
+    await refreshPath(runGh)
+    return setup.status()
+  })
   ipcMain.handle('setup:signIn', (_event, id: unknown) => {
     if (id !== 'claude' && id !== 'cursor' && id !== 'gh') {
       throw new Error('unknown setup tool')
