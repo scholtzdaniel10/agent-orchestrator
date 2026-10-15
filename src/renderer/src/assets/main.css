@@ -11,16 +11,17 @@
   --diff-del: rgb(255, 150, 140);
   --bot-claude: rgb(255, 160, 90);
   --bot-cursor: rgb(80, 230, 170);
-  --inset: color-mix(in srgb, var(--brand) 10%, var(--bg));
-  --deep: color-mix(in srgb, var(--brand) 17%, var(--bg));
-  --raised: color-mix(in srgb, var(--brand) 26%, var(--bg));
-  --selected: color-mix(in srgb, var(--brand) 40%, var(--bg));
+  --tint: color-mix(in srgb, var(--brand) 7%, var(--bg));
+  --inset: color-mix(in srgb, var(--text) 3%, var(--tint));
+  --deep: color-mix(in srgb, var(--text) 5%, var(--tint));
+  --raised: color-mix(in srgb, var(--text) 8%, var(--tint));
+  --selected: color-mix(in srgb, var(--brand) 15%, var(--inset));
   --panel: var(--bg);
-  --muted: color-mix(in srgb, var(--text) 62%, var(--brand));
-  --faint: color-mix(in srgb, var(--text) 42%, var(--brand));
-  --border: color-mix(in srgb, var(--brand) 62%, var(--bg));
-  --border-strong: var(--brand);
-  --frame: var(--brand);
+  --muted: color-mix(in srgb, var(--text) 64%, var(--bg));
+  --faint: color-mix(in srgb, var(--text) 42%, var(--bg));
+  --border: color-mix(in srgb, var(--text) 11%, var(--tint));
+  --border-strong: color-mix(in srgb, var(--brand) 70%, var(--bg));
+  --frame: var(--border);
   --accent: var(--brand);
   --ok: var(--muted);
   --run: var(--signal);
@@ -250,6 +251,7 @@ textarea {
 }
 
 .app::before {
+  display: none;
   content: '';
   position: absolute;
   inset: 6px;
@@ -5751,4 +5753,104 @@ button.job-step {
 .lead-options .plan-choice {
   flex: 1 1 90px;
   min-width: 0;
+}
+
+/* Type: the condensed display face is for the logo and panel titles; controls use the UI face. */
+.btn,
+.tab,
+label,
+.head-actions label,
+.lead-options label,
+.status,
+.project-foot-button,
+.settings-row-label,
+.pane-layout-label,
+.terminal-pane-title,
+.terminal-window-title,
+.terminal-window-state,
+.lead-meta,
+.job-meta,
+.lead-job-card-meta,
+.usage-name,
+.usage-detail,
+.change-origin,
+.failover-label,
+.job-step-tool,
+.files-label,
+.app-summary,
+.project-note,
+.settings-tag,
+.flow-live,
+.flow-queued,
+.flow-empty,
+.flow-actor-cursor,
+.flow-router-label,
+.changes-empty .hint {
+  font-family: var(--font-ui);
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.btn {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tab,
+.terminal-pane-title,
+.terminal-window-title {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+label,
+.head-actions label,
+.lead-options label,
+.settings-row-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.settings-row-label {
+  color: var(--text);
+}
+
+.lead-meta,
+.job-meta,
+.lead-job-card-meta,
+.change-origin,
+.job-step-tool,
+.status,
+.settings-tag {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.project-name {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-stretch: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Section labels: small, quiet capitals. */
+.project-chats-label,
+.worktree-group-label,
+.lead-delegated-title,
+.job-steps-head,
+.side-menu-heading,
+.routines-heading,
+.usage-window-label,
+.flow-log-head,
+.setup-label {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-stretch: normal;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--faint);
 }
