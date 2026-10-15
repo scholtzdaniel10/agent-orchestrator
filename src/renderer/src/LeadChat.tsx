@@ -265,64 +265,6 @@ function LeadChat({
           <h2 id="lead-heading">{mode === null ? 'Lead' : `Just ${mode}`}</h2>
         </div>
         <div className="head-actions">
-          {mode !== null ? (
-            <>
-              <span
-                className="hint"
-                title="Reads the project. No edits, no commands, no delegation."
-              >
-                read only
-              </span>
-              <button
-                type="button"
-                className="btn btn-quiet"
-                title={`Open ${mode} in a terminal in this project`}
-                onClick={() => {
-                  onOpenTerminal(mode)
-                }}
-              >
-                Open in terminal
-              </button>
-            </>
-          ) : (
-            <>
-              <label htmlFor="lead-plan">Runs on</label>
-              <select
-                id="lead-plan"
-                className="plan-choice"
-                title="Switching plans starts a fresh lead session."
-                value={choice}
-                disabled={leadStreaming}
-                aria-invalid={planError !== null ? true : undefined}
-                aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
-                onChange={(event) => {
-                  void changePlan(asPlanChoice(event.target.value))
-                }}
-              >
-                <option value="auto">auto</option>
-                <option value="claude" disabled={!planAvailable(plans, 'claude')}>
-                  claude
-                </option>
-                <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
-                  cursor
-                </option>
-              </select>
-              <label htmlFor="lead-access">Workers may</label>
-              <select
-                id="lead-access"
-                className="plan-choice lead-access"
-                value={workerAccess}
-                disabled={leadStreaming}
-                onChange={(event) => {
-                  void changeAccess(asAccess(event.target.value))
-                }}
-              >
-                <option value="read">read only</option>
-                <option value="edit">edit files</option>
-                <option value="full">do anything</option>
-              </select>
-            </>
-          )}
           <button
             type="button"
             className="btn btn-quiet"
@@ -365,6 +307,63 @@ function LeadChat({
             />
           ) : null}
         </div>
+      </div>
+      <div className="lead-options">
+        {mode !== null ? (
+          <>
+            <span className="hint" title="Reads the project. No edits, no commands, no delegation.">
+              read only
+            </span>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              title={`Open ${mode} in a terminal in this project`}
+              onClick={() => {
+                onOpenTerminal(mode)
+              }}
+            >
+              Open in terminal
+            </button>
+          </>
+        ) : (
+          <>
+            <label htmlFor="lead-plan">Runs on</label>
+            <select
+              id="lead-plan"
+              className="plan-choice"
+              title="Switching plans starts a fresh lead session."
+              value={choice}
+              disabled={leadStreaming}
+              aria-invalid={planError !== null ? true : undefined}
+              aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
+              onChange={(event) => {
+                void changePlan(asPlanChoice(event.target.value))
+              }}
+            >
+              <option value="auto">auto</option>
+              <option value="claude" disabled={!planAvailable(plans, 'claude')}>
+                claude
+              </option>
+              <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
+                cursor
+              </option>
+            </select>
+            <label htmlFor="lead-access">Workers may</label>
+            <select
+              id="lead-access"
+              className="plan-choice lead-access"
+              value={workerAccess}
+              disabled={leadStreaming}
+              onChange={(event) => {
+                void changeAccess(asAccess(event.target.value))
+              }}
+            >
+              <option value="read">read only</option>
+              <option value="edit">edit files</option>
+              <option value="full">do anything</option>
+            </select>
+          </>
+        )}
       </div>
       {planError !== null ? (
         <p id="lead-plan-error" className="field-error" role="alert">

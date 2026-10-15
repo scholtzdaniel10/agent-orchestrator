@@ -170,17 +170,22 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: color-mix(in srgb, var(--border) 60%, transparent) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  border: 3px solid transparent;
   border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, transparent) padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong) padding-box;
 }
 
 *::-webkit-scrollbar-track {
@@ -480,7 +485,6 @@ textarea {
   padding: 8px 10px;
   border: 0;
   border-radius: var(--radius);
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -493,7 +497,6 @@ textarea {
 
 .project-row.is-selected {
   background: var(--selected);
-  border-left-color: var(--signal);
 }
 
 .project-row.is-selected:hover {
@@ -663,7 +666,6 @@ textarea {
   padding: 6px 10px 6px 20px;
   border: 0;
   border-radius: var(--radius);
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -676,7 +678,6 @@ textarea {
 
 .project-chat-row.is-selected {
   background: var(--selected);
-  border-left-color: var(--signal);
 }
 
 .project-chat-row.is-selected:hover {
@@ -765,8 +766,7 @@ textarea {
   min-width: 0;
   margin: 0;
   padding: 6px 10px 6px 20px;
-  border: 0;
-  border-left: 2px solid var(--signal);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
@@ -786,7 +786,7 @@ textarea {
   gap: 6px;
   min-width: 0;
   padding: 6px 10px 6px 20px;
-  border-left: 2px solid var(--signal);
+  border-radius: var(--radius);
   background: var(--selected);
 }
 
@@ -872,7 +872,6 @@ textarea {
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius);
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -1155,7 +1154,8 @@ textarea {
   width: 88px;
 }
 
-.head-actions label {
+.head-actions label,
+.lead-options label {
   font-family: var(--font-display);
   font-size: 11px;
   font-stretch: 75%;
@@ -1713,18 +1713,17 @@ select {
 .lead-msg {
   width: 100%;
   min-width: 0;
-  padding: 10px 0;
+  padding: 10px 2px;
   border: none;
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-lg);
   background: transparent;
   overflow-wrap: anywhere;
 }
 
 .lead-msg-user {
-  padding: 10px 12px;
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
   background: var(--raised);
-  border-bottom: 1px solid var(--border);
 }
 
 .lead-msg-error {
@@ -1864,10 +1863,9 @@ select {
   flex: none;
   flex-direction: column;
   gap: 4px;
+  margin: 0 0 2px;
   padding: 8px 10px;
   border-radius: var(--radius);
-  border-bottom: 1px solid var(--border);
-  border-left: 2px solid transparent;
   cursor: pointer;
 }
 
@@ -1877,7 +1875,6 @@ select {
 
 .job-row.is-selected {
   background: var(--selected);
-  border-left-color: var(--signal);
 }
 
 .job-row.is-selected:hover {
@@ -1938,9 +1935,7 @@ select {
 }
 
 .lead-delegated {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  margin-top: 12px;
 }
 
 .lead-delegated-title {
@@ -1957,7 +1952,7 @@ select {
 .lead-delegated-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 6px;
 }
 
 .lead-job-card {
@@ -1967,11 +1962,10 @@ select {
   width: 100%;
   min-width: 0;
   margin: 0;
-  padding: 8px 0 8px 10px;
-  border: none;
-  border-left: 2px solid var(--border);
+  padding: 10px 12px;
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  background: transparent;
+  background: var(--inset);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -3995,7 +3989,6 @@ button.job-step {
   padding: 6px 10px 6px 20px;
   border: 0;
   border-radius: var(--radius);
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -4008,7 +4001,6 @@ button.job-step {
 
 .project-worktree-row.is-selected {
   background: var(--selected);
-  border-left-color: var(--signal);
 }
 
 .project-worktree-row.is-selected:hover {
@@ -4078,8 +4070,7 @@ button.job-step {
   min-width: 0;
   margin: 0;
   padding: 6px 10px 6px 20px;
-  border: 0;
-  border-left: 2px solid var(--signal);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
@@ -4855,8 +4846,7 @@ button.job-step {
 
 .project-worktree-create .project-worktree-task {
   min-height: calc(2 * 1.4em + 12px);
-  border: 0;
-  border-left: 2px solid var(--signal);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--selected);
   color: var(--text);
@@ -5457,7 +5447,6 @@ button.job-step {
   margin: 1px 6px;
   padding: 8px 14px;
   border: 0;
-  border-left: 2px solid transparent;
   border-radius: var(--radius);
   background: transparent;
   color: var(--text);
@@ -5471,7 +5460,6 @@ button.job-step {
 }
 
 .settings-nav-item.is-selected {
-  border-left-color: var(--signal);
   background: var(--selected);
 }
 
@@ -5718,4 +5706,49 @@ button.job-step {
   font-stretch: 100%;
   letter-spacing: 0;
   text-transform: none;
+}
+
+/* Selected rows: a short rounded marker instead of an edge stripe. */
+.project-row,
+.project-chat-row,
+.project-worktree-row,
+.settings-nav-item,
+.job-row {
+  position: relative;
+}
+
+.project-row.is-selected::before,
+.project-chat-row.is-selected::before,
+.project-worktree-row.is-selected::before,
+.settings-nav-item.is-selected::before,
+.job-row.is-selected::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--signal);
+}
+
+.lead-job-card:hover {
+  border-color: var(--border);
+}
+
+.lead-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 8px 0 4px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  background: var(--inset);
+}
+
+.lead-options .plan-choice {
+  flex: 1 1 90px;
+  min-width: 0;
 }
