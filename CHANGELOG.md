@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- A tool installed from Setup is found when you press Re-check. Before, Legate kept the PATH it started with, so Claude Code, the Cursor CLI or the GitHub CLI stayed "missing" until you restarted it.
+
 ## 1.0.3
 
 - Setup opens on the first start of an install, also when every tool is already in place, so a new person sees what Legate needs and that each tool is signed in. After that it opens only when something is missing.

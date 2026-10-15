@@ -30,12 +30,20 @@ const LIMIT_RE =
 
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = 'claude' as const
-  private readonly bin: Bin
+  private foundBin: Bin | null
   private versionCapture: Promise<CapturedRun> | null = null
   private readonly steps = new StepParseState()
 
   constructor(bin?: Bin) {
-    this.bin = bin ?? resolveClaudeBin()
+    this.foundBin = bin ?? null
+  }
+
+  /** Looked up again until found, so Claude Code installed from Setup works without a restart. */
+  private get bin(): Bin {
+    if (this.foundBin !== null) return this.foundBin
+    const bin = resolveClaudeBin()
+    if (bin.command !== 'claude') this.foundBin = bin
+    return bin
   }
 
   async isInstalled(): Promise<boolean> {
