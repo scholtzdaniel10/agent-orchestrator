@@ -1509,7 +1509,7 @@ function ProjectBar({
           return (
             <li
               key={entry.path}
-              className="project-item"
+              className={active ? 'project-item is-open' : 'project-item'}
               onContextMenu={(event) => {
                 if (
                   event.target instanceof Element &&
@@ -1530,6 +1530,9 @@ function ProjectBar({
                   if (!active) onSwitch(entry.path)
                 }}
               >
+                <span className="project-chevron" aria-hidden="true">
+                  {active ? '▾' : '▸'}
+                </span>
                 <FolderGlyph />
                 <span className="project-row-body">
                   <span className="project-name">{name}</span>
@@ -1570,54 +1573,58 @@ function ProjectBar({
               >
                 <MoreGlyph />
               </button>
-              {active && entry.isRepo ? (
-                <WorktreesSection
-                  project={entry.path}
-                  activity={activity}
-                  options={options}
-                  filter={search}
-                  onReveal={onReveal}
-                  branch={entry.branch}
-                  changes={changes}
-                  jobs={jobs}
-                  terminals={terminals}
-                  selectedWorktrees={selectedWorktrees}
-                  claudeAvailable={claudeAvailable}
-                  cursorAvailable={cursorAvailable}
-                  onSelect={onSelectWorktree}
-                  onSelectAll={onSelectAllWorktrees}
-                  onCreate={onCreateWorktree}
-                  onRename={onRenameWorktree}
-                  onDiscard={onDiscardWorktree}
-                  onOpen={onOpenInWorktree}
-                />
-              ) : null}
               {active ? (
-                <div className="project-chats">
-                  <div className="project-chats-head">
-                    <span className="project-chats-label">Chats</span>
-                    <button
-                      type="button"
-                      className="btn btn-quiet btn-compact"
-                      disabled={leadBusy || !chats.some((chat) => chat.active)}
-                      onClick={onNewChat}
-                    >
-                      New chat
-                    </button>
-                  </div>
-                  <ul className="project-chat-list">
-                    {shown.map((chat) => (
-                      <ChatRow
-                        key={chat.id}
-                        chat={chat}
-                        leadBusy={leadBusy}
-                        now={now}
-                        onOpen={onOpenChat}
-                        onRename={onRenameChat}
-                        onRemove={onRemoveChat}
-                      />
-                    ))}
-                  </ul>
+                <div className="project-children">
+                  {entry.isRepo ? (
+                    <WorktreesSection
+                      project={entry.path}
+                      activity={activity}
+                      options={options}
+                      filter={search}
+                      onReveal={onReveal}
+                      branch={entry.branch}
+                      changes={changes}
+                      jobs={jobs}
+                      terminals={terminals}
+                      selectedWorktrees={selectedWorktrees}
+                      claudeAvailable={claudeAvailable}
+                      cursorAvailable={cursorAvailable}
+                      onSelect={onSelectWorktree}
+                      onSelectAll={onSelectAllWorktrees}
+                      onCreate={onCreateWorktree}
+                      onRename={onRenameWorktree}
+                      onDiscard={onDiscardWorktree}
+                      onOpen={onOpenInWorktree}
+                    />
+                  ) : null}
+                  {
+                    <div className="project-chats">
+                      <div className="project-chats-head">
+                        <span className="project-chats-label">Chats</span>
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-compact"
+                          disabled={leadBusy || !chats.some((chat) => chat.active)}
+                          onClick={onNewChat}
+                        >
+                          New chat
+                        </button>
+                      </div>
+                      <ul className="project-chat-list">
+                        {shown.map((chat) => (
+                          <ChatRow
+                            key={chat.id}
+                            chat={chat}
+                            leadBusy={leadBusy}
+                            now={now}
+                            onOpen={onOpenChat}
+                            onRename={onRenameChat}
+                            onRemove={onRemoveChat}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  }
                 </div>
               ) : null}
             </li>

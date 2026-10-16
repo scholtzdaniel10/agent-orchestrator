@@ -6096,3 +6096,45 @@ label,
 .history-row.is-selected {
   box-shadow: inset 2px 0 0 var(--accent);
 }
+
+/* The open project holds its worktrees and chats: indented under it, with a guide line. */
+.project-item.is-open {
+  background: color-mix(in srgb, var(--inset) 60%, transparent);
+}
+
+.project-chevron {
+  flex: none;
+  width: 10px;
+  margin: 3px -4px 0 -2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.project-children {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 2px 0 4px 12px;
+  padding-left: 2px;
+  border-left: 1px solid var(--border);
+}
+
+.project-children .project-worktrees,
+.project-children .project-chats {
+  border-bottom: none;
+}
+
+.project-children .project-chats {
+  margin-top: 6px;
+}
+
+.project-children .project-chats-head .project-chats-label,
+.project-children .project-worktree-shown {
+  white-space: nowrap;
+}
+
+.project-children .project-chats-head {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
