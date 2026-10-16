@@ -453,6 +453,26 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
   }
   const off = () => () => {}
   const ok = (value) => () => Promise.resolve(value)
+  const skills = {
+    builtIn: [
+      { name: 'legate-review', givenTo: 'every agent' },
+      { name: 'legate-cli', givenTo: 'workers' },
+      { name: 'legate-worktree', givenTo: 'workers' },
+      { name: 'legate-delegate', givenTo: 'lead' }
+    ],
+    folders: [
+      {
+        folder: 'C:/Users/dev/skills/house-style',
+        skills: [{ name: 'house-style', folder: 'C:/Users/dev/skills/house-style' }],
+        problem: null
+      },
+      {
+        folder: 'C:/Users/dev/Downloads/old',
+        skills: [],
+        problem: 'No SKILL.md here or in its subfolders.'
+      }
+    ]
+  }
   window.api = {
     submitJob: (type, prompt, provider) =>
       Promise.resolve({
@@ -526,6 +546,10 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    skillsGet: ok(skills),
+    skillsAdd: ok(skills),
+    skillsRemove: ok(skills),
+    skillsReload: ok(skills),
     setupStatus: ok([
       {
         id: 'git',
@@ -633,6 +657,29 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     ),
     openFile: ok(undefined),
     revealProject: ok(undefined),
+    getPrefs: ok({
+      maxParallel: null,
+      terminalFontSize: 13,
+      notify: true,
+      cloneDir: 'C:/Users/dev/projects'
+    }),
+    setPrefs: (patch) =>
+      Promise.resolve({
+        maxParallel: null,
+        terminalFontSize: 13,
+        notify: true,
+        cloneDir: null,
+        ...patch
+      }),
+    chooseCloneDir: ok(null),
+    onPrefsUpdate: off,
+    getAppInfo: ok({
+      version: '1.0.3',
+      dataDir: 'C:/Users/dev/AppData/Roaming/legate',
+      worktreesDir: 'C:/Users/dev/.orchestrator/wt',
+      rulesMaxParallel: 3
+    }),
+    openDataDir: ok(undefined),
     revealFolder: ok(undefined),
     getProjectSetup: ok([]),
     setProjectSetup: ok(undefined),
@@ -657,6 +704,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listLeadChats: ok(chats),
     openLeadChat: ok(lead),
     resetLead: ok(undefined),
+    getLeadMode: ok(null),
     renameLeadChat: ok(undefined),
     removeLeadChat: ok(undefined),
     onLeadUpdate: off,

@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Github } from '../core/github'
+import { bundledPlugins, existingUserPlugin, withPlugins } from '../core/plugins'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
 import { loadRules, Orchestrator, Store } from '../core/router'
@@ -59,6 +60,11 @@ export async function start(argv: string[]): Promise<number> {
     const rules = loadRules(process.env.ORCH_RULES)
     const claude = new ClaudeAdapter()
     const cursor = new CursorAdapter()
+    // The same skills the app gives its agents. The app builds the copy of the person's skills.
+    const ownSkills = existingUserPlugin(dir)
+    const plugins = withPlugins(bundledPlugins(__dirname), ownSkills === null ? [] : [ownSkills])
+    claude.setPlugins(plugins)
+    cursor.setPlugins(plugins)
     const orch = new Orchestrator({
       adapters: [claude, cursor],
       store,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- A Settings page (`Ctrl+,`): look, jobs at once, notifications, agents and the lead, skills, projects, terminal text size, shortcuts, and where your data lives.
+- Direct chats: New chat offers the lead, just Claude, or just Cursor. A direct chat talks to one plan with no delegation, and can open in a terminal.
+- A calmer look: neutral surfaces with red as the accent, softer corners, pill markers for selected rows, card-style delegated jobs and message bubbles.
+- Skills for Legate's agents. Workers and terminal agents get worktree rules (keep the diff small, never touch main, end with a summary) and a read-only `legate` CLI. The lead gets how to delegate. Both get how to review a change.
+- Your own skills: Settings → Skills → Add folder. They load only into agents Legate starts, never into your other Claude or Cursor sessions.
+
 ## 1.0.5
 
 - Every agent Legate starts is told it runs in Legate. Orca installs its skills for the whole user account, so agents here tried to run `orca` commands and could even start the Orca app.

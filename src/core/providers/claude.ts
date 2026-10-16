@@ -23,6 +23,7 @@ import {
   writeSize
 } from './edit-size'
 import { LEGATE_NOTE } from './legate-note'
+import { NO_PLUGINS, pluginArgs, type AgentPlugins } from '../plugins'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
 
@@ -32,6 +33,7 @@ const LIMIT_RE =
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = 'claude' as const
   private foundBin: Bin | null
+  private plugins: AgentPlugins = NO_PLUGINS
   private versionCapture: Promise<CapturedRun> | null = null
   private readonly steps = new StepParseState()
 
@@ -45,6 +47,11 @@ export class ClaudeAdapter implements ProviderAdapter {
     const bin = resolveClaudeBin()
     if (bin.command !== 'claude') this.foundBin = bin
     return bin
+  }
+
+  /** Skills Legate loads into the agents it starts, by role. */
+  setPlugins(plugins: AgentPlugins): void {
+    this.plugins = plugins
   }
 
   async isInstalled(): Promise<boolean> {
@@ -101,7 +108,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     if (opts.resume) args.push('--resume', opts.resume)
     else if (opts.sessionId) args.push('--session-id', opts.sessionId)
     if (opts.model) args.push('--model', opts.model)
-    args.push('--append-system-prompt', LEGATE_NOTE)
+    args.push('--append-system-prompt', LEGATE_NOTE, ...pluginArgs(this.plugins.worker))
     if (opts.prompt && !opts.resume) args.push(opts.prompt)
     return { command: this.bin.command, args }
   }
@@ -127,6 +134,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     }
     if (opts?.model) args.push('--model', opts.model)
     args.push('--append-system-prompt', LEGATE_NOTE)
+    args.push(...pluginArgs(opts?.bridge ? this.plugins.lead : this.plugins.worker))
     return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseLine(line))
   }
 

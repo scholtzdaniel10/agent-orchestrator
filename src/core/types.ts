@@ -181,6 +181,8 @@ export interface LeadChat {
   active: boolean
   /** Jobs or a report turn still in progress for this chat. */
   pending?: boolean
+  /** Set when the chat talks straight to one plan instead of the lead. */
+  direct?: ProviderId
 }
 
 /** One interactive CLI session, shown as a terminal tab. */
@@ -231,6 +233,27 @@ export interface ProjectInfo {
   isRepo: boolean
   /** Current branch, when it is a repository and not detached. */
   branch: string | null
+}
+
+/** Preferences set on the Settings page. */
+export interface Prefs {
+  /** Jobs one plan may run at once, 1..8; null uses the rules file. */
+  maxParallel: number | null
+  /** Terminal text size in pixels, 10..22. */
+  terminalFontSize: number
+  /** Desktop notification when a job ends while no app window is focused. */
+  notify: boolean
+  /** Folder GitHub clones go into; null asks every time. */
+  cloneDir: string | null
+}
+
+/** Read-only facts for the Settings page. */
+export interface AppInfo {
+  version: string
+  dataDir: string
+  worktreesDir: string
+  /** Jobs per plan the rules file asks for. */
+  rulesMaxParallel: number
 }
 
 export interface ProjectEntry extends ProjectInfo {

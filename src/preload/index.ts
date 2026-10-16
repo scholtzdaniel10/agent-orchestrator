@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobAccess,
@@ -9,12 +10,20 @@ import type {
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
   TerminalInfo
 } from '../core/types'
-import type { FileContent, FileList, OrchestratorApi, PlanStatus, Requirement } from './api-types'
+import type {
+  FileContent,
+  FileList,
+  OrchestratorApi,
+  PlanStatus,
+  Requirement,
+  SkillsState
+} from './api-types'
 
 const api: OrchestratorApi = {
   submitJob(
@@ -95,6 +104,18 @@ const api: OrchestratorApi = {
   setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo> {
     return ipcRenderer.invoke('setup:signIn', id)
   },
+  skillsGet(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:get')
+  },
+  skillsAdd(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:add')
+  },
+  skillsRemove(folder: string): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:remove', folder)
+  },
+  skillsReload(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:reload')
+  },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
   },
@@ -133,6 +154,30 @@ const api: OrchestratorApi = {
   },
   revealProject(path: string): Promise<void> {
     return ipcRenderer.invoke('project:reveal', path)
+  },
+  getPrefs(): Promise<Prefs> {
+    return ipcRenderer.invoke('prefs:get')
+  },
+  setPrefs(patch: Partial<Prefs>): Promise<Prefs> {
+    return ipcRenderer.invoke('prefs:set', patch)
+  },
+  chooseCloneDir(): Promise<Prefs | null> {
+    return ipcRenderer.invoke('prefs:chooseCloneDir')
+  },
+  onPrefsUpdate(cb: (prefs: Prefs) => void): () => void {
+    const listener = (_event: IpcRendererEvent, prefs: Prefs): void => {
+      cb(prefs)
+    }
+    ipcRenderer.on('prefs:update', listener)
+    return () => {
+      ipcRenderer.removeListener('prefs:update', listener)
+    }
+  },
+  getAppInfo(): Promise<AppInfo> {
+    return ipcRenderer.invoke('app:info')
+  },
+  openDataDir(): Promise<void> {
+    return ipcRenderer.invoke('app:openDataDir')
   },
   revealFolder(where: string | null): Promise<void> {
     return ipcRenderer.invoke('files:reveal', where)
@@ -182,8 +227,11 @@ const api: OrchestratorApi = {
   openLeadChat(id: string): Promise<LeadMessage[]> {
     return ipcRenderer.invoke('lead:open', id)
   },
-  resetLead(): Promise<void> {
-    return ipcRenderer.invoke('lead:reset')
+  resetLead(direct?: ProviderId): Promise<void> {
+    return ipcRenderer.invoke('lead:reset', direct)
+  },
+  getLeadMode(): Promise<ProviderId | null> {
+    return ipcRenderer.invoke('lead:mode')
   },
   renameLeadChat(id: string, title: string): Promise<void> {
     return ipcRenderer.invoke('lead:rename', id, title)

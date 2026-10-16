@@ -21,6 +21,7 @@ import {
   writeSize
 } from './edit-size'
 import { withLegateNote } from './legate-note'
+import { NO_PLUGINS, pluginArgs, type AgentPlugins } from '../plugins'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
 
@@ -31,6 +32,7 @@ const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g
 export class CursorAdapter implements ProviderAdapter {
   readonly id = 'cursor' as const
   private foundBin: Bin | null
+  private plugins: AgentPlugins = NO_PLUGINS
   private cachedModels: ModelOption[] | undefined
   private versionCapture: Promise<CapturedRun> | null = null
   private readonly steps = new StepParseState()
@@ -45,6 +47,11 @@ export class CursorAdapter implements ProviderAdapter {
     const bin = resolveCursorBin()
     if (bin.command !== 'agent') this.foundBin = bin
     return bin
+  }
+
+  /** Skills Legate loads into the agents it starts, by role. */
+  setPlugins(plugins: AgentPlugins): void {
+    this.plugins = plugins
   }
 
   async isInstalled(): Promise<boolean> {
@@ -88,6 +95,7 @@ export class CursorAdapter implements ProviderAdapter {
     const resume = opts.resume ?? opts.sessionId
     if (resume) args.push('--resume', resume)
     if (opts.model) args.push('--model', opts.model)
+    args.push(...pluginArgs(this.plugins.worker))
     // A task means the person wants work done here now; Cursor's trust question would hold it up.
     if (opts.prompt && !opts.resume) args.push('--trust', withLegateNote(opts.prompt))
     return {
@@ -112,6 +120,7 @@ export class CursorAdapter implements ProviderAdapter {
       args.push('--approve-mcps')
     }
     if (opts?.model) args.push('--model', opts.model)
+    args.push(...pluginArgs(opts?.bridge ? this.plugins.lead : this.plugins.worker))
     const handle = spawnCli(
       this.bin,
       args,

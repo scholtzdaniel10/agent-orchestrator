@@ -1,0 +1,5 @@
+{
+  "name": "legate-worker",
+  "version": "1.0.0",
+  "description": "Skills for Legate workers and terminal agents: worktree rules and the read-only legate CLI."
+}

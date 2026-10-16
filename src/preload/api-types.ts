@@ -1,4 +1,5 @@
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobAccess,
@@ -6,6 +7,7 @@ import type {
   LeadChat,
   LeadMessage,
   ModelOption,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
@@ -15,6 +17,13 @@ import type {
 import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
+import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
+
+/** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
+export interface SkillsState {
+  builtIn: BuiltInSkill[]
+  folders: SkillFolderReport[]
+}
 
 /** Why a plan cannot be used. */
 export type PlanProblem = 'not-installed' | 'signed-out'
@@ -140,6 +149,14 @@ export interface OrchestratorApi {
    */
   setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo>
 
+  /** Legate's skills and the person's skill folders. */
+  skillsGet(): Promise<SkillsState>
+  /** Asks for a folder (one skill, or a folder of skills) and adds it. */
+  skillsAdd(): Promise<SkillsState>
+  skillsRemove(folder: string): Promise<SkillsState>
+  /** Copies the person's skills again, after they edited one. */
+  skillsReload(): Promise<SkillsState>
+
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>
   onChangesUpdate(cb: (changes: ChangeSet[]) => void): () => void
@@ -162,6 +179,16 @@ export interface OrchestratorApi {
   openFile(where: string | null, path: string): Promise<void>
   /** Open a listed project's folder in the file manager. */
   revealProject(path: string): Promise<void>
+
+  getPrefs(): Promise<Prefs>
+  /** Change some preferences; resolves the full, validated set. */
+  setPrefs(patch: Partial<Prefs>): Promise<Prefs>
+  /** Folder picker for where GitHub clones go. Resolves null when cancelled. */
+  chooseCloneDir(): Promise<Prefs | null>
+  onPrefsUpdate(cb: (prefs: Prefs) => void): () => void
+  getAppInfo(): Promise<AppInfo>
+  /** Open the folder that holds settings and saved chats in the file manager. */
+  openDataDir(): Promise<void>
   /** Open the active project's folder (null) or a worktree's folder in the file manager. */
   revealFolder(where: string | null): Promise<void>
   /** Command lines that run in each worktree created by hand. */
@@ -184,7 +211,13 @@ export interface OrchestratorApi {
   listLeadMessages(): Promise<LeadMessage[]>
   listLeadChats(): Promise<LeadChat[]>
   openLeadChat(id: string): Promise<LeadMessage[]>
-  resetLead(): Promise<void>
+  /**
+   * Start a new chat. With `direct`, it talks straight to that plan in the project folder
+   * (read-only): no lead, no delegation.
+   */
+  resetLead(direct?: ProviderId): Promise<void>
+  /** Plan the open chat talks to directly; null for a lead chat. */
+  getLeadMode(): Promise<ProviderId | null>
   /** Rename a chat of the active project. Title is trimmed to 1..80 characters. */
   renameLeadChat(id: string, title: string): Promise<void>
   /** Delete a chat of the active project. Refused while that chat's turn or report is pending. */
