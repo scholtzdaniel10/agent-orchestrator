@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- The terminal UI (`legate ui`) has the app's look: round borders, the focused pane outlined in red, quiet headings with counts, plan names in their own colours, line counts in green and red, and a footer that always keeps help and quit. Its boxes fill the terminal, and the project row explains itself instead of repeating the title.
+- `legate jobs`, `changes` and `routine list` say what to do when there is nothing to list; `status` colours each plan and its state.
+- Each project in the sidebar shows commits ahead of or behind upstream, uncommitted files, and the lines waiting in changes.
+
 ## 1.1.0
 
 - A Settings page (`Ctrl+,`): look, jobs at once, notifications, agents and the lead, skills, projects, terminal text size, shortcuts, and where your data lives.

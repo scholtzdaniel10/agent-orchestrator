@@ -333,6 +333,11 @@ export class Store {
       )
   }
 
+  chatCount(project: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM chats WHERE project = ?').get(project)
+    return Number((row as { n?: unknown } | undefined)?.n ?? 0)
+  }
+
   /** Newest first. */
   chats(project: string): ChatRow[] {
     const rows = this.db

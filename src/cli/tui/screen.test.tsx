@@ -96,15 +96,15 @@ function frame(state: TuiState): string {
 
 test('the main screen at 120x30 lists two worktrees and three jobs', () => {
   const text = frame(screen())
-  expect(text).toContain('Worktrees')
-  expect(text).toContain('Jobs')
+  expect(text).toContain('WORKTREES  2')
+  expect(text).toContain('JOBS  1 running')
   expect(text).toContain('login fix')
   expect(text).toContain('3687475d')
   expect(text).toContain('no changes')
   expect(text).toContain('Add a button')
   expect(text).toContain('Review the diff')
   expect(text).toContain('Fix the crash')
-  expect(text).toContain('▸')
+  expect(text).toContain('▌')
   expect(text).toContain('n new job')
   expect(text).toContain('type: planning · worker: auto · access: read')
   expect(text).toContain('Legate · agent-orchestrator · v1')
@@ -206,4 +206,23 @@ test('the help screen lists the keys', () => {
   expect(text).toContain('Tab           switch pane')
   expect(text).toContain('Ctrl+T        job type')
   expect(text).toContain('q or Ctrl+C   quit')
+})
+
+test('without colour the screen keeps plain headings, the ▸ marker and inverse focus', () => {
+  const text = frame(screen({ color: false }))
+  expect(text).toContain('Worktrees  2')
+  expect(text).toContain('Jobs  1 running')
+  expect(text).toContain('▸')
+  expect(text).toContain('Legate · agent-orchestrator · v1')
+})
+
+test('the boxes fill the terminal height', () => {
+  const text = frame(screen({ columns: 120, rows: 30 }))
+  expect(text.split('\n')).toHaveLength(30)
+})
+
+test('the project row explains itself instead of repeating the title', () => {
+  const text = frame(screen({ worktreeId: '', focus: 'worktrees', pane: 'worktree' }))
+  expect(text).toContain('The project folder.')
+  expect(text.split('agent-orchestrator · v1')).toHaveLength(3)
 })

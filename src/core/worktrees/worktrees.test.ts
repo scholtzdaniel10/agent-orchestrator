@@ -75,6 +75,34 @@ async function cleanup(root: string): Promise<void> {
 }
 
 describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
+  test('status counts uncommitted files and commits ahead of and behind upstream', async () => {
+    const { root, project } = await tempRoot()
+    try {
+      const worktrees = new Worktrees({ root: join(root, 'wt') })
+      expect(await worktrees.status(project)).toEqual({ dirty: 0, ahead: 0, behind: 0 })
+      writeFileSync(join(project, 'notes.txt'), 'changed\n')
+      writeFileSync(join(project, 'new.txt'), 'new\n')
+      expect(await worktrees.status(project)).toEqual({ dirty: 2, ahead: 0, behind: 0 })
+
+      const upstream = join(root, 'upstream.git')
+      await gitOk(root, ['clone', '--bare', project, upstream])
+      await gitOk(project, ['remote', 'add', 'origin', upstream])
+      await gitOk(project, ['fetch', 'origin'])
+      await gitOk(project, ['branch', '--set-upstream-to', 'origin/main'])
+      await gitOk(project, ['add', '-A'])
+      await gitOk(project, ['commit', '-m', 'local'])
+      expect(await worktrees.status(project)).toEqual({ dirty: 0, ahead: 1, behind: 0 })
+
+      expect(await worktrees.status(join(root, 'missing'))).toEqual({
+        dirty: 0,
+        ahead: 0,
+        behind: 0
+      })
+    } finally {
+      await cleanup(root)
+    }
+  })
+
   test('info reports a repo, a plain folder, and a missing folder', async () => {
     const { root, project } = await tempRoot()
     try {

@@ -5872,3 +5872,19 @@ label,
   color: var(--bad);
   font-size: 12px;
 }
+
+/* Project card: upstream distance, uncommitted files and waiting lines. */
+.project-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-ligatures: none;
+}
+
+.project-status-item {
+  white-space: nowrap;
+}

@@ -389,21 +389,39 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           isRepo: true,
           branch: 'main',
           active: true,
-          changes: changes.length
+          changes: changes.length,
+          insertions: 172,
+          deletions: 139,
+          dirty: 1,
+          ahead: 0,
+          behind: 1,
+          chats: 3
         },
         {
           path: 'C:/Users/dev/projects/estate-agents',
           isRepo: true,
           branch: 'feature/search',
           active: false,
-          changes: 2
+          changes: 2,
+          insertions: 172,
+          deletions: 139,
+          dirty: 3,
+          ahead: 2,
+          behind: 0,
+          chats: 3
         },
         {
           path: 'C:/Users/dev/projects/notes',
           isRepo: false,
           branch: null,
           active: false,
-          changes: 0
+          changes: 0,
+          insertions: 0,
+          deletions: 0,
+          dirty: 0,
+          ahead: 0,
+          behind: 0,
+          chats: 0
         }
       ]
   const terminals = empty

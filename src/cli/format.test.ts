@@ -85,7 +85,7 @@ test('header, footer, durations, and ages', () => {
     'claude · planning · read'
   )
   expect(headerLine({ provider: 'claude', type: 'planning', access: 'read' }, true)).toContain(
-    '\u001b[36mclaude\u001b[0m'
+    '\u001b[38;2;255;160;90mclaude\u001b[0m'
   )
   expect(footerLine('done', 42_000, undefined, false)).toBe('done in 42s')
   expect(footerLine('failed', 1500, 'boom', false)).toBe('failed: boom')
