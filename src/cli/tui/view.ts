@@ -1,16 +1,34 @@
 import { formatDuration, stepLine } from '../format'
-import type { JobItem, TuiState, WorktreeItem } from './state'
+import type { Focus, JobItem, TuiState, WorktreeItem } from './state'
 
-const FOOTER_FULL =
-  'n new job  Tab switch pane  Enter open  d diff  m merge  x discard  w worktree  c/u agent here  s stop  ? help  q quit'
+const FOOTER_KEYS = [
+  'n new job',
+  'Tab switch pane',
+  'Enter open',
+  'd diff',
+  'm merge',
+  'x discard',
+  'w worktree',
+  'c/u agent here',
+  's stop'
+]
 const FOOTER_SHORT = '? help  q quit'
 
 export function isNarrow(columns: number): boolean {
   return columns < 100
 }
 
+/** As many keys as fit, always ending with help and quit. */
 export function footerText(columns: number): string {
-  return isNarrow(columns) ? FOOTER_SHORT : FOOTER_FULL
+  if (isNarrow(columns)) return FOOTER_SHORT
+  const shown: string[] = []
+  let width = FOOTER_SHORT.length
+  for (const key of FOOTER_KEYS) {
+    if (width + key.length + 2 > columns) break
+    shown.push(key)
+    width += key.length + 2
+  }
+  return [...shown, FOOTER_SHORT].join('  ')
 }
 
 export function leftColumn(columns: number): number {
@@ -34,6 +52,14 @@ export interface RowModel {
 
 export interface ScreenModel {
   top: string
+  /** The top line in parts, so the screen can colour them. */
+  where: string
+  plans: string[]
+  focus: Focus
+  /** Heights of the three boxes, filling the terminal between the top line and the prompt. */
+  heights: { worktrees: number; jobs: number; detail: number }
+  worktreesTitle: string
+  jobsTitle: string
   worktrees: RowModel[]
   jobs: RowModel[]
   title: string
@@ -48,10 +74,14 @@ export interface ScreenModel {
   color: boolean
 }
 
-export function detailPage(state: TuiState): number {
+/** Rows between the top line and the prompt: top, prompt and footer, plus the error line. */
+export function bodyRows(state: TuiState): number {
   const chrome = 3 + (state.error !== null ? 1 : 0)
-  const body = Math.max(4, state.rows - chrome)
-  return Math.max(1, body - 4)
+  return Math.max(8, state.rows - chrome)
+}
+
+export function detailPage(state: TuiState): number {
+  return Math.max(1, bodyRows(state) - 3)
 }
 
 export function detailBody(state: TuiState): LineModel[] {
@@ -67,19 +97,29 @@ export function detailBody(state: TuiState): LineModel[] {
 export function screenModel(state: TuiState): ScreenModel {
   const left = leftColumn(state.columns)
   const inner = Math.max(8, left - 2)
-  const slots = listSlots(state.rows)
+  const body = bodyRows(state)
+  const worktreesHeight = Math.max(4, Math.floor(body / 2))
+  const jobsHeight = Math.max(4, body - worktreesHeight)
   const worktreeAt = indexOf(state.worktrees, (item) => item.id === state.worktreeId)
   const jobAt = indexOf(state.jobs, (item) => item.id === state.jobId)
   const workFocus = state.focus === 'worktrees'
   const jobFocus = state.focus === 'jobs'
   return {
     top: topLine(state),
-    worktrees: windowItems(state.worktrees, worktreeAt, slots).map(({ item, selected }) => ({
-      text: fit(mark(selected) + worktreeText(item), inner),
-      selected,
-      focused: workFocus && selected
-    })),
-    jobs: windowItems(state.jobs, jobAt, slots).map(({ item, selected }) => ({
+    where: whereText(state),
+    plans: state.plans.map((plan) => plan.text),
+    focus: state.focus,
+    heights: { worktrees: worktreesHeight, jobs: jobsHeight, detail: body },
+    worktreesTitle: countTitle('Worktrees', state.worktrees.filter((item) => !item.project).length),
+    jobsTitle: jobsTitle(state.jobs),
+    worktrees: windowItems(state.worktrees, worktreeAt, worktreesHeight - 3).map(
+      ({ item, selected }) => ({
+        text: fit(mark(selected) + worktreeText(item), inner),
+        selected,
+        focused: workFocus && selected
+      })
+    ),
+    jobs: windowItems(state.jobs, jobAt, jobsHeight - 3).map(({ item, selected }) => ({
       text: fit(mark(selected) + jobText(item), inner),
       selected,
       focused: jobFocus && selected
@@ -110,9 +150,23 @@ function visibleDetail(state: TuiState): LineModel[] {
   }))
 }
 
-function topLine(state: TuiState): string {
+function whereText(state: TuiState): string {
   const branch = state.branch !== null && state.branch !== '' ? state.branch : 'no branch'
-  const left = `Legate · ${state.projectName} · ${branch}`
+  return `${state.projectName} · ${branch}`
+}
+
+function countTitle(word: string, count: number): string {
+  return count > 0 ? `${word}  ${String(count)}` : word
+}
+
+function jobsTitle(jobs: readonly JobItem[]): string {
+  const running = jobs.filter((job) => job.status === 'running').length
+  if (running > 0) return `Jobs  ${String(running)} running`
+  return countTitle('Jobs', jobs.length)
+}
+
+function topLine(state: TuiState): string {
+  const left = `Legate · ${whereText(state)}`
   const right = state.plans.map((plan) => plan.text).join('  ')
   if (right === '') return fit(left, state.columns)
   const room = state.columns - left.length - 2
@@ -178,7 +232,10 @@ function jobLines(state: TuiState): LineModel[] {
 function fileLines(row: WorktreeItem | undefined): LineModel[] {
   if (row === undefined) return [{ text: 'No folder selected', tone: 'plain' }]
   if (row.project) {
-    return [{ text: `${row.label} · ${row.branch ?? 'no branch'}`, tone: 'plain' }]
+    return [
+      { text: 'The project folder.', tone: 'plain' },
+      { text: 'Pick a worktree to see its changes, w to make one, n to start a job.', tone: 'dim' }
+    ]
   }
   if (row.files.length === 0) return [{ text: 'no changes', tone: 'plain' }]
   return row.files.map((file) => {
@@ -271,11 +328,6 @@ function selectedWorktree(state: TuiState): WorktreeItem | undefined {
 
 function selectedJob(state: TuiState): JobItem | undefined {
   return state.jobs.find((item) => item.id === state.jobId)
-}
-
-function listSlots(rows: number): number {
-  const body = Math.max(6, rows - 3)
-  return Math.max(3, Math.floor((body - 4) / 2))
 }
 
 function windowItems<T>(

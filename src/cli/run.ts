@@ -245,7 +245,10 @@ async function listJobs(parsed: Parsed, ctx: CliContext): Promise<number> {
   }
   const now = ctx.now()
   const rows = ctx.store.jobsNewest(ctx.project, limit)
-  if (rows.length === 0) return 0
+  if (rows.length === 0) {
+    ctx.stderr('No jobs yet. Start one with: legate job "<what to do>"\n')
+    return 0
+  }
   ctx.stdout(
     `${table(
       rows.map((row) =>
@@ -300,7 +303,10 @@ async function showJob(parsed: Parsed, ctx: CliContext): Promise<number> {
 
 async function printChanges(ctx: CliContext): Promise<number> {
   const changes = await listChanges(ctx)
-  if (changes.length === 0) return 0
+  if (changes.length === 0) {
+    ctx.stderr('No changes waiting. Edits from jobs and worktrees show up here.\n')
+    return 0
+  }
   ctx.stdout(`${table(changes.map(changeRow))}\n`)
   return 0
 }
@@ -426,7 +432,10 @@ async function routine(parsed: Parsed, ctx: CliContext): Promise<number> {
   if (parsed.sub === 'list') {
     if (unexpected(parsed.args, 'routine list', ctx)) return 2
     const rows = ctx.routines.list().map((item) => [item.name, item.type, item.worker, item.access])
-    if (rows.length === 0) return 0
+    if (rows.length === 0) {
+      ctx.stderr('No routines yet. Make one in the app: panel → Routines.\n')
+      return 0
+    }
     ctx.stdout(`${table(rows)}\n`)
     return 0
   }

@@ -55,6 +55,18 @@ const PROBLEM: Record<string, { 'not-installed': string; 'signed-out': string }>
   }
 }
 
+/** The app's colours: red as the accent, and each plan's own colour (24-bit codes). */
+export const ACCENT = '38;2;224;52;60'
+const PLAN_CODE: Record<string, string> = {
+  claude: '38;2;255;160;90',
+  cursor: '38;2;80;230;170'
+}
+
+/** A plan's name in its own colour, as the app's avatars show it. */
+export function planName(id: string, color: boolean): string {
+  return paint(id, PLAN_CODE[id] ?? '36', color)
+}
+
 export function paint(text: string, code: string, color: boolean): string {
   if (!color || text === '') return text
   return `\u001b[${code}m${text}\u001b[0m`
@@ -105,7 +117,7 @@ export function stepLine(step: StepView, verbose: boolean, color: boolean): stri
 
 export function headerLine(job: HeaderView, color: boolean): string {
   const parts: string[] = []
-  if (job.provider !== null) parts.push(paint(job.provider, '36', color))
+  if (job.provider !== null) parts.push(planName(job.provider, color))
   if (job.model !== undefined && job.model !== '') parts.push(job.model)
   parts.push(job.type, accessOf(job))
   if (job.reason !== undefined && job.reason !== '') parts.push(job.reason)
@@ -150,7 +162,9 @@ export function versionPhrase(plan: PlanView, tested: string): string {
 
 export function planLine(plan: PlanView, tested: string, now: number, color: boolean): string {
   const word = planWord(plan, now)
-  const parts = [plan.id, paint(word, word === 'ready' ? '32' : '33', color)]
+  const tone =
+    word === 'ready' ? '32' : word === 'not installed' || word === 'signed out' ? ACCENT : '33'
+  const parts = [planName(plan.id, color), paint(word, tone, color)]
   if (plan.problem !== 'not-installed') parts.push(versionPhrase(plan, tested))
   if (word === 'not installed' || word === 'signed out') {
     const sentence = PROBLEM[plan.id]?.[plan.problem ?? 'signed-out']
