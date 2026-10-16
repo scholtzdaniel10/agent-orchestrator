@@ -21,6 +21,7 @@ import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
+import HistoryPanel from './HistoryPanel'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -819,7 +820,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     function apply(shortcut: LayoutShortcut): void {
-      // Ctrl+1 … Ctrl+7 name a place in the tab bar, so they follow the order the person chose.
+      // Ctrl+1 … Ctrl+8 name a place in the tab bar, so they follow the order the person chose.
       const at =
         shortcut === 'drawer' || shortcut === 'sidebar' ? -1 : DRAWER_TABS.indexOf(shortcut)
       const kind = at < 0 ? shortcut : (tabOrderRef.current[at] ?? shortcut)
@@ -1641,6 +1642,16 @@ function App(): React.JSX.Element {
                       setSetupOpen(true)
                     }}
                   />
+                </ErrorBoundary>
+              </div>
+              <div
+                className={drawerTab === 'history' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'history' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  {drawerTab === 'history' ? (
+                    <HistoryPanel where={selectedWorktree} label={filesLabel} />
+                  ) : null}
                 </ErrorBoundary>
               </div>
               <div

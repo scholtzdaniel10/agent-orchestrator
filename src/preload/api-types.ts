@@ -17,6 +17,7 @@ import type {
 import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
+import type { CommitDetail, CommitPage } from '../core/history'
 import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
 
 /** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
@@ -172,6 +173,11 @@ export interface OrchestratorApi {
   renameWorktree(id: string, name: string): Promise<void>
   /** Files of the active project (`where` null) or a worktree. */
   listFiles(where: string | null): Promise<FileList>
+  /** Commits of the project (null) or a worktree, newest first, a page at a time. */
+  commitLog(where: string | null, skip: number): Promise<CommitPage>
+  commitDetail(where: string | null, hash: string): Promise<CommitDetail>
+  /** One file's diff in a commit, against its first parent. */
+  commitFileDiff(where: string | null, hash: string, path: string): Promise<string>
   readFile(where: string | null, path: string): Promise<FileContent>
   /** Unified diff of one file against HEAD. Empty when unchanged. */
   fileDiff(where: string | null, path: string): Promise<string>

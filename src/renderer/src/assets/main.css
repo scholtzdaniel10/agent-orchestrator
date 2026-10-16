@@ -5901,3 +5901,198 @@ label,
 .drawer-tabs .tab.is-drop-after {
   box-shadow: inset -2px 0 0 var(--accent);
 }
+
+/* History: commits with a branch graph on top, the selected commit below. */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.history-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.history-list.is-split {
+  flex: 0 1 45%;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px 0 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-row:hover {
+  background: var(--inset);
+}
+
+.history-row.is-selected {
+  background: var(--selected);
+}
+
+.history-graph {
+  flex: none;
+  overflow: visible;
+}
+
+.history-graph path {
+  fill: none;
+  stroke-width: 2;
+}
+
+.history-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-subject {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-ref {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.history-ref.is-head {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.history-ref.is-tag {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.history-meta {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.history-author {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-more {
+  padding: 8px;
+  text-align: center;
+}
+
+.history-detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 8px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.history-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.history-hash {
+  font-family: var(--font-mono);
+}
+
+.history-who {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.history-message {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-file:hover,
+.history-file.is-selected {
+  background: var(--inset);
+}
+
+.history-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-file-stat {
+  flex: none;
+}
+
+/* Eight tabs: one line that scrolls sideways instead of wrapping. */
+.drawer-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.history-row.is-selected {
+  box-shadow: inset 2px 0 0 var(--accent);
+}

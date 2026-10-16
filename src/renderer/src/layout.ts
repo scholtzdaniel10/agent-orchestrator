@@ -52,7 +52,8 @@ export const DRAWER_TABS = [
   'changes',
   'routines',
   'usage',
-  'activity'
+  'activity',
+  'history'
 ] as const
 
 export type DrawerTab = (typeof DRAWER_TABS)[number]
@@ -64,7 +65,8 @@ export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
   changes: 'Changes',
   routines: 'Routines',
   usage: 'Usage',
-  activity: 'Activity'
+  activity: 'Activity',
+  history: 'History'
 }
 
 export type LayoutShortcut = 'drawer' | 'sidebar' | DrawerTab
@@ -469,6 +471,7 @@ export function layoutShortcut(event: {
   if (event.key === '5') return 'routines'
   if (event.key === '6') return 'usage'
   if (event.key === '7') return 'activity'
+  if (event.key === '8') return 'history'
   return null
 }
 

@@ -290,7 +290,8 @@ test('a saved tab order keeps known tabs once and adds tabs it lacks at the end'
     'jobs',
     'changes',
     'routines',
-    'usage'
+    'usage',
+    'history'
   ])
   expect(tabOrderFrom(undefined)).toEqual([...DRAWER_TABS])
   expect(isDefaultTabOrder(tabOrderFrom(null))).toBe(true)
@@ -307,7 +308,8 @@ test('moveTab puts a tab at a place in the order without it', () => {
     'changes',
     'routines',
     'usage',
-    'activity'
+    'activity',
+    'history'
   ])
   expect(moveTab(order, 'lead', -5)[0]).toBe('lead')
 })

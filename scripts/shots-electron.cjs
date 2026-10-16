@@ -96,6 +96,24 @@ const scenes = {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })()`
   },
+  history: {
+    query: '?tab=history',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let rows = []
+      while (Date.now() < deadline) {
+        rows = document.querySelectorAll('.history-row')
+        if (rows.length > 1) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      rows[1]?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      document.querySelector('.history-file')?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
   skills: {
     size: [1440, 900],
     query: '',

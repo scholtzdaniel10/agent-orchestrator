@@ -25,7 +25,7 @@ It is a desktop app (Electron + TypeScript) with a command line beside it. It ru
 
 ## How it works
 
-- **The window is a workspace.** Projects and worktrees sit on the left, agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage and activity (`Ctrl+1` to `Ctrl+7`; `Ctrl+B` hides it). A status bar shows each plan's allowance and what is running.
+- **The window is a workspace.** Projects and worktrees sit on the left, agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity and the commit history with its branch graph (`Ctrl+1` to `Ctrl+8`; `Ctrl+B` hides it). Drag its tabs into any order. A status bar shows each plan's allowance and what is running.
 - **The lead.** You talk to one lead. It splits your request into jobs, hands them to workers, and reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
 - **Workers and access.** You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
 - **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.

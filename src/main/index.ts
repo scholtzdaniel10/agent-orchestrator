@@ -10,6 +10,7 @@ import { ChangeRefresh } from './debounce'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
+import { History, requireHash } from '../core/history'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
 import { refreshPath } from '../core/fresh-path'
@@ -192,6 +193,7 @@ app.whenReady().then(async () => {
   })
   const github = new Github(runGh)
   const files = new Files(runGh)
+  const history = new History(runGh)
   const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
   const signInIds = new Set<string>()
 
@@ -791,6 +793,16 @@ app.whenReady().then(async () => {
     shared.deleteWorktreeName(changeId)
     setupByChange.delete(changeId)
     pushChanges()
+  })
+  ipcMain.handle('history:log', (_event, where: unknown, skip: unknown) => {
+    const from = typeof skip === 'number' && Number.isInteger(skip) && skip >= 0 ? skip : 0
+    return history.log(filesRoot(where), from)
+  })
+  ipcMain.handle('history:detail', (_event, where: unknown, hash: unknown) => {
+    return history.detail(filesRoot(where), requireHash(hash))
+  })
+  ipcMain.handle('history:diff', (_event, where: unknown, hash: unknown, path: unknown) => {
+    return history.fileDiff(filesRoot(where), requireHash(hash), requireFilePath(path))
   })
   ipcMain.handle('files:list', (_event, where: unknown) => {
     return files.list(filesRoot(where))

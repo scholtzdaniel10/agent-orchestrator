@@ -33,7 +33,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+K', 'Search the sidebar'],
   ['Ctrl+\\', 'Show or hide the sidebar'],
   ['Ctrl+B', 'Show or hide the panel'],
-  ['Ctrl+1 … Ctrl+7', 'Files, Lead, Jobs, Changes, Routines, Usage, Activity'],
+  ['Ctrl+1 … Ctrl+8', 'Panel tabs, in the order they are shown'],
   ['Ctrl+Shift+N', 'New window'],
   ['Ctrl+Enter', 'Send a message to the lead'],
   ['Shift+F10', 'Actions for the focused worktree']
@@ -351,7 +351,7 @@ function SettingsPage({
     {
       section: 'general',
       label: 'Panel tabs',
-      help: 'Drag a tab in the panel to move it, or press Alt+Shift+Left/Right on it. Ctrl+1 … Ctrl+7 follow the order you set.',
+      help: 'Drag a tab in the panel to move it, or press Alt+Shift+Left/Right on it. Ctrl+1 … Ctrl+8 follow the order you set.',
       keywords: 'tabs order drag reorder panel activity flow',
       render: () => (
         <span className="settings-inline">

@@ -564,6 +564,38 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    commitLog: ok({
+      more: true,
+      commits: [
+        ['c9', ['c8', 'f2'], 'Merge the login fix', ['HEAD -> main', 'origin/main'], 1],
+        ['f2', ['f1'], 'Keep the session when the token refreshes', ['orch/login'], 3],
+        ['c8', ['c7'], 'Show git status on each project card', [], 5],
+        ['f1', ['c7'], 'Read the token from the keychain', [], 9],
+        ['c7', ['c6'], 'Give the terminal UI the app look', ['tag: v1.1.1'], 26],
+        ['c6', ['c5'], 'Skills for Legate agents', [], 50],
+        ['c5', [], 'First commit', [], 300]
+      ].map(([id, parents, subject, refs, hours]) => ({
+        hash: String(id).padEnd(40, '0'),
+        short: String(id).padEnd(7, '0'),
+        parents: parents.map((p) => String(p).padEnd(40, '0')),
+        author: 'Daniel',
+        time: Date.now() - hours * 3_600_000,
+        subject,
+        refs
+      }))
+    }),
+    commitDetail: ok({
+      hash: 'f2'.padEnd(40, '0'),
+      author: 'Daniel',
+      email: 'dev@example.invalid',
+      time: Date.now() - 3 * 3_600_000,
+      message: 'Keep the session when the token refreshes\n\nThe refresh wrote a new token but the old session object stayed in memory.',
+      files: [
+        { path: 'src/core/auth/session.ts', added: 14, removed: 3 },
+        { path: 'src/core/auth/session.test.ts', added: 22, removed: 0 }
+      ]
+    }),
+    commitFileDiff: ok('diff --git a/src/core/auth/session.ts b/src/core/auth/session.ts\n@@ -10,3 +10,5 @@\n-  this.token = next\n+  this.token = next\n+  this.session = open(next)\n'),
     skillsGet: ok(skills),
     skillsAdd: ok(skills),
     skillsRemove: ok(skills),
