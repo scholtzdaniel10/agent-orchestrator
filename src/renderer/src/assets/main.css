@@ -5888,3 +5888,16 @@ label,
 .project-status-item {
   white-space: nowrap;
 }
+
+/* Panel tabs can be dragged into a new order: the dragged tab fades, a red line marks where it lands. */
+.drawer-tabs .tab.is-dragging {
+  opacity: 0.4;
+}
+
+.drawer-tabs .tab.is-drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.drawer-tabs .tab.is-drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
