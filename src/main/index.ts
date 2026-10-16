@@ -10,6 +10,7 @@ import { ChangeRefresh } from './debounce'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
+import { History, requireHash } from '../core/history'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
 import { refreshPath } from '../core/fresh-path'
@@ -192,6 +193,7 @@ app.whenReady().then(async () => {
   })
   const github = new Github(runGh)
   const files = new Files(runGh)
+  const history = new History(runGh)
   const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
   const signInIds = new Set<string>()
 
@@ -355,14 +357,23 @@ app.whenReady().then(async () => {
     note.show()
   }
 
+  const lastStatus = new Map<string, string>()
   function publish(job: JobRecord): void {
-    broadcast('jobs:update', job)
+    // A job starting or ending changes a project's running count in the sidebar.
+    if (lastStatus.get(job.id) !== job.status) {
+      lastStatus.set(job.id, job.status)
+      // The sidebar reloads its projects with the change list.
+      pushChanges()
+    }
+    // Jobs left running in another project still notify, but stay off this project's screen.
+    const here = orch.projectOf(job.id) === null || orch.projectOf(job.id) === projectDir()
+    if (here) broadcast('jobs:update', job)
     notifyEnded(job)
     publishPlans()
     // The orchestrator frees a plan just after a job's last update; look again once it has,
     // or the plan stays "busy" on screen until something else happens.
     setTimeout(publishPlans, 0)
-    if (job.status === 'done') {
+    if (job.status === 'done' && here) {
       try {
         routines.onJobFinished(job)
       } catch (err: unknown) {
@@ -580,10 +591,19 @@ app.whenReady().then(async () => {
     }
     return terms.restore(projectDir(), cols, rows)
   })
+  /** Jobs keep running in their own project, so only a lead reply in progress blocks a switch. */
+  function assertCanSwitchProject(): void {
+    if (lead.isBusy()) {
+      throw new Error('Wait for the lead to finish its reply before changing project.')
+    }
+  }
+
+  /** Opening a pull request commits in the project, so its own jobs must be done first. */
   function assertProjectIdle(): void {
-    // Open terminals keep the folder they started in, so only jobs block a project change.
-    if (orch.busy()) {
-      throw new Error('Wait for running jobs to finish, or stop them, before changing project.')
+    if (orch.list().some((job) => job.status === 'queued' || job.status === 'running')) {
+      throw new Error(
+        'Wait for running jobs to finish, or stop them, before opening a pull request.'
+      )
     }
   }
 
@@ -607,7 +627,8 @@ app.whenReady().then(async () => {
       dirty: 0,
       ahead: 0,
       behind: 0,
-      chats: 0
+      chats: 0,
+      running: orch.activeIn(path)
     }
     try {
       entry.chats = shared.chatCount(path)
@@ -637,7 +658,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('project:choose', async (event) => {
-    assertProjectIdle()
+    assertCanSwitchProject()
     const asker = BrowserWindow.fromWebContents(event.sender)
     if (asker === null || asker.isDestroyed()) throw new Error('no window')
     const picked = await dialog.showOpenDialog(asker, {
@@ -678,7 +699,7 @@ app.whenReady().then(async () => {
     if (typeof path !== 'string' || !settings.projects().includes(path) || !isFolder(path)) {
       throw new Error('unknown project')
     }
-    assertProjectIdle()
+    assertCanSwitchProject()
     return activateProject(path)
   })
   ipcMain.handle('project:remove', (_event, path: unknown) => {
@@ -708,7 +729,7 @@ app.whenReady().then(async () => {
     if (nameWithOwner.startsWith('-') || nameWithOwner.includes('/-')) {
       throw new Error('invalid repository name')
     }
-    assertProjectIdle()
+    assertCanSwitchProject()
     const asker = BrowserWindow.fromWebContents(event.sender)
     if (asker === null || asker.isDestroyed()) throw new Error('no window')
     let parent = settings.prefs().cloneDir
@@ -791,6 +812,16 @@ app.whenReady().then(async () => {
     shared.deleteWorktreeName(changeId)
     setupByChange.delete(changeId)
     pushChanges()
+  })
+  ipcMain.handle('history:log', (_event, where: unknown, skip: unknown) => {
+    const from = typeof skip === 'number' && Number.isInteger(skip) && skip >= 0 ? skip : 0
+    return history.log(filesRoot(where), from)
+  })
+  ipcMain.handle('history:detail', (_event, where: unknown, hash: unknown) => {
+    return history.detail(filesRoot(where), requireHash(hash))
+  })
+  ipcMain.handle('history:diff', (_event, where: unknown, hash: unknown, path: unknown) => {
+    return history.fileDiff(filesRoot(where), requireHash(hash), requireFilePath(path))
   })
   ipcMain.handle('files:list', (_event, where: unknown) => {
     return files.list(filesRoot(where))

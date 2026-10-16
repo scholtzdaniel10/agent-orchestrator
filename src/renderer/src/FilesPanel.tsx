@@ -539,7 +539,7 @@ function FileBody({ content }: { content: FileContent | null }): React.JSX.Eleme
   )
 }
 
-function DiffBlock({ text }: { text: string | null }): React.JSX.Element {
+export function DiffBlock({ text }: { text: string | null }): React.JSX.Element {
   if (text === null) return <p className="files-status">Loading…</p>
   if (text === '') return <p className="files-status">No changes.</p>
   const lines = parseDiff(text)

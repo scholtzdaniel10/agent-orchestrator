@@ -33,7 +33,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+K', 'Search the sidebar'],
   ['Ctrl+\\', 'Show or hide the sidebar'],
   ['Ctrl+B', 'Show or hide the panel'],
-  ['Ctrl+1 … Ctrl+7', 'Files, Lead, Jobs, Changes, Routines, Usage, Activity'],
+  ['Ctrl+1 … Ctrl+8', 'Panel tabs, in the order they are shown'],
   ['Ctrl+Shift+N', 'New window'],
   ['Ctrl+Enter', 'Send a message to the lead'],
   ['Shift+F10', 'Actions for the focused worktree']
@@ -142,6 +142,8 @@ function SettingsPage({
   onRemoveProject,
   onOpenSetup,
   onLeadChanged,
+  tabOrderCustom,
+  onResetTabs,
   onClose
 }: {
   plans: readonly PlanStatus[]
@@ -152,6 +154,9 @@ function SettingsPage({
   onOpenSetup: () => void
   /** The lead's plan or worker access changed here; the Lead panel should read them again. */
   onLeadChanged: () => void
+  /** The panel's tabs were dragged out of their built-in order. */
+  tabOrderCustom: boolean
+  onResetTabs: () => void
   onClose: () => void
 }): React.JSX.Element {
   const [section, setSection] = useState<SectionId>('general')
@@ -343,6 +348,22 @@ function SettingsPage({
         </div>
       )
     })),
+    {
+      section: 'general',
+      label: 'Panel tabs',
+      help: 'Drag a tab in the panel to move it, or press Alt+Shift+Left/Right on it. Ctrl+1 … Ctrl+8 follow the order you set.',
+      keywords: 'tabs order drag reorder panel activity flow',
+      render: () => (
+        <span className="settings-inline">
+          <span className="settings-muted">{tabOrderCustom ? 'Your order' : 'Built-in order'}</span>
+          {tabOrderCustom ? (
+            <button type="button" className="btn btn-quiet btn-compact" onClick={onResetTabs}>
+              Reset
+            </button>
+          ) : null}
+        </span>
+      )
+    },
     {
       section: 'agents',
       label: 'Lead runs on',

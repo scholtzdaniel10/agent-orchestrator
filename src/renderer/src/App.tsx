@@ -21,12 +21,15 @@ import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
+import HistoryPanel from './HistoryPanel'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
   DEFAULT_SIZES,
   DRAWER_TAB_LABELS,
   DRAWER_TABS,
+  moveTab,
+  isDefaultTabOrder,
   LAYOUT_SHORTCUT_EVENT,
   MIN_DRAWER,
   MIN_SIDEBAR,
@@ -500,6 +503,9 @@ function App(): React.JSX.Element {
   const [drawerOpen, setDrawerOpen] = useState(layout.drawerOpen)
   const [drawerTab, setDrawerTab] = useState<DrawerTab>(layout.drawerTab)
   const [paneLayout, setPaneLayout] = useState<PaneLayoutId>(layout.paneLayout)
+  const [tabOrder, setTabOrder] = useState<DrawerTab[]>(layout.tabOrder)
+  /** The tab being dragged, and where it would land: before the tab at `index` in the order. */
+  const [tabDrag, setTabDrag] = useState<{ tab: DrawerTab; index: number } | null>(null)
   const [dragging, setDragging] = useState<'horizontal' | 'vertical' | null>(null)
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1200 : window.innerWidth,
@@ -513,9 +519,11 @@ function App(): React.JSX.Element {
   const viewChatId = useRef<string | null>(null)
   const drawerTabRef = useRef(drawerTab)
   const drawerOpenRef = useRef(drawerOpen)
+  const tabOrderRef = useRef(tabOrder)
 
   drawerTabRef.current = drawerTab
   drawerOpenRef.current = drawerOpen
+  tabOrderRef.current = tabOrder
 
   function viewingLead(): boolean {
     return drawerOpenRef.current && drawerTabRef.current === 'lead'
@@ -787,8 +795,8 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    saveLayout({ sizes, sidebarShown, drawerOpen, drawerTab, paneLayout })
-  }, [sizes, sidebarShown, drawerOpen, drawerTab, paneLayout])
+    saveLayout({ sizes, sidebarShown, drawerOpen, drawerTab, paneLayout, tabOrder })
+  }, [sizes, sidebarShown, drawerOpen, drawerTab, paneLayout, tabOrder])
 
   useEffect(() => {
     requestLayoutFit()
@@ -811,7 +819,11 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    function apply(kind: LayoutShortcut): void {
+    function apply(shortcut: LayoutShortcut): void {
+      // Ctrl+1 … Ctrl+8 name a place in the tab bar, so they follow the order the person chose.
+      const at =
+        shortcut === 'drawer' || shortcut === 'sidebar' ? -1 : DRAWER_TABS.indexOf(shortcut)
+      const kind = at < 0 ? shortcut : (tabOrderRef.current[at] ?? shortcut)
       if (kind === 'drawer') {
         setDrawerOpen((open) => !open)
         return
@@ -1199,17 +1211,52 @@ function App(): React.JSX.Element {
     setSizes((current) => clampSizes({ ...current, [key]: DEFAULT_SIZES[key] }, viewport, flags))
   }
 
+  /** Brings a terminal into view, selecting its worktree too so the grid shows it. */
+  function showTerminal(id: string): void {
+    const info = bag.current.terminals.find((terminal) => terminal.id === id)
+    if (info === undefined) return
+    const where: WorktreeId = info.change ?? null
+    setSelectedWorktree(where)
+    setSelectedWorktrees((prev) => (prev.has(where) ? prev : new Set([...prev, where])))
+    termNonce.current += 1
+    setPlaceTerminal({ id, nonce: termNonce.current })
+  }
+
   function viewChange(id: string): void {
     setSelectedChangeId(id)
     openPanel('changes')
+  }
+
+  /** The landing spot as a line before or after a tab, worked out on the order without the dragged tab. */
+  function tabClass(tab: DrawerTab, selected: boolean): string {
+    const names = ['tab']
+    if (selected) names.push('is-selected')
+    if (tabDrag !== null) {
+      if (tabDrag.tab === tab) names.push('is-dragging')
+      const rest = tabOrder.filter((t) => t !== tabDrag.tab)
+      const before = rest[tabDrag.index]
+      const last = rest[rest.length - 1]
+      if (before === tab) names.push('is-drop-before')
+      else if (tabDrag.index >= rest.length && last === tab) names.push('is-drop-after')
+    }
+    return names.join(' ')
   }
 
   function onDrawerTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    if (next < 0 || next >= DRAWER_TABS.length) return
-    const tab = DRAWER_TABS[next]
+    if (next < 0 || next >= tabOrder.length) return
+    const current = tabOrder[index]
+    if (event.altKey && event.shiftKey && current !== undefined) {
+      setTabOrder(moveTab(tabOrder, current, next))
+      requestAnimationFrame(() => {
+        document.getElementById(`drawer-tab-${current}`)?.focus()
+      })
+      return
+    }
+    const tab = tabOrder[next]
+    if (tab === undefined) return
     openPanel(tab)
     const element = document.getElementById(`drawer-tab-${tab}`)
     if (element instanceof HTMLButtonElement) element.focus()
@@ -1422,8 +1469,22 @@ function App(): React.JSX.Element {
         ) : null}
         {drawerOpen ? (
           <aside className="drawer" aria-label="Panel">
-            <div className="drawer-tabs" role="tablist" aria-label="Panel">
-              {DRAWER_TABS.map((tab, index) => {
+            <div
+              className="drawer-tabs"
+              role="tablist"
+              aria-label="Panel"
+              onDragOver={(event) => {
+                if (tabDrag === null) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                if (tabDrag !== null) setTabOrder(moveTab(tabOrder, tabDrag.tab, tabDrag.index))
+                setTabDrag(null)
+              }}
+            >
+              {tabOrder.map((tab, index) => {
                 const selected = drawerTab === tab
                 const jobsCount = tab === 'jobs' ? jobBadge : 0
                 const changeCount = tab === 'changes' ? changes.length : 0
@@ -1434,9 +1495,31 @@ function App(): React.JSX.Element {
                     id={`drawer-tab-${tab}`}
                     type="button"
                     role="tab"
-                    className={selected ? 'tab is-selected' : 'tab'}
+                    className={tabClass(tab, selected)}
                     aria-selected={selected}
+                    aria-keyshortcuts={index < 9 ? `Control+${String(index + 1)}` : undefined}
+                    title="Drag to reorder (Alt+Shift+Left/Right)"
                     tabIndex={selected ? 0 : -1}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', DRAWER_TAB_LABELS[tab])
+                      setTabDrag({ tab, index: tabOrder.filter((t) => t !== tab).length })
+                    }}
+                    onDragOver={(event) => {
+                      if (tabDrag === null) return
+                      event.preventDefault()
+                      const box = event.currentTarget.getBoundingClientRect()
+                      const after = event.clientX > box.left + box.width / 2
+                      const rest = tabOrder.filter((t) => t !== tabDrag.tab)
+                      const target = rest.indexOf(tab)
+                      const landing = target < 0 ? tabDrag.index : target + (after ? 1 : 0)
+                      if (landing !== tabDrag.index)
+                        setTabDrag({ tab: tabDrag.tab, index: landing })
+                    }}
+                    onDragEnd={() => {
+                      setTabDrag(null)
+                    }}
                     onClick={() => {
                       openPanel(tab)
                     }}
@@ -1573,6 +1656,16 @@ function App(): React.JSX.Element {
                 </ErrorBoundary>
               </div>
               <div
+                className={drawerTab === 'history' ? 'drawer-page' : 'drawer-page is-hidden'}
+                inert={drawerTab === 'history' ? undefined : true}
+              >
+                <ErrorBoundary>
+                  {drawerTab === 'history' ? (
+                    <HistoryPanel where={selectedWorktree} label={filesLabel} />
+                  ) : null}
+                </ErrorBoundary>
+              </div>
+              <div
                 className={drawerTab === 'activity' ? 'drawer-page' : 'drawer-page is-hidden'}
                 inert={drawerTab === 'activity' ? undefined : true}
               >
@@ -1587,6 +1680,7 @@ function App(): React.JSX.Element {
                     now={now}
                     starts={starts}
                     flashes={flashes}
+                    onShowTerminal={showTerminal}
                   />
                 </ErrorBoundary>
               </div>
@@ -1659,6 +1753,10 @@ function App(): React.JSX.Element {
             onOpenSetup={() => {
               setSettingsOpen(false)
               setSetupOpen(true)
+            }}
+            tabOrderCustom={!isDefaultTabOrder(tabOrder)}
+            onResetTabs={() => {
+              setTabOrder([...DRAWER_TABS])
             }}
             onLeadChanged={() => {
               setSettingsNonce((n) => n + 1)

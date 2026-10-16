@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
+import type { CommitDetail, CommitPage } from '../core/history'
 import type { Routine } from '../core/routines'
 import type {
   AppInfo,
@@ -145,6 +146,15 @@ const api: OrchestratorApi = {
   },
   listFiles(where: string | null): Promise<FileList> {
     return ipcRenderer.invoke('files:list', where)
+  },
+  commitLog(where: string | null, skip: number): Promise<CommitPage> {
+    return ipcRenderer.invoke('history:log', where, skip)
+  },
+  commitDetail(where: string | null, hash: string): Promise<CommitDetail> {
+    return ipcRenderer.invoke('history:detail', where, hash)
+  },
+  commitFileDiff(where: string | null, hash: string, path: string): Promise<string> {
+    return ipcRenderer.invoke('history:diff', where, hash, path)
   },
   readFile(where: string | null, path: string): Promise<FileContent> {
     return ipcRenderer.invoke('files:read', where, path)

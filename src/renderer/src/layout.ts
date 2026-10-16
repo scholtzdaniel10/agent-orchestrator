@@ -52,7 +52,8 @@ export const DRAWER_TABS = [
   'changes',
   'routines',
   'usage',
-  'activity'
+  'activity',
+  'history'
 ] as const
 
 export type DrawerTab = (typeof DRAWER_TABS)[number]
@@ -64,7 +65,8 @@ export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
   changes: 'Changes',
   routines: 'Routines',
   usage: 'Usage',
-  activity: 'Activity'
+  activity: 'Activity',
+  history: 'History'
 }
 
 export type LayoutShortcut = 'drawer' | 'sidebar' | DrawerTab
@@ -85,6 +87,8 @@ export interface LayoutState {
   drawerOpen: boolean
   drawerTab: DrawerTab
   paneLayout: PaneLayoutId
+  /** The panel's tabs in the order the person dragged them into. */
+  tabOrder: DrawerTab[]
 }
 
 export interface LayoutStorage {
@@ -106,7 +110,8 @@ export const DEFAULT_LAYOUT: LayoutState = {
   sidebarShown: true,
   drawerOpen: true,
   drawerTab: 'files',
-  paneLayout: 'auto'
+  paneLayout: 'auto',
+  tabOrder: [...DRAWER_TABS]
 }
 
 const PANE_LAYOUT_SET: ReadonlySet<string> = new Set(PANE_LAYOUT_IDS)
@@ -164,7 +169,8 @@ export function parseLayout(raw: unknown): LayoutState {
       sidebarShown: DEFAULT_LAYOUT.sidebarShown,
       drawerOpen: DEFAULT_LAYOUT.drawerOpen,
       drawerTab: DEFAULT_LAYOUT.drawerTab,
-      paneLayout: DEFAULT_LAYOUT.paneLayout
+      paneLayout: DEFAULT_LAYOUT.paneLayout,
+      tabOrder: [...DRAWER_TABS]
     }
   }
 
@@ -190,7 +196,40 @@ export function parseLayout(raw: unknown): LayoutState {
       ? root.paneLayout
       : DEFAULT_LAYOUT.paneLayout
 
-  return { sizes, sidebarShown, drawerOpen, drawerTab, paneLayout }
+  return {
+    sizes,
+    sidebarShown,
+    drawerOpen,
+    drawerTab,
+    paneLayout,
+    tabOrder: tabOrderFrom(root.tabOrder)
+  }
+}
+
+/** A saved order, keeping known tabs once each; tabs it lacks (new in an update) go at the end. */
+export function tabOrderFrom(raw: unknown): DrawerTab[] {
+  const out: DrawerTab[] = []
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (typeof entry === 'string' && isDrawerTab(entry) && !out.includes(entry)) out.push(entry)
+    }
+  }
+  for (const tab of DRAWER_TABS) if (!out.includes(tab)) out.push(tab)
+  return out
+}
+
+/** The order with `tab` moved to sit at `index` (counted in the order without it). */
+export function moveTab(order: readonly DrawerTab[], tab: DrawerTab, index: number): DrawerTab[] {
+  const rest = order.filter((entry) => entry !== tab)
+  const at = Math.max(0, Math.min(rest.length, Math.round(index)))
+  return [...rest.slice(0, at), tab, ...rest.slice(at)]
+}
+
+/** True when the order is the built-in one. */
+export function isDefaultTabOrder(order: readonly DrawerTab[]): boolean {
+  return (
+    order.length === DRAWER_TABS.length && order.every((tab, index) => tab === DRAWER_TABS[index])
+  )
 }
 
 function liveStorage(): LayoutStorage {
@@ -222,7 +261,8 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
         sidebarShown: DEFAULT_LAYOUT.sidebarShown,
         drawerOpen: DEFAULT_LAYOUT.drawerOpen,
         drawerTab: DEFAULT_LAYOUT.drawerTab,
-        paneLayout: DEFAULT_LAYOUT.paneLayout
+        paneLayout: DEFAULT_LAYOUT.paneLayout,
+        tabOrder: [...DRAWER_TABS]
       }
     }
     return parseLayout(JSON.parse(raw) as unknown)
@@ -232,7 +272,8 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
       sidebarShown: DEFAULT_LAYOUT.sidebarShown,
       drawerOpen: DEFAULT_LAYOUT.drawerOpen,
       drawerTab: DEFAULT_LAYOUT.drawerTab,
-      paneLayout: DEFAULT_LAYOUT.paneLayout
+      paneLayout: DEFAULT_LAYOUT.paneLayout,
+      tabOrder: [...DRAWER_TABS]
     }
   }
 }
@@ -246,7 +287,8 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
         sidebarShown: state.sidebarShown,
         drawerOpen: state.drawerOpen,
         drawerTab: state.drawerTab,
-        paneLayout: state.paneLayout
+        paneLayout: state.paneLayout,
+        tabOrder: state.tabOrder
       })
     )
   } catch {
@@ -429,6 +471,7 @@ export function layoutShortcut(event: {
   if (event.key === '5') return 'routines'
   if (event.key === '6') return 'usage'
   if (event.key === '7') return 'activity'
+  if (event.key === '8') return 'history'
   return null
 }
 

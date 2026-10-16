@@ -24,7 +24,11 @@ import {
   seatUnplaced,
   type PaneSlots,
   saveLayout,
-  type LayoutStorage
+  type LayoutStorage,
+  DRAWER_TABS,
+  isDefaultTabOrder,
+  moveTab,
+  tabOrderFrom
 } from './layout'
 
 function fakeStorage(initial: Record<string, string> = {}): LayoutStorage & {
@@ -139,7 +143,8 @@ test('saveLayout writes one JSON object', () => {
       sidebarShown: false,
       drawerOpen: true,
       drawerTab: 'activity',
-      paneLayout: '6-grid'
+      paneLayout: '6-grid',
+      tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage']
     },
     storage
   )
@@ -148,7 +153,8 @@ test('saveLayout writes one JSON object', () => {
     sidebarShown: false,
     drawerOpen: true,
     drawerTab: 'activity',
-    paneLayout: '6-grid'
+    paneLayout: '6-grid',
+    tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage']
   })
 })
 
@@ -274,4 +280,36 @@ test('seatUnplaced gives unplaced terminals the empty panes, in order, and moves
   expect(seatUnplaced(full, ['a', 'b'])).toBe(full)
   const settled: PaneSlots = ['a', null]
   expect(seatUnplaced(settled, ['a'])).toBe(settled)
+})
+
+test('a saved tab order keeps known tabs once and adds tabs it lacks at the end', () => {
+  expect(tabOrderFrom(['activity', 'nope', 'files', 'activity'])).toEqual([
+    'activity',
+    'files',
+    'lead',
+    'jobs',
+    'changes',
+    'routines',
+    'usage',
+    'history'
+  ])
+  expect(tabOrderFrom(undefined)).toEqual([...DRAWER_TABS])
+  expect(isDefaultTabOrder(tabOrderFrom(null))).toBe(true)
+})
+
+test('moveTab puts a tab at a place in the order without it', () => {
+  const order = [...DRAWER_TABS]
+  expect(moveTab(order, 'activity', 0)[0]).toBe('activity')
+  expect(moveTab(order, 'files', 99).at(-1)).toBe('files')
+  expect(moveTab(order, 'jobs', 1)).toEqual([
+    'files',
+    'jobs',
+    'lead',
+    'changes',
+    'routines',
+    'usage',
+    'activity',
+    'history'
+  ])
+  expect(moveTab(order, 'lead', -5)[0]).toBe('lead')
 })

@@ -5888,3 +5888,253 @@ label,
 .project-status-item {
   white-space: nowrap;
 }
+
+/* Panel tabs can be dragged into a new order: the dragged tab fades, a red line marks where it lands. */
+.drawer-tabs .tab.is-dragging {
+  opacity: 0.4;
+}
+
+.drawer-tabs .tab.is-drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.drawer-tabs .tab.is-drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
+/* History: commits with a branch graph on top, the selected commit below. */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.history-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.history-list.is-split {
+  flex: 0 1 45%;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px 0 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-row:hover {
+  background: var(--inset);
+}
+
+.history-row.is-selected {
+  background: var(--selected);
+}
+
+.history-graph {
+  flex: none;
+  overflow: visible;
+}
+
+.history-graph path {
+  fill: none;
+  stroke-width: 2;
+}
+
+.history-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-subject {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-ref {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.history-ref.is-head {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.history-ref.is-tag {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.history-meta {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.history-author {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-more {
+  padding: 8px;
+  text-align: center;
+}
+
+.history-detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 8px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.history-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.history-hash {
+  font-family: var(--font-mono);
+}
+
+.history-who {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.history-message {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-file:hover,
+.history-file.is-selected {
+  background: var(--inset);
+}
+
+.history-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-file-stat {
+  flex: none;
+}
+
+/* Eight tabs: one line that scrolls sideways instead of wrapping. */
+.drawer-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.history-row.is-selected {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* The open project holds its worktrees and chats: indented under it, with a guide line. */
+.project-item.is-open {
+  background: color-mix(in srgb, var(--inset) 60%, transparent);
+}
+
+.project-chevron {
+  flex: none;
+  width: 10px;
+  margin: 3px -4px 0 -2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.project-children {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 2px 0 4px 12px;
+  padding-left: 2px;
+  border-left: 1px solid var(--border);
+}
+
+.project-children .project-worktrees,
+.project-children .project-chats {
+  border-bottom: none;
+}
+
+.project-children .project-chats {
+  margin-top: 6px;
+}
+
+.project-children .project-chats-head .project-chats-label,
+.project-children .project-worktree-shown {
+  white-space: nowrap;
+}
+
+.project-children .project-chats-head {
+  flex-wrap: nowrap;
+  gap: 6px;
+}

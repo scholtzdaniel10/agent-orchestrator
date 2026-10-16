@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import { formatHoursMinutes, type FlowEvent, type FlowSnapshot } from './flow-events'
@@ -259,7 +260,8 @@ function Topology({
   now,
   elapsedNow,
   starts,
-  flashes
+  flashes,
+  onShowTerminal
 }: {
   jobs: JobRecord[]
   plans: PlanStatus[]
@@ -270,7 +272,28 @@ function Topology({
   elapsedNow: number
   starts: Record<string, number>
   flashes: Record<string, number>
+  onShowTerminal?: (id: string) => void
 }): React.JSX.Element {
+  const [menu, setMenu] = useState<{ plan: PlanStatus['id']; at: { x: number; y: number } } | null>(
+    null
+  )
+  function terminalEntries(plan: PlanStatus['id']): MenuEntry[] {
+    const mine = terminals.filter((terminal) => terminal.provider === plan)
+    if (mine.length === 0) return [{ label: `No ${plan} terminals open`, disabled: true }]
+    return [
+      { label: `${plan} terminals`, heading: true },
+      ...mine.map((terminal) => ({
+        label: terminal.title,
+        title:
+          terminal.status === 'running'
+            ? 'Show this terminal'
+            : `Show this terminal (${terminal.status})`,
+        onSelect: () => {
+          onShowTerminal?.(terminal.id)
+        }
+      }))
+    ]
+  }
   const rootRef = useRef<HTMLDivElement>(null)
   const streaming = lead.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
@@ -449,6 +472,18 @@ function Topology({
               key={plan.id}
               data-flow={`worker-${plan.id}`}
               className={boxClass(tone, flashes[plan.id] !== undefined)}
+              tabIndex={0}
+              title="Right-click to show its terminals"
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setMenu({ plan: plan.id, at: { x: event.clientX, y: event.clientY } })
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
+                event.preventDefault()
+                const rect = event.currentTarget.getBoundingClientRect()
+                setMenu({ plan: plan.id, at: { x: rect.left, y: rect.bottom } })
+              }}
             >
               <div className="flow-line">
                 <BotAvatar bot={plan.id} state={avatar} size={20} />
@@ -468,6 +503,16 @@ function Topology({
           )
         })}
       </div>
+      {menu !== null ? (
+        <SidebarMenu
+          label={`${menu.plan} terminals`}
+          at={menu.at}
+          entries={terminalEntries(menu.plan)}
+          onClose={() => {
+            setMenu(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }
@@ -481,7 +526,8 @@ function FlowView({
   events,
   now,
   starts,
-  flashes
+  flashes,
+  onShowTerminal
 }: {
   jobs: JobRecord[]
   plans: PlanStatus[]
@@ -489,6 +535,7 @@ function FlowView({
   terminals: TerminalInfo[]
   changes: FlowSnapshot['changes']
   events: FlowEvent[]
+  onShowTerminal?: (id: string) => void
   now: number
   starts: Record<string, number>
   flashes: Record<string, number>
@@ -532,6 +579,7 @@ function FlowView({
             elapsedNow={elapsedNow}
             starts={starts}
             flashes={flashes}
+            onShowTerminal={onShowTerminal}
           />
         </div>
         <EventLog events={events} />
