@@ -59,6 +59,41 @@ function relativeUpdated(iso: string, now: number): string {
   return relativeAge(then, now)
 }
 
+/** Upstream distance, uncommitted files and the lines waiting in changes; nothing when all zero. */
+function ProjectStatus({ entry }: { entry: ProjectEntry }): React.JSX.Element | null {
+  const upstream = entry.ahead > 0 || entry.behind > 0
+  const lines = entry.insertions > 0 || entry.deletions > 0
+  if (!entry.isRepo || (!upstream && entry.dirty === 0 && !lines)) return null
+  const said: string[] = []
+  if (entry.ahead > 0) said.push(`${String(entry.ahead)} ahead`)
+  if (entry.behind > 0) said.push(`${String(entry.behind)} behind`)
+  if (entry.dirty > 0) said.push(`${String(entry.dirty)} uncommitted`)
+  if (lines)
+    said.push(`${String(entry.insertions)} lines added, ${String(entry.deletions)} removed`)
+  return (
+    <span className="project-status" aria-label={said.join(', ')}>
+      {upstream ? (
+        <span className="project-status-item" title="Commits ahead of and behind upstream">
+          {entry.ahead > 0 ? `↑${String(entry.ahead)}` : null}
+          {entry.ahead > 0 && entry.behind > 0 ? ' ' : null}
+          {entry.behind > 0 ? `↓${String(entry.behind)}` : null}
+        </span>
+      ) : null}
+      {entry.dirty > 0 ? (
+        <span className="project-status-item" title="Uncommitted files in the project folder">
+          {`${String(entry.dirty)} uncommitted`}
+        </span>
+      ) : null}
+      {lines ? (
+        <span className="project-status-item" title="Lines in changes waiting for review">
+          <span className="stat-add">{`+${String(entry.insertions)}`}</span>{' '}
+          <span className="stat-del">{`−${String(entry.deletions)}`}</span>
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 function FolderGlyph(): React.JSX.Element {
   return (
     <svg
@@ -1505,6 +1540,7 @@ function ProjectBar({
                       <span className="project-note">not a git repository</span>
                     )}
                   </span>
+                  <ProjectStatus entry={entry} />
                   {active && busy ? (
                     <span className="status status-running project-row-run">
                       <span className="status-dot" aria-hidden="true" />

@@ -206,6 +206,8 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
       session_provider: null
     })
     expect(store.chats('/p')).toHaveLength(1)
+    expect(store.chatCount('/p')).toBe(1)
+    expect(store.chatCount('/other')).toBe(0)
     store.close()
 
     const again = new Store(path)

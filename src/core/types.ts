@@ -261,6 +261,16 @@ export interface ProjectEntry extends ProjectInfo {
   active: boolean
   /** Changes waiting for review in this project. */
   changes: number
+  /** Lines added and removed across those waiting changes. */
+  insertions: number
+  deletions: number
+  /** Files with uncommitted edits in the project folder itself. */
+  dirty: number
+  /** Commits ahead of and behind the upstream branch; 0 when there is none. */
+  ahead: number
+  behind: number
+  /** Saved chats for this project. */
+  chats: number
 }
 
 /** One repository from `gh repo list`. */

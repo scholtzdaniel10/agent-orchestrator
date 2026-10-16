@@ -591,33 +591,39 @@ app.whenReady().then(async () => {
   ipcMain.handle('projects:list', async (): Promise<ProjectEntry[]> => {
     const active = projectDir()
     const paths = settings.projects().filter((path) => isFolder(path))
-    const entries: ProjectEntry[] = []
-    for (const path of paths) {
-      try {
-        const info = await worktrees.info(path)
-        const changes = (await listedChanges(path)).length
-        entries.push({ ...info, active: path === active, changes })
-      } catch {
-        entries.push({
-          path,
-          isRepo: false,
-          branch: null,
-          active: path === active,
-          changes: 0
-        })
-      }
-    }
-    if (entries.length === 0) {
-      try {
-        const info = await worktrees.info(active)
-        const changes = (await listedChanges(active)).length
-        return [{ ...info, active: true, changes }]
-      } catch {
-        return [{ path: active, isRepo: false, branch: null, active: true, changes: 0 }]
-      }
-    }
-    return entries
+    if (paths.length === 0) return [await describeProject(active, true)]
+    return Promise.all(paths.map((path) => describeProject(path, path === active)))
   })
+  /** One sidebar card: branch, waiting changes and their lines, uncommitted files, upstream. */
+  async function describeProject(path: string, active: boolean): Promise<ProjectEntry> {
+    const entry: ProjectEntry = {
+      path,
+      isRepo: false,
+      branch: null,
+      active,
+      changes: 0,
+      insertions: 0,
+      deletions: 0,
+      dirty: 0,
+      ahead: 0,
+      behind: 0,
+      chats: 0
+    }
+    try {
+      entry.chats = shared.chatCount(path)
+      Object.assign(entry, await worktrees.info(path))
+      if (!entry.isRepo) return entry
+      Object.assign(entry, await worktrees.status(path))
+      for (const change of await listedChanges(path)) {
+        entry.changes += 1
+        entry.insertions += change.insertions
+        entry.deletions += change.deletions
+      }
+    } catch (err: unknown) {
+      console.error(err)
+    }
+    return entry
+  }
   async function activateProject(path: string): Promise<ProjectInfo> {
     settings.setProject(path)
     try {
