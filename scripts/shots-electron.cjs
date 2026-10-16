@@ -114,6 +114,25 @@ const scenes = {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })()`
   },
+  'activity-menu': {
+    query: '?tab=activity',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let card = null
+      while (Date.now() < deadline) {
+        card = document.querySelector('[data-flow="worker-claude"]')
+        if (card) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      const rect = card?.getBoundingClientRect()
+      card?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, clientX: (rect?.left ?? 0) + 40, clientY: (rect?.bottom ?? 0) - 6 })
+      )
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
   skills: {
     size: [1440, 900],
     query: '',

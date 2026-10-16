@@ -1211,6 +1211,17 @@ function App(): React.JSX.Element {
     setSizes((current) => clampSizes({ ...current, [key]: DEFAULT_SIZES[key] }, viewport, flags))
   }
 
+  /** Brings a terminal into view, selecting its worktree too so the grid shows it. */
+  function showTerminal(id: string): void {
+    const info = bag.current.terminals.find((terminal) => terminal.id === id)
+    if (info === undefined) return
+    const where: WorktreeId = info.change ?? null
+    setSelectedWorktree(where)
+    setSelectedWorktrees((prev) => (prev.has(where) ? prev : new Set([...prev, where])))
+    termNonce.current += 1
+    setPlaceTerminal({ id, nonce: termNonce.current })
+  }
+
   function viewChange(id: string): void {
     setSelectedChangeId(id)
     openPanel('changes')
@@ -1669,6 +1680,7 @@ function App(): React.JSX.Element {
                     now={now}
                     starts={starts}
                     flashes={flashes}
+                    onShowTerminal={showTerminal}
                   />
                 </ErrorBoundary>
               </div>
