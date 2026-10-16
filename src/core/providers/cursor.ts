@@ -20,6 +20,7 @@ import {
   StepParseState,
   writeSize
 } from './edit-size'
+import { withLegateNote } from './legate-note'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
 
@@ -88,7 +89,7 @@ export class CursorAdapter implements ProviderAdapter {
     if (resume) args.push('--resume', resume)
     if (opts.model) args.push('--model', opts.model)
     // A task means the person wants work done here now; Cursor's trust question would hold it up.
-    if (opts.prompt && !opts.resume) args.push('--trust', opts.prompt)
+    if (opts.prompt && !opts.resume) args.push('--trust', withLegateNote(opts.prompt))
     return {
       command: this.bin.command,
       args,
@@ -114,7 +115,7 @@ export class CursorAdapter implements ProviderAdapter {
     const handle = spawnCli(
       this.bin,
       args,
-      job.prompt,
+      opts?.resume ? job.prompt : withLegateNote(job.prompt),
       cwd,
       (line) => this.parseLine(line),
       cursorEnv(process.platform, process.env)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Every agent Legate starts is told it runs in Legate. Orca installs its skills for the whole user account, so agents here tried to run `orca` commands and could even start the Orca app.
+
 ## 1.0.4
 
 - A tool installed from Setup is found when you press Re-check. Before, Legate kept the PATH it started with, so Claude Code, the Cursor CLI or the GitHub CLI stayed "missing" until you restarted it.

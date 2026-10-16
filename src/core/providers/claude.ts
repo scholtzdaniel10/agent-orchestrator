@@ -22,6 +22,7 @@ import {
   sumEditSize,
   writeSize
 } from './edit-size'
+import { LEGATE_NOTE } from './legate-note'
 import { runCaptured, spawnCli, type Bin, type CapturedRun, type LineParse } from './process'
 import { parseCliVersion } from './versions'
 
@@ -100,6 +101,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     if (opts.resume) args.push('--resume', opts.resume)
     else if (opts.sessionId) args.push('--session-id', opts.sessionId)
     if (opts.model) args.push('--model', opts.model)
+    args.push('--append-system-prompt', LEGATE_NOTE)
     if (opts.prompt && !opts.resume) args.push(opts.prompt)
     return { command: this.bin.command, args }
   }
@@ -124,6 +126,7 @@ export class ClaudeAdapter implements ProviderAdapter {
       )
     }
     if (opts?.model) args.push('--model', opts.model)
+    args.push('--append-system-prompt', LEGATE_NOTE)
     return spawnCli(this.bin, args, job.prompt, cwd, (line) => this.parseLine(line))
   }
 
