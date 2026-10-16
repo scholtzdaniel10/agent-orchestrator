@@ -6279,3 +6279,70 @@ label,
 .dock .drawer-tabs .tab {
   flex: none;
 }
+
+/* Docked or windowed panels scroll when their content is taller than the place they are in. */
+.dock .drawer-page,
+.solo-panel .drawer-page {
+  overflow: auto;
+}
+
+.flow-topology {
+  overflow: auto;
+}
+
+/* The flow left to right, for a wide place: you, lead, router, then the plans stacked, log beside. */
+.flow.is-across .flow-body {
+  flex-flow: row wrap;
+  align-content: flex-start;
+  gap: 12px 16px;
+}
+
+.flow.is-across .flow-topology {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.flow.is-across .flow-log {
+  flex: 1 1 260px;
+  min-width: 260px;
+  min-height: 160px;
+  padding: 0;
+}
+
+.topo.is-across {
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
+  width: auto;
+  padding: 4px 4px 4px 0;
+}
+
+.topo.is-across .topo-you {
+  align-self: center;
+  flex: none;
+}
+
+.topo.is-across .topo-lead {
+  flex: none;
+  width: 170px;
+}
+
+.topo.is-across .topo-router {
+  flex: none;
+  width: 240px;
+}
+
+.topo.is-across .topo-workers {
+  flex: none;
+  flex-direction: column;
+  width: 190px;
+}
+
+.topo.is-across .topo-workers > .flow-box {
+  flex: none;
+}
+
+/* Side by side the router is narrow: the plans' own cards already say what is running and queued. */
+.topo.is-across .flow-plan-trail .flow-queued {
+  display: none;
+}
