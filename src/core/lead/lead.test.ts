@@ -1223,3 +1223,26 @@ test('remove while its turn runs throws; other chats stay', async () => {
     expect(lead.chats().map((chat) => chat.id)).toEqual([keepId])
   })
 })
+
+test('a direct chat talks to the chosen plan in the project with no instructions or bridge', async () => {
+  const claude = new FakeAdapter('claude', [done('sess-d', 'hi'), done('sess-d', 'again')])
+  const cursor = new FakeAdapter('cursor', [])
+  await withLead([claude, cursor], async (lead) => {
+    lead.reset('claude')
+    expect(lead.mode()).toBe('claude')
+    await lead.send('what does this repo do')
+    await lead.send('and the tests')
+    expect(cursor.calls).toHaveLength(0)
+    const [first, second] = claude.calls
+    expect(first?.job.prompt).toBe('what does this repo do')
+    expect(first?.cwd).toBe('/project')
+    expect(first?.opts?.bridge).toBeUndefined()
+    expect(second?.opts?.resume).toBe('sess-d')
+    const chat = lead.chats()[0]
+    expect(chat?.direct).toBe('claude')
+    lead.reset()
+    expect(lead.mode()).toBeNull()
+    if (chat !== undefined) lead.open(chat.id)
+    expect(lead.mode()).toBe('claude')
+  })
+})

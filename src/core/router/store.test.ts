@@ -214,7 +214,7 @@ test('opens an old database, keeps its rows, and reaches the latest schema versi
     again.close()
 
     const check = new DatabaseSync(path)
-    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 })
+    expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 })
     expect(check.prepare(`SELECT name FROM sqlite_master WHERE name = 'terminals'`).get()).toEqual({
       name: 'terminals'
     })

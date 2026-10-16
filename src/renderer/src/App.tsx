@@ -16,11 +16,11 @@ import FilesPanel from './FilesPanel'
 import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
 import Routines from './Routines'
+import SettingsPage from './SettingsPage'
 import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
-import SkillsPanel from './SkillsPanel'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -445,6 +445,7 @@ function App(): React.JSX.Element {
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
+  const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 
   // When each terminal last printed, batched to one update a second, for the sidebar's status dots.
   useEffect(() => {
@@ -476,6 +477,21 @@ function App(): React.JSX.Element {
   // The first start of an install always opens Setup, so a new person sees what Legate needs and
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsNonce, setSettingsNonce] = useState(0)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return
+      if (event.key !== ',') return
+      event.preventDefault()
+      setSettingsOpen((open) => !open)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [])
   const skippedSetup = useRef(false)
   const [theme, setTheme] = useState<ThemeId>(() => loadTheme())
   const [layout] = useState(loadLayout)
@@ -519,6 +535,7 @@ function App(): React.JSX.Element {
       },
       () => {}
     )
+    void window.api.getLeadMode().then(setLeadMode, () => {})
   }
 
   useEffect(() => {
@@ -865,6 +882,7 @@ function App(): React.JSX.Element {
     const jobList = await window.api.listJobs()
     commitJobs(state, jobList, setJobs, setStarts, setFlashes, setEvents)
     setChats(await window.api.listLeadChats())
+    setLeadMode(await window.api.getLeadMode())
     setProjects(await window.api.listProjects())
     publish(state, setEvents)
   }
@@ -921,8 +939,9 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function resetLead(): Promise<void> {
-    await window.api.resetLead()
+  async function resetLead(direct?: ProviderId): Promise<void> {
+    await window.api.resetLead(direct)
+    setLeadMode(direct ?? null)
     acceptList.current = false
     const state = bag.current
     state.lead = []
@@ -1322,6 +1341,9 @@ function App(): React.JSX.Element {
                 void openInWorktree(provider, worktree)
               }}
               activity={terminalActivity}
+              onOpenSettings={() => {
+                setSettingsOpen(true)
+              }}
               onReveal={(worktree) => {
                 window.api.revealFolder(worktree).catch((err: unknown) => {
                   setProjectError({ text: errorText(err), at: Date.now() })
@@ -1448,7 +1470,12 @@ function App(): React.JSX.Element {
                     messages={messages}
                     jobs={jobs}
                     plans={plans}
+                    mode={leadMode}
                     onReset={resetLead}
+                    onOpenTerminal={(provider) => {
+                      void openInWorktree(provider, null)
+                    }}
+                    settingsNonce={settingsNonce}
                     onShowJob={(id) => {
                       showJobNonce.current += 1
                       setShowJob({ id, nonce: showJobNonce.current })
@@ -1532,11 +1559,7 @@ function App(): React.JSX.Element {
                 </ErrorBoundary>
               </div>
               <div
-                className={
-                  drawerTab === 'usage'
-                    ? 'drawer-page usage-page'
-                    : 'drawer-page usage-page is-hidden'
-                }
+                className={drawerTab === 'usage' ? 'drawer-page' : 'drawer-page is-hidden'}
                 inert={drawerTab === 'usage' ? undefined : true}
               >
                 <ErrorBoundary>
@@ -1547,9 +1570,6 @@ function App(): React.JSX.Element {
                       setSetupOpen(true)
                     }}
                   />
-                </ErrorBoundary>
-                <ErrorBoundary>
-                  <SkillsPanel />
                 </ErrorBoundary>
               </div>
               <div
@@ -1623,6 +1643,32 @@ function App(): React.JSX.Element {
           {latestActivity === '' ? 'No activity yet' : `last: ${latestActivity}`}
         </button>
       </footer>
+      {settingsOpen && !setupOpen ? (
+        <ErrorBoundary className="setup-slot">
+          <SettingsPage
+            plans={plans ?? EMPTY_PLANS}
+            projects={projects}
+            theme={theme}
+            onTheme={(next) => {
+              applyTheme(next)
+              setTheme(next)
+            }}
+            onRemoveProject={(path) => {
+              void removeProject(path)
+            }}
+            onOpenSetup={() => {
+              setSettingsOpen(false)
+              setSetupOpen(true)
+            }}
+            onLeadChanged={() => {
+              setSettingsNonce((n) => n + 1)
+            }}
+            onClose={() => {
+              setSettingsOpen(false)
+            }}
+          />
+        </ErrorBoundary>
+      ) : null}
       {setupOpen ? (
         <ErrorBoundary className="setup-slot">
           <SetupScreen

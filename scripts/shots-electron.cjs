@@ -53,8 +53,24 @@ const scenes = {
     })()`
   },
   lead: { query: '?tab=lead', scheme: 'dark', size: [1440, 900], script: '' },
+  newchat: {
+    query: '?tab=lead',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let button
+      while (Date.now() < deadline) {
+        button = [...document.querySelectorAll('.lead-chat button')].find((el) =>
+          (el.textContent || '').startsWith('New chat')
+        )
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+    })()`
+  },
   changes: { query: '?tab=changes', scheme: 'dark', size: [1440, 900], script: '' },
-  usage: { query: '?tab=usage', scheme: 'dark', size: [1440, 900], script: '' },
   setup: { query: '?noplans', scheme: 'dark', size: [1440, 900], script: '' },
   paper: { query: '?theme=paper', scheme: 'light', size: [1440, 900], script: openFile },
   ultramarine: {
@@ -64,6 +80,44 @@ const scenes = {
     script: openFile
   },
   narrow: { query: '', scheme: 'dark', size: [900, 600], script: openFile },
+  settings: {
+    size: [1440, 900],
+    query: '',
+    scheme: 'dark',
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let button
+      while (Date.now() < deadline) {
+        button = document.querySelector('.project-foot-button')
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
+  skills: {
+    size: [1440, 900],
+    query: '',
+    scheme: 'dark',
+    script: `(async () => {
+      const wait = async (find) => {
+        const deadline = Date.now() + 4000
+        while (Date.now() < deadline) {
+          const found = find()
+          if (found) return found
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        return null
+      }
+      ;(await wait(() => document.querySelector('.project-foot-button')))?.click()
+      const tab = await wait(() =>
+        [...document.querySelectorAll('.settings-nav-item')].find((el) => el.textContent === 'Skills')
+      )
+      tab?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
   sidebar: {
     size: [1440, 900],
     query: '',

@@ -17,7 +17,7 @@ interface ListedWorktree {
 }
 
 export class Worktrees {
-  private readonly root: string
+  readonly root: string
   private readonly delay: (ms: number) => Promise<void>
 
   constructor(opts: { root: string; delay?: (ms: number) => Promise<void> }) {

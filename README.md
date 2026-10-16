@@ -34,7 +34,7 @@ It is a desktop app (Electron + TypeScript) with a command line beside it. It ru
 - **Files.** The panel shows the files of the selected project or worktree, marks what changed, and previews a file or its diff. It reads and opens files; it never writes them.
 - **Changes.** You review a worktree's diff, then merge it as staged changes, discard it, or open a pull request through `gh`. A worktree cannot be merged or discarded while a job is still running in it.
 - **Routines and setup.** A routine is a saved job you run with one click, or after every job of a kind you choose. Setup commands (for example `pnpm install`) run in each worktree you create by hand, in a terminal you can watch.
-- **Skills.** Every agent Legate starts gets Legate's own skills: worktree rules and a read-only `legate` CLI for workers, how to delegate for the lead, and how to review a change for both. Add your own skill folders under Usage → Skills. They load only into Legate's agents, never into your other Claude or Cursor sessions.
+- **Skills.** Every agent Legate starts gets Legate's own skills: worktree rules and a read-only `legate` CLI for workers, how to delegate for the lead, and how to review a change for both. Add your own skill folders in Settings → Skills. They load only into Legate's agents, never into your other Claude or Cursor sessions.
 - **The router.** A rule table and how much allowance each plan has left decide who gets a job. If a plan reports its limit, it rests and its queued jobs move to the other plan.
 - **Compare.** Send the same prompt to both plans, read the results side by side, keep one.
 - **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in the header.

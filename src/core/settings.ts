@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { isJobAccess, type JobAccess, type ProviderId } from './types'
+import { isJobAccess, type JobAccess, type Prefs, type ProviderId } from './types'
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/=,[\]-]*$/
 
@@ -101,6 +101,29 @@ export class Settings {
     this.persist()
   }
 
+  prefs(): Prefs {
+    const raw = isRecord(this.data.prefs) ? this.data.prefs : {}
+    return {
+      maxParallel: wholeIn(raw.maxParallel, 1, 8),
+      terminalFontSize: wholeIn(raw.terminalFontSize, 10, 22) ?? 13,
+      notify: raw.notify !== false,
+      cloneDir: typeof raw.cloneDir === 'string' && raw.cloneDir !== '' ? raw.cloneDir : null
+    }
+  }
+
+  /** Merges the known keys of `patch`; an invalid value falls back to its default. */
+  setPrefs(patch: unknown): Prefs {
+    if (!isRecord(patch)) throw new Error('invalid settings')
+    const next: Record<string, unknown> = isRecord(this.data.prefs) ? { ...this.data.prefs } : {}
+    for (const key of ['maxParallel', 'terminalFontSize', 'notify', 'cloneDir']) {
+      if (Object.hasOwn(patch, key)) next[key] = patch[key]
+    }
+    this.data.prefs = next
+    this.data.prefs = this.prefs()
+    this.persist()
+    return this.prefs()
+  }
+
   private persist(): void {
     mkdirSync(dirname(this.path), { recursive: true })
     const tmp = `${this.path}.tmp`
@@ -121,6 +144,12 @@ function readSettings(path: string): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function wholeIn(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null
+  if (value < min || value > max) return null
+  return value
 }
 
 function readProjects(value: unknown): string[] {

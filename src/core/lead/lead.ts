@@ -40,6 +40,7 @@ interface ChatContext {
   sessionProvider: ProviderId | null
   chatTitle: string
   chatCreatedAt: number
+  direct: ProviderId | null
 }
 
 interface PendingFollowUp {
@@ -74,6 +75,8 @@ export class Lead {
   /** Chat the user is viewing; unchanged while a report runs on another chat. */
   private viewChatId: string | null = null
   private chatTitle = ''
+  /** Plan the open chat talks to directly, with no delegation; null for a lead chat. */
+  private direct: ProviderId | null = null
   private chatCreatedAt = 0
   private unsubJobs: (() => void) | null = null
   private pendingFollowUps: PendingFollowUp[] = []
@@ -203,7 +206,8 @@ export class Lead {
       title: row.title,
       updatedAt: row.updated_at,
       active: row.id === active,
-      ...(this.chatHasPendingWork(row.id) ? { pending: true } : {})
+      ...(this.chatHasPendingWork(row.id) ? { pending: true } : {}),
+      ...(isProviderId(row.direct ?? null) ? { direct: row.direct as ProviderId } : {})
     }))
   }
 
@@ -219,12 +223,14 @@ export class Lead {
     this.indexTurnChats(id)
     this.sessionId = row.session_id ?? undefined
     this.sessionProvider = isProviderId(row.session_provider) ? row.session_provider : null
+    this.direct = isProviderId(row.direct ?? null) ? (row.direct as ProviderId) : null
   }
 
   openLatest(): void {
     if (this.busy) throw new Error('lead is busy')
     const newest = this.store.chats(this.project())[0]
     if (newest === undefined) {
+      this.direct = null
       this.history = []
       this.sessionId = undefined
       this.sessionProvider = null
@@ -248,9 +254,16 @@ export class Lead {
     return this.sessionProvider
   }
 
-  reset(): void {
+  /** Starts a new chat. With `direct`, it talks straight to that plan: no lead, no delegation. */
+  reset(direct: ProviderId | null = null): void {
     if (this.busy) throw new Error('lead is busy')
     this.clearOpenChat()
+    this.direct = direct
+  }
+
+  /** Plan the open chat talks to directly, or null for a lead chat. */
+  mode(): ProviderId | null {
+    return this.direct
   }
 
   rename(id: string, title: string): void {
@@ -274,6 +287,7 @@ export class Lead {
   }
 
   private clearOpenChat(): void {
+    this.direct = null
     this.history = []
     this.sessionId = undefined
     this.sessionProvider = null
@@ -316,6 +330,7 @@ export class Lead {
    * turn fresh, so the lead instructions are sent again. Shown messages stay.
    */
   private followPreference(): void {
+    if (this.direct !== null) return
     if (this.sessionProvider === null || !this.sessionId) return
     const prefer = this.preferredPlan()
     if (prefer === undefined || prefer === this.sessionProvider) return
@@ -327,6 +342,14 @@ export class Lead {
   }
 
   private planFor(text: string): Plan | null {
+    if (this.direct !== null) {
+      const resume = this.sessionProvider === this.direct ? this.sessionId : undefined
+      if (resume === undefined) {
+        if (!this.available.includes(this.direct)) return null
+        if (headroom(this.direct, this.store, this.rules, this.now()) <= 0) return null
+      }
+      return { provider: this.direct, resume, prompt: text }
+    }
     if (this.sessionProvider !== null && this.sessionId) {
       return { provider: this.sessionProvider, resume: this.sessionId, prompt: text }
     }
@@ -394,7 +417,7 @@ export class Lead {
       const plan = this.planFor(text)
       if (!plan) {
         lead.status = 'error'
-        lead.text = NO_PLAN
+        lead.text = this.direct === null ? NO_PLAN : `${this.direct} is not available right now.`
         this.emit(lead)
         return
       }
@@ -410,11 +433,17 @@ export class Lead {
 
       let result: ResultEvent | null = null
       let limitEv: LimitEvent | null = null
-      handle = adapter.run({ id: lead.id, prompt: plan.prompt }, this.dir, {
-        resume: plan.resume,
-        bridge: this.bridge,
-        model: this.modelFor?.(provider)
-      })
+      // A direct chat runs in the project, read-only, without the delegation tools.
+      const direct = this.direct !== null
+      handle = adapter.run(
+        { id: lead.id, prompt: plan.prompt },
+        direct ? this.project() : this.dir,
+        {
+          resume: plan.resume,
+          ...(direct ? {} : { bridge: this.bridge }),
+          model: this.modelFor?.(provider)
+        }
+      )
       for await (const event of handle.events) {
         if (event.kind === 'init') {
           sessionId = event.sessionId
@@ -628,6 +657,7 @@ export class Lead {
     this.indexTurnChats(id)
     this.sessionId = row.session_id ?? undefined
     this.sessionProvider = isProviderId(row.session_provider) ? row.session_provider : null
+    this.direct = isProviderId(row.direct ?? null) ? (row.direct as ProviderId) : null
   }
 
   private indexTurnChats(chatId: string): void {
@@ -643,7 +673,8 @@ export class Lead {
       sessionId: this.sessionId,
       sessionProvider: this.sessionProvider,
       chatTitle: this.chatTitle,
-      chatCreatedAt: this.chatCreatedAt
+      chatCreatedAt: this.chatCreatedAt,
+      direct: this.direct
     }
   }
 
@@ -654,6 +685,7 @@ export class Lead {
     this.sessionProvider = ctx.sessionProvider
     this.chatTitle = ctx.chatTitle
     this.chatCreatedAt = ctx.chatCreatedAt
+    this.direct = ctx.direct
   }
 
   private chatHasPendingWork(chatId: string): boolean {
@@ -694,7 +726,8 @@ export class Lead {
         created_at: this.chatCreatedAt,
         updated_at: this.now(),
         session_id: this.sessionId ?? null,
-        session_provider: this.sessionProvider
+        session_provider: this.sessionProvider,
+        direct: this.direct
       })
     } catch (err) {
       console.error(err)

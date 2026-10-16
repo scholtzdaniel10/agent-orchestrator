@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { app, shell, BrowserWindow, dialog, ipcMain, screen } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain, Notification, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -30,12 +30,14 @@ import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import type {
+  AppInfo,
   ChangeSet,
   GithubRepo,
   JobAccess,
   JobType,
   LeadChat,
   LeadMessage,
+  Prefs,
   ProjectEntry,
   ProjectInfo,
   ProviderId
@@ -218,6 +220,13 @@ app.whenReady().then(async () => {
   publishChanges = pushChanges
   // ORCH_RULES points at an edited copy of rules.json; unset uses the bundled defaults.
   const rules = loadRules(process.env.ORCH_RULES)
+  const rulesMaxParallel = rules.maxParallel
+  function applyPrefs(): Prefs {
+    const prefs = settings.prefs()
+    rules.maxParallel = prefs.maxParallel ?? rulesMaxParallel
+    return prefs
+  }
+  applyPrefs()
   const claude = new ClaudeAdapter()
   const cursor = new CursorAdapter()
   const setup = new Setup(runGh, claude, cursor, process.platform)
@@ -326,8 +335,29 @@ app.whenReady().then(async () => {
     broadcast('plans:update', plans())
   }
 
+  const notified = new Set<string>()
+  function notifyEnded(job: JobRecord): void {
+    if (job.status !== 'done' && job.status !== 'failed') return
+    if (notified.has(job.id)) return
+    notified.add(job.id)
+    if (!settings.prefs().notify || !Notification.isSupported()) return
+    if (BrowserWindow.getFocusedWindow() !== null) return
+    const note = new Notification({
+      title: `${job.provider ?? 'Job'} ${job.status === 'done' ? 'finished' : 'failed'}`,
+      body: job.prompt.slice(0, 140)
+    })
+    note.on('click', () => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win === undefined || win.isDestroyed()) return
+      win.show()
+      win.focus()
+    })
+    note.show()
+  }
+
   function publish(job: JobRecord): void {
     broadcast('jobs:update', job)
+    notifyEnded(job)
     publishPlans()
     // The orchestrator frees a plan just after a job's last update; look again once it has,
     // or the plan stays "busy" on screen until something else happens.
@@ -427,9 +457,13 @@ app.whenReady().then(async () => {
     lead.open(id)
     return lead.messages()
   })
-  ipcMain.handle('lead:reset', () => {
-    lead.reset()
+  ipcMain.handle('lead:reset', (_event, direct: unknown) => {
+    if (direct !== undefined && direct !== null && direct !== 'claude' && direct !== 'cursor') {
+      throw new Error('unknown plan')
+    }
+    lead.reset(direct ?? null)
   })
+  ipcMain.handle('lead:mode', (): ProviderId | null => lead.mode())
   ipcMain.handle('lead:rename', (_event, id: unknown, title: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid chat id')
     if (typeof title !== 'string' || title.length > 80) throw new Error('invalid title')
@@ -671,15 +705,44 @@ app.whenReady().then(async () => {
     assertProjectIdle()
     const asker = BrowserWindow.fromWebContents(event.sender)
     if (asker === null || asker.isDestroyed()) throw new Error('no window')
-    const picked = await dialog.showOpenDialog(asker, {
-      properties: ['openDirectory'],
-      defaultPath: projectDir()
-    })
-    if (picked.canceled || picked.filePaths.length === 0) return null
-    const parent = picked.filePaths[0]
-    if (parent === undefined) return null
+    let parent = settings.prefs().cloneDir
+    if (parent === null || !isFolder(parent)) {
+      const picked = await dialog.showOpenDialog(asker, {
+        properties: ['openDirectory'],
+        defaultPath: projectDir()
+      })
+      parent = picked.canceled ? null : (picked.filePaths[0] ?? null)
+    }
+    if (parent === null) return null
     const path = await github.clone(nameWithOwner, parent)
     return activateProject(path)
+  })
+  ipcMain.handle('prefs:get', (): Prefs => settings.prefs())
+  ipcMain.handle('prefs:set', (_event, patch: unknown): Prefs => {
+    settings.setPrefs(patch)
+    const prefs = applyPrefs()
+    broadcast('prefs:update', prefs)
+    return prefs
+  })
+  ipcMain.handle('prefs:chooseCloneDir', async (event): Promise<Prefs | null> => {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, { properties: ['openDirectory'] })
+    const dir = picked.filePaths[0]
+    if (picked.canceled || dir === undefined) return null
+    const prefs = settings.setPrefs({ cloneDir: dir })
+    broadcast('prefs:update', prefs)
+    return prefs
+  })
+  ipcMain.handle('app:info', (): AppInfo => ({
+    version: app.getVersion(),
+    dataDir: app.getPath('userData'),
+    worktreesDir: worktrees.root,
+    rulesMaxParallel
+  }))
+  ipcMain.handle('app:openDataDir', async () => {
+    const message = await shell.openPath(app.getPath('userData'))
+    if (message !== '') throw new Error(message)
   })
   ipcMain.handle('github:openPr', async (_event, title: unknown, body: unknown) => {
     if (
