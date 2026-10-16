@@ -1676,6 +1676,11 @@ select {
   overflow: hidden;
 }
 
+/* xterm paints the strip below the last whole row black; match the theme instead. */
+.terminal-host .xterm .xterm-viewport {
+  background-color: var(--bg);
+}
+
 .lead-chat > .output-error {
   flex: none;
 }
