@@ -18,9 +18,7 @@ function classify(line: string): DiffLine['kind'] {
   if (line.startsWith('… diff cut')) return 'meta'
   if (line.startsWith('diff --git')) return 'file'
   if (line.startsWith('@@')) return 'hunk'
-  for (const prefix of META_PREFIXES) {
-    if (line.startsWith(prefix)) return 'meta'
-  }
+  if (META_PREFIXES.some((prefix) => line.startsWith(prefix))) return 'meta'
   if (line.startsWith('+')) return 'add'
   if (line.startsWith('-')) return 'del'
   return 'context'
