@@ -154,8 +154,18 @@ function round(value: number): string {
   return value.toFixed(1)
 }
 
-function edgePoint(root: DOMRect, el: HTMLElement, edge: 'top' | 'bottom'): Point {
+function edgePoint(
+  root: DOMRect,
+  el: HTMLElement,
+  edge: 'top' | 'bottom' | 'left' | 'right'
+): Point {
   const rect = el.getBoundingClientRect()
+  if (edge === 'left' || edge === 'right') {
+    return {
+      x: (edge === 'left' ? rect.left : rect.right) - root.left,
+      y: rect.top + rect.height / 2 - root.top
+    }
+  }
   return {
     x: rect.left + rect.width / 2 - root.left,
     y: (edge === 'top' ? rect.top : rect.bottom) - root.top
@@ -168,6 +178,11 @@ function straight(from: Point, to: Point): string {
 
 function tee(from: Point, to: Point, busY: number): string {
   return `M ${round(from.x)} ${round(from.y)} V ${round(busY)} H ${round(to.x)} V ${round(to.y)}`
+}
+
+/** The same tee turned on its side, for the left-to-right layout. */
+function teeAcross(from: Point, to: Point, busX: number): string {
+  return `M ${round(from.x)} ${round(from.y)} H ${round(busX)} V ${round(to.y)} H ${round(to.x)}`
 }
 
 function paint(root: HTMLElement, name: string, d: string): void {
@@ -261,7 +276,8 @@ function Topology({
   elapsedNow,
   starts,
   flashes,
-  onShowTerminal
+  onShowTerminal,
+  across
 }: {
   jobs: JobRecord[]
   plans: PlanStatus[]
@@ -273,6 +289,8 @@ function Topology({
   starts: Record<string, number>
   flashes: Record<string, number>
   onShowTerminal?: (id: string) => void
+  /** Lay out left to right, for a place wider than it is tall. */
+  across: boolean
 }): React.JSX.Element {
   const [menu, setMenu] = useState<{ plan: PlanStatus['id']; at: { x: number; y: number } } | null>(
     null
@@ -311,27 +329,40 @@ function Topology({
       const you = findBox(root, 'you')
       const leadBox = findBox(root, 'lead')
       const router = findBox(root, 'router')
+      const out = across ? 'right' : 'bottom'
+      const into = across ? 'left' : 'top'
       if (you !== null && leadBox !== null) {
-        paint(
-          root,
-          'you-lead',
-          straight(edgePoint(base, you, 'bottom'), edgePoint(base, leadBox, 'top'))
-        )
+        paint(root, 'you-lead', straight(edgePoint(base, you, out), edgePoint(base, leadBox, into)))
       }
       if (leadBox !== null && router !== null) {
         paint(
           root,
           'lead-router',
-          straight(edgePoint(base, leadBox, 'bottom'), edgePoint(base, router, 'top'))
+          straight(edgePoint(base, leadBox, out), edgePoint(base, router, into))
         )
       }
       if (router === null) return
-      const from = edgePoint(base, router, 'bottom')
+      const from = edgePoint(base, router, out)
       const targets: Array<{ id: string; point: Point }> = []
       for (const plan of plans) {
         const box = findBox(root, `worker-${plan.id}`)
         if (box === null) continue
-        targets.push({ id: plan.id, point: edgePoint(base, box, 'top') })
+        targets.push({ id: plan.id, point: edgePoint(base, box, into) })
+      }
+      if (across) {
+        const busX =
+          targets.length === 0
+            ? from.x
+            : (from.x + Math.min(...targets.map((target) => target.point.x))) / 2
+        for (const target of targets) {
+          const aligned = targets.length === 1 && Math.abs(from.y - target.point.y) <= 1
+          paint(
+            root,
+            `worker-${target.id}`,
+            aligned ? straight(from, target.point) : teeAcross(from, target.point, busX)
+          )
+        }
+        return
       }
       const busY =
         targets.length === 0
@@ -350,10 +381,10 @@ function Topology({
     return () => {
       observer.disconnect()
     }
-  }, [plans, jobs, lead, terminals, changes, elapsedNow, streaming, now, starts, flashes])
+  }, [plans, jobs, lead, terminals, changes, elapsedNow, streaming, now, starts, flashes, across])
 
   return (
-    <div className="topo" ref={rootRef}>
+    <div className={across ? 'topo is-across' : 'topo'} ref={rootRef}>
       <div className="topo-overlay">
         <svg className="flow-wires" aria-hidden="true">
           <path
@@ -554,9 +585,28 @@ function FlowView({
   }, [running])
 
   const elapsedNow = tick === 0 ? now : tick
+  const flowRef = useRef<HTMLDivElement>(null)
+  const [across, setAcross] = useState(false)
+
+  // Wide and short (a dock above or below the terminals): draw the flow left to right.
+  useLayoutEffect(() => {
+    const el = flowRef.current
+    if (el === null) return
+    const measure = (): void => {
+      const { width, height } = el.getBoundingClientRect()
+      if (width === 0) return
+      setAcross(width >= 720 && width >= height * 1.6)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
 
   return (
-    <div className="flow">
+    <div className={across ? 'flow is-across' : 'flow'} ref={flowRef}>
       <div className="panel-head">
         <div className="panel-title">
           <Star size={12} />
@@ -580,6 +630,7 @@ function FlowView({
             starts={starts}
             flashes={flashes}
             onShowTerminal={onShowTerminal}
+            across={across}
           />
         </div>
         <EventLog events={events} />

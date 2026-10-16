@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Activity lays its flow out left to right (you → lead → router → plans) when its place is wider than it is tall, such as above or below the terminals, with the event log beside or below it.
+- Docked and windowed panels scroll when their content does not fit, instead of cutting it off.
+
 ## 1.3.0
 
 - Panel tabs dock anywhere. Drag Files, Lead, Jobs, Changes, Routines, Usage, Activity or History above the terminals, below them, under the projects, or back to the right panel; empty places light up while you drag. Each dock remembers its tabs and its height.
