@@ -60,7 +60,7 @@ function paragraphFrom(lines: readonly string[]): Block | null {
   const inlines: Inline[] = []
   for (const [index, line] of lines.entries()) {
     if (index > 0) inlines.push({ kind: 'break' })
-    for (const inline of parseLine(line)) inlines.push(inline)
+    inlines.push(...parseLine(line))
   }
   return { kind: 'paragraph', inlines }
 }
