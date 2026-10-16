@@ -87,9 +87,34 @@ export interface LayoutState {
   drawerOpen: boolean
   drawerTab: DrawerTab
   paneLayout: PaneLayoutId
-  /** The panel's tabs in the order the person dragged them into. */
+  /** The right panel's tabs in the order the person dragged them into. */
   tabOrder: DrawerTab[]
+  /** Tabs dragged to the other docks: above or below the terminals, or under the projects. */
+  dockTabs: SideDocks
+  /** The tab shown in each of those docks; null when the dock is empty. */
+  dockActive: Record<SideDockId, DrawerTab | null>
+  dockSizes: DockSizes
 }
+
+export const DOCKS = ['right', 'top', 'bottom', 'left'] as const
+export type DockId = (typeof DOCKS)[number]
+export type SideDockId = Exclude<DockId, 'right'>
+export type SideDocks = Record<SideDockId, DrawerTab[]>
+export type Docks = Record<DockId, DrawerTab[]>
+export interface DockSizes {
+  top: number
+  bottom: number
+  left: number
+}
+export const DOCK_LABELS: Record<DockId, string> = {
+  right: 'Right panel',
+  top: 'Above the terminals',
+  bottom: 'Below the terminals',
+  left: 'Under the projects'
+}
+export const MIN_DOCK = 120
+export const MAX_DOCK = 900
+export const DEFAULT_DOCK_SIZES: DockSizes = { top: 240, bottom: 260, left: 300 }
 
 export interface LayoutStorage {
   getItem(key: string): string | null
@@ -111,7 +136,10 @@ export const DEFAULT_LAYOUT: LayoutState = {
   drawerOpen: true,
   drawerTab: 'files',
   paneLayout: 'auto',
-  tabOrder: [...DRAWER_TABS]
+  tabOrder: [...DRAWER_TABS],
+  dockTabs: { top: [], bottom: [], left: [] },
+  dockActive: { top: null, bottom: null, left: null },
+  dockSizes: { ...DEFAULT_DOCK_SIZES }
 }
 
 const PANE_LAYOUT_SET: ReadonlySet<string> = new Set(PANE_LAYOUT_IDS)
@@ -170,7 +198,10 @@ export function parseLayout(raw: unknown): LayoutState {
       drawerOpen: DEFAULT_LAYOUT.drawerOpen,
       drawerTab: DEFAULT_LAYOUT.drawerTab,
       paneLayout: DEFAULT_LAYOUT.paneLayout,
-      tabOrder: [...DRAWER_TABS]
+      tabOrder: [...DRAWER_TABS],
+      dockTabs: { top: [], bottom: [], left: [] },
+      dockActive: { top: null, bottom: null, left: null },
+      dockSizes: { ...DEFAULT_DOCK_SIZES }
     }
   }
 
@@ -202,8 +233,80 @@ export function parseLayout(raw: unknown): LayoutState {
     drawerOpen,
     drawerTab,
     paneLayout,
-    tabOrder: tabOrderFrom(root.tabOrder)
+    ...docksLayout(root)
   }
+}
+
+/** The saved docks: every tab in exactly one dock; tabs it lacks go to the right panel. */
+function docksLayout(
+  root: Record<string, unknown>
+): Pick<LayoutState, 'tabOrder' | 'dockTabs' | 'dockActive' | 'dockSizes'> {
+  const rawSides = asRecord(root.dockTabs)
+  const docks = docksFrom({
+    right: root.tabOrder,
+    top: rawSides?.top,
+    bottom: rawSides?.bottom,
+    left: rawSides?.left
+  })
+  const rawActive = asRecord(root.dockActive)
+  const active = (dock: SideDockId): DrawerTab | null => {
+    const value = rawActive?.[dock]
+    const tabs = docks[dock]
+    if (typeof value === 'string' && isDrawerTab(value) && tabs.includes(value)) return value
+    return tabs[0] ?? null
+  }
+  const rawSizes = asRecord(root.dockSizes)
+  return {
+    tabOrder: docks.right,
+    dockTabs: { top: docks.top, bottom: docks.bottom, left: docks.left },
+    dockActive: { top: active('top'), bottom: active('bottom'), left: active('left') },
+    dockSizes: {
+      top: asNumber(rawSizes?.top, DEFAULT_DOCK_SIZES.top, MIN_DOCK, MAX_DOCK),
+      bottom: asNumber(rawSizes?.bottom, DEFAULT_DOCK_SIZES.bottom, MIN_DOCK, MAX_DOCK),
+      left: asNumber(rawSizes?.left, DEFAULT_DOCK_SIZES.left, MIN_DOCK, MAX_DOCK)
+    }
+  }
+}
+
+/** Docks from saved lists: known tabs once each, side docks first, the rest on the right. */
+export function docksFrom(raw: Partial<Record<DockId, unknown>>): Docks {
+  const seen = new Set<DrawerTab>()
+  const take = (value: unknown): DrawerTab[] => {
+    const out: DrawerTab[] = []
+    if (!Array.isArray(value)) return out
+    for (const entry of value) {
+      if (typeof entry === 'string' && isDrawerTab(entry) && !seen.has(entry)) {
+        seen.add(entry)
+        out.push(entry)
+      }
+    }
+    return out
+  }
+  const top = take(raw.top)
+  const bottom = take(raw.bottom)
+  const left = take(raw.left)
+  const right = take(raw.right)
+  for (const tab of tabOrderFrom(raw.right)) if (!seen.has(tab)) right.push(tab)
+  return { right, top, bottom, left }
+}
+
+/** Which dock holds `tab`. */
+export function dockOf(docks: Docks, tab: DrawerTab): DockId {
+  for (const dock of DOCKS) if (docks[dock].includes(tab)) return dock
+  return 'right'
+}
+
+/** Docks with `tab` moved into `dock` at `index` (counted in that dock without the tab). */
+export function moveTabTo(docks: Docks, tab: DrawerTab, dock: DockId, index: number): Docks {
+  const next: Docks = { right: [], top: [], bottom: [], left: [] }
+  for (const id of DOCKS) next[id] = docks[id].filter((entry) => entry !== tab)
+  next[dock] = moveTab(next[dock], tab, index)
+  return next
+}
+
+/** All tabs in shortcut order: the right panel, then above, below, and under the projects. */
+export function tabsInOrder(docks: Docks): DrawerTab[] {
+  return DOCKS.flatMap((dock) => docks[dock])
 }
 
 /** A saved order, keeping known tabs once each; tabs it lacks (new in an update) go at the end. */
@@ -262,7 +365,10 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
         drawerOpen: DEFAULT_LAYOUT.drawerOpen,
         drawerTab: DEFAULT_LAYOUT.drawerTab,
         paneLayout: DEFAULT_LAYOUT.paneLayout,
-        tabOrder: [...DRAWER_TABS]
+        tabOrder: [...DRAWER_TABS],
+        dockTabs: { top: [], bottom: [], left: [] },
+        dockActive: { top: null, bottom: null, left: null },
+        dockSizes: { ...DEFAULT_DOCK_SIZES }
       }
     }
     return parseLayout(JSON.parse(raw) as unknown)
@@ -273,7 +379,10 @@ export function loadLayout(storage: LayoutStorage = liveStorage()): LayoutState 
       drawerOpen: DEFAULT_LAYOUT.drawerOpen,
       drawerTab: DEFAULT_LAYOUT.drawerTab,
       paneLayout: DEFAULT_LAYOUT.paneLayout,
-      tabOrder: [...DRAWER_TABS]
+      tabOrder: [...DRAWER_TABS],
+      dockTabs: { top: [], bottom: [], left: [] },
+      dockActive: { top: null, bottom: null, left: null },
+      dockSizes: { ...DEFAULT_DOCK_SIZES }
     }
   }
 }
@@ -288,7 +397,10 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
         drawerOpen: state.drawerOpen,
         drawerTab: state.drawerTab,
         paneLayout: state.paneLayout,
-        tabOrder: state.tabOrder
+        tabOrder: state.tabOrder,
+        dockTabs: state.dockTabs,
+        dockActive: state.dockActive,
+        dockSizes: state.dockSizes
       })
     )
   } catch {

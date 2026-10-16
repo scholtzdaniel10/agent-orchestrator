@@ -6138,3 +6138,144 @@ label,
   flex-wrap: nowrap;
   gap: 6px;
 }
+
+/* Docks: panel tabs above or below the terminals, or under the projects. */
+.workspace,
+.sidebar-slot {
+  position: relative;
+}
+
+.sidebar-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dock {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.dock-top {
+  border-bottom: 1px solid var(--border);
+}
+
+.dock-bottom,
+.dock-left {
+  border-top: 1px solid var(--border);
+}
+
+.layout-handle.layout-handle-dock {
+  position: relative;
+  flex: none;
+  width: 100%;
+  height: 6px;
+  margin: -3px 0;
+  transform: none;
+  cursor: row-resize;
+}
+
+.dock-empty {
+  margin: auto;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+/* While a tab is dragged, empty docks light up as places to drop it. */
+.dock-drop {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius, 6px);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.dock-drop.is-over {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg));
+}
+
+.dock-drop-top {
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  height: 72px;
+}
+
+.dock-drop-bottom,
+.dock-drop-left {
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  height: 72px;
+}
+
+.dock-drop-right {
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: 180px;
+}
+
+.drawer-tabs .tab.is-popped {
+  color: var(--muted);
+}
+
+.tab-popped {
+  margin-left: 4px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.dock-popped {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.dock-popped p {
+  margin: 0;
+}
+
+.dock-popped-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* A panel in a window of its own: just that tab, full size. */
+.app.is-solo {
+  display: flex;
+}
+
+.solo-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* Docked tab bars keep their tabs at the start instead of stretching one across. */
+.dock .drawer-tabs .tab {
+  flex: none;
+}

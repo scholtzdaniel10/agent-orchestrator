@@ -133,6 +133,49 @@ const scenes = {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })()`
   },
+  docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
+  'drag-zones': {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const deadline = Date.now() + 4000
+      let tab = null
+      while (Date.now() < deadline) {
+        tab = document.getElementById('drawer-tab-activity')
+        if (tab) break
+        await wait(50)
+      }
+      const data = new DataTransfer()
+      tab.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }))
+      await wait(200)
+    })()`
+  },
+  'drag-drop': {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const deadline = Date.now() + 4000
+      let tab = null
+      while (Date.now() < deadline) {
+        tab = document.getElementById('drawer-tab-activity')
+        if (tab) break
+        await wait(50)
+      }
+      const data = new DataTransfer()
+      tab.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }))
+      await wait(200)
+      const zone = document.querySelector('.dock-drop-top')
+      zone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }))
+      await wait(100)
+      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }))
+      tab.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data, clientX: 300, clientY: 300 }))
+      await wait(300)
+    })()`
+  },
   skills: {
     size: [1440, 900],
     query: '',

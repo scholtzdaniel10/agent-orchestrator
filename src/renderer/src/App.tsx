@@ -17,6 +17,7 @@ import LeadChat from './LeadChat'
 import ProjectBar from './ProjectBar'
 import Routines from './Routines'
 import SettingsPage from './SettingsPage'
+import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
@@ -28,8 +29,21 @@ import {
   DEFAULT_SIZES,
   DRAWER_TAB_LABELS,
   DRAWER_TABS,
-  moveTab,
+  DOCK_LABELS,
+  DOCKS,
+  MAX_DOCK,
+  MIN_DOCK,
+  DEFAULT_DOCK_SIZES,
+  dockOf,
+  isDrawerTab,
   isDefaultTabOrder,
+  moveTabTo,
+  tabsInOrder,
+  type DockId,
+  type DockSizes,
+  type Docks,
+  type SideDockId,
+  type SideDocks,
   LAYOUT_SHORTCUT_EVENT,
   MIN_DRAWER,
   MIN_SIDEBAR,
@@ -333,6 +347,13 @@ function isTerminalTarget(target: EventTarget | null): boolean {
   return target.closest('.terminal-host, .xterm') !== null
 }
 
+/** A panel window shows one tab on its own: `?panel=history`. */
+const SOLO: DrawerTab | null = (() => {
+  if (typeof window === 'undefined') return null
+  const value = new URLSearchParams(window.location.search).get('panel')
+  return value !== null && isDrawerTab(value) ? value : null
+})()
+
 function ResizeHandle({
   className,
   orientation,
@@ -505,7 +526,18 @@ function App(): React.JSX.Element {
   const [paneLayout, setPaneLayout] = useState<PaneLayoutId>(layout.paneLayout)
   const [tabOrder, setTabOrder] = useState<DrawerTab[]>(layout.tabOrder)
   /** The tab being dragged, and where it would land: before the tab at `index` in the order. */
-  const [tabDrag, setTabDrag] = useState<{ tab: DrawerTab; index: number } | null>(null)
+  const [tabDrag, setTabDrag] = useState<{ tab: DrawerTab; dock: DockId; index: number } | null>(
+    null
+  )
+  const [dockTabs, setDockTabs] = useState<SideDocks>(layout.dockTabs)
+  const [dockActive, setDockActive] = useState<Record<SideDockId, DrawerTab | null>>(
+    layout.dockActive
+  )
+  const [dockSizes, setDockSizes] = useState<DockSizes>(layout.dockSizes)
+  const [tabMenu, setTabMenu] = useState<{ tab: DrawerTab; at: { x: number; y: number } } | null>(
+    null
+  )
+  const [poppedPanels, setPoppedPanels] = useState<DrawerTab[]>([])
   const [dragging, setDragging] = useState<'horizontal' | 'vertical' | null>(null)
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1200 : window.innerWidth,
@@ -519,19 +551,26 @@ function App(): React.JSX.Element {
   const viewChatId = useRef<string | null>(null)
   const drawerTabRef = useRef(drawerTab)
   const drawerOpenRef = useRef(drawerOpen)
-  const tabOrderRef = useRef(tabOrder)
+  const docks: Docks = { right: tabOrder, ...dockTabs }
+  const docksRef = useRef(docks)
 
   drawerTabRef.current = drawerTab
   drawerOpenRef.current = drawerOpen
-  tabOrderRef.current = tabOrder
+  docksRef.current = docks
 
   function viewingLead(): boolean {
     return drawerOpenRef.current && drawerTabRef.current === 'lead'
   }
 
   function openPanel(tab: DrawerTab): void {
-    setDrawerTab(tab)
-    setDrawerOpen(true)
+    const dock = dockOf({ right: tabOrder, ...dockTabs }, tab)
+    if (poppedPanels.includes(tab)) void window.api.popOutPanel(tab)
+    if (dock === 'right') {
+      setDrawerTab(tab)
+      setDrawerOpen(true)
+    } else {
+      setDockActive((prev) => ({ ...prev, [dock]: tab }))
+    }
     if (tab === 'lead') setLeadUnseen(false)
   }
 
@@ -795,8 +834,48 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    saveLayout({ sizes, sidebarShown, drawerOpen, drawerTab, paneLayout, tabOrder })
-  }, [sizes, sidebarShown, drawerOpen, drawerTab, paneLayout, tabOrder])
+    // A panel window shows one tab; only the main windows keep the layout.
+    if (SOLO !== null) return
+    saveLayout({
+      sizes,
+      sidebarShown,
+      drawerOpen,
+      drawerTab,
+      paneLayout,
+      tabOrder,
+      dockTabs,
+      dockActive,
+      dockSizes
+    })
+  }, [
+    sizes,
+    sidebarShown,
+    drawerOpen,
+    drawerTab,
+    paneLayout,
+    tabOrder,
+    dockTabs,
+    dockActive,
+    dockSizes
+  ])
+
+  useEffect(() => {
+    if (SOLO !== null) document.title = DRAWER_TAB_LABELS[SOLO] + ' · Legate'
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    void window.api.poppedPanels().then((list) => {
+      if (live) setPoppedPanels(list.filter(isDrawerTab))
+    })
+    const off = window.api.onPoppedPanels((list) => {
+      setPoppedPanels(list.filter(isDrawerTab))
+    })
+    return () => {
+      live = false
+      off()
+    }
+  }, [])
 
   useEffect(() => {
     requestLayoutFit()
@@ -823,7 +902,15 @@ function App(): React.JSX.Element {
       // Ctrl+1 … Ctrl+8 name a place in the tab bar, so they follow the order the person chose.
       const at =
         shortcut === 'drawer' || shortcut === 'sidebar' ? -1 : DRAWER_TABS.indexOf(shortcut)
-      const kind = at < 0 ? shortcut : (tabOrderRef.current[at] ?? shortcut)
+      const kind = at < 0 ? shortcut : (tabsInOrder(docksRef.current)[at] ?? shortcut)
+      if (kind !== 'drawer' && kind !== 'sidebar') {
+        const dock = dockOf(docksRef.current, kind)
+        if (dock !== 'right') {
+          setDockActive((prev) => ({ ...prev, [dock]: kind }))
+          if (kind === 'lead') setLeadUnseen(false)
+          return
+        }
+      }
       if (kind === 'drawer') {
         setDrawerOpen((open) => !open)
         return
@@ -1227,39 +1314,491 @@ function App(): React.JSX.Element {
     openPanel('changes')
   }
 
-  /** The landing spot as a line before or after a tab, worked out on the order without the dragged tab. */
-  function tabClass(tab: DrawerTab, selected: boolean): string {
+  /** Moves tabs between docks, keeping each side dock's shown tab valid and the right panel's. */
+  function setDocks(next: Docks): void {
+    setTabOrder(next.right)
+    setDockTabs({ top: next.top, bottom: next.bottom, left: next.left })
+    setDockActive((prev) => {
+      const fixed = { ...prev }
+      for (const dock of ['top', 'bottom', 'left'] as const) {
+        const shown = prev[dock]
+        if (shown === null || !next[dock].includes(shown)) fixed[dock] = next[dock][0] ?? null
+      }
+      return fixed
+    })
+    if (!next.right.includes(drawerTab) && next.right[0] !== undefined) setDrawerTab(next.right[0])
+  }
+
+  function moveToDock(tab: DrawerTab, dock: DockId, index?: number): void {
+    const rest = docks[dock].filter((entry) => entry !== tab)
+    setDocks(moveTabTo(docks, tab, dock, index ?? rest.length))
+    if (dock === 'right') {
+      setDrawerTab(tab)
+      setDrawerOpen(true)
+    } else {
+      setDockActive((prev) => ({ ...prev, [dock]: tab }))
+    }
+  }
+
+  function popOutPanel(tab: DrawerTab): void {
+    window.api.popOutPanel(tab).catch((err: unknown) => {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    })
+  }
+
+  function activeIn(dock: DockId): DrawerTab | null {
+    if (dock === 'right') {
+      return docks.right.includes(drawerTab) ? drawerTab : (docks.right[0] ?? null)
+    }
+    return dockActive[dock]
+  }
+
+  /** The landing spot as a line before or after a tab, worked out on the dock without the dragged tab. */
+  function tabClass(tab: DrawerTab, dock: DockId, selected: boolean): string {
     const names = ['tab']
     if (selected) names.push('is-selected')
+    if (poppedPanels.includes(tab)) names.push('is-popped')
     if (tabDrag !== null) {
       if (tabDrag.tab === tab) names.push('is-dragging')
-      const rest = tabOrder.filter((t) => t !== tabDrag.tab)
-      const before = rest[tabDrag.index]
-      const last = rest[rest.length - 1]
-      if (before === tab) names.push('is-drop-before')
-      else if (tabDrag.index >= rest.length && last === tab) names.push('is-drop-after')
+      if (tabDrag.dock === dock) {
+        const rest = docks[dock].filter((t) => t !== tabDrag.tab)
+        const before = rest[tabDrag.index]
+        const last = rest[rest.length - 1]
+        if (before === tab) names.push('is-drop-before')
+        else if (tabDrag.index >= rest.length && last === tab) names.push('is-drop-after')
+      }
     }
     return names.join(' ')
   }
 
-  function onDrawerTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
+  function onTabKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    dock: DockId,
+    index: number
+  ): void {
+    const tabs = docks[dock]
+    const current = tabs[index]
+    if (current === undefined) return
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      setTabMenu({ tab: current, at: { x: rect.left, y: rect.bottom } })
+      return
+    }
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     const next = event.key === 'ArrowRight' ? index + 1 : index - 1
-    if (next < 0 || next >= tabOrder.length) return
-    const current = tabOrder[index]
-    if (event.altKey && event.shiftKey && current !== undefined) {
-      setTabOrder(moveTab(tabOrder, current, next))
+    if (next < 0 || next >= tabs.length) return
+    if (event.altKey && event.shiftKey) {
+      setDocks(moveTabTo(docks, current, dock, next))
       requestAnimationFrame(() => {
         document.getElementById(`drawer-tab-${current}`)?.focus()
       })
       return
     }
-    const tab = tabOrder[next]
+    const tab = tabs[next]
     if (tab === undefined) return
     openPanel(tab)
     const element = document.getElementById(`drawer-tab-${tab}`)
     if (element instanceof HTMLButtonElement) element.focus()
+  }
+
+  function tabMenuEntries(tab: DrawerTab): MenuEntry[] {
+    const here = dockOf(docks, tab)
+    const popped = poppedPanels.includes(tab)
+    return [
+      { label: `Move ${DRAWER_TAB_LABELS[tab]} to`, heading: true },
+      ...DOCKS.filter((dock) => dock !== here).map((dock) => ({
+        label: DOCK_LABELS[dock],
+        onSelect: () => {
+          moveToDock(tab, dock)
+        }
+      })),
+      popped
+        ? {
+            label: 'Bring back from its window',
+            separator: true,
+            onSelect: () => {
+              void window.api.closePanel(tab)
+            }
+          }
+        : {
+            label: 'Open in its own window',
+            separator: true,
+            onSelect: () => {
+              popOutPanel(tab)
+            }
+          }
+    ]
+  }
+
+  function dropOn(dock: DockId): void {
+    if (tabDrag === null) return
+    const index =
+      tabDrag.dock === dock
+        ? tabDrag.index
+        : docks[dock].filter((entry) => entry !== tabDrag.tab).length
+    moveToDock(tabDrag.tab, dock, index)
+    setTabDrag(null)
+  }
+
+  function tabContent(tab: DrawerTab, shown: boolean): React.JSX.Element | null {
+    if (SOLO === null && poppedPanels.includes(tab)) {
+      return (
+        <div className="dock-popped">
+          <p>{DRAWER_TAB_LABELS[tab]} is open in its own window.</p>
+          <span className="dock-popped-actions">
+            <button
+              type="button"
+              className="btn btn-compact"
+              onClick={() => {
+                popOutPanel(tab)
+              }}
+            >
+              Show window
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              onClick={() => {
+                void window.api.closePanel(tab)
+              }}
+            >
+              Bring back here
+            </button>
+          </span>
+        </div>
+      )
+    }
+    switch (tab) {
+      case 'files':
+        return <FilesPanel where={selectedWorktree} label={filesLabel} />
+      case 'lead':
+        return (
+          <LeadChat
+            messages={messages}
+            jobs={jobs}
+            plans={plans}
+            mode={leadMode}
+            onReset={resetLead}
+            onOpenTerminal={(provider) => {
+              void openInWorktree(provider, null)
+            }}
+            settingsNonce={settingsNonce}
+            onShowJob={(id) => {
+              showJobNonce.current += 1
+              setShowJob({ id, nonce: showJobNonce.current })
+              setSelectedJobId(id)
+              openPanel('jobs')
+            }}
+          />
+        )
+      case 'jobs':
+        return (
+          <JobsPanel
+            jobs={jobs}
+            plans={plans}
+            changes={changes}
+            isRepo={project?.isRepo === true}
+            selectedJobId={selectedJobId}
+            showJob={showJob}
+            onSelectJob={setSelectedJobId}
+            onJob={(job) => {
+              commitJobs(
+                bag.current,
+                mergeJob(bag.current.jobs, job),
+                setJobs,
+                setStarts,
+                setFlashes,
+                setEvents
+              )
+            }}
+            onViewChange={viewChange}
+          />
+        )
+      case 'changes':
+        return (
+          <ChangesTab
+            changes={changes}
+            jobs={jobs}
+            selectedId={selectedChangeId}
+            onSelect={setSelectedChangeId}
+            claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
+            cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
+            opening={termOpening}
+            onOpenHere={(provider, changeId) => {
+              void openInWorktree(provider, changeId)
+            }}
+          />
+        )
+      case 'routines':
+        return (
+          <Routines
+            key={project?.path ?? ''}
+            project={project?.path ?? ''}
+            onRun={(job) => {
+              commitJobs(
+                bag.current,
+                mergeJob(bag.current.jobs, job),
+                setJobs,
+                setStarts,
+                setFlashes,
+                setEvents
+              )
+              setSelectedJobId(job.id)
+              openPanel('jobs')
+            }}
+          />
+        )
+      case 'usage':
+        return (
+          <UsageMeter
+            plans={plans}
+            now={now}
+            onOpenSetup={() => {
+              setSetupOpen(true)
+            }}
+          />
+        )
+      case 'history':
+        return shown ? <HistoryPanel where={selectedWorktree} label={filesLabel} /> : null
+      case 'activity':
+        return (
+          <FlowView
+            jobs={jobs}
+            plans={plans ?? EMPTY_PLANS}
+            lead={messages}
+            terminals={terminals}
+            changes={changes}
+            events={events}
+            now={now}
+            starts={starts}
+            flashes={flashes}
+            onShowTerminal={showTerminal}
+          />
+        )
+    }
+  }
+
+  function renderTabBar(dock: DockId): React.JSX.Element {
+    const tabs = docks[dock]
+    const active = activeIn(dock)
+    const order = tabsInOrder(docks)
+    return (
+      <div
+        className="drawer-tabs"
+        role="tablist"
+        aria-label={DOCK_LABELS[dock]}
+        onDragOver={(event) => {
+          if (tabDrag === null) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          if (tabDrag.dock !== dock && event.target === event.currentTarget) {
+            setTabDrag({ ...tabDrag, dock, index: tabs.filter((t) => t !== tabDrag.tab).length })
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          dropOn(dock)
+        }}
+      >
+        {tabs.map((tab, index) => {
+          const selected = active === tab
+          const jobsCount = tab === 'jobs' ? jobBadge : 0
+          const changeCount = tab === 'changes' ? changes.length : 0
+          const leadDot = tab === 'lead' && (leadBusy || leadUnseen)
+          const place = order.indexOf(tab)
+          return (
+            <button
+              key={tab}
+              id={`drawer-tab-${tab}`}
+              type="button"
+              role="tab"
+              className={tabClass(tab, dock, selected)}
+              aria-selected={selected}
+              aria-keyshortcuts={
+                place >= 0 && place < 9 ? `Control+${String(place + 1)}` : undefined
+              }
+              title="Drag anywhere to move it, or out of the window for its own. Right-click for more."
+              tabIndex={selected ? 0 : -1}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData('text/plain', DRAWER_TAB_LABELS[tab])
+                setTabDrag({ tab, dock, index: tabs.filter((t) => t !== tab).length })
+              }}
+              onDragOver={(event) => {
+                if (tabDrag === null) return
+                event.preventDefault()
+                const box = event.currentTarget.getBoundingClientRect()
+                const after = event.clientX > box.left + box.width / 2
+                const rest = tabs.filter((t) => t !== tabDrag.tab)
+                const target = rest.indexOf(tab)
+                const landing = target < 0 ? tabDrag.index : target + (after ? 1 : 0)
+                if (landing !== tabDrag.index || tabDrag.dock !== dock) {
+                  setTabDrag({ tab: tabDrag.tab, dock, index: landing })
+                }
+              }}
+              onDragEnd={(event) => {
+                // Dropped outside the window: give the tab a window of its own.
+                const { clientX: x, clientY: y } = event
+                const outside =
+                  event.dataTransfer.dropEffect === 'none' &&
+                  (x <= 0 || y <= 0 || x >= window.innerWidth || y >= window.innerHeight)
+                setTabDrag(null)
+                if (outside) popOutPanel(tab)
+              }}
+              onClick={() => {
+                openPanel(tab)
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setTabMenu({ tab, at: { x: event.clientX, y: event.clientY } })
+              }}
+              onKeyDown={(event) => {
+                onTabKeyDown(event, dock, index)
+              }}
+            >
+              {DRAWER_TAB_LABELS[tab]}
+              {jobsCount > 0 ? <span className="tab-badge">{jobsCount}</span> : null}
+              {changeCount > 0 ? <span className="tab-badge">{changeCount}</span> : null}
+              {leadDot ? <span className="tab-dot" aria-hidden="true" /> : null}
+              {poppedPanels.includes(tab) ? (
+                <span className="tab-popped" aria-label="in its own window">
+                  ↗
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderPages(dock: DockId): React.JSX.Element {
+    const active = activeIn(dock)
+    return (
+      <div
+        className="drawer-body"
+        onDragOver={(event) => {
+          if (tabDrag === null) return
+          event.preventDefault()
+          if (tabDrag.dock !== dock) {
+            setTabDrag({
+              ...tabDrag,
+              dock,
+              index: docks[dock].filter((t) => t !== tabDrag.tab).length
+            })
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          dropOn(dock)
+        }}
+      >
+        {docks[dock].length === 0 ? <p className="dock-empty">Drag a tab here.</p> : null}
+        {docks[dock].map((tab) => (
+          <div
+            key={tab}
+            className={active === tab ? 'drawer-page' : 'drawer-page is-hidden'}
+            inert={active === tab ? undefined : true}
+          >
+            <ErrorBoundary>{tabContent(tab, active === tab)}</ErrorBoundary>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  /** While a tab is dragged, empty docks show where it can land. */
+  function dropZone(dock: DockId): React.JSX.Element | null {
+    if (tabDrag === null) return null
+    const empty =
+      dock === 'right' ? !drawerOpen || docks.right.length === 0 : docks[dock].length === 0
+    if (!empty) return null
+    return (
+      <div
+        className={`dock-drop dock-drop-${dock}${tabDrag.dock === dock ? ' is-over' : ''}`}
+        onDragOver={(event) => {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          if (tabDrag.dock !== dock) setTabDrag({ ...tabDrag, dock, index: 0 })
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          dropOn(dock)
+        }}
+      >
+        {DOCK_LABELS[dock]}
+      </div>
+    )
+  }
+
+  function sideDock(dock: SideDockId): React.JSX.Element | null {
+    if (docks[dock].length === 0) return null
+    const handle = (
+      <ResizeHandle
+        className={`layout-handle layout-handle-dock layout-handle-${dock}`}
+        orientation="horizontal"
+        value={dockSizes[dock]}
+        min={MIN_DOCK}
+        max={MAX_DOCK}
+        label={`${DOCK_LABELS[dock]} height`}
+        invert={dock !== 'top'}
+        onChange={(value) => {
+          setDockSizes((prev) => ({ ...prev, [dock]: value }))
+        }}
+        onReset={() => {
+          setDockSizes((prev) => ({ ...prev, [dock]: DEFAULT_DOCK_SIZES[dock] }))
+        }}
+        onDragState={setDragging}
+      />
+    )
+    const body = (
+      <section
+        className={`dock dock-${dock}`}
+        aria-label={DOCK_LABELS[dock]}
+        style={{ height: dockSizes[dock] }}
+      >
+        {renderTabBar(dock)}
+        {renderPages(dock)}
+      </section>
+    )
+    return dock === 'top' ? (
+      <>
+        {body}
+        {handle}
+      </>
+    ) : (
+      <>
+        {handle}
+        {body}
+      </>
+    )
+  }
+
+  const tabMenuNode =
+    tabMenu !== null ? (
+      <SidebarMenu
+        label={`${DRAWER_TAB_LABELS[tabMenu.tab]} tab`}
+        at={tabMenu.at}
+        entries={tabMenuEntries(tabMenu.tab)}
+        onClose={() => {
+          setTabMenu(null)
+        }}
+      />
+    ) : null
+
+  if (SOLO !== null) {
+    return (
+      <div className={`${appClass} is-solo`} style={appStyle}>
+        <section className="solo-panel" aria-label={DRAWER_TAB_LABELS[SOLO]}>
+          <div className="drawer-page">
+            <ErrorBoundary>{tabContent(SOLO, true)}</ErrorBoundary>
+          </div>
+        </section>
+      </div>
+    )
   }
 
   return (
@@ -1331,78 +1870,82 @@ function App(): React.JSX.Element {
       </header>
       <div className="app-body">
         {sidebarShown ? (
-          <ErrorBoundary className="sidebar-slot">
-            <ProjectBar
-              jobs={jobs}
-              projects={projects}
-              chats={chats}
-              busy={running > 0 || queued > 0}
-              leadBusy={leadBusy}
-              now={now}
-              error={projectError === null ? null : projectError.text}
-              githubAvailable={githubAvailable}
-              changes={changes}
-              terminals={terminals}
-              selectedWorktrees={selectedWorktrees}
-              claudeAvailable={
-                plans?.some((plan) => plan.id === 'claude' && plan.available) === true
-              }
-              cursorAvailable={
-                plans?.some((plan) => plan.id === 'cursor' && plan.available) === true
-              }
-              onAdd={() => {
-                void changeProject()
-              }}
-              onGithubClone={cloneFromGithub}
-              onSwitch={(path) => {
-                void switchProject(path)
-              }}
-              onRemove={(path) => {
-                void removeProject(path)
-              }}
-              onOpenChat={(id) => {
-                void openLeadChat(id)
-              }}
-              onNewChat={() => {
-                void resetLead()
-                openPanel('lead')
-              }}
-              onRenameChat={(id, title) => {
-                void renameLeadChat(id, title)
-              }}
-              onRemoveChat={(id) => {
-                void removeLeadChat(id)
-              }}
-              onSelectWorktree={selectWorktree}
-              onSelectAllWorktrees={selectAllWorktrees}
-              onCreateWorktree={(name, count, start, prompt) => {
-                void createWorktree(name, count, start, prompt)
-              }}
-              onRenameWorktree={(id, name) => {
-                void renameWorktree(id, name)
-              }}
-              onDiscardWorktree={(id) => {
-                void discardWorktree(id)
-              }}
-              onOpenInWorktree={(provider, worktree) => {
-                void openInWorktree(provider, worktree)
-              }}
-              activity={terminalActivity}
-              onOpenSettings={() => {
-                setSettingsOpen(true)
-              }}
-              onReveal={(worktree) => {
-                window.api.revealFolder(worktree).catch((err: unknown) => {
-                  setProjectError({ text: errorText(err), at: Date.now() })
-                })
-              }}
-              onRevealProject={(path) => {
-                window.api.revealProject(path).catch((err: unknown) => {
-                  setProjectError({ text: errorText(err), at: Date.now() })
-                })
-              }}
-            />
-          </ErrorBoundary>
+          <div className="sidebar-slot">
+            <ErrorBoundary className="sidebar-main">
+              <ProjectBar
+                jobs={jobs}
+                projects={projects}
+                chats={chats}
+                busy={running > 0 || queued > 0}
+                leadBusy={leadBusy}
+                now={now}
+                error={projectError === null ? null : projectError.text}
+                githubAvailable={githubAvailable}
+                changes={changes}
+                terminals={terminals}
+                selectedWorktrees={selectedWorktrees}
+                claudeAvailable={
+                  plans?.some((plan) => plan.id === 'claude' && plan.available) === true
+                }
+                cursorAvailable={
+                  plans?.some((plan) => plan.id === 'cursor' && plan.available) === true
+                }
+                onAdd={() => {
+                  void changeProject()
+                }}
+                onGithubClone={cloneFromGithub}
+                onSwitch={(path) => {
+                  void switchProject(path)
+                }}
+                onRemove={(path) => {
+                  void removeProject(path)
+                }}
+                onOpenChat={(id) => {
+                  void openLeadChat(id)
+                }}
+                onNewChat={() => {
+                  void resetLead()
+                  openPanel('lead')
+                }}
+                onRenameChat={(id, title) => {
+                  void renameLeadChat(id, title)
+                }}
+                onRemoveChat={(id) => {
+                  void removeLeadChat(id)
+                }}
+                onSelectWorktree={selectWorktree}
+                onSelectAllWorktrees={selectAllWorktrees}
+                onCreateWorktree={(name, count, start, prompt) => {
+                  void createWorktree(name, count, start, prompt)
+                }}
+                onRenameWorktree={(id, name) => {
+                  void renameWorktree(id, name)
+                }}
+                onDiscardWorktree={(id) => {
+                  void discardWorktree(id)
+                }}
+                onOpenInWorktree={(provider, worktree) => {
+                  void openInWorktree(provider, worktree)
+                }}
+                activity={terminalActivity}
+                onOpenSettings={() => {
+                  setSettingsOpen(true)
+                }}
+                onReveal={(worktree) => {
+                  window.api.revealFolder(worktree).catch((err: unknown) => {
+                    setProjectError({ text: errorText(err), at: Date.now() })
+                  })
+                }}
+                onRevealProject={(path) => {
+                  window.api.revealProject(path).catch((err: unknown) => {
+                    setProjectError({ text: errorText(err), at: Date.now() })
+                  })
+                }}
+              />
+            </ErrorBoundary>
+            {sideDock('left')}
+            {dropZone('left')}
+          </div>
         ) : null}
         {sidebarShown ? (
           <ResizeHandle
@@ -1422,6 +1965,8 @@ function App(): React.JSX.Element {
           />
         ) : null}
         <section className="workspace" aria-label="Workspace">
+          {sideDock('top')}
+          {dropZone('top')}
           <ErrorBoundary className="workspace-slot">
             <Workers
               terminals={terminals.filter(
@@ -1448,6 +1993,8 @@ function App(): React.JSX.Element {
               }}
             />
           </ErrorBoundary>
+          {dropZone('bottom')}
+          {sideDock('bottom')}
         </section>
         {drawerOpen ? (
           <ResizeHandle
@@ -1469,225 +2016,13 @@ function App(): React.JSX.Element {
         ) : null}
         {drawerOpen ? (
           <aside className="drawer" aria-label="Panel">
-            <div
-              className="drawer-tabs"
-              role="tablist"
-              aria-label="Panel"
-              onDragOver={(event) => {
-                if (tabDrag === null) return
-                event.preventDefault()
-                event.dataTransfer.dropEffect = 'move'
-              }}
-              onDrop={(event) => {
-                event.preventDefault()
-                if (tabDrag !== null) setTabOrder(moveTab(tabOrder, tabDrag.tab, tabDrag.index))
-                setTabDrag(null)
-              }}
-            >
-              {tabOrder.map((tab, index) => {
-                const selected = drawerTab === tab
-                const jobsCount = tab === 'jobs' ? jobBadge : 0
-                const changeCount = tab === 'changes' ? changes.length : 0
-                const leadDot = tab === 'lead' && (leadBusy || leadUnseen)
-                return (
-                  <button
-                    key={tab}
-                    id={`drawer-tab-${tab}`}
-                    type="button"
-                    role="tab"
-                    className={tabClass(tab, selected)}
-                    aria-selected={selected}
-                    aria-keyshortcuts={index < 9 ? `Control+${String(index + 1)}` : undefined}
-                    title="Drag to reorder (Alt+Shift+Left/Right)"
-                    tabIndex={selected ? 0 : -1}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = 'move'
-                      event.dataTransfer.setData('text/plain', DRAWER_TAB_LABELS[tab])
-                      setTabDrag({ tab, index: tabOrder.filter((t) => t !== tab).length })
-                    }}
-                    onDragOver={(event) => {
-                      if (tabDrag === null) return
-                      event.preventDefault()
-                      const box = event.currentTarget.getBoundingClientRect()
-                      const after = event.clientX > box.left + box.width / 2
-                      const rest = tabOrder.filter((t) => t !== tabDrag.tab)
-                      const target = rest.indexOf(tab)
-                      const landing = target < 0 ? tabDrag.index : target + (after ? 1 : 0)
-                      if (landing !== tabDrag.index)
-                        setTabDrag({ tab: tabDrag.tab, index: landing })
-                    }}
-                    onDragEnd={() => {
-                      setTabDrag(null)
-                    }}
-                    onClick={() => {
-                      openPanel(tab)
-                    }}
-                    onKeyDown={(event) => {
-                      onDrawerTabKeyDown(event, index)
-                    }}
-                  >
-                    {DRAWER_TAB_LABELS[tab]}
-                    {jobsCount > 0 ? <span className="tab-badge">{jobsCount}</span> : null}
-                    {changeCount > 0 ? <span className="tab-badge">{changeCount}</span> : null}
-                    {leadDot ? <span className="tab-dot" aria-hidden="true" /> : null}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="drawer-body">
-              <div
-                className={drawerTab === 'files' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'files' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <FilesPanel where={selectedWorktree} label={filesLabel} />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'lead' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'lead' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <LeadChat
-                    messages={messages}
-                    jobs={jobs}
-                    plans={plans}
-                    mode={leadMode}
-                    onReset={resetLead}
-                    onOpenTerminal={(provider) => {
-                      void openInWorktree(provider, null)
-                    }}
-                    settingsNonce={settingsNonce}
-                    onShowJob={(id) => {
-                      showJobNonce.current += 1
-                      setShowJob({ id, nonce: showJobNonce.current })
-                      setSelectedJobId(id)
-                      openPanel('jobs')
-                    }}
-                  />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'jobs' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'jobs' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <JobsPanel
-                    jobs={jobs}
-                    plans={plans}
-                    changes={changes}
-                    isRepo={project?.isRepo === true}
-                    selectedJobId={selectedJobId}
-                    showJob={showJob}
-                    onSelectJob={setSelectedJobId}
-                    onJob={(job) => {
-                      commitJobs(
-                        bag.current,
-                        mergeJob(bag.current.jobs, job),
-                        setJobs,
-                        setStarts,
-                        setFlashes,
-                        setEvents
-                      )
-                    }}
-                    onViewChange={viewChange}
-                  />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'changes' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'changes' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <ChangesTab
-                    changes={changes}
-                    jobs={jobs}
-                    selectedId={selectedChangeId}
-                    onSelect={setSelectedChangeId}
-                    claudeAvailable={
-                      plans?.some((plan) => plan.id === 'claude' && plan.available) === true
-                    }
-                    cursorAvailable={
-                      plans?.some((plan) => plan.id === 'cursor' && plan.available) === true
-                    }
-                    opening={termOpening}
-                    onOpenHere={(provider, changeId) => {
-                      void openInWorktree(provider, changeId)
-                    }}
-                  />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'routines' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'routines' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <Routines
-                    key={project?.path ?? ''}
-                    project={project?.path ?? ''}
-                    onRun={(job) => {
-                      commitJobs(
-                        bag.current,
-                        mergeJob(bag.current.jobs, job),
-                        setJobs,
-                        setStarts,
-                        setFlashes,
-                        setEvents
-                      )
-                      setSelectedJobId(job.id)
-                      openPanel('jobs')
-                    }}
-                  />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'usage' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'usage' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <UsageMeter
-                    plans={plans}
-                    now={now}
-                    onOpenSetup={() => {
-                      setSetupOpen(true)
-                    }}
-                  />
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'history' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'history' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  {drawerTab === 'history' ? (
-                    <HistoryPanel where={selectedWorktree} label={filesLabel} />
-                  ) : null}
-                </ErrorBoundary>
-              </div>
-              <div
-                className={drawerTab === 'activity' ? 'drawer-page' : 'drawer-page is-hidden'}
-                inert={drawerTab === 'activity' ? undefined : true}
-              >
-                <ErrorBoundary>
-                  <FlowView
-                    jobs={jobs}
-                    plans={plans ?? EMPTY_PLANS}
-                    lead={messages}
-                    terminals={terminals}
-                    changes={changes}
-                    events={events}
-                    now={now}
-                    starts={starts}
-                    flashes={flashes}
-                    onShowTerminal={showTerminal}
-                  />
-                </ErrorBoundary>
-              </div>
-            </div>
+            {renderTabBar('right')}
+            {renderPages('right')}
           </aside>
         ) : null}
+        {dropZone('right')}
       </div>
+      {tabMenuNode}
       <footer className="status-bar">
         {(plans ?? EMPTY_PLANS).map((plan) => {
           const label = planBarLabel(plan, now)
@@ -1754,9 +2089,12 @@ function App(): React.JSX.Element {
               setSettingsOpen(false)
               setSetupOpen(true)
             }}
-            tabOrderCustom={!isDefaultTabOrder(tabOrder)}
+            tabOrderCustom={
+              !isDefaultTabOrder(tabOrder) ||
+              dockTabs.top.length + dockTabs.bottom.length + dockTabs.left.length > 0
+            }
             onResetTabs={() => {
-              setTabOrder([...DRAWER_TABS])
+              setDocks({ right: [...DRAWER_TABS], top: [], bottom: [], left: [] })
             }}
             onLeadChanged={() => {
               setSettingsNonce((n) => n + 1)

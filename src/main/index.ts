@@ -56,6 +56,19 @@ let stopStoreWatch: () => void = () => {}
 let changeRefresh: ChangeRefresh | null = null
 const poppedOut = new PoppedOutRegistry()
 const poppedWindows = new Map<string, BrowserWindow>()
+/** Panel tabs open in a window of their own, by tab. */
+const panelWindows = new Map<string, BrowserWindow>()
+const PANEL_TABS = ['files', 'lead', 'jobs', 'changes', 'routines', 'usage', 'activity', 'history']
+const PANEL_TITLES: Record<string, string> = {
+  files: 'Files',
+  lead: 'Lead',
+  jobs: 'Jobs',
+  changes: 'Changes',
+  routines: 'Routines',
+  usage: 'Usage',
+  activity: 'Activity',
+  history: 'History'
+}
 const terminalClaims = new TerminalClaims()
 
 function broadcast(channel: string, ...args: unknown[]): void {
@@ -67,6 +80,15 @@ function broadcast(channel: string, ...args: unknown[]): void {
 
 function publishPopped(): void {
   broadcast('terminals:popped', poppedOut.list())
+}
+
+function publishPanels(): void {
+  broadcast('panels:popped', [...panelWindows.keys()])
+}
+
+function requirePanelTab(tab: unknown): string {
+  if (typeof tab !== 'string' || !PANEL_TABS.includes(tab)) throw new Error('unknown panel')
+  return tab
 }
 
 function createWindow(opts?: {
@@ -962,6 +984,36 @@ app.whenReady().then(async () => {
     openPoppedWindow(terminalId, info.title, BrowserWindow.fromWebContents(event.sender))
   })
   ipcMain.handle('terminals:poppedOut', () => poppedOut.list())
+  ipcMain.handle('panels:popOut', (event, tab: unknown) => {
+    const id = requirePanelTab(tab)
+    const open = panelWindows.get(id)
+    if (open !== undefined && !open.isDestroyed()) {
+      if (open.isMinimized()) open.restore()
+      open.focus()
+      return
+    }
+    const blocked = refuseWindow(BrowserWindow.getAllWindows().length)
+    if (blocked !== null) throw new Error(blocked)
+    const win = createWindow({
+      from: BrowserWindow.fromWebContents(event.sender),
+      width: 760,
+      height: 720,
+      title: `${PANEL_TITLES[id] ?? id} · Legate`,
+      query: { panel: id }
+    })
+    panelWindows.set(id, win)
+    publishPanels()
+    win.on('closed', () => {
+      if (panelWindows.get(id) !== win) return
+      panelWindows.delete(id)
+      publishPanels()
+    })
+  })
+  ipcMain.handle('panels:close', (_event, tab: unknown) => {
+    const win = panelWindows.get(requirePanelTab(tab))
+    if (win !== undefined && !win.isDestroyed()) win.close()
+  })
+  ipcMain.handle('panels:popped', () => [...panelWindows.keys()])
 
   ipcMain.handle('setup:get', () => shared.getProjectSetup(projectDir()))
   ipcMain.handle('setup:set', (_event, commands: unknown) => {
