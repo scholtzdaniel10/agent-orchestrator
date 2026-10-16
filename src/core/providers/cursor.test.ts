@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, RunHandle } from '../types'
 import { CursorAdapter, cursorEnv, parseCursorModels } from './cursor'
+import { withLegateNote } from './legate-note'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const prompt = 'say "hello"\n100% |& done >'
@@ -245,7 +246,7 @@ process.stdout.write(readFileSync(${JSON.stringify(fixturePath)}, 'utf8'))
     expect(events).toEqual(eventsFromFixture(adapter, 'cursor-plain.ndjson'))
     expect(exit.code).toBe(0)
     expect(exit.unreadable).toBe(false)
-    expect(exit.stderr).toBe(prompt)
+    expect(exit.stderr).toBe(withLegateNote(prompt))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -649,14 +650,22 @@ test('interactive is the resolved node entry with no -p', () => {
   })
   expect(plain.interactive({ model: 'composer-2.5', prompt: 'fix the login' })).toEqual({
     command: 'agent',
-    args: ['--model', 'composer-2.5', '--trust', 'fix the login'],
+    args: ['--model', 'composer-2.5', '--trust', withLegateNote('fix the login')],
     env: cursorEnv(process.platform, process.env)
   })
   expect(
     wrapped.interactive({ sessionId: 'chat-1', model: 'fast', prompt: 'fix the login' })
   ).toEqual({
     command: 'node.exe',
-    args: ['index.js', '--resume', 'chat-1', '--model', 'fast', '--trust', 'fix the login'],
+    args: [
+      'index.js',
+      '--resume',
+      'chat-1',
+      '--model',
+      'fast',
+      '--trust',
+      withLegateNote('fix the login')
+    ],
     env: cursorEnv(process.platform, process.env)
   })
   expect(plain.interactive({ resume: 'chat-2', prompt: 'fix the login' })).toEqual({

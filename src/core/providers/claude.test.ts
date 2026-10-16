@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import type { AgentEvent, Job, RunHandle } from '../types'
 import { ClaudeAdapter } from './claude'
+import { LEGATE_NOTE } from './legate-note'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const prompt = 'say "hello"\n100% |& done >'
@@ -38,6 +39,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       }
     )
   })
+}
+
+/** Checks the Legate note is passed once, then leaves it out so the rest can be compared. */
+function withoutNote(args: string[]): string[] {
+  const at = args.indexOf('--append-system-prompt')
+  expect(args[at + 1]).toBe(LEGATE_NOTE)
+  expect(args.lastIndexOf('--append-system-prompt')).toBe(at)
+  return [...args.slice(0, at), ...args.slice(at + 2)]
+}
+
+function noNote(spec: { command: string; args: string[] }): { command: string; args: string[] } {
+  return { ...spec, args: withoutNote(spec.args) }
+}
+
+async function argsNoNote(handle: RunHandle): Promise<string[]> {
+  return withoutNote(await cliArgs(handle))
 }
 
 async function cliArgs(handle: RunHandle): Promise<string[]> {
@@ -363,23 +380,23 @@ process.exit(0)
     mkdirSync(plain)
     mkdirSync(resumeDir)
 
-    expect(await cliArgs(adapter.run(job, plain))).toEqual(base)
+    expect(await argsNoNote(adapter.run(job, plain))).toEqual(base)
     expect(existsSync(join(plain, 'orchestrator-mcp.json'))).toBe(false)
 
-    expect(await cliArgs(adapter.run(job, resumeDir, { resume: 'sess-1' }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, resumeDir, { resume: 'sess-1' }))).toEqual([
       ...base,
       '--resume',
       'sess-1'
     ])
     expect(existsSync(join(resumeDir, 'orchestrator-mcp.json'))).toBe(false)
 
-    expect(await cliArgs(adapter.run(job, bridged, { bridge }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, bridged, { bridge }))).toEqual([
       ...start,
       ...mcpArgs(bridged)
     ])
     expect(readFileSync(join(bridged, 'orchestrator-mcp.json'), 'utf8')).toBe(expectedConfig)
 
-    expect(await cliArgs(adapter.run(job, both, { resume: 'sess-2', bridge }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, both, { resume: 'sess-2', bridge }))).toEqual([
       ...start,
       '--resume',
       'sess-2',
@@ -389,33 +406,33 @@ process.exit(0)
 
     const modelDir = join(root, 'model')
     mkdirSync(modelDir)
-    expect(await cliArgs(adapter.run(job, modelDir, { model: 'opus' }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, modelDir, { model: 'opus' }))).toEqual([
       ...base,
       '--model',
       'opus'
     ])
-    expect(await cliArgs(adapter.run(job, plain, { model: '' }))).toEqual(base)
+    expect(await argsNoNote(adapter.run(job, plain, { model: '' }))).toEqual(base)
 
     const all = join(root, 'all')
     expect(
-      await cliArgs(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
+      await argsNoNote(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
     ).toEqual([...start, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
 
     const editDir = join(root, 'edit')
     mkdirSync(editDir)
-    expect(await cliArgs(adapter.run(job, editDir, { access: 'read' }))).toEqual(base)
-    expect(await cliArgs(adapter.run(job, editDir, { edit: true }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, editDir, { access: 'read' }))).toEqual(base)
+    expect(await argsNoNote(adapter.run(job, editDir, { edit: true }))).toEqual([
       ...editing,
       '--permission-mode',
       'acceptEdits'
     ])
-    expect(await cliArgs(adapter.run(job, editDir, { access: 'edit' }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, editDir, { access: 'edit' }))).toEqual([
       ...editing,
       '--permission-mode',
       'acceptEdits'
     ])
     expect(
-      await cliArgs(adapter.run(job, editDir, { edit: true, resume: 'sess-e', model: 'opus' }))
+      await argsNoNote(adapter.run(job, editDir, { edit: true, resume: 'sess-e', model: 'opus' }))
     ).toEqual([
       ...editing,
       '--permission-mode',
@@ -426,12 +443,14 @@ process.exit(0)
       'opus'
     ])
     const full = [...start, '--strict-mcp-config', '--permission-mode', 'bypassPermissions']
-    expect(await cliArgs(adapter.run(job, editDir, { access: 'full' }))).toEqual(full)
+    expect(await argsNoNote(adapter.run(job, editDir, { access: 'full' }))).toEqual(full)
     expect(full).not.toContain('--disallowedTools')
     expect(
-      await cliArgs(adapter.run(job, editDir, { access: 'full', resume: 'sess-f', model: 'opus' }))
+      await argsNoNote(
+        adapter.run(job, editDir, { access: 'full', resume: 'sess-f', model: 'opus' })
+      )
     ).toEqual([...full, '--resume', 'sess-f', '--model', 'opus'])
-    expect(await cliArgs(adapter.run(job, bridged, { access: 'full', bridge }))).toEqual([
+    expect(await argsNoNote(adapter.run(job, bridged, { access: 'full', bridge }))).toEqual([
       ...start,
       ...mcpArgs(bridged)
     ])
@@ -460,28 +479,28 @@ test('listModels offers each family by short name and by exact version', async (
 
 test('interactive is the resolved binary with no -p', () => {
   const plain = new ClaudeAdapter({ command: 'claude.exe' })
-  expect(plain.interactive()).toEqual({ command: 'claude.exe', args: [] })
-  expect(plain.interactive('opus')).toEqual({
+  expect(noNote(plain.interactive())).toEqual({ command: 'claude.exe', args: [] })
+  expect(noNote(plain.interactive('opus'))).toEqual({
     command: 'claude.exe',
     args: ['--model', 'opus']
   })
   const wrapped = new ClaudeAdapter({ command: 'node.exe', args: ['cli.js'] })
-  expect(wrapped.interactive()).toEqual({ command: 'node.exe', args: ['cli.js'] })
-  expect(wrapped.interactive('sonnet')).toEqual({
+  expect(noNote(wrapped.interactive())).toEqual({ command: 'node.exe', args: ['cli.js'] })
+  expect(noNote(wrapped.interactive('sonnet'))).toEqual({
     command: 'node.exe',
     args: ['cli.js', '--model', 'sonnet']
   })
-  expect(plain.interactive({ model: 'opus', prompt: 'fix the login' })).toEqual({
+  expect(noNote(plain.interactive({ model: 'opus', prompt: 'fix the login' }))).toEqual({
     command: 'claude.exe',
     args: ['--model', 'opus', 'fix the login']
   })
   expect(
-    wrapped.interactive({ sessionId: 'sess-1', model: 'sonnet', prompt: 'fix the login' })
+    noNote(wrapped.interactive({ sessionId: 'sess-1', model: 'sonnet', prompt: 'fix the login' }))
   ).toEqual({
     command: 'node.exe',
     args: ['cli.js', '--session-id', 'sess-1', '--model', 'sonnet', 'fix the login']
   })
-  expect(plain.interactive({ resume: 'sess-2', prompt: 'fix the login' })).toEqual({
+  expect(noNote(plain.interactive({ resume: 'sess-2', prompt: 'fix the login' }))).toEqual({
     command: 'claude.exe',
     args: ['--resume', 'sess-2']
   })
