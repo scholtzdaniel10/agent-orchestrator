@@ -263,6 +263,13 @@ export interface OrchestratorApi {
   /** Terminal ids that currently have a window of their own. */
   poppedOut(): Promise<string[]>
   onPoppedOut(cb: (ids: string[]) => void): () => void
+  /** Opens a panel tab (files, lead, history…) in a window of its own, or brings that window forward. */
+  popOutPanel(tab: string): Promise<void>
+  /** Closes a panel's own window; the tab shows in its dock again. */
+  closePanel(tab: string): Promise<void>
+  /** Panel tabs that currently have a window of their own. */
+  poppedPanels(): Promise<string[]>
+  onPoppedPanels(cb: (tabs: string[]) => void): () => void
 }
 
 export type {

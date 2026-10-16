@@ -316,6 +316,24 @@ const api: OrchestratorApi = {
   popOutTerminal(id: string): Promise<void> {
     return ipcRenderer.invoke('terminals:popOut', id)
   },
+  popOutPanel(tab: string): Promise<void> {
+    return ipcRenderer.invoke('panels:popOut', tab)
+  },
+  closePanel(tab: string): Promise<void> {
+    return ipcRenderer.invoke('panels:close', tab)
+  },
+  poppedPanels(): Promise<string[]> {
+    return ipcRenderer.invoke('panels:popped')
+  },
+  onPoppedPanels(cb: (tabs: string[]) => void): () => void {
+    const listener = (_event: IpcRendererEvent, tabs: string[]): void => {
+      cb(tabs)
+    }
+    ipcRenderer.on('panels:popped', listener)
+    return () => {
+      ipcRenderer.removeListener('panels:popped', listener)
+    }
+  },
   poppedOut(): Promise<string[]> {
     return ipcRenderer.invoke('terminals:poppedOut')
   },

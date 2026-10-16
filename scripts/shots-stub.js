@@ -20,7 +20,15 @@
         sidebarShown: true,
         drawerOpen: true,
         drawerTab: tab,
-        paneLayout: 'auto'
+        paneLayout: 'auto',
+        ...(params.has('docks')
+          ? {
+              tabOrder: ['files', 'lead', 'changes', 'routines', 'usage'],
+              dockTabs: { top: ['activity'], bottom: ['jobs'], left: ['history'] },
+              dockActive: { top: 'activity', bottom: 'jobs', left: 'history' },
+              dockSizes: { top: 250, bottom: 190, left: 330 }
+            }
+          : {})
       })
     )
   } catch {
@@ -567,6 +575,10 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    popOutPanel: ok(undefined),
+    closePanel: ok(undefined),
+    poppedPanels: ok(params.has('docks') ? ['lead'] : []),
+    onPoppedPanels: off,
     commitLog: ok({
       more: true,
       commits: [

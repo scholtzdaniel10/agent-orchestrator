@@ -28,7 +28,11 @@ import {
   DRAWER_TABS,
   isDefaultTabOrder,
   moveTab,
-  tabOrderFrom
+  tabOrderFrom,
+  docksFrom,
+  dockOf,
+  moveTabTo,
+  tabsInOrder
 } from './layout'
 
 function fakeStorage(initial: Record<string, string> = {}): LayoutStorage & {
@@ -144,7 +148,10 @@ test('saveLayout writes one JSON object', () => {
       drawerOpen: true,
       drawerTab: 'activity',
       paneLayout: '6-grid',
-      tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage']
+      tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage'],
+      dockTabs: { top: ['history'], bottom: [], left: [] },
+      dockActive: { top: 'history', bottom: null, left: null },
+      dockSizes: { top: 200, bottom: 260, left: 300 }
     },
     storage
   )
@@ -154,7 +161,10 @@ test('saveLayout writes one JSON object', () => {
     drawerOpen: true,
     drawerTab: 'activity',
     paneLayout: '6-grid',
-    tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage']
+    tabOrder: ['activity', 'files', 'lead', 'jobs', 'changes', 'routines', 'usage'],
+    dockTabs: { top: ['history'], bottom: [], left: [] },
+    dockActive: { top: 'history', bottom: null, left: null },
+    dockSizes: { top: 200, bottom: 260, left: 300 }
   })
 })
 
@@ -312,4 +322,45 @@ test('moveTab puts a tab at a place in the order without it', () => {
     'history'
   ])
   expect(moveTab(order, 'lead', -5)[0]).toBe('lead')
+})
+
+test('docks: every tab sits in one dock; unknown and repeated tabs are dropped', () => {
+  const docks = docksFrom({
+    right: ['files', 'lead'],
+    top: ['activity', 'activity', 'nope'],
+    left: ['lead', 'history']
+  })
+  expect(docks.top).toEqual(['activity'])
+  expect(docks.left).toEqual(['lead', 'history'])
+  expect(docks.bottom).toEqual([])
+  expect(docks.right).toEqual(['files', 'jobs', 'changes', 'routines', 'usage'])
+  expect(tabsInOrder(docks).sort()).toEqual([...DRAWER_TABS].sort())
+  expect(dockOf(docks, 'history')).toBe('left')
+})
+
+test('moveTabTo takes a tab out of its dock and puts it in another at a place', () => {
+  const start = docksFrom({ right: [...DRAWER_TABS] })
+  const moved = moveTabTo(start, 'activity', 'top', 0)
+  expect(moved.top).toEqual(['activity'])
+  expect(moved.right).not.toContain('activity')
+  const back = moveTabTo(moved, 'activity', 'right', 0)
+  expect(back.right[0]).toBe('activity')
+  expect(back.top).toEqual([])
+})
+
+test('a saved layout keeps its docks, and an old one puts every tab on the right', () => {
+  const saved = parseLayout({
+    tabOrder: ['files'],
+    dockTabs: { top: ['activity'], bottom: ['history'], left: [] },
+    dockActive: { top: 'activity', bottom: 'lead' },
+    dockSizes: { top: 50, bottom: 9999 }
+  })
+  expect(saved.dockTabs.top).toEqual(['activity'])
+  expect(saved.dockActive).toEqual({ top: 'activity', bottom: 'history', left: null })
+  expect(saved.dockSizes.top).toBe(120)
+  expect(saved.dockSizes.bottom).toBe(900)
+  const old = parseLayout({ tabOrder: ['activity', 'files'] })
+  expect(old.tabOrder[0]).toBe('activity')
+  expect(old.tabOrder).toHaveLength(DRAWER_TABS.length)
+  expect(old.dockTabs).toEqual({ top: [], bottom: [], left: [] })
 })

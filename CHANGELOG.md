@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Panel tabs dock anywhere. Drag Files, Lead, Jobs, Changes, Routines, Usage, Activity or History above the terminals, below them, under the projects, or back to the right panel; empty places light up while you drag. Each dock remembers its tabs and its height.
+- A tab dragged out of the window, or "Open in its own window" from its right-click menu, gets a window of its own. Closing that window brings it back.
+- Right-click a tab (or Shift+F10) to move it to any dock. `Ctrl+1` … `Ctrl+8` open tabs wherever they are; Settings → General puts everything back on the right.
+
 ## 1.2.0
 
 - History tab (`Ctrl+8`): the commit log of the selected project or worktree with a branch graph, like VS Code. Click a commit for its message and files, and a file for its diff.
