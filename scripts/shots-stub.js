@@ -395,7 +395,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           dirty: 1,
           ahead: 0,
           behind: 1,
-          chats: 3
+          chats: 3,
+          running: 0
         },
         {
           path: 'C:/Users/dev/projects/estate-agents',
@@ -408,7 +409,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           dirty: 3,
           ahead: 2,
           behind: 0,
-          chats: 3
+          chats: 3,
+          running: 0
         },
         {
           path: 'C:/Users/dev/projects/notes',
@@ -421,7 +423,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           dirty: 0,
           ahead: 0,
           behind: 0,
-          chats: 0
+          chats: 0,
+          running: 0
         }
       ]
   const terminals = empty
@@ -589,13 +592,16 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       author: 'Daniel',
       email: 'dev@example.invalid',
       time: Date.now() - 3 * 3_600_000,
-      message: 'Keep the session when the token refreshes\n\nThe refresh wrote a new token but the old session object stayed in memory.',
+      message:
+        'Keep the session when the token refreshes\n\nThe refresh wrote a new token but the old session object stayed in memory.',
       files: [
         { path: 'src/core/auth/session.ts', added: 14, removed: 3 },
         { path: 'src/core/auth/session.test.ts', added: 22, removed: 0 }
       ]
     }),
-    commitFileDiff: ok('diff --git a/src/core/auth/session.ts b/src/core/auth/session.ts\n@@ -10,3 +10,5 @@\n-  this.token = next\n+  this.token = next\n+  this.session = open(next)\n'),
+    commitFileDiff: ok(
+      'diff --git a/src/core/auth/session.ts b/src/core/auth/session.ts\n@@ -10,3 +10,5 @@\n-  this.token = next\n+  this.token = next\n+  this.session = open(next)\n'
+    ),
     skillsGet: ok(skills),
     skillsAdd: ok(skills),
     skillsRemove: ok(skills),

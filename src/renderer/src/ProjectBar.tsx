@@ -1544,7 +1544,7 @@ function ProjectBar({
                     )}
                   </span>
                   <ProjectStatus entry={entry} />
-                  {active && busy ? (
+                  {(active && busy) || entry.running > 0 ? (
                     <span className="status status-running project-row-run">
                       <span className="status-dot" aria-hidden="true" />
                       running

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- History tab (`Ctrl+8`): the commit log of the selected project or worktree with a branch graph, like VS Code. Click a commit for its message and files, and a file for its diff.
+- Jobs keep running when you switch project. Each runs in its own project, the sidebar shows which projects have jobs running, and a notification still arrives when one ends. Only a lead reply in progress holds a switch.
+- Drag the panel tabs into any order (or Alt+Shift+Left/Right). `Ctrl+1` … `Ctrl+8` follow the order; Settings → General resets it.
+- Right-click a plan in Activity to bring up its terminals.
+- The open project's worktrees and chats sit indented under it, so the next project no longer looks like part of the chat list.
+
 ## 1.1.1
 
 - The terminal UI (`legate ui`) has the app's look: round borders, the focused pane outlined in red, quiet headings with counts, plan names in their own colours, line counts in green and red, and a footer that always keeps help and quit. Its boxes fill the terminal, and the project row explains itself instead of repeating the title.

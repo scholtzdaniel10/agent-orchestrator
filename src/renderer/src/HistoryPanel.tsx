@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { graphRows, type GraphLine, type GraphRow } from './commit-graph'
 import { DiffBlock } from './FilesPanel'
+import { ago, refBadges } from './history-format'
 
 type CommitPage = Awaited<ReturnType<Window['api']['commitLog']>>
 type Commit = CommitPage['commits'][number]
@@ -29,31 +30,6 @@ function x(lane: number): number {
 function errorText(err: unknown): string {
   if (!(err instanceof Error)) return String(err)
   return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-}
-
-export function ago(time: number, now: number): string {
-  const minutes = Math.floor(Math.max(0, now - time) / 60_000)
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${String(minutes)}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${String(hours)}h`
-  const days = Math.floor(hours / 24)
-  if (days < 60) return `${String(days)}d`
-  return `${String(Math.floor(days / 30))}mo`
-}
-
-/** "HEAD -> main" → main (current), "tag: v1" → v1 (tag), anything else as a branch. */
-export function refBadges(
-  refs: readonly string[]
-): { name: string; kind: 'head' | 'tag' | 'branch' }[] {
-  const out: { name: string; kind: 'head' | 'tag' | 'branch' }[] = []
-  for (const ref of refs) {
-    if (ref === 'HEAD') continue
-    if (ref.startsWith('HEAD -> ')) out.push({ name: ref.slice(8), kind: 'head' })
-    else if (ref.startsWith('tag: ')) out.push({ name: ref.slice(5), kind: 'tag' })
-    else if (!ref.endsWith('/HEAD')) out.push({ name: ref, kind: 'branch' })
-  }
-  return out
 }
 
 function curve(line: GraphLine, y1: number, y2: number): string {
@@ -107,96 +83,110 @@ function HistoryPanel({
   where: string | null
   label: string
 }): React.JSX.Element {
-  const [commits, setCommits] = useState<Commit[] | null>(null)
-  const [more, setMore] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [detail, setDetail] = useState<CommitDetail | null>(null)
-  const [file, setFile] = useState<string | null>(null)
-  const [diff, setDiff] = useState<string | null>(null)
+  // Each result remembers the request it answers, so a stale one is ignored instead of reset.
   const [nonce, setNonce] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-  const live = useRef(0)
+  const key = `${where ?? ''}|${String(nonce)}`
+  const [log, setLog] = useState<{
+    key: string
+    commits: Commit[]
+    more: boolean
+    at: number
+  } | null>(null)
+  const [failure, setFailure] = useState<{ key: string; text: string } | null>(null)
+  const [paging, setPaging] = useState(false)
+  const [pick, setPick] = useState<{ key: string; hash: string } | null>(null)
+  const [loaded, setLoaded] = useState<CommitDetail | null>(null)
+  const [fileSel, setFileSel] = useState<{ hash: string; path: string } | null>(null)
+  const [diffSel, setDiffSel] = useState<{ hash: string; path: string; text: string } | null>(null)
+
+  const commits = log?.key === key ? log.commits : null
+  const more = log?.key === key && log.more
+  const now = log?.at ?? 0
+  const error = failure?.key === key ? failure.text : null
+  const selected = pick?.key === key ? pick.hash : null
+  const detail = selected !== null && loaded?.hash.startsWith(selected) === true ? loaded : null
+  const file = fileSel !== null && fileSel.hash === selected ? fileSel.path : null
+  const diff =
+    diffSel !== null && diffSel.hash === selected && diffSel.path === file ? diffSel.text : null
 
   useEffect(() => {
-    const ticket = ++live.current
-    setCommits(null)
-    setSelected(null)
-    setError(null)
-    setLoading(true)
-    window.api
-      .commitLog(where, 0)
-      .then((page) => {
-        if (live.current !== ticket) return
-        setCommits(page.commits)
-        setMore(page.more)
-        setNow(Date.now())
-      })
-      .catch((err: unknown) => {
-        if (live.current === ticket) setError(errorText(err))
-      })
-      .finally(() => {
-        if (live.current === ticket) setLoading(false)
-      })
-  }, [where, nonce])
+    let on = true
+    window.api.commitLog(where, 0).then(
+      (page) => {
+        if (on) setLog({ key, commits: page.commits, more: page.more, at: Date.now() })
+      },
+      (err: unknown) => {
+        if (on) setFailure({ key, text: errorText(err) })
+      }
+    )
+    return () => {
+      on = false
+    }
+  }, [where, key])
 
   useEffect(() => {
-    setDetail(null)
-    setFile(null)
-    setDiff(null)
     if (selected === null) return
     let on = true
-    window.api
-      .commitDetail(where, selected)
-      .then((value) => {
-        if (on) setDetail(value)
-      })
-      .catch((err: unknown) => {
-        if (on) setError(errorText(err))
-      })
+    window.api.commitDetail(where, selected).then(
+      (value) => {
+        if (on) setLoaded(value)
+      },
+      (err: unknown) => {
+        if (on) setFailure({ key, text: errorText(err) })
+      }
+    )
     return () => {
       on = false
     }
-  }, [where, selected])
+  }, [where, selected, key])
 
   useEffect(() => {
-    setDiff(null)
     if (selected === null || file === null) return
     let on = true
-    window.api
-      .commitFileDiff(where, selected, file)
-      .then((value) => {
-        if (on) setDiff(value)
-      })
-      .catch((err: unknown) => {
-        if (on) setError(errorText(err))
-      })
+    window.api.commitFileDiff(where, selected, file).then(
+      (text) => {
+        if (on) setDiffSel({ hash: selected, path: file, text })
+      },
+      (err: unknown) => {
+        if (on) setFailure({ key, text: errorText(err) })
+      }
+    )
     return () => {
       on = false
     }
-  }, [where, selected, file])
+  }, [where, selected, file, key])
 
   const rows = useMemo(() => graphRows(commits ?? []), [commits])
   const width = rows.reduce((max, row) => Math.max(max, row.width), 1)
+  const loading = commits === null || paging
 
   function loadMore(): void {
-    if (commits === null || loading) return
-    const ticket = live.current
-    setLoading(true)
+    if (commits === null || paging) return
+    const asked = key
+    setPaging(true)
     window.api
       .commitLog(where, commits.length)
       .then((page) => {
-        if (live.current !== ticket) return
-        setCommits([...commits, ...page.commits])
-        setMore(page.more)
+        setLog((prev) =>
+          prev !== null && prev.key === asked
+            ? { ...prev, commits: [...prev.commits, ...page.commits], more: page.more }
+            : prev
+        )
       })
       .catch((err: unknown) => {
-        setError(errorText(err))
+        setFailure({ key: asked, text: errorText(err) })
       })
       .finally(() => {
-        setLoading(false)
+        setPaging(false)
       })
+  }
+
+  function setSelected(hash: string | null): void {
+    setPick(hash === null ? null : { key, hash })
+  }
+
+  function setFile(path: string | null): void {
+    setFileSel(path === null || selected === null ? null : { hash: selected, path })
   }
 
   return (
@@ -269,7 +259,7 @@ function HistoryPanel({
               disabled={loading}
               onClick={loadMore}
             >
-              {loading ? 'Loading…' : 'Load more'}
+              {paging ? 'Loading…' : 'Load more'}
             </button>
           </li>
         ) : null}

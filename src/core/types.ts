@@ -271,6 +271,8 @@ export interface ProjectEntry extends ProjectInfo {
   behind: number
   /** Saved chats for this project. */
   chats: number
+  /** Jobs queued or running in this project. */
+  running: number
 }
 
 /** One repository from `gh repo list`. */

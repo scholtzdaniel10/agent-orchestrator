@@ -1298,16 +1298,41 @@ test('restore for another project does not show its jobs', async () => {
   })
 })
 
-test('restore while busy throws', async () => {
+test('switching project while jobs run keeps them running in their own project', async () => {
   const held = gate()
-  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }])
-  await withOrch([claude], async (orch) => {
-    orch.submit('planning', 'one')
-    expect(orch.busy()).toBe(true)
-    expect(() => orch.restore(CWD)).toThrow('orchestrator is busy')
-    held.open()
-    await orch.idle()
-  })
+  const claude = new FakeAdapter('claude', [{ gate: held.promise, ...ok('a') }, ok('b'), ok('c')])
+  let current = 'project-a'
+  await withOrch(
+    [claude],
+    async (orch) => {
+      orch.submit('planning', 'one')
+      orch.submit('planning', 'two')
+      expect(orch.list().map((job) => job.status)).toEqual(['running', 'queued'])
+
+      current = 'project-b'
+      orch.restore('project-b')
+      expect(orch.busy()).toBe(true)
+      expect(orch.list()).toEqual([])
+      orch.submit('planning', 'three')
+      expect(orch.list().map((job) => job.prompt)).toEqual(['three'])
+
+      held.open()
+      await orch.idle()
+      expect(claude.received.map((job) => job.prompt)).toEqual(['one', 'two', 'three'])
+      expect(claude.cwds).toEqual(['project-a', 'project-a', 'project-b'])
+
+      orch.restore('project-a')
+      expect(
+        orch
+          .list()
+          .map((job) => `${job.prompt} ${job.status}`)
+          .sort()
+      ).toEqual(['one done', 'two done'])
+    },
+    undefined,
+    undefined,
+    { cwd: () => current, rules: { ...loadRules(), maxParallel: 1 } }
+  )
 })
 
 test('maxParallel 2 runs two jobs and queues the third until a slot frees', async () => {

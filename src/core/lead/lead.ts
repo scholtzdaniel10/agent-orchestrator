@@ -190,6 +190,11 @@ export class Lead {
     }
   }
 
+  /** True while the lead is writing a reply or a report. */
+  isBusy(): boolean {
+    return this.busy
+  }
+
   /** Id of the lead message whose turn is running right now, or null. */
   currentTurn(): string | null {
     return this.turnId

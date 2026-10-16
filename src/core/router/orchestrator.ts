@@ -303,15 +303,27 @@ export class Orchestrator {
     return copy(job)
   }
 
-  /** Replace the in-memory job list with the newest stored jobs for `project`. */
+  /**
+   * Switch to `project`: load its newest stored jobs. Jobs this process is still running or has
+   * queued, in any project, stay and keep running in their own folders.
+   */
   restore(project: string): void {
-    if (this.busy()) throw new Error('orchestrator is busy')
     this.project = project
+    const active = this.jobs.filter(
+      (job) => this.isOurs(job) && (job.status === 'queued' || job.status === 'running')
+    )
     this.jobs.length = 0
     this.byJob.clear()
-    this.queues.clear()
-    this.running.clear()
+    for (const job of active) {
+      this.jobs.push(job)
+      this.byJob.set(job.id, job)
+    }
+    if (active.length === 0) {
+      this.queues.clear()
+      this.running.clear()
+    }
     for (const record of this.store.jobs(project, 200)) {
+      if (this.byJob.has(record.id)) continue
       const job = fromRecord(record, project, this.now())
       if (this.shouldInterrupt(job)) {
         job.status = 'failed'
@@ -338,8 +350,26 @@ export class Orchestrator {
     }
   }
 
+  /** Jobs of the current project; jobs still running in another project are left out. */
   list(): JobRecord[] {
-    return this.jobs.map((job) => copy(job))
+    const project = this.currentProject()
+    return this.jobs.filter((job) => job.project === project).map((job) => copy(job))
+  }
+
+  /** Jobs queued or running in `project`, including ones left running after a switch. */
+  activeIn(project: string): number {
+    return this.jobs.filter(
+      (job) => job.project === project && (job.status === 'queued' || job.status === 'running')
+    ).length
+  }
+
+  /** The project folder a job belongs to, or null for an unknown id. */
+  projectOf(id: string): string | null {
+    return this.byJob.get(id)?.project ?? null
+  }
+
+  private currentProject(): string {
+    return this.project ?? this.workingDir()
   }
 
   get(id: string): JobRecord | null {
@@ -529,7 +559,8 @@ export class Orchestrator {
     let handle: ReturnType<ProviderAdapter['run']> | undefined
     let started = false
     try {
-      const dir = this.workingDir()
+      // The job's own project: the person may have switched to another one since it was queued.
+      const dir = job.project
       let runCwd = dir
       if (job.edit) {
         const folder = await this.editFolder(job, dir)
