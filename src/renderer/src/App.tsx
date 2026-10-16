@@ -20,6 +20,7 @@ import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
+import SkillsPanel from './SkillsPanel'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -1531,7 +1532,11 @@ function App(): React.JSX.Element {
                 </ErrorBoundary>
               </div>
               <div
-                className={drawerTab === 'usage' ? 'drawer-page' : 'drawer-page is-hidden'}
+                className={
+                  drawerTab === 'usage'
+                    ? 'drawer-page usage-page'
+                    : 'drawer-page usage-page is-hidden'
+                }
                 inert={drawerTab === 'usage' ? undefined : true}
               >
                 <ErrorBoundary>
@@ -1542,6 +1547,9 @@ function App(): React.JSX.Element {
                       setSetupOpen(true)
                     }}
                   />
+                </ErrorBoundary>
+                <ErrorBoundary>
+                  <SkillsPanel />
                 </ErrorBoundary>
               </div>
               <div

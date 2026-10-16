@@ -54,6 +54,7 @@ const scenes = {
   },
   lead: { query: '?tab=lead', scheme: 'dark', size: [1440, 900], script: '' },
   changes: { query: '?tab=changes', scheme: 'dark', size: [1440, 900], script: '' },
+  usage: { query: '?tab=usage', scheme: 'dark', size: [1440, 900], script: '' },
   setup: { query: '?noplans', scheme: 'dark', size: [1440, 900], script: '' },
   paper: { query: '?theme=paper', scheme: 'light', size: [1440, 900], script: openFile },
   ultramarine: {

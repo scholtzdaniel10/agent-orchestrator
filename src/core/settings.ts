@@ -76,6 +76,16 @@ export class Settings {
     this.persist()
   }
 
+  /** Folders of the person's own skills, loaded into every agent Legate starts. */
+  skillFolders(): string[] {
+    return readProjects(this.data.skillFolders)
+  }
+
+  setSkillFolders(folders: readonly string[]): void {
+    this.data.skillFolders = readProjects([...folders])
+    this.persist()
+  }
+
   setModel(provider: ProviderId, model: string | null): void {
     let stored: string | null = null
     if (model !== null) {

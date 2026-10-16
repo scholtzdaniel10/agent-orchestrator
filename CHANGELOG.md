@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+- Skills for Legate's agents. Workers and terminal agents get worktree rules (keep the diff small, never touch main, end with a summary) and a read-only `legate` CLI. The lead gets how to delegate. Both get how to review a change.
+- Your own skills: Usage → Skills → Add folder. They load only into agents Legate starts, never into your other Claude or Cursor sessions.
+- The Usage page scrolls as a whole, so the plans and Skills never squeeze each other.
+
 ## 1.0.5
 
 - Every agent Legate starts is told it runs in Legate. Orca installs its skills for the whole user account, so agents here tried to run `orca` commands and could even start the Orca app.

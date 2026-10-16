@@ -707,3 +707,17 @@ test.runIf(process.platform === 'win32')(
     }
   }
 )
+
+test('skills: Cursor workers and terminals get the worker plugins, the lead the lead plugins', () => {
+  const adapter = new CursorAdapter({ command: 'agent' })
+  adapter.setPlugins({ lead: ['L1'], worker: ['W1', 'W2'] })
+  expect(adapter.interactive().args).toEqual(['--plugin-dir', 'W1', '--plugin-dir', 'W2'])
+  expect(adapter.interactive({ prompt: 'go' }).args).toEqual([
+    '--plugin-dir',
+    'W1',
+    '--plugin-dir',
+    'W2',
+    '--trust',
+    withLegateNote('go')
+  ])
+})

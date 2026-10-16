@@ -15,6 +15,13 @@ import type {
 import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
+import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
+
+/** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
+export interface SkillsState {
+  builtIn: BuiltInSkill[]
+  folders: SkillFolderReport[]
+}
 
 /** Why a plan cannot be used. */
 export type PlanProblem = 'not-installed' | 'signed-out'
@@ -139,6 +146,14 @@ export interface OrchestratorApi {
    * Legate never sees the password or token.
    */
   setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo>
+
+  /** Legate's skills and the person's skill folders. */
+  skillsGet(): Promise<SkillsState>
+  /** Asks for a folder (one skill, or a folder of skills) and adds it. */
+  skillsAdd(): Promise<SkillsState>
+  skillsRemove(folder: string): Promise<SkillsState>
+  /** Copies the person's skills again, after they edited one. */
+  skillsReload(): Promise<SkillsState>
 
   /** Changes waiting for review: one per editing job that touched files. */
   listChanges(): Promise<ChangeSet[]>

@@ -453,6 +453,26 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
   }
   const off = () => () => {}
   const ok = (value) => () => Promise.resolve(value)
+  const skills = {
+    builtIn: [
+      { name: 'legate-review', givenTo: 'every agent' },
+      { name: 'legate-cli', givenTo: 'workers' },
+      { name: 'legate-worktree', givenTo: 'workers' },
+      { name: 'legate-delegate', givenTo: 'lead' }
+    ],
+    folders: [
+      {
+        folder: 'C:/Users/dev/skills/house-style',
+        skills: [{ name: 'house-style', folder: 'C:/Users/dev/skills/house-style' }],
+        problem: null
+      },
+      {
+        folder: 'C:/Users/dev/Downloads/old',
+        skills: [],
+        problem: 'No SKILL.md here or in its subfolders.'
+      }
+    ]
+  }
   window.api = {
     submitJob: (type, prompt, provider) =>
       Promise.resolve({
@@ -526,6 +546,10 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    skillsGet: ok(skills),
+    skillsAdd: ok(skills),
+    skillsRemove: ok(skills),
+    skillsReload: ok(skills),
     setupStatus: ok([
       {
         id: 'git',

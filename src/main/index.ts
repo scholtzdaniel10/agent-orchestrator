@@ -13,6 +13,13 @@ import { Files } from '../core/files'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
 import { refreshPath } from '../core/fresh-path'
+import {
+  buildUserPlugin,
+  bundledPlugins,
+  bundledSkills,
+  withPlugins,
+  type SkillFolderReport
+} from '../core/plugins'
 import { Lead } from '../core/lead'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
@@ -36,7 +43,7 @@ import type {
 import { Worktrees } from '../core/worktrees'
 import { mergeListedChanges } from '../core/changes'
 import { assertWorktreeIdle } from '../core/worktree-guard'
-import type { PlanStatus } from '../preload/api-types'
+import type { PlanStatus, SkillsState } from '../preload/api-types'
 
 let store: Store | null = null
 let bridge: Bridge | null = null
@@ -215,6 +222,24 @@ app.whenReady().then(async () => {
   const cursor = new CursorAdapter()
   const setup = new Setup(runGh, claude, cursor, process.platform)
   const adapters = [claude, cursor]
+  const legateSkills = bundledPlugins(__dirname)
+  let skillReports: SkillFolderReport[] = []
+  // Legate's skills plus the person's own, loaded only into agents Legate starts.
+  function applySkills(): void {
+    try {
+      const built = buildUserPlugin(settings.skillFolders(), app.getPath('userData'))
+      skillReports = built.reports
+      const plugins = withPlugins(legateSkills, built.plugin === null ? [] : [built.plugin])
+      for (const adapter of adapters) adapter.setPlugins(plugins)
+    } catch (err) {
+      console.error(err)
+      for (const adapter of adapters) adapter.setPlugins(legateSkills)
+    }
+  }
+  function skillsState(): SkillsState {
+    return { builtIn: bundledSkills(legateSkills), folders: skillReports }
+  }
+  applySkills()
   const orch = new Orchestrator({
     adapters,
     store: shared,
@@ -583,6 +608,31 @@ app.whenReady().then(async () => {
     const path = picked.filePaths[0]
     if (path === undefined) return null
     return activateProject(path)
+  })
+  ipcMain.handle('skills:get', () => skillsState())
+  ipcMain.handle('skills:add', async (event) => {
+    const asker = BrowserWindow.fromWebContents(event.sender)
+    if (asker === null || asker.isDestroyed()) throw new Error('no window')
+    const picked = await dialog.showOpenDialog(asker, {
+      title: 'Choose a skill folder, or a folder of skills',
+      properties: ['openDirectory']
+    })
+    const path = picked.canceled ? undefined : picked.filePaths[0]
+    if (path !== undefined) {
+      settings.setSkillFolders([...settings.skillFolders(), path])
+      applySkills()
+    }
+    return skillsState()
+  })
+  ipcMain.handle('skills:remove', (_event, folder: unknown) => {
+    if (typeof folder !== 'string') throw new Error('folder must be a string')
+    settings.setSkillFolders(settings.skillFolders().filter((entry) => entry !== folder))
+    applySkills()
+    return skillsState()
+  })
+  ipcMain.handle('skills:reload', () => {
+    applySkills()
+    return skillsState()
   })
   ipcMain.handle('project:switch', async (_event, path: unknown) => {
     if (typeof path !== 'string' || !settings.projects().includes(path) || !isFolder(path)) {

@@ -569,3 +569,31 @@ test('missing CLI resolves exit and ends events', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('skills: workers and terminals get the worker plugins, the lead gets the lead plugins', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-claude-plugins-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { writeSync } from 'node:fs'
+writeSync(2, JSON.stringify(process.argv.slice(2)))
+process.exit(0)
+`
+  )
+  const adapter = new ClaudeAdapter({ command: process.execPath, args: [script] })
+  adapter.setPlugins({ lead: ['L1', 'L2'], worker: ['W1'] })
+  const bridge = { url: 'http://127.0.0.1:9/mcp', token: 't', tools: ['send_job'] }
+  const job = { id: 'job-p', prompt: 'hello' }
+  const tail = (args: string[]): string[] => args.slice(args.indexOf('--plugin-dir'))
+  try {
+    mkdirSync(join(root, 'w'))
+    const worker = await cliArgs(adapter.run(job, join(root, 'w')))
+    expect(tail(worker)).toEqual(['--plugin-dir', 'W1'])
+    const lead = await cliArgs(adapter.run(job, join(root, 'l'), { bridge }))
+    expect(tail(lead)).toEqual(['--plugin-dir', 'L1', '--plugin-dir', 'L2'])
+    const session = adapter.interactive({ prompt: 'fix it' }).args
+    expect(session.slice(session.indexOf('--plugin-dir'))).toEqual(['--plugin-dir', 'W1', 'fix it'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

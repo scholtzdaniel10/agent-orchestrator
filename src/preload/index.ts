@@ -14,7 +14,14 @@ import type {
   ProviderId,
   TerminalInfo
 } from '../core/types'
-import type { FileContent, FileList, OrchestratorApi, PlanStatus, Requirement } from './api-types'
+import type {
+  FileContent,
+  FileList,
+  OrchestratorApi,
+  PlanStatus,
+  Requirement,
+  SkillsState
+} from './api-types'
 
 const api: OrchestratorApi = {
   submitJob(
@@ -94,6 +101,18 @@ const api: OrchestratorApi = {
   },
   setupSignIn(id: 'claude' | 'cursor' | 'gh'): Promise<TerminalInfo> {
     return ipcRenderer.invoke('setup:signIn', id)
+  },
+  skillsGet(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:get')
+  },
+  skillsAdd(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:add')
+  },
+  skillsRemove(folder: string): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:remove', folder)
+  },
+  skillsReload(): Promise<SkillsState> {
+    return ipcRenderer.invoke('skills:reload')
   },
   listChanges(): Promise<ChangeSet[]> {
     return ipcRenderer.invoke('changes:list')
