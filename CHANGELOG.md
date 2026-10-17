@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0
+
+- A new sidebar, laid out like Orca: one project switcher on top, then **New task**, **Goals** and **Automations**, then your worktrees as cards grouped by state (Pinned, In progress, Needs you, Ready to review, Quiet). Each card shows its branch, its lines changed and its terminals. Goals that wait for you show a count.
+- **New task** (`Ctrl+N`) is one dialog for everything: pick Cursor or Claude, then a terminal you talk to, a job in the background, or a goal. It picks Claude when Cursor is not signed in.
+- **Review** sits beside a worktree's terminals: its files, its diff, and Merge or Discard, without opening the side panel. The terminals keep running behind it.
+- Panel tabs show icons, with their names when the tab bar has room.
+- Coding work (debugging, refactors, boilerplate) goes to Cursor first; planning and review stay with Claude.
+- `legate goal "<what should be true>" [--check "<command>"] [--rounds N] [--yes]` runs a goal from the command line, and `legate goals` lists them.
+- History explains an empty repository and reads again after merges and finished jobs. The lead reports jobs that ended while another project was open. The goal form can fill in an example.
+- The theme picker moved from the header to Settings → General.
+- Worktrees no longer vanish from the sidebar in a narrow window or when a panel is docked under the projects.
+
 ## 1.5.0
 
 - Triggers start goals by themselves: every day at a time, every few hours, when CI fails on your pull request from the branch you have checked out, when a GitHub issue is opened, or when the newest run on the default branch fails. A failing run's log goes with the goal. Every goal they start still waits for your OK each round, and you get a notification.
