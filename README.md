@@ -6,11 +6,26 @@ In the Roman army a **legate** was the officer a general sent to act in his name
 
 Legate does that for your coding work. You give one order. It hands the work to agents running on the AI plans you already pay for, keeps each of them in its own camp so they do not trample each other, and reports back with every step in the open.
 
-It is a desktop app (Electron + TypeScript) with a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
+It is a desktop app (Electron + TypeScript) with a terminal UI and a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
+
+## Why Legate
+
+- **No API bill.** Legate drives the Claude Code and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Cursor first; planning and review to Claude.
+- **Nothing is a black box.** Every file an agent reads, every edit and every command appears as it happens, in the app, the terminal UI and the command line.
+- **Agentic, with you in charge.** Give a goal and, if you like, a check such as `pnpm test`. Legate plans a round, runs agents in parallel worktrees, folds their work together and runs the check, asking you before every round. Triggers start goals on a schedule, or when CI fails, an issue is opened, or your default branch breaks.
+
+|                                 | One agent CLI on its own   | With Legate                                     |
+| ------------------------------- | -------------------------- | ----------------------------------------------- |
+| Plans used                      | One                        | Claude and Cursor together, routed by allowance |
+| Several agents at once          | One terminal each, by hand | Each in its own worktree, side by side          |
+| Seeing what agents do           | Scroll each terminal       | Every step of every agent in one place          |
+| Keep going until the tests pass | You re-prompt              | Goals: rounds you approve, a check after each   |
+| Work that starts itself         | No                         | Triggers: schedules, CI failures, new issues    |
+| Review and merge                | Git by hand                | Diffs per worktree, merge with one click        |
 
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 1.0.0, Windows only. Unit-tested throughout, and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, routines, worktrees, terminals restored after a restart, the command line and the app sharing jobs, and the terminal UI. Not yet checked: a pull request against real GitHub, the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 1.5, Windows. Unit-tested throughout (540+ tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end, triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
 
 ## The chain of command
 
