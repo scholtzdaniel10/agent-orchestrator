@@ -75,6 +75,37 @@ async function cleanup(root: string): Promise<void> {
 }
 
 describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
+  test("a goal's next job starts from the goal's branch and folds back into it", async () => {
+    const { root, project, wt } = await tempRoot()
+    try {
+      const trees = new Worktrees({ root: wt })
+      const goal = await trees.create(project, 'a0a0a0a1-aaaa')
+      writeFileSync(join(goal.path, 'notes.txt'), 'alpha\nround one\n')
+      expect(await trees.commitAll(goal.path, 'Goal round 1')).toBe(true)
+      expect(await trees.commitAll(goal.path, 'nothing')).toBe(false)
+
+      const job = await trees.create(project, 'b0b0b0b2-bbbb', trees.branchOf(goal.id))
+      expect(readFileSync(join(job.path, 'notes.txt'), 'utf8')).toBe('alpha\nround one\n')
+      writeFileSync(join(job.path, 'notes.txt'), 'alpha\nround one\nround two\n')
+      writeFileSync(join(job.path, 'new.txt'), 'new\n')
+
+      const result = await trees.applyInto(job.id, goal.path, trees.branchOf(goal.id))
+      expect(result).toEqual({ ok: true, empty: false, message: 'applied' })
+      expect(readFileSync(join(goal.path, 'notes.txt'), 'utf8')).toBe(
+        'alpha\nround one\nround two\n'
+      )
+      expect(existsSync(join(goal.path, 'new.txt'))).toBe(true)
+
+      const idle = await trees.create(project, 'c0c0c0c3-cccc', trees.branchOf(goal.id))
+      expect(await trees.applyInto(idle.id, goal.path, trees.branchOf(goal.id))).toMatchObject({
+        ok: true,
+        empty: true
+      })
+    } finally {
+      await cleanup(root)
+    }
+  })
+
   test('status counts uncommitted files and commits ahead of and behind upstream', async () => {
     const { root, project } = await tempRoot()
     try {

@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain, Notification, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
@@ -10,6 +10,7 @@ import { ChangeRefresh } from './debounce'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
+import { Goals, type Goal, type PlannedJob } from '../core/goals'
 import { History, requireHash } from '../core/history'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
@@ -30,6 +31,7 @@ import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
+import { isJobAccess, isJobType } from '../core/types'
 import type {
   AppInfo,
   ChangeSet,
@@ -58,7 +60,17 @@ const poppedOut = new PoppedOutRegistry()
 const poppedWindows = new Map<string, BrowserWindow>()
 /** Panel tabs open in a window of their own, by tab. */
 const panelWindows = new Map<string, BrowserWindow>()
-const PANEL_TABS = ['files', 'lead', 'jobs', 'changes', 'routines', 'usage', 'activity', 'history']
+const PANEL_TABS = [
+  'files',
+  'lead',
+  'jobs',
+  'changes',
+  'routines',
+  'usage',
+  'activity',
+  'history',
+  'goals'
+]
 const PANEL_TITLES: Record<string, string> = {
   files: 'Files',
   lead: 'Lead',
@@ -67,7 +79,8 @@ const PANEL_TITLES: Record<string, string> = {
   routines: 'Routines',
   usage: 'Usage',
   activity: 'Activity',
-  history: 'History'
+  history: 'History',
+  goals: 'Goals'
 }
 const terminalClaims = new TerminalClaims()
 
@@ -319,6 +332,117 @@ app.whenReady().then(async () => {
   await lead.init()
   lead.attachOrchestrator(orch)
 
+  /** The lead's plan reads the goal's folder (read only) and answers the planning prompt. */
+  async function planGoal(_goal: Goal, folder: string, prompt: string): Promise<string> {
+    const available = orch.workers().filter((worker) => worker.available)
+    const preferred = settings.leadPlan()
+    const provider =
+      available.find((worker) => worker.id === preferred)?.id ?? available[0]?.id ?? null
+    if (provider === null) throw new Error('No plan is signed in and ready.')
+    const adapter = provider === 'claude' ? claude : cursor
+    const handle = adapter.run({ id: randomUUID(), prompt }, folder, {
+      access: 'read',
+      model: modelFor(provider)
+    })
+    let result = ''
+    let said = ''
+    for await (const event of handle.events) {
+      if (event.kind === 'result') result = event.text
+      else if (event.kind === 'text') said += event.text
+    }
+    const exit = await handle.exit
+    const text = result.trim() !== '' ? result : said
+    if (text.trim() === '') {
+      throw new Error(exit.stderr.trim().split(/\r?\n/).pop() ?? 'no answer')
+    }
+    return text
+  }
+
+  /** Runs the goal's check in its folder: exit code and the end of what it printed. */
+  function runGoalCheck(
+    command: string,
+    folder: string
+  ): Promise<{ code: number | null; output: string }> {
+    return new Promise((resolve) => {
+      let output = ''
+      const add = (chunk: Buffer | string): void => {
+        output += String(chunk)
+        if (output.length > 200_000) output = output.slice(-100_000)
+      }
+      const child = spawn(command, {
+        cwd: folder,
+        shell: true,
+        windowsHide: true,
+        env: process.env
+      })
+      const timer = setTimeout(() => {
+        output += '\n… stopped after 20 minutes'
+        child.kill()
+      }, 20 * 60_000)
+      child.stdout?.on('data', add)
+      child.stderr?.on('data', add)
+      child.on('error', (err) => {
+        clearTimeout(timer)
+        resolve({ code: null, output: `${output}\n${err.message}` })
+      })
+      child.on('close', (code) => {
+        clearTimeout(timer)
+        resolve({ code, output })
+      })
+    })
+  }
+
+  const goalNotified = new Map<string, string>()
+  function notifyGoal(goal: Goal): void {
+    const key = `${goal.status}:${String(goal.rounds.length)}:${goal.question ?? ''}`
+    if (goal.status !== 'waiting' && goal.status !== 'done' && goal.status !== 'stopped') return
+    if (goalNotified.get(goal.id) === key) return
+    goalNotified.set(goal.id, key)
+    if (!settings.prefs().notify || !Notification.isSupported()) return
+    if (BrowserWindow.getFocusedWindow() !== null) return
+    const title =
+      goal.status === 'waiting'
+        ? goal.question !== null
+          ? 'A goal has a question'
+          : `Goal round ${String(goal.rounds.length + 1)} is ready to approve`
+        : goal.status === 'done'
+          ? 'Goal done'
+          : 'Goal stopped'
+    const note = new Notification({ title, body: goal.text.slice(0, 140) })
+    note.on('click', () => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win === undefined || win.isDestroyed()) return
+      win.show()
+      win.focus()
+    })
+    note.show()
+  }
+
+  const goals = new Goals({
+    store: shared,
+    worktrees,
+    submit: (job: PlannedJob, extra) =>
+      orch.submit(job.type, job.prompt, undefined, job.access, extra),
+    job: (id) => orch.get(id),
+    cancel: (id) => {
+      orch.cancel(id)
+    },
+    plan: planGoal,
+    runCheck: runGoalCheck,
+    ceiling: () => settings.leadAccess(),
+    nameWorktree: (id, project, name) => {
+      shared.setWorktreeName({ id, project, name, created_at: Date.now() })
+    },
+    onUpdate: (goal) => {
+      if (goal.project === projectDir()) broadcast('goals:update', goal)
+      notifyGoal(goal)
+      pushChanges()
+    }
+  })
+  orch.onUpdate((job) => {
+    goals.onJob(job)
+  })
+
   function reloadProjectState(): void {
     lead.openLatest()
     orch.restore(projectDir())
@@ -331,6 +455,7 @@ app.whenReady().then(async () => {
     console.error(err)
   }
   stopStoreWatch = orch.watchStore()
+  goals.resume(projectDir())
 
   function plans(): PlanStatus[] {
     return orch.workers().map((worker) => {
@@ -691,6 +816,54 @@ app.whenReady().then(async () => {
     const path = picked.filePaths[0]
     if (path === undefined) return null
     return activateProject(path)
+  })
+  ipcMain.handle('goals:list', () => goals.list(projectDir()))
+  ipcMain.handle('goals:create', (_event, input: unknown) => {
+    const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<
+      string,
+      unknown
+    >
+    if (typeof raw.text !== 'string' || raw.text.length > 20_000)
+      throw new Error('Say what the goal is.')
+    const check = typeof raw.check === 'string' && raw.check.length <= 2000 ? raw.check : null
+    const maxRounds = typeof raw.maxRounds === 'number' ? raw.maxRounds : undefined
+    const quick =
+      typeof raw.quickType === 'string' &&
+      isJobType(raw.quickType) &&
+      typeof raw.quickAccess === 'string' &&
+      isJobAccess(raw.quickAccess)
+        ? { type: raw.quickType, access: raw.quickAccess }
+        : undefined
+    return goals.create({ project: projectDir(), text: raw.text, check, maxRounds, quick })
+  })
+  ipcMain.handle('goals:approve', (_event, id: unknown, jobs: unknown) => {
+    if (typeof id !== 'string') throw new Error('unknown goal')
+    const list = Array.isArray(jobs)
+      ? jobs.flatMap((entry): PlannedJob[] => {
+          if (typeof entry !== 'object' || entry === null) return []
+          const job = entry as Record<string, unknown>
+          if (typeof job.prompt !== 'string' || job.prompt.length > 20_000) return []
+          if (typeof job.type !== 'string' || !isJobType(job.type)) return []
+          if (typeof job.access !== 'string' || !isJobAccess(job.access)) return []
+          return [{ type: job.type, access: job.access, prompt: job.prompt }]
+        })
+      : undefined
+    return goals.approve(id, list)
+  })
+  ipcMain.handle('goals:answer', (_event, id: unknown, text: unknown) => {
+    if (typeof id !== 'string' || typeof text !== 'string' || text.length > 20_000) {
+      throw new Error('invalid answer')
+    }
+    return goals.answer(id, text)
+  })
+  ipcMain.handle('goals:stop', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('unknown goal')
+    return goals.stop(id)
+  })
+  ipcMain.handle('goals:remove', async (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('unknown goal')
+    await goals.remove(id)
+    pushChanges()
   })
   ipcMain.handle('skills:get', () => skillsState())
   ipcMain.handle('skills:add', async (event) => {
@@ -1152,7 +1325,10 @@ function bringOldData(): void {
   try {
     mkdirSync(next, { recursive: true })
     for (const file of ['orchestrator.sqlite', 'settings.json']) {
-      if (existsSync(join(old, file))) copyFileSync(join(old, file), join(next, file))
+      // Fill in what is missing; never replace a file the new folder already has.
+      if (existsSync(join(old, file)) && !existsSync(join(next, file))) {
+        copyFileSync(join(old, file), join(next, file))
+      }
     }
   } catch (err: unknown) {
     console.error(err)

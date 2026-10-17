@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
 import type { CommitDetail, CommitPage } from '../core/history'
+import type { Goal, PlannedJob } from '../core/goals'
 import type { Routine } from '../core/routines'
 import type {
   AppInfo,
@@ -146,6 +147,39 @@ const api: OrchestratorApi = {
   },
   listFiles(where: string | null): Promise<FileList> {
     return ipcRenderer.invoke('files:list', where)
+  },
+  listGoals(): Promise<Goal[]> {
+    return ipcRenderer.invoke('goals:list')
+  },
+  createGoal(input: {
+    text: string
+    check?: string | null
+    maxRounds?: number
+    quickType?: string
+    quickAccess?: string
+  }): Promise<Goal> {
+    return ipcRenderer.invoke('goals:create', input)
+  },
+  approveGoal(id: string, jobs?: PlannedJob[]): Promise<Goal> {
+    return ipcRenderer.invoke('goals:approve', id, jobs)
+  },
+  answerGoal(id: string, text: string): Promise<Goal> {
+    return ipcRenderer.invoke('goals:answer', id, text)
+  },
+  stopGoal(id: string): Promise<Goal> {
+    return ipcRenderer.invoke('goals:stop', id)
+  },
+  removeGoal(id: string): Promise<void> {
+    return ipcRenderer.invoke('goals:remove', id)
+  },
+  onGoalUpdate(cb: (goal: Goal) => void): () => void {
+    const listener = (_event: IpcRendererEvent, goal: Goal): void => {
+      cb(goal)
+    }
+    ipcRenderer.on('goals:update', listener)
+    return () => {
+      ipcRenderer.removeListener('goals:update', listener)
+    }
   },
   commitLog(where: string | null, skip: number): Promise<CommitPage> {
     return ipcRenderer.invoke('history:log', where, skip)

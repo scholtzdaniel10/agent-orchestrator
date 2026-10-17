@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+- Goals: say what should be true and, optionally, a check command. The lead reads the code and proposes a round of jobs; you approve or edit it; the jobs run, their changes are committed to the goal's own worktree, and the check runs. It repeats, asking you each round, until the check passes, the lead judges it done, the round limit is reached, or the same failure comes twice. The finished goal waits in Changes.
+- Small tasks too: add a check to a job in Jobs (for example `pnpm test -- auth`). The job runs at once; if the check fails, a fix round waits for your OK.
+- A first start no longer replaces an existing settings file when it brings over data from agent-orchestrator.
+
 ## 1.3.1
 
 - Activity lays its flow out left to right (you → lead → router → plans) when its place is wider than it is tall, such as above or below the terminals, with the event log beside or below it.
