@@ -23,6 +23,8 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 | Work that starts itself         | No                         | Triggers: schedules, CI failures, new issues    |
 | Review and merge                | Git by hand                | Diffs per worktree, merge with one click        |
 
+![A goal, round by round: you give a goal and a check, the lead plans, you approve, agents work in worktrees, the check runs; a failure starts the next round, a pass ends it](docs/goal-loop.png)
+
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
 **Status:** 1.5, Windows. Unit-tested throughout (540+ tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end, triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
