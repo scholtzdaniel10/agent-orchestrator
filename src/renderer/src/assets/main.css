@@ -7043,3 +7043,38 @@ label,
   line-height: 1.4;
   text-transform: uppercase;
 }
+
+/* Icons on the panel tabs (Orca-style rail) */
+.drawer-tabs {
+  container-type: inline-size;
+}
+
+.drawer-tabs .tab {
+  gap: 6px;
+}
+
+.tab-icon {
+  display: block;
+  flex: none;
+}
+
+@container (max-width: 620px) {
+  .drawer-tabs .tab-label {
+    display: none;
+  }
+
+  .drawer-tabs .tab,
+  .dock .drawer-tabs .tab {
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 3px;
+    min-width: min-content;
+    height: 36px;
+    padding: 0 2px;
+  }
+
+  .drawer-tabs .tab-dot,
+  .drawer-tabs .tab-popped {
+    margin-left: 0;
+  }
+}
