@@ -104,7 +104,10 @@ function TerminalTabs({
           const selected = info.id === active
           const heading = terminalDisplayTitle(info, changes)
           return (
-            <div key={info.id} className={selected ? 'tab-item is-selected' : 'tab-item'}>
+            <div
+              key={info.id}
+              className={selected && review?.active !== true ? 'tab-item is-selected' : 'tab-item'}
+            >
               <button
                 id={`worker-tab-${info.id}`}
                 type="button"

@@ -74,7 +74,7 @@ test('labels follow the way the work starts', () => {
   expect(submitLabel('terminal')).toBe('Start agent')
   expect(submitLabel('background')).toBe('Run job')
   expect(submitLabel('goal')).toBe('Start goal')
-  expect(landingLine(true)).toBe('Changes appear in Changes for you to merge.')
+  expect(landingLine(true)).toBe('Pick it in the sidebar, then Review to merge.')
   expect(landingLine(false)).toBe('This job only reads the folder. It does not change files.')
   expect(repoHint(true)).toBeNull()
   expect(repoHint(false)).toBe('Worktrees need a git repository.')

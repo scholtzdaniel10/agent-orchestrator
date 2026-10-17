@@ -112,7 +112,7 @@ export function submitLabel(how: How): string {
 
 export function landingLine(isRepo: boolean): string {
   if (!isRepo) return 'This job only reads the folder. It does not change files.'
-  return 'Changes appear in Changes for you to merge.'
+  return 'Pick it in the sidebar, then Review to merge.'
 }
 
 export function clampCount(value: number): number {

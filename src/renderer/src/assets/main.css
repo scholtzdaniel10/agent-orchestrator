@@ -4089,17 +4089,6 @@ button.job-step {
   outline-offset: -1px;
 }
 
-@media (max-width: 1099px) {
-  .project-worktrees {
-    display: none;
-  }
-
-  .project-bar:hover .project-worktrees,
-  .project-bar:focus-within .project-worktrees {
-    display: flex;
-  }
-}
-
 .terminal-window {
   display: flex;
   flex-direction: column;
@@ -6984,7 +6973,7 @@ label,
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
+  min-height: 132px;
   overflow: hidden;
 }
 
@@ -6993,14 +6982,19 @@ label,
   max-height: none;
 }
 
+/* Chats give up their room before the worktrees do, e.g. when a panel is docked under the projects. */
 .sidebar-chats {
-  flex: none;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
   min-height: 0;
   max-height: 220px;
   overflow: hidden;
 }
 
 .sidebar-chats .project-chat-list {
+  flex: 0 1 auto;
+  min-height: 0;
   max-height: 180px;
   overflow: auto;
 }
@@ -7084,6 +7078,10 @@ label,
   flex: 0 0 auto;
   max-width: none;
   min-width: 0;
+}
+
+.tab-review.is-selected {
+  box-shadow: inset 0 -2px 0 var(--text);
 }
 
 .workers-stage.is-hidden {
