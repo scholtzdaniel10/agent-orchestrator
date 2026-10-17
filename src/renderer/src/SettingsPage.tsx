@@ -351,7 +351,7 @@ function SettingsPage({
     {
       section: 'general',
       label: 'Panel tabs',
-      help: 'Drag a tab in the panel to move it, or press Alt+Shift+Left/Right on it. Ctrl+1 … Ctrl+8 follow the order you set.',
+      help: 'Drag a tab above or below the terminals, under the projects, or out of the window into its own. Right-click a tab to move it too. Reset puts every tab back on the right.',
       keywords: 'tabs order drag reorder panel activity flow',
       render: () => (
         <span className="settings-inline">
