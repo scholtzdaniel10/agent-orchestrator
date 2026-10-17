@@ -2,12 +2,15 @@ import { expect, test } from 'vitest'
 import {
   changeCells,
   changeFooter,
+  checkReport,
   footerLine,
   formatAge,
   formatDuration,
+  goalCells,
   headerLine,
   jobCells,
   planLine,
+  proposalText,
   type PlanView,
   stepLine,
   table
@@ -155,6 +158,40 @@ test('plan lines use the app wording', () => {
     )
   ).toBe('claude · ready · CLI 1.0.0 · older than tested (2.1.292) — update it · 50% left')
   expect(planLine(plan({ id: 'claude' }), '2.1.292', 0, true)).toContain('\u001b[')
+})
+
+test('a goal list row, a proposal, and a check', () => {
+  expect(goalCells({ status: 'done', used: 2, max: 5, text: 'Newer goal\nmore detail' })).toEqual([
+    'done',
+    '2/5',
+    'Newer goal'
+  ])
+  expect(
+    proposalText(1, 'Add the form', [
+      {
+        type: 'refactor',
+        access: 'edit',
+        prompt: 'Write the form\nUse the field.\nKeep the types.\nHidden line.'
+      },
+      { type: 'review', access: 'full', prompt: 'Check it' }
+    ])
+  ).toBe(
+    [
+      'Round 1: Add the form',
+      'refactor · edit',
+      'Write the form',
+      'Use the field.',
+      'Keep the types.',
+      '…',
+      'review · full',
+      'Check it'
+    ].join('\n')
+  )
+  expect(checkReport(0, 'all green\n')).toBe('Check passed\nall green')
+  const lines = Array.from({ length: 20 }, (_, index) => `line ${String(index)}`)
+  expect(checkReport(3, lines.join('\n'))).toBe(
+    ['Check failed (exit 3)', ...lines.slice(-15)].join('\n')
+  )
 })
 
 test('a change footer names the diff command', () => {

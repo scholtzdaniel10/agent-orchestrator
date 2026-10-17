@@ -68,3 +68,31 @@ test('--help wins over a bad flag', () => {
   if (!parsed.ok) return
   expect(parsed.parsed.flags.help).toBe(true)
 })
+
+test('goal keeps its text, check, rounds, and yes', () => {
+  const parsed = parseArgs([
+    'goal',
+    '--check',
+    'pnpm test',
+    '--rounds=3',
+    '--yes',
+    'ship the login'
+  ])
+  expect(parsed.ok).toBe(true)
+  if (!parsed.ok) return
+  expect(parsed.parsed.command).toBe('goal')
+  expect(parsed.parsed.args).toEqual(['ship the login'])
+  expect(parsed.parsed.flags.check).toBe('pnpm test')
+  expect(parsed.parsed.flags.rounds).toBe('3')
+  expect(parsed.parsed.flags.yes).toBe(true)
+})
+
+test('goals takes no flags of its own', () => {
+  const parsed = parseArgs(['goals', '--yes'])
+  expect(parsed).toEqual({ ok: false, message: 'Unknown flag --yes.', command: 'goals' })
+})
+
+test('a goal flag on another command is unknown', () => {
+  const parsed = parseArgs(['jobs', '--check', 'pnpm test'])
+  expect(parsed).toEqual({ ok: false, message: 'Unknown flag --check.', command: 'jobs' })
+})

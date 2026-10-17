@@ -4,6 +4,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Github } from '../core/github'
+import { Goals, type Goal } from '../core/goals'
+import { planGoal as planGoalWith, runGoalCheck } from '../core/goal-runtime'
 import { bundledPlugins, existingUserPlugin, withPlugins } from '../core/plugins'
 import { ClaudeAdapter } from '../core/providers/claude'
 import { CursorAdapter } from '../core/providers/cursor'
@@ -79,6 +81,36 @@ export async function start(argv: string[]): Promise<number> {
       submit: (type, prompt, provider, access, extra) =>
         orch.submit(type, prompt, provider, access, extra)
     })
+    const goalListeners = new Set<(goal: Goal) => void>()
+    const goals = new Goals({
+      store,
+      worktrees,
+      submit: (job, extra) => orch.submit(job.type, job.prompt, undefined, job.access, extra),
+      job: (id) => orch.get(id),
+      cancel: (id) => {
+        orch.cancel(id)
+      },
+      plan: (_goal, folder, prompt) =>
+        planGoalWith({
+          folder,
+          prompt,
+          workers: orch.workers(),
+          preferred: settings.leadPlan(),
+          adapter: (provider) => (provider === 'claude' ? claude : cursor),
+          modelFor
+        }),
+      runCheck: (command, folder) => runGoalCheck(command, folder),
+      ceiling: () => settings.leadAccess(),
+      nameWorktree: (id, projectName, name) => {
+        store.setWorktreeName({ id, project: projectName, name, created_at: Date.now() })
+      },
+      onUpdate: (goal) => {
+        for (const listener of goalListeners) listener(goal)
+      }
+    })
+    orch.onUpdate((job) => {
+      goals.onJob(job)
+    })
     const ctx: CliContext = {
       version,
       project,
@@ -114,7 +146,20 @@ export async function start(argv: string[]): Promise<number> {
       store,
       worktrees,
       routines,
-      github
+      github,
+      goals: {
+        list: (projectName) => goals.list(projectName),
+        create: (input) => goals.create(input),
+        approve: (id, jobs) => goals.approve(id, jobs),
+        answer: (id, text) => goals.answer(id, text),
+        stop: (id) => goals.stop(id),
+        onUpdate: (cb) => {
+          goalListeners.add(cb)
+          return () => {
+            goalListeners.delete(cb)
+          }
+        }
+      }
     }
     return await run(argv, ctx)
   } finally {
@@ -180,9 +225,19 @@ function readStdin(): Promise<string> {
 function ask(prompt: string): Promise<string> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stderr })
-    rl.question(prompt, (answer) => {
+    let settled = false
+    const finish = (answer: string): void => {
+      if (settled) return
+      settled = true
       rl.close()
       resolve(answer)
+    }
+    rl.question(prompt, (answer) => {
+      finish(answer)
+    })
+    // Ctrl+C closes the prompt without a line. An empty answer means stop.
+    rl.on('close', () => {
+      finish('')
     })
   })
 }
