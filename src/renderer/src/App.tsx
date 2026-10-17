@@ -504,6 +504,8 @@ function App(): React.JSX.Element {
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  /** Goals waiting for the person: a proposed round or a question. */
+  const [goalsWaiting, setGoalsWaiting] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsNonce, setSettingsNonce] = useState(0)
 
@@ -899,6 +901,34 @@ function App(): React.JSX.Element {
       window.removeEventListener('keydown', onNewWindow, true)
     }
   }, [])
+
+  useEffect(() => {
+    let live = true
+    const track = (goal: { id: string; status: string }): void => {
+      setGoalsWaiting((prev) => {
+        const waiting = goal.status === 'waiting'
+        if (waiting === prev.has(goal.id)) return prev
+        const next = new Set(prev)
+        if (waiting) next.add(goal.id)
+        else next.delete(goal.id)
+        return next
+      })
+    }
+    window.api.listGoals().then(
+      (list) => {
+        if (!live) return
+        setGoalsWaiting(
+          new Set(list.filter((goal) => goal.status === 'waiting').map((goal) => goal.id))
+        )
+      },
+      () => {}
+    )
+    const off = window.api.onGoalUpdate(track)
+    return () => {
+      live = false
+      off()
+    }
+  }, [project?.path])
 
   useEffect(() => {
     function onNewTaskKey(event: KeyboardEvent): void {
@@ -1929,6 +1959,19 @@ function App(): React.JSX.Element {
                 }}
                 onSelectWorktree={selectWorktree}
                 onSelectAllWorktrees={selectAllWorktrees}
+                onNewTask={() => {
+                  setNewTaskOpen(true)
+                }}
+                onOpenGoals={() => {
+                  openPanel('goals')
+                }}
+                onOpenAutomations={() => {
+                  openPanel('goals')
+                  requestAnimationFrame(() => {
+                    document.querySelector('.goal-triggers')?.scrollIntoView({ block: 'start' })
+                  })
+                }}
+                goalsNeedingYou={goalsWaiting.size}
                 onCreateWorktree={(name, count, start, prompt) => {
                   void createWorktree(name, count, start, prompt)
                 }}
