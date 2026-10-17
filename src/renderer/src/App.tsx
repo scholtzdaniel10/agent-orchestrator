@@ -62,7 +62,7 @@ import {
   type SizeKey
 } from './layout'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
-import { THEMES, applyTheme, isThemeId, loadTheme, type ThemeId } from './theme'
+import { applyTheme, loadTheme, type ThemeId } from './theme'
 
 export { RayBurst, Star } from './Star'
 
@@ -1854,30 +1854,6 @@ function App(): React.JSX.Element {
           >
             Window
           </button>
-          <div className="theme-picker">
-            <label htmlFor="app-theme">
-              <span className="visually-hidden">Theme</span>
-              <span className="theme-picker-label" aria-hidden="true">
-                Theme
-              </span>
-            </label>
-            <select
-              id="app-theme"
-              value={theme}
-              onChange={(event) => {
-                const next = event.target.value
-                if (!isThemeId(next)) return
-                applyTheme(next)
-                setTheme(next)
-              }}
-            >
-              {THEMES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <button
             type="button"
             className="btn btn-quiet btn-compact"
