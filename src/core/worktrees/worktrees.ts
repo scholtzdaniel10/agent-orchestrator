@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ChangeSet, ChangedFile, ProjectInfo } from '../types'
 
 const GIT_TIMEOUT_MS = 60_000
@@ -80,6 +80,16 @@ export class Worktrees {
     if (!about.isRepo) throw new Error('not a git repository')
     if (existsSync(located.path) || (await this.branchExists(project, located.branch))) {
       return located
+    }
+    if (base === 'HEAD') {
+      try {
+        await git(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], project)
+      } catch {
+        const name = basename(project)
+        throw new Error(
+          `${name} has no commits yet, so Legate cannot make a worktree from it. Make a first commit there, then try again.`
+        )
+      }
     }
     mkdirSync(this.root, { recursive: true })
     try {
