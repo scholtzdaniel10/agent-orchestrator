@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain, Notification, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
@@ -11,6 +11,7 @@ import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from '
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
 import { Goals, type Goal, type PlannedJob } from '../core/goals'
+import { planGoal as planGoalWith, runGoalCheck as runGoalCheckCommand } from '../core/goal-runtime'
 import {
   freshFirings,
   isDue,
@@ -347,28 +348,14 @@ app.whenReady().then(async () => {
 
   /** The lead's plan reads the goal's folder (read only) and answers the planning prompt. */
   async function planGoal(_goal: Goal, folder: string, prompt: string): Promise<string> {
-    const available = orch.workers().filter((worker) => worker.available)
-    const preferred = settings.leadPlan()
-    const provider =
-      available.find((worker) => worker.id === preferred)?.id ?? available[0]?.id ?? null
-    if (provider === null) throw new Error('No plan is signed in and ready.')
-    const adapter = provider === 'claude' ? claude : cursor
-    const handle = adapter.run({ id: randomUUID(), prompt }, folder, {
-      access: 'read',
-      model: modelFor(provider)
+    return planGoalWith({
+      folder,
+      prompt,
+      workers: orch.workers(),
+      preferred: settings.leadPlan(),
+      adapter: (provider) => (provider === 'claude' ? claude : cursor),
+      modelFor
     })
-    let result = ''
-    let said = ''
-    for await (const event of handle.events) {
-      if (event.kind === 'result') result = event.text
-      else if (event.kind === 'text') said += event.text
-    }
-    const exit = await handle.exit
-    const text = result.trim() !== '' ? result : said
-    if (text.trim() === '') {
-      throw new Error(exit.stderr.trim().split(/\r?\n/).pop() ?? 'no answer')
-    }
-    return text
   }
 
   /** Runs the goal's check in its folder: exit code and the end of what it printed. */
@@ -376,33 +363,7 @@ app.whenReady().then(async () => {
     command: string,
     folder: string
   ): Promise<{ code: number | null; output: string }> {
-    return new Promise((resolve) => {
-      let output = ''
-      const add = (chunk: Buffer | string): void => {
-        output += String(chunk)
-        if (output.length > 200_000) output = output.slice(-100_000)
-      }
-      const child = spawn(command, {
-        cwd: folder,
-        shell: true,
-        windowsHide: true,
-        env: process.env
-      })
-      const timer = setTimeout(() => {
-        output += '\n… stopped after 20 minutes'
-        child.kill()
-      }, 20 * 60_000)
-      child.stdout?.on('data', add)
-      child.stderr?.on('data', add)
-      child.on('error', (err) => {
-        clearTimeout(timer)
-        resolve({ code: null, output: `${output}\n${err.message}` })
-      })
-      child.on('close', (code) => {
-        clearTimeout(timer)
-        resolve({ code, output })
-      })
-    })
+    return runGoalCheckCommand(command, folder)
   }
 
   const goalNotified = new Map<string, string>()

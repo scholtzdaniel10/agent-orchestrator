@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import type { Goal } from '../core/goals'
 import type { JobRecord, WorkerInfo } from '../core/router/orchestrator'
 import type { Routine } from '../core/routines'
 import type { WorktreeNameRow } from '../core/router/store'
@@ -98,6 +99,20 @@ function ctx(io: { out: string; err: string }, patch: Patch = {}): CliContext {
     },
     github: {
       openPr: () => Promise.resolve({ url: 'https://example.test/pull/1', branch: 'orch/pr' })
+    },
+    goals: {
+      list: () => [],
+      create: () => Promise.reject(new Error('unexpected goal')),
+      approve: () => {
+        throw new Error('unexpected approve')
+      },
+      answer: () => {
+        throw new Error('unexpected answer')
+      },
+      stop: () => {
+        throw new Error('unexpected stop')
+      },
+      onUpdate: () => () => {}
     }
   }
   return {
@@ -108,7 +123,8 @@ function ctx(io: { out: string; err: string }, patch: Patch = {}): CliContext {
     store: { ...base.store, ...patch.store },
     worktrees: { ...base.worktrees, ...patch.worktrees },
     routines: { ...base.routines, ...patch.routines },
-    github: { ...base.github, ...patch.github }
+    github: { ...base.github, ...patch.github },
+    goals: { ...base.goals, ...patch.goals }
   }
 }
 
@@ -124,6 +140,7 @@ interface Patch {
   worktrees?: Partial<CliContext['worktrees']>
   routines?: Partial<CliContext['routines']>
   github?: Partial<CliContext['github']>
+  goals?: Partial<CliContext['goals']>
 }
 
 test('help, version, and an unknown command', async () => {
@@ -131,6 +148,8 @@ test('help, version, and an unknown command', async () => {
   expect(await run(['--help'], ctx(help))).toBe(0)
   expect(help.out).toContain('legate job')
   expect(help.out).toContain('legate ui')
+  expect(help.out).toContain('legate goal "<text>"')
+  expect(help.out).toContain('legate goals')
   expect(help.err).toBe('')
 
   const missing = capture()
@@ -797,4 +816,374 @@ test('a thrown error is one sentence on stderr', async () => {
   )
   expect(code).toBe(1)
   expect(io.err).toBe('not a change worktree\n')
+})
+
+function sampleGoal(partial: Partial<Goal> = {}): Goal {
+  return {
+    id: 'g1',
+    project: '/proj',
+    text: 'Ship login',
+    check: 'pnpm test',
+    maxRounds: 5,
+    quick: false,
+    worktree: 'wt1',
+    status: 'planning',
+    rounds: [],
+    proposal: null,
+    question: null,
+    notes: [],
+    outcome: null,
+    createdAt: 1,
+    updatedAt: 1,
+    ...partial
+  }
+}
+
+test('goal and goals help, and a goal needs text and a round count', async () => {
+  const goalHelp = capture()
+  expect(await run(['goal', '--help'], ctx(goalHelp))).toBe(0)
+  expect(goalHelp.out).toBe('legate goal "<text>" [--check "<command>"] [--rounds N] [--yes]\n')
+
+  const goalsHelp = capture()
+  expect(await run(['goals', '-h'], ctx(goalsHelp))).toBe(0)
+  expect(goalsHelp.out).toBe('legate goals\n')
+
+  const missing = capture()
+  expect(await run(['goal'], ctx(missing))).toBe(2)
+  expect(missing.err).toContain('Missing goal.')
+
+  const rounds = capture()
+  expect(await run(['goal', 'Ship login', '--rounds', '21'], ctx(rounds))).toBe(2)
+  expect(rounds.err).toContain('Rounds must be a whole number from 1 to 20.')
+})
+
+test('goals lists newest first, and an empty list hints', async () => {
+  const listed = capture()
+  expect(
+    await run(
+      ['goals'],
+      ctx(listed, {
+        goals: {
+          list: () => [
+            sampleGoal({
+              id: 'old',
+              status: 'planning',
+              text: 'Older goal',
+              maxRounds: 3,
+              updatedAt: 1
+            }),
+            sampleGoal({
+              id: 'new',
+              status: 'done',
+              text: 'Newer goal\nmore detail',
+              maxRounds: 5,
+              rounds: [{}, {}] as Goal['rounds'],
+              updatedAt: 2
+            })
+          ]
+        }
+      })
+    )
+  ).toBe(0)
+  expect(listed.out).toBe('done      2/5  Newer goal\nplanning  0/3  Older goal\n')
+  expect(listed.out).not.toContain('more detail')
+
+  const empty = capture()
+  expect(await run(['goals'], ctx(empty))).toBe(0)
+  expect(empty.err).toBe('No goals yet. Start one with: legate goal "<what you want>"\n')
+  expect(empty.out).toBe('')
+})
+
+test('a goal without a terminal prints the proposal and stops', async () => {
+  const io = capture()
+  let approved = false
+  let onGoal: ((goal: Goal) => void) | null = null
+  const code = await run(
+    ['goal', 'Ship login', '--check', 'pnpm test'],
+    ctx(io, {
+      stdin: { isTTY: false },
+      goals: {
+        onUpdate: (cb) => {
+          onGoal = cb
+          return () => {
+            onGoal = null
+          }
+        },
+        create: (input) => {
+          expect(input).toMatchObject({
+            project: '/proj',
+            text: 'Ship login',
+            check: 'pnpm test',
+            maxRounds: 5
+          })
+          const planning = sampleGoal({ status: 'planning' })
+          onGoal?.(planning)
+          onGoal?.(
+            sampleGoal({
+              status: 'waiting',
+              proposal: {
+                summary: 'Add the form',
+                jobs: [
+                  { type: 'refactor', access: 'edit', prompt: 'Write the form\nUse the field.' }
+                ]
+              }
+            })
+          )
+          return Promise.resolve(planning)
+        },
+        approve: () => {
+          approved = true
+          throw new Error('unexpected approve')
+        }
+      }
+    })
+  )
+  expect(code).toBe(2)
+  expect(approved).toBe(false)
+  expect(io.out).toContain('Planning round 1…')
+  expect(io.out).toContain('Round 1: Add the form')
+  expect(io.out).toContain('refactor · edit')
+  expect(io.out).toContain('Write the form')
+  expect(io.out).toContain('Use the field.')
+  expect(io.err).toContain('--yes')
+  expect(io.err).toContain('app')
+})
+
+test('--yes approves a round, prints the job, then the check and the outcome', async () => {
+  const io = capture()
+  let asked = ''
+  let onGoal: ((goal: Goal) => void) | null = null
+  let onJob: ((job: JobRecord) => void) | null = null
+  const running = job({
+    id: 'job-1',
+    status: 'running',
+    type: 'refactor',
+    access: 'edit',
+    model: 'sonnet',
+    goal: 'g1',
+    prompt: 'Write the form'
+  })
+  const code = await run(
+    ['goal', 'Ship login', '--yes', '--rounds', '4'],
+    ctx(io, {
+      stdin: {
+        isTTY: false,
+        ask: (prompt) => {
+          asked = prompt
+          return Promise.resolve('')
+        }
+      },
+      orch: {
+        onUpdate: (cb) => {
+          onJob = cb
+          return () => {
+            onJob = null
+          }
+        }
+      },
+      goals: {
+        onUpdate: (cb) => {
+          onGoal = cb
+          return () => {
+            onGoal = null
+          }
+        },
+        create: (input) => {
+          expect(input.maxRounds).toBe(4)
+          const planning = sampleGoal({ status: 'planning', maxRounds: 4 })
+          onGoal?.(planning)
+          onGoal?.(
+            sampleGoal({
+              status: 'waiting',
+              maxRounds: 4,
+              proposal: {
+                summary: 'Add the form',
+                jobs: [{ type: 'refactor', access: 'edit', prompt: 'Write the form' }]
+              }
+            })
+          )
+          return Promise.resolve(planning)
+        },
+        approve: (id) => {
+          expect(id).toBe('g1')
+          onJob?.({
+            ...running,
+            steps: [
+              {
+                id: 's1',
+                tool: 'edit',
+                title: 'Edited src/login.ts',
+                status: 'done',
+                startedAt: 1
+              }
+            ]
+          })
+          onJob?.({ ...running, status: 'done', output: 'form added' })
+          const done = sampleGoal({
+            status: 'done',
+            maxRounds: 4,
+            outcome: 'The check passed after round 1. Review the goal in Changes.',
+            rounds: [
+              {
+                n: 1,
+                summary: 'Add the form',
+                jobs: [{ type: 'refactor', access: 'edit', prompt: 'Write the form' }],
+                jobIds: ['job-1'],
+                problems: [],
+                check: { code: 0, output: 'all green\n', at: 1 }
+              }
+            ]
+          })
+          onGoal?.(done)
+          return done
+        }
+      }
+    })
+  )
+  expect(code).toBe(0)
+  expect(asked).toBe('')
+  expect(io.out).toContain('Planning round 1…')
+  expect(io.out).toContain('Round 1: Add the form')
+  expect(io.out).toContain('claude · sonnet · refactor · edit')
+  expect(io.out).toContain('EDIT   Edited src/login.ts')
+  expect(io.out).toContain('form added')
+  expect(io.out).toContain('done in 0s')
+  expect(io.out).toContain('Check passed\nall green')
+  expect(io.out).toContain('The check passed after round 1. Review the goal in Changes.')
+})
+
+test('a note plans again, n stops, and an empty answer to a question stops', async () => {
+  const noted = capture()
+  let onGoal: ((goal: Goal) => void) | null = null
+  let answered = ''
+  const notedCode = await run(
+    ['goal', 'Ship login'],
+    ctx(noted, {
+      stdin: {
+        isTTY: true,
+        ask: () => Promise.resolve('try the other file')
+      },
+      goals: {
+        onUpdate: (cb) => {
+          onGoal = cb
+          return () => {
+            onGoal = null
+          }
+        },
+        create: () => {
+          const planning = sampleGoal()
+          onGoal?.(planning)
+          onGoal?.(
+            sampleGoal({
+              status: 'waiting',
+              proposal: {
+                summary: 'Add the form',
+                jobs: [{ type: 'refactor', access: 'edit', prompt: 'Write the form' }]
+              }
+            })
+          )
+          return Promise.resolve(planning)
+        },
+        answer: (_id, text) => {
+          answered = text
+          const planning = sampleGoal({ status: 'planning', notes: [text] })
+          onGoal?.(planning)
+          const done = sampleGoal({
+            status: 'done',
+            outcome: 'The lead judges the goal met. Review it in Changes.',
+            notes: [text]
+          })
+          onGoal?.(done)
+          return planning
+        }
+      }
+    })
+  )
+  expect(notedCode).toBe(0)
+  expect(answered).toBe('try the other file')
+  expect(noted.out).toContain('The lead judges the goal met. Review it in Changes.')
+
+  const stopped = capture()
+  let asked = ''
+  onGoal = null
+  const stoppedCode = await run(
+    ['goal', 'Ship login'],
+    ctx(stopped, {
+      stdin: {
+        isTTY: true,
+        ask: (prompt) => {
+          asked = prompt
+          return Promise.resolve('n')
+        }
+      },
+      goals: {
+        onUpdate: (cb) => {
+          onGoal = cb
+          return () => {
+            onGoal = null
+          }
+        },
+        create: () => {
+          const planning = sampleGoal()
+          onGoal?.(planning)
+          onGoal?.(
+            sampleGoal({
+              status: 'waiting',
+              proposal: {
+                summary: 'Add the form',
+                jobs: [{ type: 'refactor', access: 'edit', prompt: 'Write the form' }]
+              }
+            })
+          )
+          return Promise.resolve(planning)
+        },
+        stop: () => {
+          const goal = sampleGoal({
+            status: 'stopped',
+            outcome: 'Stopped by you. The work so far is in Changes.'
+          })
+          onGoal?.(goal)
+          return goal
+        }
+      }
+    })
+  )
+  expect(stoppedCode).toBe(1)
+  expect(asked).toBe('Approve round 1? [y] yes  [n] stop  or type a note to plan again: ')
+  expect(stopped.out).toContain('Stopped by you. The work so far is in Changes.')
+
+  const question = capture()
+  onGoal = null
+  const questionCode = await run(
+    ['goal', 'Ship login'],
+    ctx(question, {
+      stdin: { isTTY: true, ask: () => Promise.resolve('') },
+      goals: {
+        onUpdate: (cb) => {
+          onGoal = cb
+          return () => {
+            onGoal = null
+          }
+        },
+        create: () => {
+          const planning = sampleGoal()
+          onGoal?.(planning)
+          onGoal?.(sampleGoal({ status: 'waiting', question: 'Which file?' }))
+          return Promise.resolve(planning)
+        },
+        stop: () => {
+          const goal = sampleGoal({
+            status: 'stopped',
+            question: 'Which file?',
+            outcome: 'Stopped by you. The work so far is in Changes.'
+          })
+          onGoal?.(goal)
+          return goal
+        }
+      }
+    })
+  )
+  expect(questionCode).toBe(1)
+  expect(question.out).toContain('Which file?')
+  expect(question.out).toContain('Stopped by you. The work so far is in Changes.')
 })
