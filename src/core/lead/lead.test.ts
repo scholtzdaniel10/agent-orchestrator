@@ -13,7 +13,7 @@ import { createOrchestratorTools, startBridge, type Bridge } from '../bridge'
 import { Orchestrator } from '../router/orchestrator'
 import { headroom, loadRules } from '../router/router'
 import { Store } from '../router/store'
-import { Lead, LEAD_INSTRUCTIONS } from './lead'
+import { Lead, LEAD_INSTRUCTIONS, projectLine } from './lead'
 
 const DIR = 'lead-work'
 const NO_PLAN = 'No plan is available for the lead right now.'
@@ -238,6 +238,9 @@ test('instructions tell the lead when a worker may edit and not to wait on jobs'
     "A worker's access is read, edit, or full, and cannot go above the ceiling the person set (see list_workers)."
   )
   expect(LEAD_INSTRUCTIONS).toContain('Do not wait for results')
+  expect(LEAD_INSTRUCTIONS).toContain(
+    'Every job runs in the open project named at the top of each message. If the person asks for work in a different project or folder, do not send a job: tell them in one line to open that project in the sidebar first, then ask again. If a job fails, report its error as it is and do not guess at causes you have not checked.'
+  )
   expect(LEAD_INSTRUCTIONS).not.toContain('read-only for now')
 })
 
@@ -358,13 +361,54 @@ test('the first turn sends instructions, the bridge, and no resume', async () =>
     expect(call.job.id).toBe(msg.id)
     expect(call.job.prompt.startsWith(LEAD_INSTRUCTIONS)).toBe(true)
     expect(call.job.prompt.endsWith(text)).toBe(true)
-    expect(call.job.prompt).toBe(`${LEAD_INSTRUCTIONS}\n\nUser request:\n${text}`)
+    expect(call.job.prompt).toBe(
+      `${LEAD_INSTRUCTIONS}\n\n${projectLine('/project')}\n\nUser request:\n${text}`
+    )
     expect(call.opts?.resume).toBeUndefined()
     expect(call.opts?.bridge).toBe(bridge)
     expect(call.cwd).toBe(DIR)
     expect(msg.status).toBe('done')
     expect(lead.provider()).toBe('cursor')
   })
+})
+
+test('lead turns name the open project, and an empty path adds nothing', async () => {
+  expect(projectLine('')).toBe('')
+  const project = '/work/fast-mcp'
+  const line = `Open project: fast-mcp (${project})`
+  expect(projectLine(project)).toBe(line)
+  const cursor = new FakeAdapter('cursor', [done('sess-1', 'first'), done('sess-1', 'second')])
+  await withLead(
+    [cursor],
+    async (lead) => {
+      const first = 'refactor the parser'
+      await lead.send(first)
+      const opening = cursor.calls[0]?.job.prompt ?? ''
+      expect(opening).toContain(`Open project: fast-mcp (${project})`)
+      expect(opening).toContain('User request:')
+      expect(opening).toBe(`${LEAD_INSTRUCTIONS}\n\n${line}\n\nUser request:\n${first}`)
+      expect(lead.messages()[0]?.text).toBe(first)
+      const second = 'and the tests'
+      await lead.send(second)
+      const resumed = cursor.calls[1]?.job.prompt ?? ''
+      expect(resumed.startsWith(line)).toBe(true)
+      expect(resumed).toBe(`${line}\n\n${second}`)
+      expect(lead.messages()[2]?.text).toBe(second)
+    },
+    { project: () => project }
+  )
+
+  const bare = new FakeAdapter('cursor', [done('s', 'a'), done('s', 'b')])
+  await withLead(
+    [bare],
+    async (lead) => {
+      await lead.send('hello')
+      expect(bare.calls[0]?.job.prompt).toBe(`${LEAD_INSTRUCTIONS}\n\nUser request:\nhello`)
+      await lead.send('again')
+      expect(bare.calls[1]?.job.prompt).toBe('again')
+    },
+    { project: () => '' }
+  )
 })
 
 test('a later turn resumes the same provider even when headroom changes', async () => {
@@ -402,7 +446,7 @@ test('a later turn resumes the same provider even when headroom changes', async 
       const msg = await lead.send(second)
       expect(claude.calls).toHaveLength(2)
       expect(cursor.calls).toHaveLength(0)
-      expect(claude.calls[1].job.prompt).toBe(second)
+      expect(claude.calls[1].job.prompt).toBe(`${projectLine('/project')}\n\n${second}`)
       expect(claude.calls[1].opts?.resume).toBe('sess-1')
       expect(claude.calls[1].opts?.bridge).toBe(bridge)
       expect(claude.calls[1].cwd).toBe(DIR)
@@ -526,7 +570,9 @@ test('a limit event rests the provider and the next turn switches plan', async (
       expect(cursor.calls).toHaveLength(1)
       expect(claude.calls).toHaveLength(1)
       expect(cursor.calls[0].opts?.resume).toBeUndefined()
-      expect(cursor.calls[0].job.prompt).toBe(`${LEAD_INSTRUCTIONS}\n\nUser request:\nagain`)
+      expect(cursor.calls[0].job.prompt).toBe(
+        `${LEAD_INSTRUCTIONS}\n\n${projectLine('/project')}\n\nUser request:\nagain`
+      )
       expect(cursor.calls[0].opts?.bridge).toBe(bridge)
       expect(second).toMatchObject({ status: 'done', provider: 'cursor', text: 'continued' })
       expect(leadRuns(store).map((row) => row.outcome)).toEqual(['limit', 'ok'])
@@ -766,7 +812,9 @@ test('a function prefer is read each turn, and a change drops the session', asyn
       expect(second.provider).toBe('claude')
       expect(claude.calls).toHaveLength(1)
       expect(claude.calls[0]?.opts?.resume).toBeUndefined()
-      expect(claude.calls[0]?.job.prompt).toBe(`${LEAD_INSTRUCTIONS}\n\nUser request:\ntwo`)
+      expect(claude.calls[0]?.job.prompt).toBe(
+        `${LEAD_INSTRUCTIONS}\n\n${projectLine('/project')}\n\nUser request:\ntwo`
+      )
       expect(cursor.calls).toHaveLength(1)
       expect(lead.messages().slice(0, 2)).toEqual(kept)
       expect(lead.messages()).toHaveLength(4)
@@ -794,7 +842,7 @@ test('changing preference does not drop the session when the plan is unavailable
       await lead.send('two')
       expect(cursor.calls).toHaveLength(2)
       expect(cursor.calls[1]?.opts?.resume).toBe('u1')
-      expect(cursor.calls[1]?.job.prompt).toBe('two')
+      expect(cursor.calls[1]?.job.prompt).toBe(`${projectLine('/project')}\n\ntwo`)
       expect(unavailable.calls).toHaveLength(0)
     },
     { prefer: () => prefer }
@@ -812,7 +860,7 @@ test('changing preference does not drop the session when the plan is unavailable
       await lead.send('two')
       expect(restingCursor.calls).toHaveLength(2)
       expect(restingCursor.calls[1]?.opts?.resume).toBe('u2')
-      expect(restingCursor.calls[1]?.job.prompt).toBe('two')
+      expect(restingCursor.calls[1]?.job.prompt).toBe(`${projectLine('/project')}\n\ntwo`)
       expect(claude.calls).toHaveLength(0)
     },
     { now: () => now, prefer: () => prefer }
@@ -854,7 +902,7 @@ test('messages and session survive a new Lead on the same store after openLatest
     expect(again.provider()).toBe('cursor')
     await again.send('continue')
     expect(resumed.calls[0]?.opts?.resume).toBe('sess-keep')
-    expect(resumed.calls[0]?.job.prompt).toBe('continue')
+    expect(resumed.calls[0]?.job.prompt).toBe(`${projectLine('/proj')}\n\ncontinue`)
   } finally {
     store.close()
   }
@@ -988,6 +1036,7 @@ test('when both jobs finish exactly one follow-up runs and its prompt contains b
     const reportCall = cursor.calls[3]
     expect(reportCall?.job.prompt).toContain('alpha output')
     expect(reportCall?.job.prompt).toContain('beta output')
+    expect(reportCall?.job.prompt.startsWith('Worker jobs')).toBe(true)
     expect(reportCall?.opts?.resume).toBe('lead-s')
     expect(lead.messages().filter((message) => message.kind === 'report')).toHaveLength(1)
   })

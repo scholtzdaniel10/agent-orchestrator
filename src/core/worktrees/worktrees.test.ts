@@ -186,6 +186,21 @@ describe.skipIf(!hasGit)('worktrees', { timeout: 30_000 }, () => {
     }
   })
 
+  test('create rejects a repository that has no commits yet', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ao-wt-'))
+    const project = join(root, 'empty-repo')
+    mkdirSync(project)
+    try {
+      await gitOk(project, ['init', '-b', 'main'])
+      const trees = new Worktrees({ root: join(root, 'wt') })
+      await expect(trees.create(project, 'abcdef12-1111-1111-1111-111111111111')).rejects.toThrow(
+        'empty-repo has no commits yet, so Legate cannot make a worktree from it. Make a first commit there, then try again.'
+      )
+    } finally {
+      await cleanup(root)
+    }
+  })
+
   test('list reports text and binary changes and ignores other worktrees', async () => {
     const { root, project, wt } = await tempRoot()
     const outside = join(root, 'outside')
