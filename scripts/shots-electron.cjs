@@ -134,6 +134,7 @@ const scenes = {
     })()`
   },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
+  goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
   'drag-zones': {
     query: '',
     scheme: 'dark',

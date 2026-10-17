@@ -18,6 +18,7 @@ import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
 import type { CommitDetail, CommitPage } from '../core/history'
+import type { Goal, PlannedJob } from '../core/goals'
 import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
 
 /** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
@@ -173,6 +174,26 @@ export interface OrchestratorApi {
   renameWorktree(id: string, name: string): Promise<void>
   /** Files of the active project (`where` null) or a worktree. */
   listFiles(where: string | null): Promise<FileList>
+  /** Goals of the open project, newest first. */
+  listGoals(): Promise<Goal[]>
+  /**
+   * A new goal. With quickType/quickAccess it is a small task: the text runs as round 1 at once.
+   * With check, it repeats (asking each round) until that command passes.
+   */
+  createGoal(input: {
+    text: string
+    check?: string | null
+    maxRounds?: number
+    quickType?: string
+    quickAccess?: string
+  }): Promise<Goal>
+  /** Run the proposed round, or the person's edited jobs. */
+  approveGoal(id: string, jobs?: PlannedJob[]): Promise<Goal>
+  /** Answer the lead's question or add a note; it plans again. */
+  answerGoal(id: string, text: string): Promise<Goal>
+  stopGoal(id: string): Promise<Goal>
+  removeGoal(id: string): Promise<void>
+  onGoalUpdate(cb: (goal: Goal) => void): () => void
   /** Commits of the project (null) or a worktree, newest first, a page at a time. */
   commitLog(where: string | null, skip: number): Promise<CommitPage>
   commitDetail(where: string | null, hash: string): Promise<CommitDetail>

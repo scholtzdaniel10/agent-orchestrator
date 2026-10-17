@@ -6346,3 +6346,252 @@ label,
 .topo.is-across .flow-plan-trail .flow-queued {
   display: none;
 }
+
+/* Goals: plan a round, approve it, jobs run, the check runs, and again. */
+.goals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.goal-form,
+.goal-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.goal-form textarea,
+.goal-form input,
+.goal-answer textarea,
+.goal-job textarea,
+.composer-check {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.composer-check {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+}
+
+.goal-form-foot,
+.goal-actions,
+.goal-job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-form-foot {
+  justify-content: space-between;
+}
+
+.goal-rounds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.goal-rounds input {
+  width: 52px;
+}
+
+.goal-list,
+.goal-rounds-list,
+.goal-round-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goal-row,
+.goal-round-job {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius, 6px);
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.goal-row:hover,
+.goal-round-job:hover {
+  background: var(--inset);
+}
+
+.goal-row.is-selected {
+  background: var(--inset);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.goal-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goal-round {
+  flex: none;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.goal-status,
+.goal-job-status {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.goal-status.is-waiting {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.goal-status.is-running,
+.goal-status.is-planning,
+.goal-status.is-checking,
+.goal-job-status.is-running {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.goal-status.is-done,
+.goal-job-status.is-done {
+  border-color: var(--diff-add);
+  color: var(--diff-add);
+}
+
+.goal-job-status.is-failed,
+.goal-status.is-failed {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.goal-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.goal-title {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.goal-check,
+.goal-state,
+.goal-outcome {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.goal-check code {
+  font-family: var(--font-mono);
+}
+
+.goal-question {
+  margin: 0;
+  padding: 8px;
+  border-left: 2px solid var(--signal);
+  background: var(--inset);
+  font-size: 12px;
+}
+
+.goal-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.goal-job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+}
+
+.goal-job-head select {
+  min-width: 0;
+}
+
+.goal-round-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.goal-round-head {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.goal-problem {
+  margin: 0;
+  color: var(--bad);
+  font-size: 11px;
+}
+
+.goal-check-result summary {
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.goal-check-result summary.is-pass {
+  color: var(--diff-add);
+}
+
+.goal-check-result summary.is-fail {
+  color: var(--bad);
+}
+
+.goal-check-result pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  background: var(--inset);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.goal-answer .btn {
+  align-self: flex-start;
+}

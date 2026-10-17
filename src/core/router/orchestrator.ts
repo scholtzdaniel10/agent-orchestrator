@@ -64,6 +64,10 @@ export interface JobRecord {
   leadMessage?: string
   /** Name of the routine that started this job, when it did. */
   routine?: string
+  /** Id of the goal whose round this job belongs to. */
+  goal?: string
+  /** Branch the job's worktree starts from; unset means the project's HEAD. */
+  base?: string
   error?: string
   /** Process that is running this job. Absent on old saved jobs. */
   ownerId?: string
@@ -99,6 +103,10 @@ interface InternalJob {
   leadMessage?: string
   /** Name of the routine that started this job, when it did. */
   routine?: string
+  /** Id of the goal whose round this job belongs to. */
+  goal?: string
+  /** Branch the job's worktree starts from; unset means the project's HEAD. */
+  base?: string
   error?: string
   /** Project folder when the job was submitted. */
   project: string
@@ -239,7 +247,15 @@ export class Orchestrator {
     prompt: string,
     provider?: ProviderId,
     access?: JobAccess | boolean,
-    extra?: { group?: string; leadMessage?: string; routine?: string }
+    extra?: {
+      group?: string
+      leadMessage?: string
+      routine?: string
+      goal?: string
+      base?: string
+      /** The project the job belongs to; unset means the open project. */
+      project?: string
+    }
   ): JobRecord {
     const granted = submitAccess(access)
     const job: InternalJob = {
@@ -252,7 +268,7 @@ export class Orchestrator {
       output: '',
       failedOver: [],
       chosen: false,
-      project: this.workingDir(),
+      project: extra?.project ?? this.workingDir(),
       createdAt: this.now(),
       access: granted,
       steps: [],
@@ -262,7 +278,9 @@ export class Orchestrator {
       ...(granted !== 'read' ? { edit: true } : {}),
       ...(extra?.group !== undefined ? { group: extra.group } : {}),
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {}),
-      ...(extra?.routine !== undefined ? { routine: extra.routine } : {})
+      ...(extra?.routine !== undefined ? { routine: extra.routine } : {}),
+      ...(extra?.goal !== undefined ? { goal: extra.goal } : {}),
+      ...(extra?.base !== undefined ? { base: extra.base } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -537,7 +555,7 @@ export class Orchestrator {
   private async editFolder(job: InternalJob, project: string): Promise<string | null> {
     try {
       if (!this.worktrees) throw new Error('no worktrees')
-      const created = await this.worktrees.create(project, job.id)
+      const created = await this.worktrees.create(project, job.id, job.base)
       job.change = created.id
       this.emit(job)
       return created.path
@@ -1155,6 +1173,8 @@ function copy(job: InternalJob): JobRecord {
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   if (job.routine !== undefined) record.routine = job.routine
+  if (job.goal !== undefined) record.goal = job.goal
+  if (job.base !== undefined) record.base = job.base
   if (job.ownerId !== undefined) record.ownerId = job.ownerId
   if (job.heartbeatAt !== undefined) record.heartbeatAt = job.heartbeatAt
   if (job.cancelRequested === true) record.cancelRequested = true
@@ -1200,6 +1220,8 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     ...(record.group !== undefined ? { group: record.group } : {}),
     ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {}),
     ...(record.routine !== undefined ? { routine: record.routine } : {}),
+    ...(record.goal !== undefined ? { goal: record.goal } : {}),
+    ...(record.base !== undefined ? { base: record.base } : {}),
     ...(record.ownerId !== undefined ? { ownerId: record.ownerId } : {}),
     ...(record.heartbeatAt !== undefined ? { heartbeatAt: record.heartbeatAt } : {}),
     ...(record.cancelRequested === true ? { cancelRequested: true } : {})

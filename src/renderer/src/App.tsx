@@ -23,6 +23,7 @@ import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
+import GoalsPanel from './GoalsPanel'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -1514,6 +1515,9 @@ function App(): React.JSX.Element {
               )
             }}
             onViewChange={viewChange}
+            onGoal={() => {
+              openPanel('goals')
+            }}
           />
         )
       case 'changes':
@@ -1557,6 +1561,19 @@ function App(): React.JSX.Element {
             now={now}
             onOpenSetup={() => {
               setSetupOpen(true)
+            }}
+          />
+        )
+      case 'goals':
+        return (
+          <GoalsPanel
+            jobs={jobs}
+            onViewChange={viewChange}
+            onShowJob={(id) => {
+              showJobNonce.current += 1
+              setShowJob({ id, nonce: showJobNonce.current })
+              setSelectedJobId(id)
+              openPanel('jobs')
             }}
           />
         )

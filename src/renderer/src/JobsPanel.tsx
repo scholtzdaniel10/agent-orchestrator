@@ -292,7 +292,8 @@ function JobsPanel({
   showJob,
   onSelectJob,
   onJob,
-  onViewChange
+  onViewChange,
+  onGoal
 }: {
   jobs: JobRecord[]
   plans: PlanStatus[] | null
@@ -303,8 +304,11 @@ function JobsPanel({
   onSelectJob: (id: string | null) => void
   onJob: (job: JobRecord) => void
   onViewChange: (id: string) => void
+  /** A job with a check became a quick goal; show the Goals tab. */
+  onGoal?: () => void
 }): React.JSX.Element {
   const [prompt, setPrompt] = useState('')
+  const [check, setCheck] = useState('')
   const [jobType, setJobType] = useState<JobType>('planning')
   const [worker, setWorker] = useState<PlanChoice>('auto')
   const [access, setAccess] = useState<JobAccess>(loadAccess)
@@ -379,6 +383,19 @@ function JobsPanel({
         if (submitErrorText !== null) setSubmitError(submitErrorText)
         return
       }
+      if (check.trim() !== '' && isRepo) {
+        // A check makes it a quick goal: it runs now, and if the check fails a fix round waits for you.
+        await window.api.createGoal({
+          text,
+          check,
+          quickType: jobType,
+          quickAccess: access === 'read' ? 'edit' : access
+        })
+        setPrompt('')
+        setCheck('')
+        onGoal?.()
+        return
+      }
       const provider = worker === 'auto' ? undefined : worker
       const job = await window.api.submitJob(jobType, text, provider, isRepo ? access : 'read')
       setPrompt('')
@@ -436,6 +453,17 @@ function JobsPanel({
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={onPromptKeyDown}
           />
+          {isRepo ? (
+            <input
+              className="composer-check"
+              value={check}
+              maxLength={2000}
+              placeholder="Check, optional: e.g. pnpm test -- auth. Fix rounds until it passes, asking you each time."
+              aria-label="Check command"
+              disabled={worker === 'both'}
+              onChange={(event) => setCheck(event.target.value)}
+            />
+          ) : null}
           <div className="composer-foot">
             <div className="composer-tools">
               <label htmlFor="job-type">Job type</label>

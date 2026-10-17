@@ -166,7 +166,16 @@ const MIGRATIONS: string[] = [
       ALTER TABLE jobs ADD COLUMN heartbeat_at INTEGER;
       ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
     `,
-  'ALTER TABLE chats ADD COLUMN direct TEXT;'
+  'ALTER TABLE chats ADD COLUMN direct TEXT;',
+  `
+      CREATE TABLE goals (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX goals_project ON goals (project, updated_at);
+    `
 ]
 
 /**
@@ -547,6 +556,36 @@ export class Store {
 
   deleteRoutine(id: string): void {
     this.db.prepare('DELETE FROM routines WHERE id = ?').run(id)
+  }
+
+  /** A goal as JSON text; the goals module owns its shape. */
+  saveGoal(id: string, project: string, updatedAt: number, data: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO goals (id, project, updated_at, data) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           project = excluded.project,
+           updated_at = excluded.updated_at,
+           data = excluded.data`
+      )
+      .run(id, project, updatedAt, data)
+  }
+
+  /** Newest first. */
+  goals(project: string, limit = 50): string[] {
+    const rows = this.db
+      .prepare('SELECT data FROM goals WHERE project = ? ORDER BY updated_at DESC LIMIT ?')
+      .all(project, limit)
+    return rows.map((row) => String((row as { data: unknown }).data))
+  }
+
+  goal(id: string): string | null {
+    const row = this.db.prepare('SELECT data FROM goals WHERE id = ?').get(id)
+    return row === undefined ? null : String((row as { data: unknown }).data)
+  }
+
+  deleteGoal(id: string): void {
+    this.db.prepare('DELETE FROM goals WHERE id = ?').run(id)
   }
 
   saveJob(project: string, createdAt: number, job: JobRecord): void {

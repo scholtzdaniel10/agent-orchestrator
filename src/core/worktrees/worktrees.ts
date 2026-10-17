@@ -66,9 +66,14 @@ export class Worktrees {
     }
   }
 
+  /**
+   * The worktree for a job, on its own branch from `base` (default the project's HEAD). A goal's
+   * jobs start from the goal's branch, so each round builds on the rounds before it.
+   */
   async create(
     project: string,
-    jobId: string
+    jobId: string,
+    base = 'HEAD'
   ): Promise<{ id: string; path: string; branch: string }> {
     const located = this.locate(idFromJob(jobId))
     const about = await this.info(project)
@@ -79,7 +84,7 @@ export class Worktrees {
     mkdirSync(this.root, { recursive: true })
     try {
       await git(
-        ['-C', project, 'worktree', 'add', '-b', located.branch, located.path, 'HEAD'],
+        ['-C', project, 'worktree', 'add', '-b', located.branch, located.path, base],
         project
       )
     } catch (err) {
@@ -89,6 +94,59 @@ export class Worktrees {
       throw err
     }
     return located
+  }
+
+  /** The branch a worktree id uses. */
+  branchOf(id: string): string {
+    return this.locate(id).branch
+  }
+
+  /**
+   * Applies what worktree `fromId` changed since it left `base` into the folder `target`, staged.
+   * Returns `empty` when there was nothing to bring over.
+   */
+  async applyInto(
+    fromId: string,
+    target: string,
+    base: string
+  ): Promise<{ ok: boolean; empty: boolean; message: string }> {
+    const located = this.locate(fromId)
+    await this.assertWorktree(located)
+    const dir = mkdtempSync(join(tmpdir(), 'orch-fold-'))
+    const file = join(dir, 'change.diff')
+    try {
+      await git(['add', '-A'], located.path)
+      const from = (await git(['merge-base', base, located.branch], located.path)).trim()
+      const patch = await gitBuffer(['diff', '--cached', '--binary', from], located.path)
+      if (patch.length === 0) return { ok: true, empty: true, message: 'no changes' }
+      writeFileSync(file, patch)
+      try {
+        await git(['apply', '--index', '--check', file], target)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const first = message.split(/\r?\n/).find((line) => line.trim() !== '') ?? message
+        return { ok: false, empty: false, message: `does not apply cleanly: ${first}` }
+      }
+      await git(['apply', '--index', file], target)
+      return { ok: true, empty: false, message: 'applied' }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  /** Commits everything in `dir`, as the repository's user or else as Legate. False when clean. */
+  async commitAll(dir: string, message: string): Promise<boolean> {
+    await git(['add', '-A'], dir)
+    const staged = await git(['diff', '--cached', '--name-only'], dir)
+    if (staged.trim() === '') return false
+    let who: string[] = []
+    try {
+      await git(['config', 'user.email'], dir)
+    } catch {
+      who = ['-c', 'user.name=Legate', '-c', 'user.email=legate@localhost']
+    }
+    await git([...who, 'commit', '--no-verify', '-q', '-m', message], dir)
+    return true
   }
 
   /** Every orch worktree id for this project, including ones with no changed files. */

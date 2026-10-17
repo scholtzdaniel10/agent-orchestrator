@@ -575,6 +575,75 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       url: 'https://github.com/acme/agent-orchestrator/pull/1',
       branch: 'orch/pr-merged-aaaaaa'
     }),
+    listGoals: ok([
+      {
+        id: 'g1',
+        project: projectPath,
+        text: 'Login keeps the session after the token refreshes.',
+        check: 'pnpm test -- auth',
+        maxRounds: 5,
+        quick: false,
+        worktree: 'e1e1e1e1',
+        status: 'waiting',
+        rounds: [
+          {
+            n: 1,
+            summary: 'Store the refreshed token and reopen the session',
+            jobs: [{ type: 'debugging', access: 'edit', prompt: 'In src/core/auth/session.ts, after refresh() writes the new token, reopen the session with it.' }],
+            jobIds: ['a1b2c3d4-0000'],
+            problems: [],
+            check: {
+              code: 1,
+              output: 'FAIL src/core/auth/session.test.ts > keeps the session after refresh\nexpected session.token to be "new" but got "old"\n\nTests 1 failed | 41 passed',
+              at: now - 600000
+            }
+          }
+        ],
+        proposal: {
+          summary: 'Fix the test double that still hands out the old token',
+          jobs: [
+            { type: 'debugging', access: 'full', prompt: 'src/core/auth/session.test.ts uses fakeStore() which returns the token captured at creation. Make it read the latest token, then run pnpm test -- auth and report the result.' }
+          ]
+        },
+        question: null,
+        notes: [],
+        outcome: null,
+        createdAt: now - 1800000,
+        updatedAt: now - 300000
+      },
+      {
+        id: 'g2',
+        project: projectPath,
+        text: 'Rename getUser to loadUser everywhere',
+        check: 'pnpm typecheck',
+        maxRounds: 5,
+        quick: true,
+        worktree: 'e2e2e2e2',
+        status: 'done',
+        rounds: [
+          {
+            n: 1,
+            summary: 'Your task',
+            jobs: [{ type: 'refactor', access: 'edit', prompt: 'Rename getUser to loadUser everywhere' }],
+            jobIds: ['b2c3d4e5-0000'],
+            problems: [],
+            check: { code: 0, output: 'tsc --noEmit\n', at: now - 7200000 }
+          }
+        ],
+        proposal: null,
+        question: null,
+        notes: [],
+        outcome: 'The check passed after round 1. Review the goal in Changes.',
+        createdAt: now - 9000000,
+        updatedAt: now - 7200000
+      }
+    ]),
+    createGoal: ok(null),
+    approveGoal: ok(null),
+    answerGoal: ok(null),
+    stopGoal: ok(null),
+    removeGoal: ok(undefined),
+    onGoalUpdate: off,
     popOutPanel: ok(undefined),
     closePanel: ok(undefined),
     poppedPanels: ok(params.has('docks') ? ['lead'] : []),
