@@ -10,6 +10,7 @@
 - `legate goal "<what should be true>" [--check "<command>"] [--rounds N] [--yes]` runs a goal from the command line, and `legate goals` lists them.
 - History explains an empty repository and reads again after merges and finished jobs. The lead reports jobs that ended while another project was open. The goal form can fill in an example.
 - The theme picker moved from the header to Settings → General.
+- The lead knows which project is open. Asked to work on another project, it tells you to open that one first instead of sending the job there. A project with no commits yet says so plainly instead of git's `invalid reference: HEAD`.
 - Worktrees no longer vanish from the sidebar in a narrow window or when a panel is docked under the projects.
 
 ## 1.5.0
