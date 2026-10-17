@@ -53,7 +53,8 @@ function TerminalTabs({
   onSelect,
   onClose,
   onOpen,
-  onPaneLayout
+  onPaneLayout,
+  review
 }: {
   terminals: readonly TerminalInfo[]
   changes: readonly ChangeSet[]
@@ -67,6 +68,7 @@ function TerminalTabs({
   onClose: (id: string) => void
   onOpen: (provider: ProviderId, worktree?: 'new') => void
   onPaneLayout: (layout: PaneLayoutId) => void
+  review?: { label: string; active: boolean; onToggle: () => void }
 }): React.JSX.Element {
   const tabKey = terminals.map((info) => info.id).join('\0')
   const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
@@ -135,6 +137,16 @@ function TerminalTabs({
         })}
       </div>
       <div className="tab-actions">
+        {review !== undefined ? (
+          <button
+            type="button"
+            className={review.active ? 'tab tab-review is-selected' : 'tab tab-review'}
+            aria-pressed={review.active}
+            onClick={review.onToggle}
+          >
+            <span className="tab-label">{review.label}</span>
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn btn-quiet tab-new"

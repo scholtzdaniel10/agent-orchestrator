@@ -13,6 +13,7 @@ import {
   requestLayoutFit,
   type PaneLayoutId
 } from './layout'
+import ReviewPane from './ReviewPane'
 import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
 import type { TerminalBus } from './terminal-bus'
@@ -28,6 +29,10 @@ function errorText(err: unknown): string {
   }
   if (typeof err === 'string') return err
   return 'Request failed'
+}
+
+function reviewTabLabel(change: ChangeSet): string {
+  return `Review +${String(change.insertions)} −${String(change.deletions)}`
 }
 
 function worktreeFlag(): 'new' | undefined {
@@ -73,6 +78,12 @@ function Workers({
   const [focusTick, setFocusTick] = useState(0)
   const openingRef = useRef(false)
   const [seenPlace, setSeenPlace] = useState<number | null>(null)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const reviewChange =
+    selectedWorktree === null
+      ? null
+      : (changes.find((item) => item.id === selectedWorktree && item.files.length > 0) ?? null)
+  const reviewing = reviewChange !== null && reviewingId === reviewChange.id
   const selectionKey = [...selectedWorktrees]
     .map((id) => id ?? '')
     .sort()
@@ -176,6 +187,16 @@ function Workers({
 
   const openWorktree = selectedWorktree ?? worktreeFlag()
 
+  function closeReview(): void {
+    setReviewingId(null)
+  }
+
+  function toggleReview(): void {
+    if (reviewChange === null) return
+    const id = reviewChange.id
+    setReviewingId((current) => (current === id ? null : id))
+  }
+
   return (
     <div className="workers">
       <TerminalTabs
@@ -193,6 +214,15 @@ function Workers({
           void openProvider(provider, openWorktree ?? worktree)
         }}
         onPaneLayout={changePaneLayout}
+        review={
+          reviewChange === null
+            ? undefined
+            : {
+                label: reviewTabLabel(reviewChange),
+                active: reviewing,
+                onToggle: toggleReview
+              }
+        }
       />
       {openError !== null ? (
         <p className="field-error" role="alert">
@@ -201,7 +231,7 @@ function Workers({
       ) : opening ? (
         <p className="hint">Opening terminal…</p>
       ) : null}
-      <div className="workers-stage">
+      <div className={reviewing ? 'workers-stage is-hidden' : 'workers-stage'}>
         {emptyWorkspace ? (
           <div className="workspace-empty">
             <p className="workspace-empty-copy">
@@ -300,6 +330,9 @@ function Workers({
           </div>
         )}
       </div>
+      {reviewing && reviewChange !== null ? (
+        <ReviewPane change={reviewChange} onClose={closeReview} onDone={closeReview} />
+      ) : null}
     </div>
   )
 }
