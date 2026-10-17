@@ -21,6 +21,7 @@ import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
+import { TabIcon } from './TabIcon'
 import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
@@ -1684,6 +1685,7 @@ function App(): React.JSX.Element {
               role="tab"
               className={tabClass(tab, dock, selected)}
               aria-selected={selected}
+              aria-label={DRAWER_TAB_LABELS[tab]}
               aria-keyshortcuts={
                 place >= 0 && place < 9 ? `Control+${String(place + 1)}` : undefined
               }
@@ -1727,7 +1729,8 @@ function App(): React.JSX.Element {
                 onTabKeyDown(event, dock, index)
               }}
             >
-              {DRAWER_TAB_LABELS[tab]}
+              <TabIcon tab={tab} />
+              <span className="tab-label">{DRAWER_TAB_LABELS[tab]}</span>
               {jobsCount > 0 ? <span className="tab-badge">{jobsCount}</span> : null}
               {changeCount > 0 ? <span className="tab-badge">{changeCount}</span> : null}
               {leadDot ? <span className="tab-dot" aria-hidden="true" /> : null}
