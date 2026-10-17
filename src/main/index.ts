@@ -655,6 +655,12 @@ app.whenReady().then(async () => {
     lead.openLatest()
     orch.restore(projectDir())
     lead.noteRestoredJobs(orch.list())
+    const here = new Set(orch.list().map((job) => job.id))
+    for (const [message, job] of missedReports) {
+      if (!here.has(job.id)) continue
+      missedReports.delete(message)
+      lead.catchUp(job)
+    }
   }
 
   try {
@@ -713,7 +719,18 @@ app.whenReady().then(async () => {
   }
 
   const lastStatus = new Map<string, string>()
+  /** Lead turns whose jobs ended in another project; reported when that project opens again. */
+  const missedReports = new Map<string, JobRecord>()
   function publish(job: JobRecord): void {
+    const owner = orch.projectOf(job.id)
+    if (
+      owner !== null &&
+      owner !== projectDir() &&
+      job.leadMessage !== undefined &&
+      (job.status === 'done' || job.status === 'failed')
+    ) {
+      missedReports.set(job.leadMessage, job)
+    }
     // A job starting or ending changes a project's running count in the sidebar.
     if (lastStatus.get(job.id) !== job.status) {
       lastStatus.set(job.id, job.status)

@@ -578,6 +578,11 @@ export class Lead {
     for (const cb of this.listeners) cb(snap, this.chatId)
   }
 
+  /** Report on a turn whose jobs ended while another project was open. */
+  catchUp(job: JobRecord): void {
+    this.onJobUpdate(job)
+  }
+
   private onJobUpdate(job: JobRecord): void {
     const leadMessageId = job.leadMessage
     if (leadMessageId === undefined) return

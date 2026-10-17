@@ -6656,3 +6656,13 @@ label,
   font: inherit;
   font-size: 12px;
 }
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

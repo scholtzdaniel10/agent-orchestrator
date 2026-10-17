@@ -1578,7 +1578,13 @@ function App(): React.JSX.Element {
           />
         )
       case 'history':
-        return shown ? <HistoryPanel where={selectedWorktree} label={filesLabel} /> : null
+        return shown ? (
+          <HistoryPanel
+            where={selectedWorktree}
+            label={filesLabel}
+            refreshKey={`${String(changes.length)}:${String(jobs.filter((job) => job.status === 'done').length)}`}
+          />
+        ) : null
       case 'activity':
         return (
           <FlowView
