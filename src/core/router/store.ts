@@ -175,6 +175,13 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
       );
       CREATE INDEX goals_project ON goals (project, updated_at);
+    `,
+  `
+      CREATE TABLE triggers (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        data TEXT NOT NULL
+      );
     `
 ]
 
@@ -586,6 +593,26 @@ export class Store {
 
   deleteGoal(id: string): void {
     this.db.prepare('DELETE FROM goals WHERE id = ?').run(id)
+  }
+
+  /** A trigger as JSON text; the triggers module owns its shape. */
+  saveTrigger(id: string, project: string, data: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO triggers (id, project, data) VALUES (?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET project = excluded.project, data = excluded.data`
+      )
+      .run(id, project, data)
+  }
+
+  /** Every trigger, of every project. */
+  triggers(): string[] {
+    const rows = this.db.prepare('SELECT data FROM triggers').all()
+    return rows.map((row) => String((row as { data: unknown }).data))
+  }
+
+  deleteTrigger(id: string): void {
+    this.db.prepare('DELETE FROM triggers WHERE id = ?').run(id)
   }
 
   saveJob(project: string, createdAt: number, job: JobRecord): void {

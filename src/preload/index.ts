@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
 import type { CommitDetail, CommitPage } from '../core/history'
 import type { Goal, PlannedJob } from '../core/goals'
+import type { Trigger } from '../core/triggers'
 import type { Routine } from '../core/routines'
 import type {
   AppInfo,
@@ -179,6 +180,37 @@ const api: OrchestratorApi = {
     ipcRenderer.on('goals:update', listener)
     return () => {
       ipcRenderer.removeListener('goals:update', listener)
+    }
+  },
+  listTriggers(): Promise<Trigger[]> {
+    return ipcRenderer.invoke('triggers:list')
+  },
+  addTrigger(input: {
+    kind: string
+    at?: string
+    hours?: number
+    text?: string
+    check?: string
+    maxRounds?: number
+  }): Promise<Trigger> {
+    return ipcRenderer.invoke('triggers:add', input)
+  },
+  toggleTrigger(id: string, enabled: boolean): Promise<Trigger> {
+    return ipcRenderer.invoke('triggers:toggle', id, enabled)
+  },
+  removeTrigger(id: string): Promise<void> {
+    return ipcRenderer.invoke('triggers:remove', id)
+  },
+  runTrigger(id: string): Promise<void> {
+    return ipcRenderer.invoke('triggers:run', id)
+  },
+  onTriggersUpdate(cb: (triggers: Trigger[]) => void): () => void {
+    const listener = (_event: IpcRendererEvent, triggers: Trigger[]): void => {
+      cb(triggers)
+    }
+    ipcRenderer.on('triggers:update', listener)
+    return () => {
+      ipcRenderer.removeListener('triggers:update', listener)
     }
   },
   commitLog(where: string | null, skip: number): Promise<CommitPage> {

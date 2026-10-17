@@ -223,6 +223,9 @@ function GoalsPanel({
       {goal !== null ? (
         <section className="goal-detail" aria-label="Goal">
           <p className="goal-title">{goal.text}</p>
+          {goal.source !== undefined ? (
+            <p className="goal-check">Started by: {goal.source.label}</p>
+          ) : null}
           {goal.check !== null ? (
             <p className="goal-check">
               Check: <code>{goal.check}</code>
@@ -439,7 +442,234 @@ function GoalsPanel({
           ) : null}
         </section>
       ) : null}
+      <TriggersSection />
     </div>
+  )
+}
+
+type Trigger = Awaited<ReturnType<Window['api']['listTriggers']>>[number]
+
+const TRIGGER_LABEL: Record<Trigger['kind'], string> = {
+  daily: 'Every day at a time',
+  hourly: 'Every few hours',
+  'ci-failed': 'CI fails on my pull request',
+  'new-issue': 'A new GitHub issue',
+  'main-broken': 'Tests break on the default branch'
+}
+
+function triggerTitle(trigger: Trigger): string {
+  if (trigger.kind === 'daily') return `Every day at ${trigger.at ?? '?'}`
+  if (trigger.kind === 'hourly') return `Every ${String(trigger.hours ?? 24)} hours`
+  return TRIGGER_LABEL[trigger.kind]
+}
+
+/** Schedules and GitHub watches that start goals; each goal still asks you every round. */
+function TriggersSection(): React.JSX.Element {
+  const [triggers, setTriggers] = useState<Trigger[]>([])
+  const [adding, setAdding] = useState(false)
+  const [kind, setKind] = useState<Trigger['kind']>('daily')
+  const [at, setAt] = useState('07:30')
+  const [hours, setHours] = useState(6)
+  const [text, setText] = useState('')
+  const [check, setCheck] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const scheduled = kind === 'daily' || kind === 'hourly'
+
+  useEffect(() => {
+    let live = true
+    window.api.listTriggers().then(
+      (list) => {
+        if (live) setTriggers(list)
+      },
+      () => {}
+    )
+    const off = window.api.onTriggersUpdate(setTriggers)
+    return () => {
+      live = false
+      off()
+    }
+  }, [])
+
+  async function act(task: () => Promise<unknown>): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await task()
+      setTriggers(await window.api.listTriggers())
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="goal-triggers" aria-label="Triggers">
+      <div className="goal-triggers-head">
+        <h3>Triggers</h3>
+        <button
+          type="button"
+          className="btn btn-quiet btn-compact"
+          onClick={() => {
+            setAdding((on) => !on)
+          }}
+        >
+          {adding ? 'Close' : 'Add trigger'}
+        </button>
+      </div>
+      <p className="hint">
+        Start a goal on a schedule or when GitHub shows a problem. It still waits for your OK each
+        round.
+      </p>
+      {adding ? (
+        <form
+          className="goal-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void act(async () => {
+              await window.api.addTrigger({
+                kind,
+                ...(kind === 'daily' ? { at } : {}),
+                ...(kind === 'hourly' ? { hours } : {}),
+                text,
+                check
+              })
+              setText('')
+              setCheck('')
+              setAdding(false)
+            })
+          }}
+        >
+          <div className="goal-form-foot">
+            <select
+              value={kind}
+              aria-label="When"
+              onChange={(event) => setKind(event.target.value as Trigger['kind'])}
+            >
+              {(Object.keys(TRIGGER_LABEL) as Trigger['kind'][]).map((value) => (
+                <option key={value} value={value}>
+                  {TRIGGER_LABEL[value]}
+                </option>
+              ))}
+            </select>
+            {kind === 'daily' ? (
+              <input
+                type="time"
+                value={at}
+                aria-label="Time"
+                onChange={(event) => setAt(event.target.value)}
+              />
+            ) : null}
+            {kind === 'hourly' ? (
+              <label className="goal-rounds">
+                every
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={hours}
+                  onChange={(event) => setHours(Number(event.target.value) || 1)}
+                />
+                hours
+              </label>
+            ) : null}
+          </div>
+          {kind === 'ci-failed' || kind === 'main-broken' ? (
+            <p className="hint">
+              {kind === 'ci-failed'
+                ? 'Watches your open pull requests from the branch you have checked out; the failing log goes with the goal.'
+                : 'Watches the newest run on the default branch while it is checked out; the failing log goes with the goal.'}
+            </p>
+          ) : null}
+          <textarea
+            rows={2}
+            value={text}
+            placeholder={
+              scheduled
+                ? 'The goal, e.g. Update dependencies, run the tests, and fix what breaks.'
+                : 'Extra instructions, optional.'
+            }
+            aria-label="Goal"
+            onChange={(event) => setText(event.target.value)}
+          />
+          <input
+            value={check}
+            placeholder="Check, optional: e.g. pnpm test"
+            aria-label="Check command"
+            onChange={(event) => setCheck(event.target.value)}
+          />
+          <div className="goal-actions">
+            <button
+              type="submit"
+              className="btn btn-compact"
+              disabled={busy || (scheduled && text.trim() === '')}
+            >
+              Add
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {error !== null ? <p className="field-error">{error}</p> : null}
+      {triggers.length > 0 ? (
+        <ul className="goal-list">
+          {triggers.map((trigger) => (
+            <li key={trigger.id} className="trigger-row">
+              <label className="trigger-on">
+                <input
+                  type="checkbox"
+                  checked={trigger.enabled}
+                  aria-label={`${triggerTitle(trigger)} on`}
+                  onChange={(event) => {
+                    const on = event.target.checked
+                    void act(() => window.api.toggleTrigger(trigger.id, on))
+                  }}
+                />
+              </label>
+              <span className="trigger-text">
+                <span className="trigger-title">{triggerTitle(trigger)}</span>
+                <span className="trigger-sub">
+                  {trigger.text !== '' ? firstLine(trigger.text, 60) : 'no extra instructions'}
+                  {trigger.lastFired !== null
+                    ? ` · last ${new Date(trigger.lastFired).toLocaleString()}`
+                    : ''}
+                </span>
+                {trigger.lastError !== null ? (
+                  <span className="goal-problem">{trigger.lastError}</span>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                className="btn btn-quiet btn-compact"
+                disabled={busy}
+                title={
+                  trigger.kind === 'daily' || trigger.kind === 'hourly'
+                    ? 'Start its goal now'
+                    : 'Look at GitHub now'
+                }
+                onClick={() => {
+                  void act(() => window.api.runTrigger(trigger.id))
+                }}
+              >
+                {trigger.kind === 'daily' || trigger.kind === 'hourly' ? 'Run now' : 'Look now'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-compact"
+                disabled={busy}
+                aria-label={`Remove ${triggerTitle(trigger)}`}
+                onClick={() => {
+                  void act(() => window.api.removeTrigger(trigger.id))
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   )
 }
 

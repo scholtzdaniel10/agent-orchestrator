@@ -11,6 +11,19 @@ import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from '
 import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
 import { Goals, type Goal, type PlannedJob } from '../core/goals'
+import {
+  freshFirings,
+  isDue,
+  isScheduled,
+  isTriggerKind,
+  newTrigger,
+  parseIssues,
+  parsePulls,
+  parseRuns,
+  type Firing,
+  type GithubFacts,
+  type Trigger
+} from '../core/triggers'
 import { History, requireHash } from '../core/history'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
@@ -443,6 +456,201 @@ app.whenReady().then(async () => {
     goals.onJob(job)
   })
 
+  // Triggers start goals: on a schedule, or when GitHub shows a failing PR, a new issue, or a
+  // broken default branch. Every goal they start still waits for the person each round.
+  function readTriggers(): Trigger[] {
+    return shared.triggers().flatMap((raw) => {
+      try {
+        const value = JSON.parse(raw) as Trigger
+        return isTriggerKind(value.kind) ? [value] : []
+      } catch {
+        return []
+      }
+    })
+  }
+
+  function saveTrigger(trigger: Trigger): void {
+    shared.saveTrigger(trigger.id, trigger.project, JSON.stringify(trigger))
+    if (trigger.project === projectDir()) {
+      broadcast(
+        'triggers:update',
+        readTriggers().filter((entry) => entry.project === trigger.project)
+      )
+    }
+  }
+
+  function triggerLabel(trigger: Trigger, firing: Firing | null): string {
+    if (trigger.kind === 'daily') return `Every day at ${trigger.at ?? '?'}`
+    if (trigger.kind === 'hourly') return `Every ${String(trigger.hours ?? 24)} hours`
+    if (firing !== null) return firing.key.startsWith('issue:') ? 'New issue' : 'GitHub failure'
+    return 'GitHub'
+  }
+
+  async function fireTrigger(trigger: Trigger, firing: Firing | null): Promise<void> {
+    const busy = goals
+      .list(trigger.project)
+      .some(
+        (goal) =>
+          goal.source?.id === trigger.id &&
+          goal.status !== 'done' &&
+          goal.status !== 'stopped' &&
+          goal.status !== 'failed'
+      )
+    if (busy && firing === null) return
+    let text = firing?.text ?? trigger.text
+    if (firing?.runId != null) {
+      const log = await runGh(
+        'gh',
+        ['run', 'view', String(firing.runId), '--log-failed'],
+        trigger.project
+      )
+      const tail = log.stdout.slice(-3500).trim()
+      if (tail !== '') text += `\n\nThe end of the failing log:\n${tail}`
+    }
+    trigger.lastFired = Date.now()
+    trigger.lastError = null
+    saveTrigger(trigger)
+    try {
+      await goals.create({
+        project: trigger.project,
+        text,
+        check: trigger.check,
+        maxRounds: trigger.maxRounds,
+        source: { id: trigger.id, label: triggerLabel(trigger, firing) }
+      })
+    } catch (err: unknown) {
+      trigger.lastError = err instanceof Error ? err.message : String(err)
+      saveTrigger(trigger)
+    }
+  }
+
+  async function githubFacts(project: string, kinds: Set<string>): Promise<GithubFacts> {
+    const facts: GithubFacts = {
+      branch: null,
+      defaultBranch: null,
+      pulls: [],
+      issues: [],
+      mainRuns: []
+    }
+    const head = await runGh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], project)
+    const branch = head.stdout.trim()
+    facts.branch = head.code === 0 && branch !== 'HEAD' && branch !== '' ? branch : null
+    const ask = async (args: string[]): Promise<string> => {
+      const result = await runGh('gh', args, project)
+      if (result.code !== 0) {
+        throw new Error(result.stderr.trim().split(/\r?\n/)[0] || 'The GitHub CLI failed.')
+      }
+      return result.stdout
+    }
+    if (kinds.has('ci-failed')) {
+      facts.pulls = parsePulls(
+        await ask([
+          'pr',
+          'list',
+          '--author',
+          '@me',
+          '--state',
+          'open',
+          '--limit',
+          '30',
+          '--json',
+          'number,title,headRefName,headRefOid,statusCheckRollup'
+        ])
+      )
+    }
+    if (kinds.has('new-issue')) {
+      facts.issues = parseIssues(
+        await ask([
+          'issue',
+          'list',
+          '--state',
+          'open',
+          '--limit',
+          '30',
+          '--json',
+          'number,title,body'
+        ])
+      )
+    }
+    if (kinds.has('main-broken')) {
+      const name = (
+        await ask(['repo', 'view', '--json', 'defaultBranchRef', '-q', '.defaultBranchRef.name'])
+      ).trim()
+      facts.defaultBranch = name === '' ? null : name
+      if (facts.defaultBranch !== null) {
+        facts.mainRuns = parseRuns(
+          await ask([
+            'run',
+            'list',
+            '--branch',
+            facts.defaultBranch,
+            '--limit',
+            '5',
+            '--json',
+            'databaseId,name,status,conclusion'
+          ])
+        )
+      }
+    }
+    return facts
+  }
+
+  const lastGithubLook = new Map<string, number>()
+  let watching = false
+  async function watchTriggers(force = false): Promise<void> {
+    if (watching) return
+    watching = true
+    try {
+      const now = Date.now()
+      const all = readTriggers().filter((trigger) => trigger.enabled)
+      for (const trigger of all) {
+        if (isScheduled(trigger.kind) && isDue(trigger, now)) await fireTrigger(trigger, null)
+      }
+      const byProject = new Map<string, Trigger[]>()
+      for (const trigger of all) {
+        if (isScheduled(trigger.kind)) continue
+        byProject.set(trigger.project, [...(byProject.get(trigger.project) ?? []), trigger])
+      }
+      for (const [project, list] of byProject) {
+        if (!force && now - (lastGithubLook.get(project) ?? 0) < 5 * 60_000) continue
+        if (!isFolder(project)) continue
+        lastGithubLook.set(project, now)
+        let facts: GithubFacts
+        try {
+          facts = await githubFacts(project, new Set(list.map((trigger) => trigger.kind)))
+        } catch (err: unknown) {
+          for (const trigger of list) {
+            trigger.lastError = err instanceof Error ? err.message : String(err)
+            saveTrigger(trigger)
+          }
+          continue
+        }
+        for (const trigger of list) {
+          const { fire, seen } = freshFirings(trigger, facts)
+          trigger.seen = seen
+          trigger.primed = true
+          trigger.lastError = null
+          saveTrigger(trigger)
+          const first = fire[0]
+          if (first !== undefined) await fireTrigger(trigger, first)
+        }
+      }
+    } catch (err: unknown) {
+      console.error(err)
+    } finally {
+      watching = false
+    }
+  }
+  const triggerTimer = setInterval(() => {
+    void watchTriggers()
+  }, 60_000)
+  app.on('before-quit', () => {
+    clearInterval(triggerTimer)
+  })
+  setTimeout(() => {
+    void watchTriggers()
+  }, 15_000)
+
   function reloadProjectState(): void {
     lead.openLatest()
     orch.restore(projectDir())
@@ -816,6 +1024,51 @@ app.whenReady().then(async () => {
     const path = picked.filePaths[0]
     if (path === undefined) return null
     return activateProject(path)
+  })
+  ipcMain.handle('triggers:list', () =>
+    readTriggers().filter((trigger) => trigger.project === projectDir())
+  )
+  ipcMain.handle('triggers:add', (_event, input: unknown) => {
+    const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<
+      string,
+      unknown
+    >
+    if (!isTriggerKind(raw.kind)) throw new Error('unknown trigger')
+    const trigger = newTrigger({
+      project: projectDir(),
+      kind: raw.kind,
+      at: typeof raw.at === 'string' ? raw.at : null,
+      hours: typeof raw.hours === 'number' ? raw.hours : null,
+      text: typeof raw.text === 'string' ? raw.text.slice(0, 20_000) : '',
+      check: typeof raw.check === 'string' ? raw.check.slice(0, 2000) : null,
+      maxRounds: typeof raw.maxRounds === 'number' ? raw.maxRounds : undefined,
+      now: Date.now()
+    })
+    saveTrigger(trigger)
+    if (!isScheduled(trigger.kind)) void watchTriggers(true)
+    return trigger
+  })
+  ipcMain.handle('triggers:toggle', (_event, id: unknown, enabled: unknown) => {
+    const trigger = readTriggers().find((entry) => entry.id === id)
+    if (trigger === undefined || typeof enabled !== 'boolean') throw new Error('unknown trigger')
+    trigger.enabled = enabled
+    saveTrigger(trigger)
+    return trigger
+  })
+  ipcMain.handle('triggers:remove', (_event, id: unknown) => {
+    const trigger = readTriggers().find((entry) => entry.id === id)
+    if (trigger === undefined) throw new Error('unknown trigger')
+    shared.deleteTrigger(trigger.id)
+    broadcast(
+      'triggers:update',
+      readTriggers().filter((entry) => entry.project === projectDir())
+    )
+  })
+  ipcMain.handle('triggers:run', async (_event, id: unknown) => {
+    const trigger = readTriggers().find((entry) => entry.id === id)
+    if (trigger === undefined) throw new Error('unknown trigger')
+    if (isScheduled(trigger.kind)) await fireTrigger(trigger, null)
+    else await watchTriggers(true)
   })
   ipcMain.handle('goals:list', () => goals.list(projectDir()))
   ipcMain.handle('goals:create', (_event, input: unknown) => {

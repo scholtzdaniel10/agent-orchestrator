@@ -6595,3 +6595,64 @@ label,
 .goal-answer .btn {
   align-self: flex-start;
 }
+
+/* Triggers under the goals: schedules and GitHub watches. */
+.goal-triggers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.goal-triggers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.goal-triggers-head h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trigger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.trigger-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.trigger-title {
+  font-size: 12px;
+}
+
+.trigger-sub {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goal-form select,
+.goal-form input[type='time'] {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0
+
+- Triggers start goals by themselves: every day at a time, every few hours, when CI fails on your pull request from the branch you have checked out, when a GitHub issue is opened, or when the newest run on the default branch fails. A failing run's log goes with the goal. Every goal they start still waits for your OK each round, and you get a notification.
+- Turning on a GitHub trigger first records what already exists, so old issues do not start goals. A schedule does not start again while its last goal is still open.
+
 ## 1.4.0
 
 - Goals: say what should be true and, optionally, a check command. The lead reads the code and proposes a round of jobs; you approve or edit it; the jobs run, their changes are committed to the goal's own worktree, and the check runs. It repeats, asking you each round, until the check passes, the lead judges it done, the round limit is reached, or the same failure comes twice. The finished goal waits in Changes.
