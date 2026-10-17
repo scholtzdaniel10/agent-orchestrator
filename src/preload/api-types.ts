@@ -19,6 +19,7 @@ import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
 import type { CommitDetail, CommitPage } from '../core/history'
 import type { Goal, PlannedJob } from '../core/goals'
+import type { Trigger } from '../core/triggers'
 import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
 
 /** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
@@ -194,6 +195,21 @@ export interface OrchestratorApi {
   stopGoal(id: string): Promise<Goal>
   removeGoal(id: string): Promise<void>
   onGoalUpdate(cb: (goal: Goal) => void): () => void
+  /** Triggers of the open project: schedules and GitHub watches that start goals. */
+  listTriggers(): Promise<Trigger[]>
+  addTrigger(input: {
+    kind: string
+    at?: string
+    hours?: number
+    text?: string
+    check?: string
+    maxRounds?: number
+  }): Promise<Trigger>
+  toggleTrigger(id: string, enabled: boolean): Promise<Trigger>
+  removeTrigger(id: string): Promise<void>
+  /** A schedule fires now; a GitHub trigger looks now. */
+  runTrigger(id: string): Promise<void>
+  onTriggersUpdate(cb: (triggers: Trigger[]) => void): () => void
   /** Commits of the project (null) or a worktree, newest first, a page at a time. */
   commitLog(where: string | null, skip: number): Promise<CommitPage>
   commitDetail(where: string | null, hash: string): Promise<CommitDetail>

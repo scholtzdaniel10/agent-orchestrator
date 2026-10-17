@@ -52,6 +52,8 @@ export interface Goal {
   notes: string[]
   /** How it ended, or why it is waiting. */
   outcome: string | null
+  /** The trigger that started it, when one did. */
+  source?: { id: string; label: string }
   createdAt: number
   updatedAt: number
 }
@@ -129,6 +131,7 @@ export class Goals {
     check?: string | null
     maxRounds?: number
     quick?: { type: JobType; access: JobAccess }
+    source?: { id: string; label: string }
   }): Promise<Goal> {
     const text = input.text.trim()
     if (text === '') throw new Error('Say what the goal is.')
@@ -151,7 +154,8 @@ export class Goals {
       notes: [],
       outcome: null,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      ...(input.source !== undefined ? { source: input.source } : {})
     }
     this.deps.nameWorktree?.(created.id, input.project, `Goal: ${firstLine(text, 40)}`)
     if (input.quick !== undefined) {
