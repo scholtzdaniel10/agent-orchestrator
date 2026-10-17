@@ -4089,17 +4089,6 @@ button.job-step {
   outline-offset: -1px;
 }
 
-@media (max-width: 1099px) {
-  .project-worktrees {
-    display: none;
-  }
-
-  .project-bar:hover .project-worktrees,
-  .project-bar:focus-within .project-worktrees {
-    display: flex;
-  }
-}
-
 .terminal-window {
   display: flex;
   flex-direction: column;
@@ -6655,4 +6644,557 @@ label,
   color: var(--text);
   font: inherit;
   font-size: 12px;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Task: one "New task" dialog for starting any work */
+.new-task-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+.new-task {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 100%);
+  margin: auto;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.new-task-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-task-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.new-task-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.new-task textarea,
+.new-task-field input,
+.new-task-field select,
+.new-task-count input,
+.new-task-rounds input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.new-task textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.new-task textarea::placeholder,
+.new-task input::placeholder {
+  color: var(--faint);
+}
+
+.new-task-field select,
+.new-task-count input,
+.new-task-rounds input {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.new-task-who {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.new-task-how {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-task-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.new-task-choice.is-selected {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+
+.new-task-choice:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.new-task-choice.is-selected:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.new-task-choice:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: var(--bg);
+  color: var(--faint);
+}
+
+.new-task-choice.is-selected:disabled {
+  border-color: var(--accent);
+}
+
+.new-task-choice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.new-task-choice-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.new-task-choice-detail {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.new-task-choice-hint {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.new-task-count,
+.new-task-rounds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.new-task-count input,
+.new-task-rounds input {
+  width: 64px;
+}
+
+.new-task-field input.new-task-check {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.new-task-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.new-task-foot .hint {
+  flex: 1 1 180px;
+  font-size: 12px;
+}
+
+.new-task-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Task: an Orca-style left sidebar */
+.sidebar-top {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.sidebar-switcher {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 4px 8px 2px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-switcher:hover,
+.sidebar-switcher:focus-visible {
+  background: var(--raised);
+}
+
+.sidebar-switcher:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: -1px;
+}
+
+.sidebar-switcher .star-mark {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text);
+}
+
+.sidebar-switcher-chevron {
+  flex: none;
+  margin-top: 2px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.sidebar-new-task {
+  width: 100%;
+  gap: 6px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.sidebar-new-task:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  opacity: 0.92;
+}
+
+.sidebar-new-task:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-stretch: 75%;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sidebar-nav-row:hover,
+.sidebar-nav-row:focus-visible {
+  outline: none;
+  background: var(--raised);
+  color: var(--text);
+}
+
+.sidebar-nav-count {
+  margin-left: auto;
+  min-width: 1.25em;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  background: var(--selected);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.sidebar-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 132px;
+  overflow: hidden;
+}
+
+.sidebar-scroll .project-worktrees {
+  flex: 1;
+  max-height: none;
+}
+
+/* Chats give up their room before the worktrees do, e.g. when a panel is docked under the projects. */
+.sidebar-chats {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 220px;
+  overflow: hidden;
+}
+
+.sidebar-chats .project-chat-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.sidebar-chats-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sidebar-chats-toggle:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.sidebar-chats-chevron {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.worktree-primary {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-stretch: 75%;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* Icons on the panel tabs (Orca-style rail) */
+.drawer-tabs {
+  container-type: inline-size;
+}
+
+.drawer-tabs .tab {
+  gap: 6px;
+}
+
+.tab-icon {
+  display: block;
+  flex: none;
+}
+
+@container (max-width: 620px) {
+  .drawer-tabs .tab-label {
+    display: none;
+  }
+
+  .drawer-tabs .tab,
+  .dock .drawer-tabs .tab {
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 3px;
+    min-width: min-content;
+    height: 36px;
+    padding: 0 2px;
+  }
+
+  .drawer-tabs .tab-dot,
+  .drawer-tabs .tab-popped {
+    margin-left: 0;
+  }
+}
+
+/* Task: review a task's change in the middle, beside its terminals */
+.tab-review {
+  flex: 0 0 auto;
+  max-width: none;
+  min-width: 0;
+}
+
+.tab-review.is-selected {
+  box-shadow: inset 0 -2px 0 var(--text);
+}
+
+.workers-stage.is-hidden {
+  display: none;
+}
+
+.review-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.review-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.review-summary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.review-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.review-branch {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.review-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.review-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.review-confirm-copy {
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.review-pane .change-files {
+  max-height: none;
+  overflow: visible;
+}
+
+.review-file {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-file:hover {
+  background: var(--raised);
+}
+
+.review-diff {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.review-pane .diff-block {
+  flex: none;
+  min-height: 0;
+  overflow: visible;
 }

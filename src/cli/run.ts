@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mergeListedChanges } from '../core/changes'
+import type { Goal, PlannedJob } from '../core/goals'
 import { assertWorktreeIdle } from '../core/worktree-guard'
 import type { JobRecord, JobStep, WorkerInfo } from '../core/router/orchestrator'
 import type { Routine } from '../core/routines'
@@ -19,11 +20,14 @@ import { parseArgs, type Parsed } from './args'
 import {
   changeCells,
   changeFooter,
+  checkReport,
   footerLine,
+  goalCells,
   headerLine,
   jobCells,
   oneSentence,
   planLine,
+  proposalText,
   stepLine,
   table
 } from './format'
@@ -112,6 +116,21 @@ export interface CliContext {
       body: string
     ) => Promise<{ url: string; branch: string }>
   }
+  goals: CliGoals
+}
+
+export interface CliGoals {
+  list(project: string): Goal[]
+  create(input: {
+    project: string
+    text: string
+    check?: string | null
+    maxRounds?: number
+  }): Promise<Goal>
+  approve(id: string, jobs?: PlannedJob[]): Goal
+  answer(id: string, text: string): Goal
+  stop(id: string): Goal
+  onUpdate(cb: (goal: Goal) => void): () => void
 }
 
 interface RunFlags {
@@ -168,6 +187,8 @@ async function dispatch(parsed: Parsed, ctx: CliContext): Promise<number> {
   if (command === 'pr') return openPr(parsed, ctx)
   if (command === 'worktree') return worktree(parsed, ctx)
   if (command === 'routine') return routine(parsed, ctx)
+  if (command === 'goal') return runGoal(parsed, ctx)
+  if (command === 'goals') return listGoals(parsed, ctx)
   ctx.stderr(`Unknown command "${command ?? ''}".\n${usageFor(null)}\n`)
   return 2
 }
@@ -467,6 +488,239 @@ async function routineRun(parsed: Parsed, ctx: CliContext): Promise<number> {
   }
   await ctx.orch.init()
   return follow(ctx, () => ctx.routines.run(routineId), runFlags(parsed))
+}
+
+async function runGoal(parsed: Parsed, ctx: CliContext): Promise<number> {
+  if (parsed.args.length > 1) {
+    unexpected(parsed.args.slice(1), 'goal', ctx)
+    return 2
+  }
+  const text = parsed.args[0]
+  if (text === undefined) {
+    ctx.stderr(`Missing goal.\n${usageFor('goal')}\n`)
+    return 2
+  }
+  if (text.trim() === '') {
+    ctx.stderr(`Say what the goal is.\n${usageFor('goal')}\n`)
+    return 2
+  }
+  const rounds = parseRounds(parsed.flags.rounds)
+  if (rounds === null) {
+    ctx.stderr(`Rounds must be a whole number from 1 to 20.\n${usageFor('goal')}\n`)
+    return 2
+  }
+  await ctx.orch.init()
+  return followGoal(ctx, parsed.flags.yes, () =>
+    ctx.goals.create({
+      project: ctx.project,
+      text: text.trim(),
+      ...(parsed.flags.check !== undefined ? { check: parsed.flags.check } : {}),
+      maxRounds: rounds
+    })
+  )
+}
+
+function listGoals(parsed: Parsed, ctx: CliContext): number {
+  if (unexpected(parsed.args, 'goals', ctx)) return 2
+  const rows = ctx.goals
+    .list(ctx.project)
+    .slice()
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  if (rows.length === 0) {
+    ctx.stderr('No goals yet. Start one with: legate goal "<what you want>"\n')
+    return 0
+  }
+  ctx.stdout(
+    `${table(
+      rows.map((goal) =>
+        goalCells({
+          status: goal.status,
+          used: goal.rounds.length,
+          max: goal.maxRounds,
+          text: goal.text
+        })
+      )
+    )}\n`
+  )
+  return 0
+}
+
+function parseRounds(value: string | undefined): number | null {
+  if (value === undefined) return 5
+  if (!/^[1-9]\d{0,8}$/.test(value)) return null
+  const rounds = Number(value)
+  if (rounds > 20) return null
+  return rounds
+}
+
+function approvePrompt(round: number): string {
+  return `Approve round ${String(round)}? [y] yes  [n] stop  or type a note to plan again: `
+}
+
+async function followGoal(
+  ctx: CliContext,
+  autoYes: boolean,
+  begin: () => Promise<Goal>
+): Promise<number> {
+  const inbox: Goal[] = []
+  let currentId: string | null = null
+  let resolveWait: ((goal: Goal) => void) | null = null
+  let rejectWait: (err: unknown) => void = () => {}
+  let sigints = 0
+  let seenPlan = -1
+  let seenProposal = ''
+  let seenQuestion = ''
+  const seenChecks = new Set<number>()
+  const printed = new Set<string>()
+  const headers = new Set<string>()
+  const closed = new Set<string>()
+  const opened = new Map<string, number>()
+
+  const push = (goal: Goal): void => {
+    if (currentId !== null && goal.id !== currentId) return
+    inbox.push(goal)
+    if (resolveWait === null) return
+    const resolve = resolveWait
+    resolveWait = null
+    rejectWait = () => {}
+    const next = inbox.shift()
+    if (next !== undefined) resolve(next)
+  }
+
+  const take = (): Promise<Goal> => {
+    const next = inbox.shift()
+    if (next !== undefined) return Promise.resolve(next)
+    return new Promise((resolve, reject) => {
+      resolveWait = resolve
+      rejectWait = reject
+    })
+  }
+
+  const renderJob = (job: JobRecord): void => {
+    if (currentId === null || job.goal !== currentId) return
+    if (!opened.has(job.id)) opened.set(job.id, ctx.now())
+    const pending = (job.steps ?? []).filter((step) => {
+      if (printed.has(step.id)) return false
+      return stepLine(step, false, false) !== null
+    })
+    const terminal = job.status === 'done' || job.status === 'failed'
+    if (!headers.has(job.id) && (job.model !== undefined || terminal || pending.length > 0)) {
+      headers.add(job.id)
+      ctx.stdout(`${headerLine(job, ctx.color)}\n`)
+    }
+    for (const step of pending) {
+      printed.add(step.id)
+      const line = stepLine(step, false, ctx.color)
+      if (line !== null) ctx.stdout(`${line}\n`)
+    }
+    if (!terminal || closed.has(job.id)) return
+    closed.add(job.id)
+    writeBlock(ctx, job.output)
+    const elapsed = ctx.now() - (opened.get(job.id) ?? ctx.now())
+    if (job.status === 'done' || job.status === 'failed') {
+      ctx.stdout(`${footerLine(job.status, elapsed, job.error, ctx.color)}\n`)
+    }
+  }
+
+  const printCheck = (goal: Goal): void => {
+    const round = goal.rounds[goal.rounds.length - 1]
+    if (round === undefined || round.check === null || seenChecks.has(round.n)) return
+    seenChecks.add(round.n)
+    ctx.stdout(`${checkReport(round.check.code, round.check.output)}\n`)
+  }
+
+  const react = async (goal: Goal): Promise<number | null> => {
+    printCheck(goal)
+    if (goal.status !== 'planning') seenPlan = -1
+    if (!(goal.status === 'waiting' && goal.proposal !== null)) seenProposal = ''
+    if (!(goal.status === 'waiting' && goal.question !== null)) seenQuestion = ''
+
+    if (goal.status === 'done' || goal.status === 'stopped' || goal.status === 'failed') {
+      if (goal.outcome !== null && goal.outcome !== '') ctx.stdout(`${goal.outcome}\n`)
+      if (sigints > 0) return 130
+      return goal.status === 'done' ? 0 : 1
+    }
+
+    if (goal.status === 'planning') {
+      const n = goal.rounds.length + 1
+      if (seenPlan !== n) {
+        seenPlan = n
+        ctx.stdout(`Planning round ${String(n)}…\n`)
+      }
+      return null
+    }
+
+    if (goal.status === 'waiting' && goal.proposal !== null) {
+      const jobs = goal.proposal.jobs
+      const key = `${String(goal.rounds.length)}:${goal.proposal.summary}:${jobs
+        .map((job) => `${job.type}:${job.access}:${job.prompt}`)
+        .join('\n')}`
+      if (seenProposal === key) return null
+      seenProposal = key
+      const round = goal.rounds.length + 1
+      ctx.stdout(`${proposalText(round, goal.proposal.summary, jobs)}\n`)
+      if (!autoYes && !ctx.stdin.isTTY) {
+        ctx.stderr(
+          'Refusing to approve a round without --yes when input is not a terminal. Use --yes, or the app.\n'
+        )
+        return 2
+      }
+      if (autoYes) {
+        ctx.goals.approve(goal.id)
+        return null
+      }
+      const answer = (await ctx.stdin.ask(approvePrompt(round))).trim()
+      const word = answer.toLowerCase()
+      if (word === 'y' || word === 'yes') ctx.goals.approve(goal.id)
+      else if (word === 'n' || word === 'no' || answer === '') ctx.goals.stop(goal.id)
+      else ctx.goals.answer(goal.id, answer)
+      return null
+    }
+
+    if (goal.status === 'waiting' && goal.question !== null) {
+      if (seenQuestion === goal.question) return null
+      seenQuestion = goal.question
+      ctx.stdout(`${goal.question}\n`)
+      const answer = (await ctx.stdin.ask('Answer, or press enter to stop: ')).trim()
+      if (answer === '') ctx.goals.stop(goal.id)
+      else ctx.goals.answer(goal.id, answer)
+      return null
+    }
+
+    return null
+  }
+
+  const unsubGoal = ctx.goals.onUpdate(push)
+  const unsubJob = ctx.orch.onUpdate(renderJob)
+  ctx.onSigint(() => {
+    sigints += 1
+    if (currentId !== null && sigints === 1) {
+      try {
+        ctx.goals.stop(currentId)
+      } catch {
+        // Already finished, or the goal is gone.
+      }
+    }
+    if (sigints >= 2 || currentId === null) {
+      ctx.exitNow(130)
+      rejectWait(new ImmediateExit(130))
+    }
+  })
+
+  try {
+    const created = await begin()
+    currentId = created.id
+    let latest: Goal | undefined = created
+    while (latest !== undefined) {
+      const code = await react(latest)
+      if (code !== null) return code
+      latest = await take()
+    }
+    return 1
+  } finally {
+    unsubGoal()
+    unsubJob()
+  }
 }
 
 async function follow(ctx: CliContext, begin: () => JobRecord, flags: RunFlags): Promise<number> {

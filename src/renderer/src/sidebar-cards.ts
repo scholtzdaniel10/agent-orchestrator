@@ -11,7 +11,7 @@ export interface SidebarOptions {
 }
 
 export const DEFAULT_OPTIONS: SidebarOptions = {
-  groupBy: 'none',
+  groupBy: 'status',
   sortBy: 'created',
   layout: 'detailed',
   hideClean: false
@@ -83,15 +83,16 @@ export function arrangeCards(
     }
     return a.createdIndex - b.createdIndex
   })
-  const pinned = shown.filter((card) => card.pinned)
-  const rest = shown.filter((card) => !card.pinned)
+  // The project folder is the primary card, so it always leads the pinned group.
+  const pinned = shown.filter((card) => card.pinned || card.key === null)
+  const rest = shown.filter((card) => !card.pinned && card.key !== null)
   const groups: CardGroup[] = []
   if (pinned.length > 0) groups.push({ label: 'Pinned', cards: pinned })
   if (options.groupBy === 'status') {
     const buckets: [string, (card: Card) => boolean][] = [
-      ['Working', (card) => card.status === 'working'],
-      ['Needs a look', (card) => card.status === 'unread'],
-      ['Ready for review', (card) => card.status === 'idle' && card.hasChanges],
+      ['In progress', (card) => card.status === 'working'],
+      ['Needs you', (card) => card.status === 'unread'],
+      ['Ready to review', (card) => card.status === 'idle' && card.hasChanges],
       ['Quiet', (card) => card.status === 'idle' && !card.hasChanges]
     ]
     for (const [label, test] of buckets) {

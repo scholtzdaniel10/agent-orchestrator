@@ -1,7 +1,7 @@
 {
   "rules": {
     "planning": ["claude", "cursor"],
-    "debugging": ["claude", "cursor"],
+    "debugging": ["cursor", "claude"],
     "review": ["claude", "cursor"],
     "refactor": ["cursor", "claude"],
     "boilerplate": ["cursor", "claude"]

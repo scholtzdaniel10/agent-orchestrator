@@ -5,6 +5,8 @@ export interface Flags {
   limit?: string
   body?: string
   project?: string
+  check?: string
+  rounds?: string
   json: boolean
   quiet: boolean
   verbose: boolean
@@ -25,7 +27,16 @@ export interface Parsed {
 export type ParseResult =
   { ok: true; parsed: Parsed } | { ok: false; message: string; command: string | null }
 
-const VALUE_FLAGS = new Set(['type', 'worker', 'access', 'limit', 'body', 'project'])
+const VALUE_FLAGS = new Set([
+  'type',
+  'worker',
+  'access',
+  'limit',
+  'body',
+  'project',
+  'check',
+  'rounds'
+])
 const BOOL_FLAGS = new Set(['json', 'quiet', 'verbose', 'yes', 'help', 'version'])
 const GLOBAL_FLAGS = new Set(['project', 'help', 'version'])
 const NONE = new Set<string>()
@@ -35,6 +46,8 @@ const ALLOWED: Record<string, Set<string>> = {
   status: NONE,
   job: new Set(['type', 'worker', 'access', 'json', 'quiet', 'verbose']),
   jobs: new Set(['limit']),
+  goal: new Set(['check', 'rounds', 'yes']),
+  goals: NONE,
   show: NONE,
   changes: NONE,
   diff: NONE,
@@ -160,12 +173,16 @@ export function parseArgs(argv: string[]): ParseResult {
   const limit = values.get('limit')
   const body = values.get('body')
   const project = values.get('project')
+  const check = values.get('check')
+  const rounds = values.get('rounds')
   if (type !== undefined) flags.type = type
   if (worker !== undefined) flags.worker = worker
   if (access !== undefined) flags.access = access
   if (limit !== undefined) flags.limit = limit
   if (body !== undefined) flags.body = body
   if (project !== undefined) flags.project = project
+  if (check !== undefined) flags.check = check
+  if (rounds !== undefined) flags.rounds = rounds
 
   return { ok: true, parsed: { ...split, flags } }
 }

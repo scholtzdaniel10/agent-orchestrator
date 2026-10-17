@@ -21,9 +21,11 @@ import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
+import { TabIcon } from './TabIcon'
 import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
+import NewTaskDialog from './NewTaskDialog'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -62,7 +64,7 @@ import {
   type SizeKey
 } from './layout'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
-import { THEMES, applyTheme, isThemeId, loadTheme, type ThemeId } from './theme'
+import { applyTheme, loadTheme, type ThemeId } from './theme'
 
 export { RayBurst, Star } from './Star'
 
@@ -502,6 +504,9 @@ function App(): React.JSX.Element {
   // The first start of an install always opens Setup, so a new person sees what Legate needs and
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
+  /** Goals waiting for the person: a proposed round or a question. */
+  const [goalsWaiting, setGoalsWaiting] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsNonce, setSettingsNonce] = useState(0)
 
@@ -895,6 +900,47 @@ function App(): React.JSX.Element {
     window.addEventListener('keydown', onNewWindow, true)
     return () => {
       window.removeEventListener('keydown', onNewWindow, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    const track = (goal: { id: string; status: string }): void => {
+      setGoalsWaiting((prev) => {
+        const waiting = goal.status === 'waiting'
+        if (waiting === prev.has(goal.id)) return prev
+        const next = new Set(prev)
+        if (waiting) next.add(goal.id)
+        else next.delete(goal.id)
+        return next
+      })
+    }
+    window.api.listGoals().then(
+      (list) => {
+        if (!live) return
+        setGoalsWaiting(
+          new Set(list.filter((goal) => goal.status === 'waiting').map((goal) => goal.id))
+        )
+      },
+      () => {}
+    )
+    const off = window.api.onGoalUpdate(track)
+    return () => {
+      live = false
+      off()
+    }
+  }, [project?.path])
+
+  useEffect(() => {
+    function onNewTaskKey(event: KeyboardEvent): void {
+      if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
+      if (event.key.toLowerCase() !== 'n') return
+      event.preventDefault()
+      setNewTaskOpen(true)
+    }
+    window.addEventListener('keydown', onNewTaskKey)
+    return () => {
+      window.removeEventListener('keydown', onNewTaskKey)
     }
   }, [])
 
@@ -1578,7 +1624,13 @@ function App(): React.JSX.Element {
           />
         )
       case 'history':
-        return shown ? <HistoryPanel where={selectedWorktree} label={filesLabel} /> : null
+        return shown ? (
+          <HistoryPanel
+            where={selectedWorktree}
+            label={filesLabel}
+            refreshKey={`${String(changes.length)}:${String(jobs.filter((job) => job.status === 'done').length)}`}
+          />
+        ) : null
       case 'activity':
         return (
           <FlowView
@@ -1633,6 +1685,7 @@ function App(): React.JSX.Element {
               role="tab"
               className={tabClass(tab, dock, selected)}
               aria-selected={selected}
+              aria-label={DRAWER_TAB_LABELS[tab]}
               aria-keyshortcuts={
                 place >= 0 && place < 9 ? `Control+${String(place + 1)}` : undefined
               }
@@ -1676,7 +1729,8 @@ function App(): React.JSX.Element {
                 onTabKeyDown(event, dock, index)
               }}
             >
-              {DRAWER_TAB_LABELS[tab]}
+              <TabIcon tab={tab} />
+              <span className="tab-label">{DRAWER_TAB_LABELS[tab]}</span>
               {jobsCount > 0 ? <span className="tab-badge">{jobsCount}</span> : null}
               {changeCount > 0 ? <span className="tab-badge">{changeCount}</span> : null}
               {leadDot ? <span className="tab-dot" aria-hidden="true" /> : null}
@@ -1848,30 +1902,6 @@ function App(): React.JSX.Element {
           >
             Window
           </button>
-          <div className="theme-picker">
-            <label htmlFor="app-theme">
-              <span className="visually-hidden">Theme</span>
-              <span className="theme-picker-label" aria-hidden="true">
-                Theme
-              </span>
-            </label>
-            <select
-              id="app-theme"
-              value={theme}
-              onChange={(event) => {
-                const next = event.target.value
-                if (!isThemeId(next)) return
-                applyTheme(next)
-                setTheme(next)
-              }}
-            >
-              {THEMES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <button
             type="button"
             className="btn btn-quiet btn-compact"
@@ -1932,6 +1962,19 @@ function App(): React.JSX.Element {
                 }}
                 onSelectWorktree={selectWorktree}
                 onSelectAllWorktrees={selectAllWorktrees}
+                onNewTask={() => {
+                  setNewTaskOpen(true)
+                }}
+                onOpenGoals={() => {
+                  openPanel('goals')
+                }}
+                onOpenAutomations={() => {
+                  openPanel('goals')
+                  requestAnimationFrame(() => {
+                    document.querySelector('.goal-triggers')?.scrollIntoView({ block: 'start' })
+                  })
+                }}
+                goalsNeedingYou={goalsWaiting.size}
                 onCreateWorktree={(name, count, start, prompt) => {
                   void createWorktree(name, count, start, prompt)
                 }}
@@ -2040,6 +2083,21 @@ function App(): React.JSX.Element {
         {dropZone('right')}
       </div>
       {tabMenuNode}
+      <NewTaskDialog
+        open={newTaskOpen}
+        onClose={() => {
+          setNewTaskOpen(false)
+        }}
+        isRepo={project?.isRepo === true}
+        claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
+        cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
+        onStartTerminal={(text, provider, count) => {
+          void createWorktree(undefined, count, provider, text)
+        }}
+        onCreated={(kind) => {
+          openPanel(kind === 'goal' ? 'goals' : 'jobs')
+        }}
+      />
       <footer className="status-bar">
         {(plans ?? EMPTY_PLANS).map((plan) => {
           const label = planBarLabel(plan, now)

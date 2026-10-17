@@ -185,7 +185,19 @@ function GoalsPanel({
           </div>
           <p className="hint">
             The lead plans each round and waits for your OK. Changes collect in one worktree for you
-            to review in Changes.
+            to review in Changes.{' '}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setText(
+                  'Add a short CONTRIBUTING.md that explains how to install, run and test this project, based on what the code actually uses.'
+                )
+                setRounds(2)
+              }}
+            >
+              Fill in an example
+            </button>
           </p>
         </form>
       ) : null}

@@ -133,6 +133,47 @@ const scenes = {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })()`
   },
+  'new-task': {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      const box = document.getElementById('new-task-text')
+      if (box) {
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+        set.call(box, 'Fix the off-by-one in the pager and add a test')
+        box.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    })()`
+  },
+  review: {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const deadline = Date.now() + 4000
+      let row = null
+      while (Date.now() < deadline) {
+        row = [...document.querySelectorAll('.project-worktree-row')].find((el) => (el.textContent || '').includes('split router'))
+        if (row) break
+        await wait(50)
+      }
+      row?.click()
+      let review = null
+      while (Date.now() < deadline + 4000) {
+        review = document.querySelector('.tab-review')
+        if (review) break
+        await wait(50)
+      }
+      review?.click()
+      await wait(3000)
+    })()`
+  },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
   goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
   'drag-zones': {

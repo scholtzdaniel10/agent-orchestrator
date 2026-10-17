@@ -44,6 +44,16 @@ function folderName(path: string): string {
   return trimmed.slice(index + 1)
 }
 
+function projectChoiceLabel(entry: ProjectEntry): string {
+  const name = folderName(entry.path)
+  if (entry.active) return name
+  const extra: string[] = []
+  if (entry.running > 0) extra.push(`${String(entry.running)} running`)
+  if (entry.changes > 0) extra.push(`${String(entry.changes)} changes`)
+  if (extra.length === 0) return name
+  return `${name} · ${extra.join(' · ')}`
+}
+
 function relativeAge(updatedAt: number, now: number): string {
   const delta = Math.max(0, now - updatedAt)
   const minutes = Math.floor(delta / 60_000)
@@ -408,6 +418,7 @@ function WorktreeCard({
             >
               {card.title}
             </span>
+            {card.key === null ? <span className="worktree-primary">primary</span> : null}
             {card.pinned ? (
               <span className="worktree-pin" aria-label="pinned" title="Pinned">
                 ▲
@@ -1173,7 +1184,11 @@ function ProjectBar({
   activity,
   onReveal,
   onRevealProject,
-  onOpenSettings
+  onOpenSettings,
+  onNewTask,
+  onOpenGoals,
+  onOpenAutomations,
+  goalsNeedingYou
 }: {
   projects: ProjectEntry[]
   chats: LeadChat[]
@@ -1214,6 +1229,11 @@ function ProjectBar({
   /** Open a listed project's folder in the file manager. */
   onRevealProject: (path: string) => void
   onOpenSettings: () => void
+  onNewTask?: () => void
+  onOpenGoals?: () => void
+  onOpenAutomations?: () => void
+  /** Goals waiting on the person. A badge shows when this is greater than zero. */
+  goalsNeedingYou?: number
 }): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [options, setOptions] = useState<SidebarOptions>(() =>
@@ -1224,12 +1244,14 @@ function ProjectBar({
     path: string
     at: { x: number; y: number }
   } | null>(null)
+  const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null)
+  const [chatsOpen, setChatsOpen] = useState(() => readJson('legate.sidebar.chatsOpen') !== false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const chatsPanelId = useId()
   const needle = search.trim().toLowerCase()
-  const shownProjects =
-    needle === ''
-      ? projects
-      : projects.filter((entry) => entry.active || entry.path.toLowerCase().includes(needle))
+  const activeProject = projects.find((entry) => entry.active)
+  const switcherName = activeProject === undefined ? 'No project' : folderName(activeProject.path)
+  const goalCount = goalsNeedingYou ?? 0
   const shown = chats
     .filter((chat) => needle === '' || chat.title.toLowerCase().includes(needle))
     .slice(0, 30)
@@ -1385,45 +1407,147 @@ function ProjectBar({
     }
   }
 
+  function openGithub(): void {
+    if (!githubOpen) setReposLoading(true)
+    setGithubOpen(true)
+  }
+
+  function toggleChats(): void {
+    const next = !chatsOpen
+    setChatsOpen(next)
+    writeJson('legate.sidebar.chatsOpen', next)
+  }
+
+  function switcherEntries(): MenuEntry[] {
+    const choices: MenuEntry[] = projects.map((entry) => ({
+      label: projectChoiceLabel(entry),
+      checked: entry.active ? true : undefined,
+      onSelect: () => {
+        if (!entry.active) onSwitch(entry.path)
+      }
+    }))
+    const actions: MenuEntry[] = [
+      {
+        label: 'Open folder…',
+        separator: projects.length > 0,
+        onSelect: () => {
+          onAdd()
+        }
+      }
+    ]
+    if (githubAvailable) {
+      actions.push({
+        label: 'Clone from GitHub…',
+        onSelect: () => {
+          openGithub()
+        }
+      })
+    }
+    actions.push({
+      label: 'Reveal in file manager',
+      disabled: activeProject === undefined,
+      onSelect: () => {
+        if (activeProject !== undefined) onRevealProject(activeProject.path)
+      }
+    })
+    return [...choices, ...actions]
+  }
+
   return (
-    <aside className="project-bar" aria-labelledby="projects-heading">
-      <div className="panel-head">
-        <div className="panel-title">
+    <aside className="project-bar" aria-label="Projects">
+      <div className="sidebar-top">
+        <button
+          type="button"
+          className="sidebar-switcher"
+          title={activeProject?.path ?? 'Open a folder'}
+          aria-haspopup="menu"
+          aria-expanded={switcherAt !== null}
+          onClick={(event) => {
+            setProjectMenu(null)
+            setOptionsAt(null)
+            const rect = event.currentTarget.getBoundingClientRect()
+            setSwitcherAt({ x: rect.left, y: rect.bottom })
+          }}
+          onContextMenu={(event) => {
+            if (activeProject === undefined) return
+            event.preventDefault()
+            setSwitcherAt(null)
+            setOptionsAt(null)
+            setProjectMenu({
+              path: activeProject.path,
+              at: { x: event.clientX, y: event.clientY }
+            })
+          }}
+          onKeyDown={(event) => {
+            if (activeProject === undefined) return
+            if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
+            event.preventDefault()
+            setSwitcherAt(null)
+            const rect = event.currentTarget.getBoundingClientRect()
+            setProjectMenu({
+              path: activeProject.path,
+              at: { x: rect.left, y: rect.bottom }
+            })
+          }}
+        >
           <Star size={12} />
-          <h2 id="projects-heading">Projects</h2>
-        </div>
-        <div className="head-actions">
+          <FolderGlyph />
+          <span className="project-row-body">
+            <span className="project-name">{switcherName}</span>
+            {activeProject !== undefined ? (
+              <span className="project-row-meta">
+                {activeProject.isRepo && activeProject.branch !== null ? (
+                  <span className="project-branch">{activeProject.branch}</span>
+                ) : (
+                  <span className="project-note">not a git repository</span>
+                )}
+              </span>
+            ) : null}
+            {activeProject !== undefined ? <ProjectStatus entry={activeProject} /> : null}
+            {activeProject !== undefined && (busy || activeProject.running > 0) ? (
+              <span className="status status-running project-row-run">
+                <span className="status-dot" aria-hidden="true" />
+                running
+              </span>
+            ) : null}
+          </span>
+          <span className="sidebar-switcher-chevron" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+        <button
+          type="button"
+          className="btn sidebar-new-task"
+          onClick={() => {
+            onNewTask?.()
+          }}
+        >
+          <span className="sidebar-new-task-plus" aria-hidden="true">
+            +
+          </span>
+          New task
+        </button>
+        <nav className="sidebar-nav" aria-label="Sidebar">
           <button
             type="button"
-            className="btn btn-quiet btn-compact project-add"
-            onClick={onAdd}
-            aria-label="Add folder"
-            title="Add folder"
+            className="sidebar-nav-row"
+            onClick={() => {
+              onOpenGoals?.()
+            }}
           >
-            <span className="project-add-label">Add folder</span>
-            <span className="project-add-glyph" aria-hidden="true">
-              +
-            </span>
+            <span>Goals</span>
+            {goalCount > 0 ? <span className="sidebar-nav-count">{String(goalCount)}</span> : null}
           </button>
-          {githubAvailable ? (
-            <button
-              type="button"
-              className="btn btn-quiet btn-compact project-github"
-              onClick={() => {
-                setReposLoading(!githubOpen)
-                setGithubOpen(!githubOpen)
-              }}
-              aria-label="From GitHub"
-              title="From GitHub"
-              aria-expanded={githubOpen}
-            >
-              <span className="project-github-label">From GitHub</span>
-              <span className="project-github-glyph" aria-hidden="true">
-                ↓
-              </span>
-            </button>
-          ) : null}
-        </div>
+          <button
+            type="button"
+            className="sidebar-nav-row"
+            onClick={() => {
+              onOpenAutomations?.()
+            }}
+          >
+            Automations
+          </button>
+        </nav>
       </div>
       <div className="project-search-row">
         <input
@@ -1453,6 +1577,8 @@ function ProjectBar({
           aria-expanded={optionsAt !== null}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
+            setSwitcherAt(null)
+            setProjectMenu(null)
             setOptionsAt({ x: rect.left, y: rect.bottom })
           }}
         >
@@ -1471,6 +1597,16 @@ function ProjectBar({
           entries={optionEntries()}
           onClose={() => {
             setOptionsAt(null)
+          }}
+        />
+      ) : null}
+      {switcherAt !== null ? (
+        <SidebarMenu
+          label="Projects"
+          at={switcherAt}
+          entries={switcherEntries()}
+          onClose={() => {
+            setSwitcherAt(null)
           }}
         />
       ) : null}
@@ -1502,135 +1638,71 @@ function ProjectBar({
           }}
         />
       ) : null}
-      <ul className="project-list">
-        {shownProjects.map((entry) => {
-          const name = folderName(entry.path)
-          const active = entry.active
-          return (
-            <li
-              key={entry.path}
-              className={active ? 'project-item is-open' : 'project-item'}
-              onContextMenu={(event) => {
-                if (
-                  event.target instanceof Element &&
-                  event.target.closest('.project-worktrees, .project-chats')
-                )
-                  return
-                event.preventDefault()
-                setProjectMenu({ path: entry.path, at: { x: event.clientX, y: event.clientY } })
-              }}
+      <div className="sidebar-scroll">
+        {activeProject !== undefined && activeProject.isRepo ? (
+          <WorktreesSection
+            project={activeProject.path}
+            activity={activity}
+            options={options}
+            filter={search}
+            onReveal={onReveal}
+            branch={activeProject.branch}
+            changes={changes}
+            jobs={jobs}
+            terminals={terminals}
+            selectedWorktrees={selectedWorktrees}
+            claudeAvailable={claudeAvailable}
+            cursorAvailable={cursorAvailable}
+            onSelect={onSelectWorktree}
+            onSelectAll={onSelectAllWorktrees}
+            onCreate={onCreateWorktree}
+            onRename={onRenameWorktree}
+            onDiscard={onDiscardWorktree}
+            onOpen={onOpenInWorktree}
+          />
+        ) : null}
+      </div>
+      {activeProject !== undefined ? (
+        <div className="project-chats sidebar-chats">
+          <div className="project-chats-head">
+            <button
+              type="button"
+              className="sidebar-chats-toggle"
+              aria-expanded={chatsOpen}
+              aria-controls={chatsPanelId}
+              onClick={toggleChats}
             >
-              <button
-                type="button"
-                className={`project-row${active ? ' is-selected' : ''}`}
-                title={entry.path}
-                aria-label={name}
-                aria-current={active ? 'true' : undefined}
-                onClick={() => {
-                  if (!active) onSwitch(entry.path)
-                }}
-              >
-                <span className="project-chevron" aria-hidden="true">
-                  {active ? '▾' : '▸'}
-                </span>
-                <FolderGlyph />
-                <span className="project-row-body">
-                  <span className="project-name">{name}</span>
-                  <span className="project-row-meta">
-                    {entry.isRepo && entry.branch !== null ? (
-                      <span className="project-branch">{entry.branch}</span>
-                    ) : (
-                      <span className="project-note">not a git repository</span>
-                    )}
-                  </span>
-                  <ProjectStatus entry={entry} />
-                  {(active && busy) || entry.running > 0 ? (
-                    <span className="status status-running project-row-run">
-                      <span className="status-dot" aria-hidden="true" />
-                      running
-                    </span>
-                  ) : null}
-                </span>
-                {entry.changes > 0 ? (
-                  <span
-                    className="project-row-changes"
-                    aria-label={`${String(entry.changes)} changes waiting`}
-                  >
-                    {entry.changes}
-                  </span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                className="project-remove"
-                aria-label={`Actions for ${name}`}
-                title="More actions"
-                aria-haspopup="menu"
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  setProjectMenu({ path: entry.path, at: { x: rect.left, y: rect.bottom } })
-                }}
-              >
-                <MoreGlyph />
-              </button>
-              {active ? (
-                <div className="project-children">
-                  {entry.isRepo ? (
-                    <WorktreesSection
-                      project={entry.path}
-                      activity={activity}
-                      options={options}
-                      filter={search}
-                      onReveal={onReveal}
-                      branch={entry.branch}
-                      changes={changes}
-                      jobs={jobs}
-                      terminals={terminals}
-                      selectedWorktrees={selectedWorktrees}
-                      claudeAvailable={claudeAvailable}
-                      cursorAvailable={cursorAvailable}
-                      onSelect={onSelectWorktree}
-                      onSelectAll={onSelectAllWorktrees}
-                      onCreate={onCreateWorktree}
-                      onRename={onRenameWorktree}
-                      onDiscard={onDiscardWorktree}
-                      onOpen={onOpenInWorktree}
-                    />
-                  ) : null}
-                  {
-                    <div className="project-chats">
-                      <div className="project-chats-head">
-                        <span className="project-chats-label">Chats</span>
-                        <button
-                          type="button"
-                          className="btn btn-quiet btn-compact"
-                          disabled={leadBusy || !chats.some((chat) => chat.active)}
-                          onClick={onNewChat}
-                        >
-                          New chat
-                        </button>
-                      </div>
-                      <ul className="project-chat-list">
-                        {shown.map((chat) => (
-                          <ChatRow
-                            key={chat.id}
-                            chat={chat}
-                            leadBusy={leadBusy}
-                            now={now}
-                            onOpen={onOpenChat}
-                            onRename={onRenameChat}
-                            onRemove={onRemoveChat}
-                          />
-                        ))}
-                      </ul>
-                    </div>
-                  }
-                </div>
-              ) : null}
-            </li>
-          )
-        })}
-      </ul>
+              <span className="sidebar-chats-chevron" aria-hidden="true">
+                {chatsOpen ? '▾' : '▸'}
+              </span>
+              <span className="project-chats-label">Chats</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              disabled={leadBusy || !chats.some((chat) => chat.active)}
+              onClick={onNewChat}
+            >
+              New chat
+            </button>
+          </div>
+          {chatsOpen ? (
+            <ul className="project-chat-list" id={chatsPanelId}>
+              {shown.map((chat) => (
+                <ChatRow
+                  key={chat.id}
+                  chat={chat}
+                  leadBusy={leadBusy}
+                  now={now}
+                  onOpen={onOpenChat}
+                  onRename={onRenameChat}
+                  onRemove={onRemoveChat}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       {error !== null ? (
         <p className="field-error project-error" role="alert">
           {error}

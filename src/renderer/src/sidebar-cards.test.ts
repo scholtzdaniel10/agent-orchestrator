@@ -61,28 +61,48 @@ test('arrange: filter, hide clean, sort, pinned first and status groups', () => 
   const titles = (groups: ReturnType<typeof arrangeCards>): string[][] =>
     groups.map((group) => group.cards.map((card) => card.title))
 
+  expect(DEFAULT_OPTIONS.groupBy).toBe('status')
   expect(titles(arrangeCards(cards, DEFAULT_OPTIONS, 'ALP'))).toEqual([['alpha']])
   expect(titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, hideClean: true }, ''))).toEqual([
-    ['pinned'],
-    ['main', 'beta', 'alpha']
+    ['main', 'pinned'],
+    ['alpha'],
+    ['beta']
   ])
-  expect(titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, sortBy: 'name' }, ''))[1]).toEqual([
-    'alpha',
-    'beta',
-    'clean',
-    'main'
+  expect(
+    titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, groupBy: 'none', sortBy: 'name' }, ''))
+  ).toEqual([
+    ['main', 'pinned'],
+    ['alpha', 'beta', 'clean']
   ])
   expect(titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, sortBy: 'recent' }, ''))[1]?.[0]).toBe(
     'alpha'
   )
-  const byStatus = arrangeCards(cards, { ...DEFAULT_OPTIONS, groupBy: 'status' }, '')
+  const byStatus = arrangeCards(cards, DEFAULT_OPTIONS, '')
   expect(byStatus.map((group) => group.label)).toEqual([
     'Pinned',
-    'Needs a look',
-    'Ready for review',
+    'Needs you',
+    'Ready to review',
     'Quiet'
   ])
-  expect(arrangeCards(cards.slice(0, 2), DEFAULT_OPTIONS, '')[0]?.label).toBeNull()
+  expect(
+    arrangeCards(cards.slice(1, 2), { ...DEFAULT_OPTIONS, groupBy: 'none' }, '')[0]?.label
+  ).toBeNull()
+  const working = arrangeCards(
+    [
+      cardStatus(
+        input({ key: null, title: 'main', createdIndex: 0, jobRunning: true }),
+        {},
+        10_000
+      ),
+      cardStatus(input({ key: 'w', title: 'busy', createdIndex: 1, jobRunning: true }), {}, 10_000)
+    ],
+    DEFAULT_OPTIONS,
+    ''
+  )
+  expect(working.map((group) => [group.label, group.cards.map((card) => card.title)])).toEqual([
+    ['Pinned', ['main']],
+    ['In progress', ['busy']]
+  ])
 })
 
 test('readOptions falls back to defaults for junk', () => {
