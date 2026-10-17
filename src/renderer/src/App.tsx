@@ -24,6 +24,7 @@ import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
+import NewTaskDialog from './NewTaskDialog'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -502,6 +503,7 @@ function App(): React.JSX.Element {
   // The first start of an install always opens Setup, so a new person sees what Legate needs and
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsNonce, setSettingsNonce] = useState(0)
 
@@ -895,6 +897,19 @@ function App(): React.JSX.Element {
     window.addEventListener('keydown', onNewWindow, true)
     return () => {
       window.removeEventListener('keydown', onNewWindow, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    function onNewTaskKey(event: KeyboardEvent): void {
+      if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
+      if (event.key.toLowerCase() !== 'n') return
+      event.preventDefault()
+      setNewTaskOpen(true)
+    }
+    window.addEventListener('keydown', onNewTaskKey)
+    return () => {
+      window.removeEventListener('keydown', onNewTaskKey)
     }
   }, [])
 
@@ -2022,6 +2037,21 @@ function App(): React.JSX.Element {
         {dropZone('right')}
       </div>
       {tabMenuNode}
+      <NewTaskDialog
+        open={newTaskOpen}
+        onClose={() => {
+          setNewTaskOpen(false)
+        }}
+        isRepo={project?.isRepo === true}
+        claudeAvailable={plans?.some((plan) => plan.id === 'claude' && plan.available) === true}
+        cursorAvailable={plans?.some((plan) => plan.id === 'cursor' && plan.available) === true}
+        onStartTerminal={(text, provider, count) => {
+          void createWorktree(undefined, count, provider, text)
+        }}
+        onCreated={(kind) => {
+          openPanel(kind === 'goal' ? 'goals' : 'jobs')
+        }}
+      />
       <footer className="status-bar">
         {(plans ?? EMPTY_PLANS).map((plan) => {
           const label = planBarLabel(plan, now)

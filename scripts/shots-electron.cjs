@@ -133,6 +133,23 @@ const scenes = {
       await new Promise((resolve) => setTimeout(resolve, 300))
     })()`
   },
+  'new-task': {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      const box = document.getElementById('new-task-text')
+      if (box) {
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+        set.call(box, 'Fix the off-by-one in the pager and add a test')
+        box.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    })()`
+  },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
   goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
   'drag-zones': {

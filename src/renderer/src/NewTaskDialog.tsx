@@ -61,7 +61,10 @@ function NewTaskDialogOpen(props: Omit<NewTaskDialogProps, 'open'>): React.JSX.E
   const textRef = useRef<HTMLTextAreaElement>(null)
   const sending = useRef(false)
   const [text, setText] = useState('')
-  const [who, setWho] = useState<Who>(DEFAULT_WHO)
+  // Cursor first for coding, unless only Claude is signed in.
+  const [who, setWho] = useState<Who>(() =>
+    !props.cursorAvailable && props.claudeAvailable ? 'claude' : DEFAULT_WHO
+  )
   const [howChoice, setHowChoice] = useState<How>(DEFAULT_HOW)
   const [count, setCount] = useState(DEFAULT_COUNT)
   const [kind, setKind] = useState<JobKind>(DEFAULT_KIND)
