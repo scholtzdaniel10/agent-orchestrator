@@ -6666,3 +6666,198 @@ label,
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Task: one "New task" dialog for starting any work */
+.new-task-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+.new-task {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 100%);
+  margin: auto;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.new-task-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-task-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.new-task-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.new-task textarea,
+.new-task-field input,
+.new-task-field select,
+.new-task-count input,
+.new-task-rounds input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.new-task textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.new-task textarea::placeholder,
+.new-task input::placeholder {
+  color: var(--faint);
+}
+
+.new-task-field select,
+.new-task-count input,
+.new-task-rounds input {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.new-task-who {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.new-task-how {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-task-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.new-task-choice.is-selected {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+
+.new-task-choice:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.new-task-choice.is-selected:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.new-task-choice:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: var(--bg);
+  color: var(--faint);
+}
+
+.new-task-choice.is-selected:disabled {
+  border-color: var(--accent);
+}
+
+.new-task-choice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.new-task-choice-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.new-task-choice-detail {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.new-task-choice-hint {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.new-task-count,
+.new-task-rounds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.new-task-count input,
+.new-task-rounds input {
+  width: 64px;
+}
+
+.new-task-field input.new-task-check {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.new-task-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.new-task-foot .hint {
+  flex: 1 1 180px;
+  font-size: 12px;
+}
+
+.new-task-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  margin-left: auto;
+}
