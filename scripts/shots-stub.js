@@ -589,12 +589,20 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           {
             n: 1,
             summary: 'Store the refreshed token and reopen the session',
-            jobs: [{ type: 'debugging', access: 'edit', prompt: 'In src/core/auth/session.ts, after refresh() writes the new token, reopen the session with it.' }],
+            jobs: [
+              {
+                type: 'debugging',
+                access: 'edit',
+                prompt:
+                  'In src/core/auth/session.ts, after refresh() writes the new token, reopen the session with it.'
+              }
+            ],
             jobIds: ['a1b2c3d4-0000'],
             problems: [],
             check: {
               code: 1,
-              output: 'FAIL src/core/auth/session.test.ts > keeps the session after refresh\nexpected session.token to be "new" but got "old"\n\nTests 1 failed | 41 passed',
+              output:
+                'FAIL src/core/auth/session.test.ts > keeps the session after refresh\nexpected session.token to be "new" but got "old"\n\nTests 1 failed | 41 passed',
               at: now - 600000
             }
           }
@@ -602,7 +610,12 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         proposal: {
           summary: 'Fix the test double that still hands out the old token',
           jobs: [
-            { type: 'debugging', access: 'full', prompt: 'src/core/auth/session.test.ts uses fakeStore() which returns the token captured at creation. Make it read the latest token, then run pnpm test -- auth and report the result.' }
+            {
+              type: 'debugging',
+              access: 'full',
+              prompt:
+                'src/core/auth/session.test.ts uses fakeStore() which returns the token captured at creation. Make it read the latest token, then run pnpm test -- auth and report the result.'
+            }
           ]
         },
         question: null,
@@ -624,7 +637,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           {
             n: 1,
             summary: 'Your task',
-            jobs: [{ type: 'refactor', access: 'edit', prompt: 'Rename getUser to loadUser everywhere' }],
+            jobs: [
+              { type: 'refactor', access: 'edit', prompt: 'Rename getUser to loadUser everywhere' }
+            ],
             jobIds: ['b2c3d4e5-0000'],
             problems: [],
             check: { code: 0, output: 'tsc --noEmit\n', at: now - 7200000 }
