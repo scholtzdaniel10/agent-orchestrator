@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#d6262e"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="360" fill="#040408"/>
+  <rect x="12" y="12" width="1256" height="336" fill="none" stroke="#d6262e" stroke-width="1" opacity="0.5"/>
+
+  <g font-family="'Segoe UI', system-ui, sans-serif" text-anchor="middle">
+    <g>
+      <rect x="40" y="110" width="190" height="96" fill="#14080a" stroke="#d6262e" stroke-width="1.5"/>
+      <text x="135" y="150" fill="#f2f2f2" font-size="22">You</text>
+      <text x="135" y="180" fill="#b9a3a4" font-size="16">a goal and a check</text>
+    </g>
+    <g>
+      <rect x="290" y="110" width="190" height="96" fill="#14080a" stroke="#d6262e" stroke-width="1.5"/>
+      <text x="385" y="150" fill="#f2f2f2" font-size="22">The lead plans</text>
+      <text x="385" y="180" fill="#b9a3a4" font-size="16">reads the code</text>
+    </g>
+    <g>
+      <rect x="540" y="110" width="190" height="96" fill="#d6262e"/>
+      <text x="635" y="150" fill="#f2f2f2" font-size="22">You approve</text>
+      <text x="635" y="180" fill="#f8d9da" font-size="16">or edit the round</text>
+    </g>
+    <g>
+      <rect x="790" y="110" width="190" height="96" fill="#14080a" stroke="#d6262e" stroke-width="1.5"/>
+      <text x="885" y="150" fill="#f2f2f2" font-size="22">Agents work</text>
+      <text x="885" y="180" fill="#b9a3a4" font-size="16">each in a worktree</text>
+    </g>
+    <g>
+      <rect x="1040" y="110" width="200" height="96" fill="#14080a" stroke="#d6262e" stroke-width="1.5"/>
+      <text x="1140" y="150" fill="#f2f2f2" font-size="22">The check runs</text>
+      <text x="1140" y="180" fill="#b9a3a4" font-size="16">pnpm test, say</text>
+    </g>
+  </g>
+
+  <g stroke="#d6262e" stroke-width="2" fill="none">
+    <path d="M232 158H286" marker-end="url(#arrow)"/>
+    <path d="M482 158H536" marker-end="url(#arrow)"/>
+    <path d="M732 158H786" marker-end="url(#arrow)"/>
+    <path d="M982 158H1036" marker-end="url(#arrow)"/>
+    <path d="M1140 208V290H385V212" marker-end="url(#arrow)"/>
+  </g>
+  <g font-family="'Segoe UI', system-ui, sans-serif" font-size="17">
+    <text x="762" y="318" fill="#b9a3a4" text-anchor="middle">fails: the next round, with the failure in hand</text>
+    <text x="1236" y="80" fill="#f2f2f2" text-anchor="end">passes: done, waiting in Changes</text>
+    <path d="M1140 106V90" stroke="#d6262e" stroke-width="2" marker-end="url(#arrow)"/>
+  </g>
+  <text x="40" y="56" fill="#f2f2f2" font-family="'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif" font-size="28" letter-spacing="2">A goal, round by round</text>
+</svg>

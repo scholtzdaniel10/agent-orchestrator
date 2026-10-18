@@ -17,6 +17,8 @@ const FULL = [
   'legate worktree path <change-id-or-name>',
   'legate routine list',
   'legate routine run "<name>" [--json] [--quiet] [--verbose]',
+  'legate goal "<text>" [--check "<command>"] [--rounds N] [--yes]',
+  'legate goals',
   'legate --help',
   'legate --version'
 ].join('\n')
@@ -38,7 +40,9 @@ const LINE: Record<string, string> = {
   'worktree path': 'legate worktree path <change-id-or-name>',
   routine: 'legate routine list | run "<name>" [--json] [--quiet] [--verbose]',
   'routine list': 'legate routine list',
-  'routine run': 'legate routine run "<name>" [--json] [--quiet] [--verbose]'
+  'routine run': 'legate routine run "<name>" [--json] [--quiet] [--verbose]',
+  goal: 'legate goal "<text>" [--check "<command>"] [--rounds N] [--yes]',
+  goals: 'legate goals'
 }
 
 export function usageFor(key: string | null): string {

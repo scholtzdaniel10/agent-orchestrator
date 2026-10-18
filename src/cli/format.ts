@@ -245,6 +245,48 @@ export function oneSentence(err: unknown): string {
   return (line ?? 'Something went wrong.').trim()
 }
 
+export function goalCells(input: {
+  status: string
+  used: number
+  max: number
+  text: string
+}): string[] {
+  const line = input.text.trim().split(/\r?\n/)[0] ?? ''
+  return [input.status, `${String(input.used)}/${String(input.max)}`, line]
+}
+
+/** Round summary, then each job's type, access, and the first lines of its prompt. */
+export function proposalText(
+  round: number,
+  summary: string,
+  jobs: { type: string; access: string; prompt: string }[]
+): string {
+  const lines = [`Round ${String(round)}: ${summary}`]
+  for (const job of jobs) {
+    lines.push(`${job.type} · ${job.access}`)
+    const preview = promptPreview(job.prompt)
+    if (preview !== '') lines.push(preview)
+  }
+  return lines.join('\n')
+}
+
+export function checkReport(code: number | null, output: string): string {
+  const head = code === 0 ? 'Check passed' : `Check failed (exit ${String(code)})`
+  const lines = output.split(/\r?\n/)
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  return [head, ...lines.slice(-15)].join('\n')
+}
+
+function promptPreview(prompt: string): string {
+  const lines = prompt.replace(/\s+$/g, '').split(/\r?\n/)
+  const shown = lines.slice(0, 3).map((line) => {
+    const trimmed = line.trimEnd()
+    return trimmed.length > 200 ? `${trimmed.slice(0, 199)}…` : trimmed
+  })
+  if (lines.length > 3) shown.push('…')
+  return shown.join('\n')
+}
+
 function visibleWidth(text: string): number {
   const ansi = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g')
   return text.replace(ansi, '').length

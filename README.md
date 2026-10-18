@@ -6,11 +6,28 @@ In the Roman army a **legate** was the officer a general sent to act in his name
 
 Legate does that for your coding work. You give one order. It hands the work to agents running on the AI plans you already pay for, keeps each of them in its own camp so they do not trample each other, and reports back with every step in the open.
 
-It is a desktop app (Electron + TypeScript) with a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
+It is a desktop app (Electron + TypeScript) with a terminal UI and a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
+
+## Why Legate
+
+- **No API bill.** Legate drives the Claude Code and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Cursor first; planning and review to Claude.
+- **Nothing is a black box.** Every file an agent reads, every edit and every command appears as it happens, in the app, the terminal UI and the command line.
+- **Agentic, with you in charge.** Give a goal and, if you like, a check such as `pnpm test`. Legate plans a round, runs agents in parallel worktrees, folds their work together and runs the check, asking you before every round. Triggers start goals on a schedule, or when CI fails, an issue is opened, or your default branch breaks.
+
+|                                 | One agent CLI on its own   | With Legate                                     |
+| ------------------------------- | -------------------------- | ----------------------------------------------- |
+| Plans used                      | One                        | Claude and Cursor together, routed by allowance |
+| Several agents at once          | One terminal each, by hand | Each in its own worktree, side by side          |
+| Seeing what agents do           | Scroll each terminal       | Every step of every agent in one place          |
+| Keep going until the tests pass | You re-prompt              | Goals: rounds you approve, a check after each   |
+| Work that starts itself         | No                         | Triggers: schedules, CI failures, new issues    |
+| Review and merge                | Git by hand                | Diffs per worktree, merge with one click        |
+
+![A goal, round by round: you give a goal and a check, the lead plans, you approve, agents work in worktrees, the check runs; a failure starts the next round, a pass ends it](docs/goal-loop.png)
 
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 1.0.0, Windows only. Unit-tested throughout, and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, routines, worktrees, terminals restored after a restart, the command line and the app sharing jobs, and the terminal UI. Not yet checked: a pull request against real GitHub, the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 1.6, Windows. Unit-tested throughout (570 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
 
 ## The chain of command
 
@@ -25,20 +42,20 @@ It is a desktop app (Electron + TypeScript) with a command line beside it. It ru
 
 ## How it works
 
-- **The window is a workspace.** Projects and worktrees sit on the left, agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity and the commit history with its branch graph (`Ctrl+1` to `Ctrl+8`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance and what is running.
+- **The window is a workspace.** The sidebar has a project switcher, **New task** (`Ctrl+N`), Goals, Automations, and your worktrees as cards grouped by state: in progress, needs you, ready to review. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance and what is running.
 - **The lead.** You talk to one lead. It splits your request into jobs, hands them to workers, and reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
 - **Workers and access.** You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
 - **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
 - **Worktrees.** Any job or terminal that may change files works in its own git worktree. Create one from the sidebar with a name and a **task**, and the agent in it starts working at once; ask for several and you get several agents on the same task. Select one or many to see their terminals together.
 - **Terminals.** A terminal is a full Claude or Cursor session you talk to directly, shown in a grid of up to six panes. A terminal can move into a window of its own, and open terminals come back after a restart with their conversation.
 - **Files.** The panel shows the files of the selected project or worktree, marks what changed, and previews a file or its diff. It reads and opens files; it never writes them.
-- **Changes.** You review a worktree's diff, then merge it as staged changes, discard it, or open a pull request through `gh`. A worktree cannot be merged or discarded while a job is still running in it.
+- **Changes.** Pick a worktree and open **Review** beside its terminals, or use the Changes tab. You read its diff, then merge it as staged changes, discard it, or open a pull request through `gh`. A worktree cannot be merged or discarded while a job is still running in it.
 - **Routines and setup.** A routine is a saved job you run with one click, or after every job of a kind you choose. Setup commands (for example `pnpm install`) run in each worktree you create by hand, in a terminal you can watch.
 - **Goals.** Say what should be true, and optionally a check such as `pnpm test`. The lead proposes each round of jobs and waits for your OK; changes collect in one worktree, the check runs after every round, and it stops when the check passes, at the round limit, or when the same failure repeats. A job with a check is a small goal: it fixes until the check passes. Triggers start goals on a schedule, or when CI fails on your pull request, an issue is opened, or the default branch breaks.
 - **Skills.** Every agent Legate starts gets Legate's own skills: worktree rules and a read-only `legate` CLI for workers, how to delegate for the lead, and how to review a change for both. Add your own skill folders in Settings → Skills. They load only into Legate's agents, never into your other Claude or Cursor sessions.
-- **The router.** A rule table and how much allowance each plan has left decide who gets a job. If a plan reports its limit, it rests and its queued jobs move to the other plan.
+- **The router.** A rule table and how much allowance each plan has left decide who gets a job. Coding work goes to Cursor first; planning and review go to Claude. If a plan reports its limit, it rests and its queued jobs move to the other plan.
 - **Compare.** Send the same prompt to both plans, read the results side by side, keep one.
-- **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in the header.
+- **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in Settings → General.
 
 Everything runs locally, per person. There is no server and no account.
 
@@ -91,6 +108,8 @@ legate discard <change-id>
 legate pr "<title>" [--body "<text>"]
 legate worktree create [name] | list | path <change-id-or-name>
 legate routine list | run "<name>"
+legate goal "<what should be true>" [--check "<command>"] [--rounds N] [--yes]
+legate goals                 goals in this project
 ```
 
 In a checkout, run `pnpm cli -- status`. In an installed copy, add the app's `resources\bin` folder to PATH.

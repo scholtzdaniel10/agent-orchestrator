@@ -78,14 +78,17 @@ function Graph({
 /** Commits of the selected project or worktree, with a branch graph, like VS Code's. */
 function HistoryPanel({
   where,
-  label
+  label,
+  refreshKey = ''
 }: {
   where: string | null
   label: string
+  /** Changes when work lands (a merge, a finished job), so the log reads again. */
+  refreshKey?: string
 }): React.JSX.Element {
   // Each result remembers the request it answers, so a stale one is ignored instead of reset.
   const [nonce, setNonce] = useState(0)
-  const key = `${where ?? ''}|${String(nonce)}`
+  const key = `${where ?? ''}|${String(nonce)}|${refreshKey}`
   const [log, setLog] = useState<{
     key: string
     commits: Commit[]
@@ -210,7 +213,10 @@ function HistoryPanel({
       {error !== null ? <p className="files-error">{error}</p> : null}
       {commits === null && error === null ? <p className="files-status">Loading history…</p> : null}
       {commits !== null && commits.length === 0 ? (
-        <p className="files-status">No commits yet.</p>
+        <p className="files-status">
+          This repository has no commits yet. Commit your files (git add, then git commit) and they
+          show here.
+        </p>
       ) : null}
       <ol className={selected === null ? 'history-list' : 'history-list is-split'}>
         {(commits ?? []).map((commit, index) => {

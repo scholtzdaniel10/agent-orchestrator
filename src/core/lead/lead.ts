@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
 import type {
   AgentEvent,
   BridgeInfo,
@@ -16,8 +17,14 @@ import type { Store } from '../router/store'
 export const LEAD_INSTRUCTIONS: string = [
   'You are the lead of a small team of coding agents. Do not do the work yourself: split the user\'s request into independent jobs and hand each one to a worker with the send_job tool of the orchestrator MCP server. Pick the job type that fits (planning, debugging, review, refactor or boilerplate); the router chooses which worker runs it. Each job prompt must be self-contained, because the worker sees nothing else. A worker\'s access is read, edit, or full, and cannot go above the ceiling the person set (see list_workers). Pass access: "read" to only read files (the default); access: "edit" to change files in a separate worktree the user reviews and merges themselves; access: "full" to change files and run commands there. Use edit or full only when the request asks for code or files to be changed.',
   'Send every job with send_job, then stop. Do not wait for results: never call get_result to block until a job finishes. You may use get_status to inspect the board, including jobs the user started directly, and list_workers only if you need to know who is available. After sending, tell the user in one or two lines what you sent and to whom.',
-  'If the request is a simple question you can answer in one sentence without a worker, just answer it. The app will prompt you again later with worker results when you need to report them.'
+  'If the request is a simple question you can answer in one sentence without a worker, just answer it. The app will prompt you again later with worker results when you need to report them.',
+  'Every job runs in the open project named at the top of each message. If the person asks for work in a different project or folder, do not send a job: tell them in one line to open that project in the sidebar first, then ask again. If a job fails, report its error as it is and do not guess at causes you have not checked.'
 ].join('\n\n')
+
+export function projectLine(path: string): string {
+  if (path === '') return ''
+  return `Open project: ${basename(path)} (${path})`
+}
 
 const REPORT_OUTPUT_MAX = 4000
 
@@ -346,7 +353,7 @@ export class Lead {
     this.persistChat()
   }
 
-  private planFor(text: string): Plan | null {
+  private planFor(text: string, userRequest = true): Plan | null {
     if (this.direct !== null) {
       const resume = this.sessionProvider === this.direct ? this.sessionId : undefined
       if (resume === undefined) {
@@ -355,15 +362,23 @@ export class Lead {
       }
       return { provider: this.direct, resume, prompt: text }
     }
+    const line = userRequest ? projectLine(this.project()) : ''
     if (this.sessionProvider !== null && this.sessionId) {
-      return { provider: this.sessionProvider, resume: this.sessionId, prompt: text }
+      return {
+        provider: this.sessionProvider,
+        resume: this.sessionId,
+        prompt: line === '' ? text : `${line}\n\n${text}`
+      }
     }
     const provider = this.chooseProvider()
     if (!provider) return null
     return {
       provider,
       resume: undefined,
-      prompt: `${LEAD_INSTRUCTIONS}\n\nUser request:\n${text}`
+      prompt:
+        line === ''
+          ? `${LEAD_INSTRUCTIONS}\n\nUser request:\n${text}`
+          : `${LEAD_INSTRUCTIONS}\n\n${line}\n\nUser request:\n${text}`
     }
   }
 
@@ -419,7 +434,7 @@ export class Lead {
 
     try {
       this.followPreference()
-      const plan = this.planFor(text)
+      const plan = this.planFor(text, lead.kind !== 'report')
       if (!plan) {
         lead.status = 'error'
         lead.text = this.direct === null ? NO_PLAN : `${this.direct} is not available right now.`
@@ -576,6 +591,11 @@ export class Lead {
     }
     const snap = copyMessage(message)
     for (const cb of this.listeners) cb(snap, this.chatId)
+  }
+
+  /** Report on a turn whose jobs ended while another project was open. */
+  catchUp(job: JobRecord): void {
+    this.onJobUpdate(job)
   }
 
   private onJobUpdate(job: JobRecord): void {

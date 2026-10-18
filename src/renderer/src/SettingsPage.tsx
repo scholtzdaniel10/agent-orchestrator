@@ -33,7 +33,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+K', 'Search the sidebar'],
   ['Ctrl+\\', 'Show or hide the sidebar'],
   ['Ctrl+B', 'Show or hide the panel'],
-  ['Ctrl+1 … Ctrl+8', 'Panel tabs, in the order they are shown'],
+  ['Ctrl+1 … Ctrl+9', 'Panel tabs (Files … Goals), in the order they are shown'],
   ['Ctrl+Shift+N', 'New window'],
   ['Ctrl+Enter', 'Send a message to the lead'],
   ['Shift+F10', 'Actions for the focused worktree']
