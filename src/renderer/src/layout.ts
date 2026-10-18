@@ -411,14 +411,19 @@ export function saveLayout(state: LayoutState, storage: LayoutStorage = liveStor
 }
 
 export function drawerOverlays(
-  sizes: LayoutSizes,
+  _sizes: LayoutSizes,
   viewport: { width: number },
   flags: LayoutFlags
 ): boolean {
   if (!flags.drawerOpen) return false
   const width = Math.max(1, Math.round(viewport.width))
-  const sidebar = flags.sidebarShown ? sizes.sidebar : 0
-  return sidebar + MIN_WORKERS + sizes.drawer > width
+  const sidebarPart = flags.sidebarShown ? MIN_SIDEBAR : 0
+  return sidebarPart + MIN_DRAWER + MIN_WORKERS > width
+}
+
+function fitSidebarToWorkspace(sidebar: number, width: number): number {
+  if (width - sidebar >= MIN_WORKERS) return sidebar
+  return Math.max(MIN_SIDEBAR, width - MIN_WORKERS)
 }
 
 export function clampSizes(
@@ -428,14 +433,29 @@ export function clampSizes(
 ): LayoutSizes {
   const width = Math.max(1, Math.round(viewport.width))
   let sidebar = asNumber(sizes.sidebar, DEFAULT_SIZES.sidebar, MIN_SIDEBAR, MAX_SIDEBAR)
-  const drawer = asNumber(sizes.drawer, DEFAULT_SIZES.drawer, MIN_DRAWER, MAX_DRAWER)
+  let drawer = asNumber(sizes.drawer, DEFAULT_SIZES.drawer, MIN_DRAWER, MAX_DRAWER)
 
-  if (flags.sidebarShown) {
-    const overlay = drawerOverlays({ sidebar, drawer }, { width }, flags)
-    const reserved = overlay || !flags.drawerOpen ? 0 : drawer
-    const leftover = width - sidebar - reserved
-    if (leftover < MIN_WORKERS) {
-      sidebar = Math.max(MIN_SIDEBAR, sidebar - (MIN_WORKERS - leftover))
+  if (!flags.drawerOpen) {
+    if (flags.sidebarShown) sidebar = fitSidebarToWorkspace(sidebar, width)
+    return { sidebar, drawer }
+  }
+
+  // The drawer floats when even the minimums do not fit. The sidebar still leaves the terminals room.
+  if (drawerOverlays({ sidebar, drawer }, { width }, flags)) {
+    drawer = MIN_DRAWER
+    if (flags.sidebarShown) sidebar = fitSidebarToWorkspace(sidebar, width)
+    return { sidebar, drawer }
+  }
+
+  // Shrink the drawer first so both panels stay beside the terminals.
+  const sidebarPart = flags.sidebarShown ? sidebar : 0
+  const overflow = sidebarPart + drawer + MIN_WORKERS - width
+  if (overflow > 0) {
+    const nextDrawer = Math.max(MIN_DRAWER, drawer - overflow)
+    const drawerGave = drawer - nextDrawer
+    drawer = nextDrawer
+    if (flags.sidebarShown && drawerGave < overflow) {
+      sidebar = Math.max(MIN_SIDEBAR, sidebar - (overflow - drawerGave))
     }
   }
 
@@ -448,6 +468,12 @@ export function maxSize(
   viewport: { width: number; height: number },
   flags: LayoutFlags
 ): number {
+  // Dragging the drawer keeps the sidebar and stops where the terminals still fit.
+  if (key === 'drawer' && flags.drawerOpen && flags.sidebarShown) {
+    const width = Math.max(1, Math.round(viewport.width))
+    const sidebar = asNumber(sizes.sidebar, DEFAULT_SIZES.sidebar, MIN_SIDEBAR, MAX_SIDEBAR)
+    return asNumber(width - sidebar - MIN_WORKERS, DEFAULT_SIZES.drawer, MIN_DRAWER, MAX_DRAWER)
+  }
   return clampSizes({ ...sizes, [key]: 10_000 }, viewport, flags)[key]
 }
 

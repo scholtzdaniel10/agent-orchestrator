@@ -173,19 +173,41 @@ test('clampSizes keeps defaults on a wide window', () => {
   expect(next).toEqual(DEFAULT_SIZES)
 })
 
-test('clampSizes at 900px overlays instead of squeezing the workspace below 360', () => {
+test('clampSizes at 900px shrinks the drawer then the sidebar and does not overlay', () => {
   const next = clampSizes(DEFAULT_SIZES, { width: 900, height: 800 }, OPEN)
-  expect(drawerOverlays(next, { width: 900 }, OPEN)).toBe(true)
-  expect(next.sidebar).toBeGreaterThanOrEqual(MIN_SIDEBAR)
-  expect(900 - next.sidebar).toBeGreaterThanOrEqual(MIN_WORKERS)
+  expect(drawerOverlays(next, { width: 900 }, OPEN)).toBe(false)
+  expect(next.sidebar + next.drawer + MIN_WORKERS).toBeLessThanOrEqual(900)
+  expect(next.drawer).toBe(MIN_DRAWER)
+  expect(next.sidebar).toBe(220)
 })
 
-test('drawerOverlays is false when sidebar plus drawer plus 360 fit', () => {
+test('clampSizes at 1100px shrinks the drawer only as much as needed and keeps the sidebar', () => {
+  const defaults = clampSizes(DEFAULT_SIZES, { width: 1100, height: 800 }, OPEN)
+  expect(defaults.sidebar).toBe(240)
+  expect(defaults.drawer).toBe(DEFAULT_SIZES.drawer)
+
+  const next = clampSizes({ sidebar: 240, drawer: 600 }, { width: 1100, height: 800 }, OPEN)
+  expect(next.sidebar).toBe(240)
+  expect(next.drawer).toBe(1100 - 240 - MIN_WORKERS)
+  expect(next.drawer).toBeGreaterThan(MIN_DRAWER)
+})
+
+test('clampSizes at 800px overlays and keeps the drawer at its minimum', () => {
+  const next = clampSizes(DEFAULT_SIZES, { width: 800, height: 800 }, OPEN)
+  expect(drawerOverlays(next, { width: 800 }, OPEN)).toBe(true)
+  expect(next.drawer).toBe(MIN_DRAWER)
+  expect(next.sidebar).toBeGreaterThanOrEqual(MIN_SIDEBAR)
+  expect(800 - next.sidebar).toBeGreaterThanOrEqual(MIN_WORKERS)
+})
+
+test('drawerOverlays is false when the minimum panels fit', () => {
   expect(drawerOverlays(DEFAULT_SIZES, { width: 1600 }, OPEN)).toBe(false)
-  expect(drawerOverlays(DEFAULT_SIZES, { width: 900 }, OPEN)).toBe(true)
+  expect(drawerOverlays(DEFAULT_SIZES, { width: 900 }, OPEN)).toBe(false)
+  expect(drawerOverlays({ sidebar: 480, drawer: 720 }, { width: 900 }, OPEN)).toBe(false)
   expect(
     drawerOverlays(DEFAULT_SIZES, { width: 900 }, { sidebarShown: true, drawerOpen: false })
   ).toBe(false)
+  expect(drawerOverlays(DEFAULT_SIZES, { width: 800 }, OPEN)).toBe(true)
 })
 
 test('clampSizes ignores a hidden sidebar when fitting the row', () => {
@@ -205,6 +227,12 @@ test('maxSize is the largest value clampSizes would allow', () => {
   const fitted = clampSizes({ ...sizes, sidebar: 10_000 }, viewport, OPEN)
   expect(max).toBe(fitted.sidebar)
   expect(max).toBeGreaterThanOrEqual(MIN_SIDEBAR)
+})
+
+test('maxSize for the drawer keeps the sidebar and leaves the workspace its minimum', () => {
+  expect(maxSize('drawer', DEFAULT_SIZES, { width: 1200, height: 800 }, OPEN)).toBe(
+    1200 - 240 - MIN_WORKERS
+  )
 })
 
 test('fillPanes starts at the active terminal and never duplicates', () => {
