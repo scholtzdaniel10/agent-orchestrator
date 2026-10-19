@@ -10,7 +10,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 ## Why Legate
 
-- **No API bill.** Legate drives the Claude Code and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Cursor first; planning and review to Claude.
+- **No API bill.** Legate drives the Claude Code and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Grok first (on your Cursor plan); planning and review to Claude.
 - **Nothing is a black box.** Every file an agent reads, every edit and every command appears as it happens, in the app, the terminal UI and the command line.
 - **Agentic, with you in charge.** Give a goal and, if you like, a check such as `pnpm test`. Legate plans a round, runs agents in parallel worktrees, folds their work together and runs the check, asking you before every round. Triggers start goals on a schedule, or when CI fails, an issue is opened, or your default branch breaks.
 
@@ -27,7 +27,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 1.6, Windows. Unit-tested throughout (570 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 1.8, Windows. Unit-tested throughout (588 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
 
 ## The chain of command
 
@@ -43,7 +43,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 ## How it works
 
 - **The window is a workspace.** The sidebar has a project switcher, **New task** (`Ctrl+N`), Goals, Automations, and your worktrees as cards grouped by state: in progress, needs you, ready to review. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance and what is running.
-- **The lead.** You talk to one lead. It splits your request into jobs, hands them to workers, and reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
+- **The lead.** You talk to one lead. It reads the code your request is about, then proposes jobs as cards you can edit; press **Run** and each agent opens as a live tab beside your terminals. **Take over** turns any of them into a real terminal on the same session. The lead reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
 - **Workers and access.** Grok is a third worker running Cursor on a Grok model on your Cursor plan, and coding work goes to Grok first. You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
 - **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
 - **Worktrees.** Any job or terminal that may change files works in its own git worktree. Create one from the sidebar with a name and a **task**, and the agent in it starts working at once; ask for several and you get several agents on the same task. Select one or many to see their terminals together.

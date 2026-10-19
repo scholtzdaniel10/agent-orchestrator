@@ -65,6 +65,10 @@ export interface JobRecord {
   leadMessage?: string
   /** Name of the routine that started this job, when it did. */
   routine?: string
+  /** Short name for the job, e.g. from a lead plan; shown on its tab. */
+  title?: string
+  /** CLI session of the attempt now running, once it starts; lets a terminal take the job over. */
+  sessionId?: string
   /** Id of the goal whose round this job belongs to. */
   goal?: string
   /** Branch the job's worktree starts from; unset means the project's HEAD. */
@@ -104,6 +108,10 @@ interface InternalJob {
   leadMessage?: string
   /** Name of the routine that started this job, when it did. */
   routine?: string
+  /** Short name for the job, e.g. from a lead plan; shown on its tab. */
+  title?: string
+  /** CLI session of the attempt now running, once it starts; lets a terminal take the job over. */
+  sessionId?: string
   /** Id of the goal whose round this job belongs to. */
   goal?: string
   /** Branch the job's worktree starts from; unset means the project's HEAD. */
@@ -254,6 +262,7 @@ export class Orchestrator {
       routine?: string
       goal?: string
       base?: string
+      title?: string
       /** The project the job belongs to; unset means the open project. */
       project?: string
     }
@@ -281,7 +290,8 @@ export class Orchestrator {
       ...(extra?.leadMessage !== undefined ? { leadMessage: extra.leadMessage } : {}),
       ...(extra?.routine !== undefined ? { routine: extra.routine } : {}),
       ...(extra?.goal !== undefined ? { goal: extra.goal } : {}),
-      ...(extra?.base !== undefined ? { base: extra.base } : {})
+      ...(extra?.base !== undefined ? { base: extra.base } : {}),
+      ...(extra?.title !== undefined ? { title: extra.title } : {})
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
@@ -620,10 +630,9 @@ export class Orchestrator {
       for await (const event of handle.events) {
         if (this.abandoning.has(job.id) || this.cancelling.has(job.id)) break
         if (event.kind === 'init') {
-          if (event.model !== undefined) {
-            job.model = event.model
-            this.emit(job)
-          }
+          job.sessionId = event.sessionId
+          if (event.model !== undefined) job.model = event.model
+          this.emit(job)
         } else if (event.kind === 'text') {
           this.appendText(job, event.text)
         } else if (event.kind === 'usage') {
@@ -858,6 +867,7 @@ export class Orchestrator {
     job.provider = next
     job.reason = 'failover'
     delete job.model
+    delete job.sessionId
     delete job.error
     this.enqueue(next, job.id)
     this.emitStatus(job)
@@ -1161,6 +1171,7 @@ function adopt(job: InternalJob, record: JobRecord): void {
   else delete job.error
   if (record.model !== undefined) job.model = record.model
   else delete job.model
+  if (record.sessionId !== undefined) job.sessionId = record.sessionId
   if (record.reason !== undefined) job.reason = record.reason
   if (record.change !== undefined) job.change = record.change
   if (record.ownerId !== undefined) job.ownerId = record.ownerId
@@ -1198,6 +1209,8 @@ function copy(job: InternalJob): JobRecord {
   if (job.group !== undefined) record.group = job.group
   if (job.leadMessage !== undefined) record.leadMessage = job.leadMessage
   if (job.routine !== undefined) record.routine = job.routine
+  if (job.title !== undefined) record.title = job.title
+  if (job.sessionId !== undefined) record.sessionId = job.sessionId
   if (job.goal !== undefined) record.goal = job.goal
   if (job.base !== undefined) record.base = job.base
   if (job.ownerId !== undefined) record.ownerId = job.ownerId
@@ -1245,6 +1258,8 @@ function fromRecord(record: JobRecord, project: string, createdAt: number): Inte
     ...(record.group !== undefined ? { group: record.group } : {}),
     ...(record.leadMessage !== undefined ? { leadMessage: record.leadMessage } : {}),
     ...(record.routine !== undefined ? { routine: record.routine } : {}),
+    ...(record.title !== undefined ? { title: record.title } : {}),
+    ...(record.sessionId !== undefined ? { sessionId: record.sessionId } : {}),
     ...(record.goal !== undefined ? { goal: record.goal } : {}),
     ...(record.base !== undefined ? { base: record.base } : {}),
     ...(record.ownerId !== undefined ? { ownerId: record.ownerId } : {}),

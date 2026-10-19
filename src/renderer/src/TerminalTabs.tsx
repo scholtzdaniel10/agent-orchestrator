@@ -49,6 +49,14 @@ function firstPaneSize(): { cols: number; rows: number } {
   }
 }
 
+export interface AgentTab {
+  id: string
+  label: string
+  provider: ProviderId | null
+  status: string
+  avatar: 'idle' | 'working' | 'resting' | 'error'
+}
+
 function TerminalTabs({
   terminals,
   changes,
@@ -60,7 +68,8 @@ function TerminalTabs({
   onClose,
   onOpen,
   onPaneLayout,
-  review
+  review,
+  agents
 }: {
   terminals: readonly TerminalInfo[]
   changes: readonly ChangeSet[]
@@ -75,7 +84,15 @@ function TerminalTabs({
   onOpen: (provider: ProviderId, worktree?: 'new') => void
   onPaneLayout: (layout: PaneLayoutId) => void
   review?: { label: string; active: boolean; onToggle: () => void }
+  /** Jobs from a lead plan, shown live beside the terminals. */
+  agents?: {
+    items: readonly AgentTab[]
+    active: string | null
+    onSelect: (id: string) => void
+    onClose: (id: string) => void
+  }
 }): React.JSX.Element {
+  const otherView = review?.active === true || (agents?.active ?? null) !== null
   const tabKey = terminals.map((info) => info.id).join('\0')
   const [newWorktree, setNewWorktree] = useState(() => readNewWorktree())
 
@@ -112,7 +129,7 @@ function TerminalTabs({
           return (
             <div
               key={info.id}
-              className={selected && review?.active !== true ? 'tab-item is-selected' : 'tab-item'}
+              className={selected && !otherView ? 'tab-item is-selected' : 'tab-item'}
             >
               <button
                 id={`worker-tab-${info.id}`}
@@ -137,6 +154,40 @@ function TerminalTabs({
                 aria-label={`Close ${heading}`}
                 onClick={() => {
                   onClose(info.id)
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
+        {agents?.items.map((agent) => {
+          const on = agents.active === agent.id
+          return (
+            <div
+              key={agent.id}
+              className={on ? 'tab-item tab-agent is-selected' : 'tab-item tab-agent'}
+            >
+              <button
+                type="button"
+                className="tab"
+                aria-pressed={on}
+                title={`${agent.label} · ${agent.status}`}
+                onClick={() => {
+                  agents.onSelect(agent.id)
+                }}
+              >
+                {agent.provider !== null ? (
+                  <BotAvatar bot={agent.provider} state={agent.avatar} size={16} />
+                ) : null}
+                <span className="tab-label">{agent.label}</span>
+              </button>
+              <button
+                type="button"
+                className="tab-close"
+                aria-label={`Close ${agent.label}`}
+                onClick={() => {
+                  agents.onClose(agent.id)
                 }}
               >
                 ×

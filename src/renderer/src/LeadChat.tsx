@@ -10,6 +10,7 @@ import { isProviderId, planOf, PROVIDERS } from '../../core/types'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import { editedFilesSummary, latestStepTitle } from './job-steps'
+import LeadPlan from './LeadPlan'
 import RichText from './RichText'
 import SidebarMenu from './SidebarMenu'
 
@@ -119,6 +120,7 @@ function LeadChat({
   onReset,
   onOpenTerminal,
   onShowJob,
+  onRunPlan,
   settingsNonce = 0
 }: {
   messages: LeadMessage[]
@@ -129,6 +131,11 @@ function LeadChat({
   onReset: (direct?: ProviderId) => Promise<void>
   onOpenTerminal: (provider: ProviderId) => void
   onShowJob: (id: string) => void
+  /** Starts a lead plan with the person's edits and shows its agents in the middle. */
+  onRunPlan: (
+    messageId: string,
+    jobs: NonNullable<LeadMessage['proposal']>['jobs']
+  ) => Promise<void>
   /** Bumped when Settings changes the lead plan or access, so they are read again. */
   settingsNonce?: number
 }): React.JSX.Element {
@@ -398,6 +405,19 @@ function LeadChat({
                       <RichText text={message.text} />
                     )}
                   </div>
+                  {!isUser &&
+                  message.proposal?.status === 'waiting' &&
+                  message.status !== 'streaming' ? (
+                    <LeadPlan
+                      key={message.id}
+                      proposal={message.proposal}
+                      onRun={(planned) => onRunPlan(message.id, planned)}
+                      onDismiss={() => window.api.dismissLeadProposal(message.id)}
+                    />
+                  ) : null}
+                  {!isUser && message.proposal?.status === 'dismissed' ? (
+                    <p className="lead-wait hint">Plan dismissed. Nothing ran.</p>
+                  ) : null}
                   {!isUser && waitingJobs > 0 && message.status !== 'streaming' ? (
                     <p className="lead-wait hint">
                       Waiting for {String(waitingJobs)} job{waitingJobs === 1 ? '' : 's'}. The lead

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+
+- **The lead plans, you press Run.** The lead now reads the code in the open project (read only) before it plans, then shows its jobs as cards: title, worker, access and prompt. Edit or remove any of them, then **Run**, or **Dismiss**. Nothing starts before you say so.
+- **Agents open beside your terminals.** When a plan runs, each agent gets a live tab in the middle: every file it reads, every edit and command, and what it says. Its worktree shows up in the sidebar as usual, and the lead reports when they are all done.
+- **Take over.** Any agent's tab can become a real terminal on the same session, in its worktree, so you can keep talking to it. A running agent is stopped first; its work so far stays.
+
 ## 1.7.0
 
 - **Grok** is a third worker: the Cursor CLI on a Grok model (Grok 4.7 High unless you pick another Grok model in Settings). It spends your Cursor plan, so it costs nothing extra: the same allowance, the same rest after a limit, and the same jobs-at-once limit as Cursor.

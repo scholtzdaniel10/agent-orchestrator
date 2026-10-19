@@ -1,10 +1,20 @@
-import { isJobAccess, type JobAccess, type JobType } from '../types'
+import {
+  isJobAccess,
+  isProviderId,
+  type JobAccess,
+  type JobType,
+  type LeadProposal,
+  type ProposedJob
+} from '../types'
 import type { JobRecord, Orchestrator } from '../router'
 import type { BridgeTool } from './server'
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
 const MAX_PROMPT = 20_000
 const MAX_OUTPUT = 6_000
+const MAX_PROPOSED_JOBS = 4
+const MAX_TITLE = 80
+const MAX_SUMMARY = 600
 const DEFAULT_WAIT_SECONDS = 120
 const MAX_WAIT_SECONDS = 300
 
@@ -27,16 +37,21 @@ const ACCESS_LABEL: Record<JobAccess, string> = {
   full: 'do anything'
 }
 
+/**
+ * The lead's tools. With `propose`, the lead proposes jobs for the person to run instead of
+ * sending them itself, so `send_job` is left out.
+ */
 export function createOrchestratorTools(
   orch: Orchestrator,
   leadTurn?: () => string | null,
-  maxAccess?: () => JobAccess
+  maxAccess?: () => JobAccess,
+  propose?: (turn: string, proposal: LeadProposal) => void
 ): BridgeTool[] {
   const ceiling = (): JobAccess => {
     const value = maxAccess?.()
     return isJobAccess(value) ? value : 'read'
   }
-  return [
+  const tools: BridgeTool[] = [
     {
       name: 'list_workers',
       description:
@@ -147,6 +162,119 @@ export function createOrchestratorTools(
       }
     }
   ]
+  if (propose === undefined) return tools
+  const proposeTool: BridgeTool = {
+    name: 'propose_jobs',
+    description:
+      'Propose up to 4 jobs for the person to run. Nothing starts until they press Run, and they may edit or remove jobs first. Each job needs a short title (a few words), a type, an access level (read, edit or full; above the ceiling it is lowered), and a self-contained prompt, because the worker sees nothing else. Leave worker out to let the router choose, or name claude, cursor or grok. Call it once per turn with the whole plan and a one-line summary.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['summary', 'jobs'],
+      properties: {
+        summary: { type: 'string', minLength: 1, maxLength: MAX_SUMMARY },
+        jobs: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_PROPOSED_JOBS,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['title', 'type', 'prompt'],
+            properties: {
+              title: { type: 'string', minLength: 1, maxLength: MAX_TITLE },
+              type: { type: 'string', enum: [...JOB_TYPES] },
+              access: { type: 'string', enum: ['read', 'edit', 'full'] },
+              worker: { type: 'string', enum: ['claude', 'cursor', 'grok'] },
+              prompt: { type: 'string', minLength: 1, maxLength: MAX_PROMPT }
+            }
+          }
+        }
+      }
+    },
+    async handler(args) {
+      rejectUnknown(args, ['summary', 'jobs'])
+      const turn = leadTurn?.() ?? null
+      if (turn === null) throw new Error('propose_jobs only works during a lead turn')
+      if (typeof args.summary !== 'string' || args.summary.trim() === '') {
+        throw new Error('summary must be a non-empty string')
+      }
+      if (!Array.isArray(args.jobs) || args.jobs.length === 0) {
+        throw new Error('jobs must be a non-empty list')
+      }
+      if (args.jobs.length > MAX_PROPOSED_JOBS) {
+        throw new Error(`propose at most ${String(MAX_PROPOSED_JOBS)} jobs`)
+      }
+      const max = ceiling()
+      const lowered: string[] = []
+      const jobs = args.jobs.map((raw: unknown, index: number): ProposedJob => {
+        const job = proposedJob(raw, index)
+        if (ACCESS_RANK[job.access] > ACCESS_RANK[max]) {
+          lowered.push(job.title)
+          return { ...job, access: max }
+        }
+        return job
+      })
+      propose(turn, { summary: args.summary.trim().slice(0, MAX_SUMMARY), jobs, status: 'waiting' })
+      const result: { status: string; jobs: number; note?: string } = {
+        status: 'waiting for the person to press Run',
+        jobs: jobs.length
+      }
+      if (lowered.length > 0) {
+        result.note = `Access lowered to ${max} (the person allows ${ACCESS_LABEL[max]}) for: ${lowered.join(', ')}.`
+      }
+      return result
+    }
+  }
+  return tools.flatMap((tool) => (tool.name === 'send_job' ? [proposeTool] : [tool]))
+}
+
+/** A plan the person edited, checked like the lead's own proposal. */
+export function proposedJobs(value: unknown): ProposedJob[] {
+  if (!Array.isArray(value) || value.length === 0) throw new Error('jobs must be a non-empty list')
+  if (value.length > MAX_PROPOSED_JOBS) {
+    throw new Error(`propose at most ${String(MAX_PROPOSED_JOBS)} jobs`)
+  }
+  return value.map((raw: unknown, index: number) => proposedJob(raw, index))
+}
+
+function proposedJob(raw: unknown, index: number): ProposedJob {
+  const where = `jobs[${String(index)}]`
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error(`${where} must be an object`)
+  }
+  const item = raw as Record<string, unknown>
+  for (const key of Object.keys(item)) {
+    if (!['title', 'type', 'access', 'worker', 'prompt'].includes(key)) {
+      throw new Error(`${where}: unexpected argument: ${key}`)
+    }
+  }
+  if (typeof item.title !== 'string' || item.title.trim() === '') {
+    throw new Error(`${where}.title must be a non-empty string`)
+  }
+  if (!isJobType(item.type)) {
+    throw new Error(`${where}.type must be planning, debugging, review, refactor, or boilerplate`)
+  }
+  if (item.access !== undefined && !isJobAccess(item.access)) {
+    throw new Error(`${where}.access must be read, edit, or full`)
+  }
+  if (item.worker !== undefined && !isProviderId(item.worker)) {
+    throw new Error(`${where}.worker must be claude, cursor, or grok`)
+  }
+  if (typeof item.prompt !== 'string' || item.prompt.trim() === '') {
+    throw new Error(`${where}.prompt must be a non-empty string`)
+  }
+  if (item.prompt.length > MAX_PROMPT) {
+    throw new Error(`${where}.prompt must be at most 20000 characters`)
+  }
+  const job: ProposedJob = {
+    title: item.title.trim().slice(0, MAX_TITLE),
+    type: item.type,
+    access: isJobAccess(item.access) ? item.access : 'read',
+    prompt: item.prompt
+  }
+  if (isProviderId(item.worker)) job.worker = item.worker
+  return job
 }
 
 function statusView(job: JobRecord): {

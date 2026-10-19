@@ -235,9 +235,12 @@ function waitUntil(check: () => boolean): Promise<void> {
 
 test('instructions tell the lead when a worker may edit and not to wait on jobs', () => {
   expect(LEAD_INSTRUCTIONS).toContain(
-    "A worker's access is read, edit, or full, and cannot go above the ceiling the person set (see list_workers)."
+    'Access is read (files only, the default), edit (change files in a separate worktree the person reviews and merges) or full (change files and run commands there); it cannot go above the ceiling the person set (see list_workers).'
   )
   expect(LEAD_INSTRUCTIONS).toContain('Do not wait for results')
+  expect(LEAD_INSTRUCTIONS).toContain('propose_jobs')
+  expect(LEAD_INSTRUCTIONS).toContain('Nothing runs until the person presses Run')
+  expect(LEAD_INSTRUCTIONS).not.toContain('send_job')
   expect(LEAD_INSTRUCTIONS).toContain(
     'Every job runs in the open project named at the top of each message. If the person asks for work in a different project or folder, do not send a job: tell them in one line to open that project in the sidebar first, then ask again. If a job fails, report its error as it is and do not guess at causes you have not checked.'
   )
@@ -1293,5 +1296,93 @@ test('a direct chat talks to the chosen plan in the project with no instructions
     expect(lead.mode()).toBeNull()
     if (chat !== undefined) lead.open(chat.id)
     expect(lead.mode()).toBe('claude')
+  })
+})
+
+test('a proposed plan waits for Run, then starts its jobs with titles and one report follows', async () => {
+  const leadHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: leadHeld.promise,
+      events: [
+        { kind: 'init', sessionId: 'lead-s' },
+        { kind: 'result', ok: true, text: 'Plan ready', sessionId: 'lead-s', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      events: [
+        { kind: 'init', sessionId: 'w1' },
+        { kind: 'result', ok: true, text: 'one', sessionId: 'w1', costUsd: 0, tokens: 0 }
+      ]
+    },
+    {
+      events: [
+        { kind: 'init', sessionId: 'w2' },
+        { kind: 'result', ok: true, text: 'two', sessionId: 'w2', costUsd: 0, tokens: 0 }
+      ]
+    },
+    done('lead-s', 'both done')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const pending = lead.send('split the router')
+    await waitUntil(() => lead.currentTurn() !== null)
+    const turn = lead.currentTurn() ?? ''
+    lead.attachProposal(turn, {
+      summary: 'Two jobs',
+      status: 'waiting',
+      jobs: [
+        { title: 'Queue', type: 'planning', access: 'read', prompt: 'look at the queue' },
+        { title: 'Failover', type: 'planning', access: 'read', prompt: 'look at failover' }
+      ]
+    })
+    leadHeld.open()
+    const message = await pending
+    expect(message.proposal?.status).toBe('waiting')
+    expect(orch.list()).toEqual([])
+    expect(cursor.calls[0].opts?.readDirs).toEqual(['/project'])
+
+    expect(() => lead.runProposal('nope')).toThrow('not open')
+    const started = lead.runProposal(message.id, [
+      { title: 'Queue only', type: 'planning', access: 'read', prompt: 'look at the queue' },
+      { title: 'Dropped', type: 'planning', access: 'read', prompt: ' ' }
+    ])
+    expect(started).toHaveLength(1)
+    expect(started[0].title).toBe('Queue only')
+    expect(started[0].leadMessage).toBe(message.id)
+    const saved = lead.messages().find((item) => item.id === message.id)
+    expect(saved?.proposal?.status).toBe('running')
+    expect(saved?.proposal?.jobIds).toEqual([started[0].id])
+    expect(saved?.proposal?.jobs.map((job) => job.title)).toEqual(['Queue only'])
+    expect(() => lead.runProposal(message.id)).toThrow('already ran')
+
+    await orch.idle()
+    await lead.whenQuiet()
+    expect(orch.get(started[0].id)?.sessionId).toBe('w1')
+    expect(lead.messages().filter((item) => item.kind === 'report')).toHaveLength(1)
+  })
+})
+
+test('a dismissed plan never runs', async () => {
+  const cursor = new FakeAdapter('cursor', [done('lead-s', 'plan')])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const message = await lead.send('do a thing')
+    expect(() => {
+      lead.dismissProposal(message.id)
+    }).toThrow('not open')
+    lead.attachProposal(message.id, {
+      summary: 's',
+      status: 'waiting',
+      jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: 'p' }]
+    })
+    lead.dismissProposal(message.id)
+    expect(lead.messages().find((item) => item.id === message.id)?.proposal?.status).toBe(
+      'dismissed'
+    )
+    expect(() => lead.runProposal(message.id)).toThrow('already ran or was dismissed')
+    expect(orch.list()).toEqual([])
   })
 })

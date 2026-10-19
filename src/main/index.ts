@@ -8,7 +8,7 @@ import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
 import { ChangeRefresh } from './debounce'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
-import { createOrchestratorTools, startBridge, type Bridge } from '../core/bridge'
+import { createOrchestratorTools, proposedJobs, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
 import { Goals, type Goal, type PlannedJob } from '../core/goals'
 import { planGoal as planGoalWith, runGoalCheck as runGoalCheckCommand } from '../core/goal-runtime'
@@ -325,7 +325,11 @@ app.whenReady().then(async () => {
     createOrchestratorTools(
       orch,
       () => leadRef.current?.currentTurn() ?? null,
-      () => settings.leadAccess()
+      () => settings.leadAccess(),
+      (turn, proposal) => {
+        if (leadRef.current === null) throw new Error('the lead is not ready')
+        leadRef.current.attachProposal(turn, proposal)
+      }
     )
   )
   bridge = started
@@ -791,6 +795,18 @@ app.whenReady().then(async () => {
     if (typeof text !== 'string' || text === '') throw new Error('empty message')
     return lead.send(text)
   })
+  ipcMain.handle('lead:runProposal', (_event, messageId: unknown, jobs: unknown) => {
+    if (typeof messageId !== 'string' || messageId === '' || messageId.length > 64) {
+      throw new Error('invalid message id')
+    }
+    return lead.runProposal(messageId, jobs === undefined ? undefined : proposedJobs(jobs))
+  })
+  ipcMain.handle('lead:dismissProposal', (_event, messageId: unknown) => {
+    if (typeof messageId !== 'string' || messageId === '' || messageId.length > 64) {
+      throw new Error('invalid message id')
+    }
+    lead.dismissProposal(messageId)
+  })
   ipcMain.handle('lead:messages', () => lead.messages())
   ipcMain.handle('lead:chats', (): LeadChat[] => lead.chats())
   ipcMain.handle('lead:open', (_event, id: unknown): LeadMessage[] => {
@@ -892,6 +908,30 @@ app.whenReady().then(async () => {
       return info
     }
   )
+  // A job's live view becomes a real terminal on the job's own CLI session, in its folder.
+  ipcMain.handle('jobs:takeOver', async (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
+    if (!Number.isInteger(cols) || !Number.isInteger(rows)) throw new Error('invalid size')
+    const job = orch.get(id)
+    if (job === null) throw new Error('That job is gone.')
+    if (job.provider === null || job.sessionId === undefined) {
+      throw new Error('This job has not started a session yet. Try again in a moment.')
+    }
+    let opts: { cwd: string; change?: string; resume: string }
+    if (job.change !== undefined) {
+      const folder = worktrees.folder(job.change)
+      if (!isFolder(folder)) {
+        throw new Error('That worktree folder is gone. It may have been merged or discarded.')
+      }
+      opts = { cwd: folder, change: job.change, resume: job.sessionId }
+    } else {
+      opts = { cwd: orch.projectOf(job.id) ?? projectDir(), resume: job.sessionId }
+    }
+    if (job.status === 'running' || job.status === 'queued') orch.cancel(job.id)
+    const info = await terms.open(job.provider, cols as number, rows as number, opts)
+    if (job.change !== undefined) pushChanges()
+    return info
+  })
   ipcMain.on('terminals:write', (event, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return
     terminalClaims.claim(id, event.sender.id)

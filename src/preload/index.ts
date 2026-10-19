@@ -16,6 +16,7 @@ import type {
   Prefs,
   ProjectEntry,
   ProjectInfo,
+  ProposedJob,
   ProviderId,
   TerminalInfo
 } from '../core/types'
@@ -52,6 +53,9 @@ const api: OrchestratorApi = {
   },
   cancelJob(id: string): Promise<JobRecord> {
     return ipcRenderer.invoke('jobs:cancel', id)
+  },
+  takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('jobs:takeOver', id, cols, rows)
   },
   listPlans(): Promise<PlanStatus[]> {
     return ipcRenderer.invoke('plans:list')
@@ -293,6 +297,12 @@ const api: OrchestratorApi = {
   },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)
+  },
+  runLeadProposal(messageId: string, jobs?: ProposedJob[]): Promise<JobRecord[]> {
+    return ipcRenderer.invoke('lead:runProposal', messageId, jobs)
+  },
+  dismissLeadProposal(messageId: string): Promise<void> {
+    return ipcRenderer.invoke('lead:dismissProposal', messageId)
   },
   listLeadMessages(): Promise<LeadMessage[]> {
     return ipcRenderer.invoke('lead:messages')
