@@ -420,6 +420,15 @@ app.whenReady().then(async () => {
   orch.onUpdate((job) => {
     goals.onJob(job)
   })
+  // A job in a project that is not open starting or ending changes its group in the sidebar tree.
+  const otherStatus = new Map<string, string>()
+  orch.onUpdate((job) => {
+    const project = orch.projectOf(job.id)
+    if (project === null || project === projectDir()) return
+    if (otherStatus.get(job.id) === job.status) return
+    otherStatus.set(job.id, job.status)
+    publishChanges()
+  })
 
   // Triggers start goals: on a schedule, or when GitHub shows a failing PR, a new issue, or a
   // broken default branch. Every goal they start still waits for the person each round.
@@ -1017,10 +1026,23 @@ app.whenReady().then(async () => {
       Object.assign(entry, await worktrees.info(path))
       if (!entry.isRepo) return entry
       Object.assign(entry, await worktrees.status(path))
-      for (const change of await listedChanges(path)) {
+      const changes = await listedChanges(path)
+      for (const change of changes) {
         entry.changes += 1
         entry.insertions += change.insertions
         entry.deletions += change.deletions
+      }
+      if (!active) {
+        const working = new Set(orch.activeChangesIn(path))
+        entry.worktrees = changes.map((change) => ({
+          id: change.id,
+          name: change.name ?? '',
+          branch: change.branch,
+          files: change.files.length,
+          insertions: change.insertions,
+          deletions: change.deletions,
+          working: working.has(change.id)
+        }))
       }
     } catch (err: unknown) {
       console.error(err)

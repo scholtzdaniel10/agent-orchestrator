@@ -1053,12 +1053,16 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function switchProject(path: string): Promise<void> {
+  async function switchProject(path: string, worktree?: string | null): Promise<void> {
     if (choosing.current) return
     choosing.current = true
     try {
       const next = await window.api.switchProject(path)
       await adoptProject(next)
+      if (typeof worktree === 'string') {
+        setSelectedWorktree(worktree)
+        setSelectedWorktrees(new Set<WorktreeId>([worktree]))
+      }
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
     } finally {
@@ -1953,8 +1957,8 @@ function App(): React.JSX.Element {
                   void changeProject()
                 }}
                 onGithubClone={cloneFromGithub}
-                onSwitch={(path) => {
-                  void switchProject(path)
+                onSwitch={(path, worktree) => {
+                  void switchProject(path, worktree)
                 }}
                 onRemove={(path) => {
                   void removeProject(path)

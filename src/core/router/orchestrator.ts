@@ -392,6 +392,16 @@ export class Orchestrator {
     ).length
   }
 
+  /** Worktree ids in a project with a job still queued or running in them. */
+  activeChangesIn(project: string): string[] {
+    const ids = new Set<string>()
+    for (const job of this.jobs) {
+      if (job.project !== project || job.change === undefined) continue
+      if (job.status === 'queued' || job.status === 'running') ids.add(job.change)
+    }
+    return [...ids]
+  }
+
   /** The project folder a job belongs to, or null for an unknown id. */
   projectOf(id: string): string | null {
     return this.byJob.get(id)?.project ?? null

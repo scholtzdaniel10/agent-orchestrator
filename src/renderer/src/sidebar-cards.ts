@@ -11,7 +11,7 @@ export interface SidebarOptions {
 }
 
 export const DEFAULT_OPTIONS: SidebarOptions = {
-  groupBy: 'status',
+  groupBy: 'none',
   sortBy: 'created',
   layout: 'detailed',
   hideClean: false

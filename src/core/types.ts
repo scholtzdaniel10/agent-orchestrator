@@ -323,6 +323,20 @@ export interface ProjectEntry extends ProjectInfo {
   chats: number
   /** Jobs queued or running in this project. */
   running: number
+  /** Worktrees of a project that is not open, for the sidebar tree. The open project uses its live list. */
+  worktrees?: ProjectWorktree[]
+}
+
+/** One worktree of a project shown in the sidebar while another project is open. */
+export interface ProjectWorktree {
+  id: string
+  name: string
+  branch: string
+  files: number
+  insertions: number
+  deletions: number
+  /** A job is queued or running in it. */
+  working: boolean
 }
 
 /** One repository from `gh repo list`. */

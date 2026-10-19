@@ -61,9 +61,10 @@ test('arrange: filter, hide clean, sort, pinned first and status groups', () => 
   const titles = (groups: ReturnType<typeof arrangeCards>): string[][] =>
     groups.map((group) => group.cards.map((card) => card.title))
 
-  expect(DEFAULT_OPTIONS.groupBy).toBe('status')
-  expect(titles(arrangeCards(cards, DEFAULT_OPTIONS, 'ALP'))).toEqual([['alpha']])
-  expect(titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, hideClean: true }, ''))).toEqual([
+  expect(DEFAULT_OPTIONS.groupBy).toBe('none')
+  const statusOptions = { ...DEFAULT_OPTIONS, groupBy: 'status' as const }
+  expect(titles(arrangeCards(cards, statusOptions, 'ALP'))).toEqual([['alpha']])
+  expect(titles(arrangeCards(cards, { ...statusOptions, hideClean: true }, ''))).toEqual([
     ['main', 'pinned'],
     ['alpha'],
     ['beta']
@@ -74,10 +75,10 @@ test('arrange: filter, hide clean, sort, pinned first and status groups', () => 
     ['main', 'pinned'],
     ['alpha', 'beta', 'clean']
   ])
-  expect(titles(arrangeCards(cards, { ...DEFAULT_OPTIONS, sortBy: 'recent' }, ''))[1]?.[0]).toBe(
+  expect(titles(arrangeCards(cards, { ...statusOptions, sortBy: 'recent' }, ''))[1]?.[0]).toBe(
     'alpha'
   )
-  const byStatus = arrangeCards(cards, DEFAULT_OPTIONS, '')
+  const byStatus = arrangeCards(cards, statusOptions, '')
   expect(byStatus.map((group) => group.label)).toEqual([
     'Pinned',
     'Needs you',
@@ -96,7 +97,7 @@ test('arrange: filter, hide clean, sort, pinned first and status groups', () => 
       ),
       cardStatus(input({ key: 'w', title: 'busy', createdIndex: 1, jobRunning: true }), {}, 10_000)
     ],
-    DEFAULT_OPTIONS,
+    statusOptions,
     ''
   )
   expect(working.map((group) => [group.label, group.cards.map((card) => card.title)])).toEqual([
