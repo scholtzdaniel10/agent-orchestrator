@@ -131,7 +131,10 @@ export class Settings {
       maxParallel: wholeIn(raw.maxParallel, 1, 8),
       terminalFontSize: wholeIn(raw.terminalFontSize, 10, 22) ?? 13,
       notify: raw.notify !== false,
-      cloneDir: typeof raw.cloneDir === 'string' && raw.cloneDir !== '' ? raw.cloneDir : null
+      cloneDir: typeof raw.cloneDir === 'string' && raw.cloneDir !== '' ? raw.cloneDir : null,
+      uiScale: UI_SCALES.includes(raw.uiScale as number)
+        ? (raw.uiScale as number)
+        : DEFAULT_UI_SCALE
     }
   }
 
@@ -139,7 +142,7 @@ export class Settings {
   setPrefs(patch: unknown): Prefs {
     if (!isRecord(patch)) throw new Error('invalid settings')
     const next: Record<string, unknown> = isRecord(this.data.prefs) ? { ...this.data.prefs } : {}
-    for (const key of ['maxParallel', 'terminalFontSize', 'notify', 'cloneDir']) {
+    for (const key of ['maxParallel', 'terminalFontSize', 'notify', 'cloneDir', 'uiScale']) {
       if (Object.hasOwn(patch, key)) next[key] = patch[key]
     }
     this.data.prefs = next
@@ -155,6 +158,10 @@ export class Settings {
     renameSync(tmp, this.path)
   }
 }
+
+/** Window sizes the person can pick, in percent. 90 gives a busy window room to breathe. */
+export const UI_SCALES: readonly number[] = [80, 90, 100, 110, 120]
+export const DEFAULT_UI_SCALE = 90
 
 function readSettings(path: string): Record<string, unknown> {
   try {

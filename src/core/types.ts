@@ -296,6 +296,8 @@ export interface Prefs {
   notify: boolean
   /** Folder GitHub clones go into; null asks every time. */
   cloneDir: string | null
+  /** Size of the whole window, terminals included, in percent: 80, 90, 100, 110 or 120. */
+  uiScale: number
 }
 
 /** Read-only facts for the Settings page. */

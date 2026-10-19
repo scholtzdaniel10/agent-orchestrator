@@ -68,6 +68,8 @@ let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
+/** Zoom for every window, from Settings → General → Interface size. */
+let uiZoom = 0.9
 let stopStoreWatch: () => void = () => {}
 let changeRefresh: ChangeRefresh | null = null
 const poppedOut = new PoppedOutRegistry()
@@ -165,6 +167,7 @@ function createWindow(opts?: {
   })
 
   win.webContents.on('did-finish-load', () => {
+    win.webContents.setZoomFactor(uiZoom)
     publishChanges()
   })
 
@@ -275,6 +278,10 @@ app.whenReady().then(async () => {
   function applyPrefs(): Prefs {
     const prefs = settings.prefs()
     rules.maxParallel = prefs.maxParallel ?? rulesMaxParallel
+    uiZoom = prefs.uiScale / 100
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.setZoomFactor(uiZoom)
+    }
     return prefs
   }
   applyPrefs()

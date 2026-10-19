@@ -110,7 +110,8 @@ function TerminalPane({
     const element = host
 
     const term = new Terminal({
-      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+      fontFamily:
+        '"JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrainsMono Nerd Font Mono", "JetBrains Mono", "Cascadia Mono", "Cascadia Code", Consolas, monospace',
       fontSize: 13,
       cursorBlink: true,
       scrollback: 5000,
