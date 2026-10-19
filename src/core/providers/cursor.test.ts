@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
-import type { AgentEvent, Job, RunHandle } from '../types'
+import { GROK_DEFAULT_MODEL, type AgentEvent, type Job, type RunHandle } from '../types'
 import { CursorAdapter, cursorEnv, parseCursorModels } from './cursor'
 import { withLegateNote } from './legate-note'
 
@@ -707,6 +707,92 @@ test.runIf(process.platform === 'win32')(
     }
   }
 )
+
+test('grok passes a grok model and ignores a non-grok one; cursor is unchanged', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-grok-model-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { writeSync } from 'node:fs'
+writeSync(2, JSON.stringify(process.argv.slice(2)))
+process.exit(0)
+`
+  )
+  const bin = { command: process.execPath, args: [script] }
+  const base = ['-p', '--trust', '--output-format', 'stream-json']
+  const job = { id: 'job-1', prompt: 'hello' }
+  try {
+    const dir = join(root, 'run')
+    mkdirSync(dir)
+    const grok = new CursorAdapter(bin, { id: 'grok' })
+    expect(await cliArgs(grok.run(job, dir))).toEqual([...base, '--model', GROK_DEFAULT_MODEL])
+    expect(await cliArgs(grok.run(job, dir, { resume: 'sess-1' }))).toEqual([
+      ...base,
+      '--resume',
+      'sess-1',
+      '--model',
+      GROK_DEFAULT_MODEL
+    ])
+    expect(grok.interactive().args).toEqual([script, '--model', GROK_DEFAULT_MODEL])
+    expect(grok.interactive({ resume: 'sess-9' }).args).toEqual([
+      script,
+      '--resume',
+      'sess-9',
+      '--model',
+      GROK_DEFAULT_MODEL
+    ])
+
+    const ignored = new CursorAdapter(bin, { id: 'grok', model: () => 'composer-2.5' })
+    expect(await cliArgs(ignored.run(job, dir, { model: 'sonnet' }))).toEqual([
+      ...base,
+      '--model',
+      GROK_DEFAULT_MODEL
+    ])
+    const fromSettings = new CursorAdapter(bin, { id: 'grok', model: () => 'grok-4' })
+    expect(await cliArgs(fromSettings.run(job, dir, { model: 'sonnet' }))).toEqual([
+      ...base,
+      '--model',
+      'grok-4'
+    ])
+    expect(await cliArgs(fromSettings.run(job, dir, { model: 'grok-3' }))).toEqual([
+      ...base,
+      '--model',
+      'grok-3'
+    ])
+
+    const cursor = new CursorAdapter(bin)
+    expect(cursor.id).toBe('cursor')
+    expect(await cliArgs(cursor.run(job, dir))).toEqual(base)
+    expect(cursor.interactive().args).toEqual([script])
+    expect(await cliArgs(cursor.run(job, dir, { model: 'composer-2.5' }))).toEqual([
+      ...base,
+      '--model',
+      'composer-2.5'
+    ])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('grok model list is the cursor list filtered to ids starting with grok', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-grok-models-'))
+  const script = writeScript(
+    root,
+    'models.mjs',
+    `process.stdout.write('grok-4.7-high - Grok 4.7\\ncomposer-2.5 - Composer\\n')\n`
+  )
+  try {
+    const grok = new CursorAdapter({ command: process.execPath, args: [script] }, { id: 'grok' })
+    expect(await grok.listModels()).toEqual([{ id: 'grok-4.7-high', label: 'Grok 4.7' }])
+    const cursor = new CursorAdapter({ command: process.execPath, args: [script] })
+    expect(await cursor.listModels()).toEqual([
+      { id: 'grok-4.7-high', label: 'Grok 4.7' },
+      { id: 'composer-2.5', label: 'Composer' }
+    ])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('skills: Cursor workers and terminals get the worker plugins, the lead the lead plugins', () => {
   const adapter = new CursorAdapter({ command: 'agent' })

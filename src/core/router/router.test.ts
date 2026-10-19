@@ -51,6 +51,12 @@ test('loadRules() parses the bundled file and covers every job type', () => {
   expect(rules.maxParallel).toBe(3)
   expect(rules.allowance.claude).toEqual({ windowHours: 5, units: 15 })
   expect(rules.allowance.cursor).toEqual({ windowHours: 720, units: 20_000_000 })
+  expect(Object.keys(rules.allowance).sort()).toEqual(['claude', 'cursor'])
+  expect(rules.rules.planning).toEqual(['claude', 'cursor', 'grok'])
+  expect(rules.rules.review).toEqual(['claude', 'cursor', 'grok'])
+  expect(rules.rules.debugging).toEqual(['grok', 'cursor', 'claude'])
+  expect(rules.rules.refactor).toEqual(['grok', 'cursor', 'claude'])
+  expect(rules.rules.boilerplate).toEqual(['grok', 'cursor', 'claude'])
   expect(rules.pace).toEqual(DEFAULT_PACE)
   for (const type of JOB_TYPES) {
     expect(rules.rules[type]?.length).toBeGreaterThan(0)
@@ -93,7 +99,7 @@ test('loadRules(path) loads an edited copy of the rules', () => {
     const rules = loadRules(path)
     expect(rules.fallbackFit).toBe(0.9)
     expect(rules.rules.boilerplate).toEqual(['claude', 'cursor'])
-    expect(loadRules().rules.boilerplate).toEqual(['cursor', 'claude'])
+    expect(loadRules().rules.boilerplate).toEqual(['grok', 'cursor', 'claude'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -194,6 +200,38 @@ test('headroom uses stored windows, else summed weight, and resting is 0', () =>
     // Rest ends at `until`, so equal-to-now is usable again.
     store.setResting('cursor', NOW)
     expect(headroom('cursor', store, rules, NOW)).toBe(0.25)
+  })
+})
+
+test('grok shares cursor headroom, rest, and the parallel limit', () => {
+  const rules = loadRules()
+  const limited = { ...rules, maxParallel: 1 }
+  withStore((store) => {
+    expect(headroom('grok', store, rules, NOW)).toBe(headroom('cursor', store, rules, NOW))
+
+    insert(store, { provider: 'cursor', started_at: NOW - 1, cost_usd: 5_000_000 })
+    insert(store, { provider: 'grok', started_at: NOW - 1, cost_usd: 5_000_000 })
+    const shared = 1 - 10_000_000 / 20_000_000
+    expect(headroom('cursor', store, rules, NOW)).toBe(shared)
+    expect(headroom('grok', store, rules, NOW)).toBe(shared)
+
+    store.saveWindows('cursor', [{ name: 'reported', utilization: 0.25, resetsAt: NOW + 1 }], NOW)
+    expect(headroom('grok', store, rules, NOW)).toBe(0.75)
+    expect(headroom('cursor', store, rules, NOW)).toBe(headroom('grok', store, rules, NOW))
+
+    store.setResting('cursor', NOW + 1)
+    expect(headroom('grok', store, rules, NOW)).toBe(0)
+    expect(headroom('cursor', store, rules, NOW)).toBe(0)
+
+    store.clearResting('cursor')
+    expect(
+      pickProvider('debugging', ['claude', 'cursor', 'grok'], store, limited, NOW, [], {
+        cursor: 1
+      })
+    ).toBe('claude')
+    expect(
+      pickProvider('debugging', ['claude', 'cursor', 'grok'], store, limited, NOW, [], { grok: 1 })
+    ).toBe('claude')
   })
 })
 

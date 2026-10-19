@@ -2,7 +2,9 @@ import type { ProviderId, VersionStatus } from '../types'
 
 export const TESTED_VERSIONS: Record<ProviderId, string> = {
   claude: '2.1.292',
-  cursor: '2026.10.01-e373342'
+  cursor: '2026.10.01-e373342',
+  // Grok is the Cursor CLI, so it is tested against the same build.
+  grok: '2026.10.01-e373342'
 }
 
 /** First whitespace-separated token that starts with a digit. */

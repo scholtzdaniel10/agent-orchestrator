@@ -13,6 +13,7 @@ import {
   type JobAccess,
   type JobType,
   type ProjectInfo,
+  isProviderId,
   type ProviderId
 } from '../core/types'
 import { TESTED_VERSIONS } from '../core/providers/versions'
@@ -54,7 +55,7 @@ export interface CliContext {
   /** True when both stdin and stdout are terminals. */
   tty: boolean
   termSize: () => { columns: number; rows: number }
-  interactive: (provider: 'claude' | 'cursor') => {
+  interactive: (provider: ProviderId) => {
     command: string
     args: string[]
     env?: NodeJS.ProcessEnv
@@ -236,7 +237,7 @@ async function submitJob(parsed: Parsed, ctx: CliContext): Promise<number> {
   }
   const worker = parseWorker(parsed.flags.worker)
   if (worker === null) {
-    ctx.stderr(`Worker must be auto, claude, or cursor.\n${usageFor('job')}\n`)
+    ctx.stderr(`Worker must be auto, claude, cursor, or grok.\n${usageFor('job')}\n`)
     return 2
   }
   const access = parsed.flags.access ?? 'read'
@@ -902,7 +903,7 @@ async function readPrompt(ctx: CliContext, arg: string | undefined): Promise<str
 
 function parseWorker(value: string | undefined): ProviderId | undefined | null {
   if (value === undefined || value === 'auto') return undefined
-  if (value === 'claude' || value === 'cursor') return value
+  if (isProviderId(value)) return value
   return null
 }
 

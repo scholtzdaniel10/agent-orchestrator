@@ -45,7 +45,7 @@ import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import { isJobAccess, isJobType } from '../core/types'
+import { isJobAccess, isJobType, isProviderId } from '../core/types'
 import type {
   AppInfo,
   ChangeSet,
@@ -280,8 +280,9 @@ app.whenReady().then(async () => {
   applyPrefs()
   const claude = new ClaudeAdapter()
   const cursor = new CursorAdapter()
+  const grok = new CursorAdapter(undefined, { id: 'grok', model: () => settings.model('grok') })
   const setup = new Setup(runGh, claude, cursor, process.platform)
-  const adapters = [claude, cursor]
+  const adapters = [claude, cursor, grok]
   const legateSkills = bundledPlugins(__dirname)
   let skillReports: SkillFolderReport[] = []
   // Legate's skills plus the person's own, loaded only into agents Legate starts.
@@ -329,8 +330,7 @@ app.whenReady().then(async () => {
   )
   bridge = started
   const leadEnv = process.env.ORCH_LEAD
-  const envPrefer: ProviderId | undefined =
-    leadEnv === 'claude' || leadEnv === 'cursor' ? leadEnv : undefined
+  const envPrefer: ProviderId | undefined = isProviderId(leadEnv) ? leadEnv : undefined
   const lead = new Lead({
     adapters,
     store: shared,
@@ -353,7 +353,7 @@ app.whenReady().then(async () => {
       prompt,
       workers: orch.workers(),
       preferred: settings.leadPlan(),
-      adapter: (provider) => (provider === 'claude' ? claude : cursor),
+      adapter: (provider) => (provider === 'claude' ? claude : provider === 'grok' ? grok : cursor),
       modelFor
     })
   }
@@ -734,15 +734,10 @@ app.whenReady().then(async () => {
         throw new Error('unknown job type')
       }
       if (typeof prompt !== 'string' || prompt.trim() === '') throw new Error('empty prompt')
-      if (
-        provider !== undefined &&
-        provider !== null &&
-        provider !== 'claude' &&
-        provider !== 'cursor'
-      ) {
+      if (provider !== undefined && provider !== null && !isProviderId(provider)) {
         throw new Error('unknown provider')
       }
-      const chosen = provider === 'claude' || provider === 'cursor' ? provider : undefined
+      const chosen = isProviderId(provider) ? provider : undefined
       const granted = parseJobAccess(access)
       const grouping =
         typeof group === 'string' && group.length > 0 && group.length <= 64 ? group : undefined
@@ -769,13 +764,15 @@ app.whenReady().then(async () => {
     return list
   })
   ipcMain.handle('models:list', (_event, provider: unknown) => {
-    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
-    return provider === 'claude' ? claude.listModels() : cursor.listModels()
+    if (!isProviderId(provider)) throw new Error('unknown provider')
+    if (provider === 'claude') return claude.listModels()
+    if (provider === 'grok') return grok.listModels()
+    return cursor.listModels()
   })
   ipcMain.handle('settings:getLeadPlan', () => settings.leadPlan() ?? null)
   ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
-    if (plan !== null && plan !== 'claude' && plan !== 'cursor') throw new Error('unknown plan')
-    settings.setLeadPlan(plan)
+    if (plan !== null && !isProviderId(plan)) throw new Error('unknown plan')
+    settings.setLeadPlan(isProviderId(plan) ? plan : null)
   })
   ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
   ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {
@@ -785,7 +782,7 @@ app.whenReady().then(async () => {
     settings.setLeadAccess(access)
   })
   ipcMain.handle('settings:setModel', (_event, provider: unknown, model: unknown) => {
-    if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+    if (!isProviderId(provider)) throw new Error('unknown provider')
     if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
     settings.setModel(provider, model)
     broadcast('plans:update', plans())
@@ -802,10 +799,10 @@ app.whenReady().then(async () => {
     return lead.messages()
   })
   ipcMain.handle('lead:reset', (_event, direct: unknown) => {
-    if (direct !== undefined && direct !== null && direct !== 'claude' && direct !== 'cursor') {
+    if (direct !== undefined && direct !== null && !isProviderId(direct)) {
       throw new Error('unknown plan')
     }
-    lead.reset(direct ?? null)
+    lead.reset(isProviderId(direct) ? direct : null)
   })
   ipcMain.handle('lead:mode', (): ProviderId | null => lead.mode())
   ipcMain.handle('lead:rename', (_event, id: unknown, title: unknown) => {
@@ -828,8 +825,11 @@ app.whenReady().then(async () => {
     publishPlans()
   }
   const terms = new PtyHost({
-    launch: (provider, opts) =>
-      provider === 'claude' ? claude.interactive(opts) : cursor.interactive(opts),
+    launch: (provider, opts) => {
+      if (provider === 'claude') return claude.interactive(opts)
+      if (provider === 'grok') return grok.interactive(opts)
+      return cursor.interactive(opts)
+    },
     cwd: projectDir,
     modelFor,
     store: shared,
@@ -851,7 +851,7 @@ app.whenReady().then(async () => {
       worktree: unknown,
       prompt: unknown
     ) => {
-      if (provider !== 'claude' && provider !== 'cursor') throw new Error('unknown provider')
+      if (!isProviderId(provider)) throw new Error('unknown provider')
       let task: string | undefined
       if (prompt !== undefined && prompt !== null) {
         if (typeof prompt !== 'string' || prompt.includes('\0')) throw new Error('invalid prompt')

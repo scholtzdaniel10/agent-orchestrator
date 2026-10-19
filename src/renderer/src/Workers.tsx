@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { PROVIDERS, type ProviderId } from '../../core/types'
 import {
   assignTabToPane,
   dropMissingTerminals,
@@ -21,7 +22,12 @@ import { terminalDisplayTitle, terminalsInSidebarOrder } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
-type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+
+function workerLabel(id: ProviderId): string {
+  if (id === 'claude') return 'Claude'
+  if (id === 'grok') return 'Grok'
+  return 'Cursor'
+}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
@@ -238,28 +244,20 @@ function Workers({
               Open an agent here, or ask the lead in the panel.
             </p>
             <div className="workspace-empty-actions">
-              <button
-                type="button"
-                className="btn btn-quiet tab-new"
-                aria-label="New Claude terminal"
-                disabled={opening}
-                onClick={() => {
-                  void openProvider('claude', openWorktree)
-                }}
-              >
-                + Claude
-              </button>
-              <button
-                type="button"
-                className="btn btn-quiet tab-new"
-                aria-label="New Cursor terminal"
-                disabled={opening}
-                onClick={() => {
-                  void openProvider('cursor', openWorktree)
-                }}
-              >
-                + Cursor
-              </button>
+              {PROVIDERS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="btn btn-quiet tab-new"
+                  aria-label={`New ${workerLabel(id)} terminal`}
+                  disabled={opening}
+                  onClick={() => {
+                    void openProvider(id, openWorktree)
+                  }}
+                >
+                  + {workerLabel(id)}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -279,26 +277,19 @@ function Workers({
                   }}
                 >
                   <div className="pane-empty-actions">
-                    <button
-                      type="button"
-                      className="btn btn-quiet"
-                      disabled={opening}
-                      onClick={() => {
-                        void openProvider('claude', openWorktree, undefined, index)
-                      }}
-                    >
-                      + Claude
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-quiet"
-                      disabled={opening}
-                      onClick={() => {
-                        void openProvider('cursor', openWorktree, undefined, index)
-                      }}
-                    >
-                      + Cursor
-                    </button>
+                    {PROVIDERS.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className="btn btn-quiet"
+                        disabled={opening}
+                        onClick={() => {
+                          void openProvider(id, openWorktree, undefined, index)
+                        }}
+                      >
+                        + {workerLabel(id)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )

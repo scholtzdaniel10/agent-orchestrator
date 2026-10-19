@@ -11,6 +11,7 @@
   --diff-del: rgb(255, 150, 140);
   --bot-claude: rgb(255, 160, 90);
   --bot-cursor: rgb(80, 230, 170);
+  --bot-grok: rgb(185, 150, 255);
   --tint: color-mix(in srgb, var(--brand) 7%, var(--bg));
   --inset: color-mix(in srgb, var(--text) 3%, var(--tint));
   --deep: color-mix(in srgb, var(--text) 5%, var(--tint));
@@ -52,6 +53,7 @@
     --diff-del: rgb(160, 32, 24);
     --bot-claude: rgb(200, 90, 30);
     --bot-cursor: rgb(0, 130, 95);
+    --bot-grok: rgb(110, 60, 200);
     --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
     --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
     --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
@@ -77,6 +79,7 @@
   --diff-del: rgb(255, 150, 140);
   --bot-claude: rgb(255, 160, 90);
   --bot-cursor: rgb(80, 230, 170);
+  --bot-grok: rgb(185, 150, 255);
 }
 
 :root[data-theme='paper'] {
@@ -92,6 +95,7 @@
   --diff-del: rgb(160, 32, 24);
   --bot-claude: rgb(200, 90, 30);
   --bot-cursor: rgb(0, 130, 95);
+  --bot-grok: rgb(110, 60, 200);
   --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
   --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
   --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
@@ -116,6 +120,7 @@
   --diff-del: rgb(255, 140, 150);
   --bot-claude: rgb(255, 158, 80);
   --bot-cursor: rgb(48, 214, 176);
+  --bot-grok: rgb(214, 156, 255);
 }
 
 :root[data-theme='phosphor'] {
@@ -131,6 +136,7 @@
   --diff-del: rgb(255, 110, 90);
   --bot-claude: rgb(255, 168, 64);
   --bot-cursor: rgb(80, 170, 255);
+  --bot-grok: rgb(230, 130, 255);
 }
 
 :root[data-theme='graphite'] {
@@ -146,6 +152,7 @@
   --diff-del: rgb(220, 150, 145);
   --bot-claude: rgb(210, 140, 78);
   --bot-cursor: rgb(86, 176, 154);
+  --bot-grok: rgb(176, 140, 255);
 }
 
 :root[data-theme='dusk'] {
@@ -161,6 +168,7 @@
   --diff-del: rgb(255, 130, 140);
   --bot-claude: rgb(220, 130, 210);
   --bot-cursor: rgb(64, 196, 210);
+  --bot-grok: rgb(150, 140, 255);
 }
 
 *,
@@ -2632,6 +2640,10 @@ select {
   background: var(--bot-cursor);
 }
 
+.meter-grok {
+  background: var(--bot-grok);
+}
+
 .meter-warn {
   background: var(--signal);
 }
@@ -2752,6 +2764,10 @@ select {
 }
 
 .bot-cursor .bot-body {
+  fill: var(--brand);
+}
+
+.bot-grok .bot-body {
   fill: var(--brand);
 }
 
@@ -3071,7 +3087,8 @@ select {
 .flow-actor-lead,
 .flow-actor-router,
 .flow-actor-claude,
-.flow-actor-cursor {
+.flow-actor-cursor,
+.flow-actor-grok {
   color: var(--text);
   font-family: var(--font-display);
   font-stretch: 75%;
@@ -3164,7 +3181,8 @@ select {
 
 .flow-box.is-lead,
 .flow-box.is-claude,
-.flow-box.is-cursor {
+.flow-box.is-cursor,
+.flow-box.is-grok {
   border-color: var(--signal);
   background: var(--raised);
 }
@@ -3220,7 +3238,9 @@ select {
 .flow-name.is-claude,
 .flow-plan-name.is-claude,
 .flow-name.is-cursor,
-.flow-plan-name.is-cursor {
+.flow-plan-name.is-cursor,
+.flow-name.is-grok,
+.flow-plan-name.is-grok {
   color: var(--text);
 }
 
@@ -3335,7 +3355,8 @@ select {
 }
 
 .flow-wire.is-claude,
-.flow-wire.is-cursor {
+.flow-wire.is-cursor,
+.flow-wire.is-grok {
   stroke: var(--signal);
 }
 
@@ -3357,7 +3378,8 @@ select {
 .flow-dot.is-lead,
 .flow-dot.is-router,
 .flow-dot.is-claude,
-.flow-dot.is-cursor {
+.flow-dot.is-cursor,
+.flow-dot.is-grok {
   background: var(--signal);
 }
 
@@ -5794,6 +5816,7 @@ label,
 .flow-queued,
 .flow-empty,
 .flow-actor-cursor,
+.flow-actor-grok,
 .flow-router-label,
 .changes-empty .hint {
   font-family: var(--font-ui);
@@ -6752,7 +6775,7 @@ label,
 
 .new-task-who {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

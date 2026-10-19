@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
-import type {
-  AgentEvent,
-  BridgeInfo,
-  LeadChat,
-  LeadMessage,
-  ProviderAdapter,
-  ProviderId,
-  RouterRules,
-  RunHandle
+import {
+  isProviderId,
+  planOf,
+  type AgentEvent,
+  type BridgeInfo,
+  type LeadChat,
+  type LeadMessage,
+  type ProviderAdapter,
+  type ProviderId,
+  type RouterRules,
+  type RunHandle
 } from '../types'
 import type { JobRecord, Orchestrator } from '../router/orchestrator'
 import { headroom } from '../router/router'
@@ -480,7 +482,7 @@ export class Lead {
           utilization = event.utilization
           if (event.windows) {
             this.store.saveWindows(
-              provider,
+              planOf(provider),
               event.windows.map((window) => ({
                 name: window.name,
                 utilization: window.utilization,
@@ -558,7 +560,7 @@ export class Lead {
 
   private applyLimit(lead: LeadMessage, provider: ProviderId, resetsAt: number | undefined): void {
     const until = resetsAt ? resetsAt * 1000 : this.now() + this.rules.defaultRestHours * 3600_000
-    this.store.setResting(provider, until)
+    this.store.setResting(planOf(provider), until)
     lead.status = 'error'
     const notice = `[The lead's plan (${provider}) hit its usage limit. Send your message again to continue on another plan.]`
     lead.text = lead.text === '' ? notice : `${lead.text}\n${notice}`
@@ -772,10 +774,6 @@ export class Lead {
 function chatTitle(text: string): string {
   const line = text.split(/\r?\n/, 1)[0] ?? ''
   return line.trim().slice(0, 60)
-}
-
-function isProviderId(value: string | null): value is ProviderId {
-  return value === 'claude' || value === 'cursor'
 }
 
 function copyMessage(message: LeadMessage): LeadMessage {

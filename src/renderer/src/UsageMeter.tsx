@@ -1,9 +1,37 @@
 import { useRef, useState } from 'react'
+import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
+
+/** One card per plan. Grok spends Cursor, so its running work shows on that card. */
+function meterPlans(plans: readonly PlanStatus[]): PlanStatus[] {
+  const running = new Map<PlanStatus['id'], number>()
+  const queued = new Map<PlanStatus['id'], number>()
+  const busy = new Set<PlanStatus['id']>()
+  for (const plan of plans) {
+    const spent = planOf(plan.id)
+    if (spent === plan.id) continue
+    running.set(spent, (running.get(spent) ?? 0) + plan.running)
+    queued.set(spent, (queued.get(spent) ?? 0) + plan.queued)
+    if (plan.busy) busy.add(spent)
+  }
+  return plans
+    .filter((plan) => planOf(plan.id) === plan.id)
+    .map((plan) => {
+      const moreRunning = running.get(plan.id) ?? 0
+      const moreQueued = queued.get(plan.id) ?? 0
+      if (moreRunning === 0 && moreQueued === 0 && !busy.has(plan.id)) return plan
+      return {
+        ...plan,
+        running: plan.running + moreRunning,
+        queued: plan.queued + moreQueued,
+        busy: plan.busy || busy.has(plan.id)
+      }
+    })
+}
 
 const MINUTE_MS = 60_000
 const CURSOR_MODEL_HINT = 'Cursor keeps the last model used as its own default.'
@@ -182,7 +210,7 @@ function UsageMeter({
     <div className="usage">
       <UsageHeading onOpenSetup={onOpenSetup} />
       <div className="usage-list">
-        {plans.map((plan) => {
+        {meterPlans(plans).map((plan) => {
           const word = planWord(plan, now)
           const notice = problemNotice(plan)
           const left = headroomPercent(plan.used)

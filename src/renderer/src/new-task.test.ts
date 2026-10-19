@@ -14,9 +14,11 @@ import {
   howEnabled,
   landingLine,
   planNewTask,
+  providerReady,
   repoHint,
   submitLabel,
   unavailableHint,
+  WHO_OPTIONS,
   type How,
   type JobKind,
   type NewTaskContext,
@@ -44,6 +46,33 @@ const ready: NewTaskContext = {
 }
 
 const notRepo: NewTaskContext = { ...ready, isRepo: false }
+
+test('Grok is offered and ready exactly when Cursor is', () => {
+  expect(WHO_OPTIONS.map((option) => [option.id, option.label, option.note ?? null])).toEqual([
+    ['cursor', 'Cursor', null],
+    ['claude', 'Claude', null],
+    ['grok', 'Grok', 'Cursor plan']
+  ])
+  expect(providerReady('grok', ready)).toBe(providerReady('cursor', ready))
+  const cursorOut: NewTaskContext = { ...ready, cursorAvailable: false }
+  expect(providerReady('grok', cursorOut)).toBe(false)
+  expect(providerReady('cursor', cursorOut)).toBe(false)
+  expect(providerReady('claude', cursorOut)).toBe(true)
+  const claudeOut: NewTaskContext = { ...ready, claudeAvailable: false }
+  expect(providerReady('grok', claudeOut)).toBe(true)
+  expect(providerReady('cursor', claudeOut)).toBe(true)
+  expect(planNewTask(draft({ who: 'grok' }), cursorOut)).toEqual({
+    ok: false,
+    error: 'Grok is not ready. Pick a plan that is, or set it up and try again.'
+  })
+  expect(planNewTask(draft({ who: 'grok', how: 'terminal' }), ready)).toEqual({
+    ok: true,
+    action: 'terminal',
+    text: 'Fix the pager',
+    who: 'grok',
+    count: 1
+  })
+})
 
 test('defaults are Cursor, a terminal, and a refactor', () => {
   expect(DEFAULT_WHO).toBe('cursor')
@@ -208,7 +237,7 @@ test('a goal keeps the check and the round cap', () => {
 
 test('outside a repository every choice is a read-only job', () => {
   const hows: How[] = ['terminal', 'background', 'goal']
-  const whos: Who[] = ['cursor', 'claude']
+  const whos: Who[] = ['cursor', 'claude', 'grok']
   for (const how of hows) {
     for (const who of whos) {
       expect(

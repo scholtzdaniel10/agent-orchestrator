@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { planOf } from '../../core/types'
 import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
@@ -8,6 +9,33 @@ type JobRecord = FlowSnapshot['jobs'][number]
 type PlanStatus = FlowSnapshot['plans'][number]
 type LeadMessage = FlowSnapshot['lead'][number]
 type TerminalInfo = FlowSnapshot['terminals'][number]
+
+/** Allowance rows are plans. Grok's running work is counted on Cursor. */
+function meterPlans(plans: readonly PlanStatus[]): PlanStatus[] {
+  const running = new Map<PlanStatus['id'], number>()
+  const queued = new Map<PlanStatus['id'], number>()
+  const busy = new Set<PlanStatus['id']>()
+  for (const plan of plans) {
+    const spent = planOf(plan.id)
+    if (spent === plan.id) continue
+    running.set(spent, (running.get(spent) ?? 0) + plan.running)
+    queued.set(spent, (queued.get(spent) ?? 0) + plan.queued)
+    if (plan.busy) busy.add(spent)
+  }
+  return plans
+    .filter((plan) => planOf(plan.id) === plan.id)
+    .map((plan) => {
+      const moreRunning = running.get(plan.id) ?? 0
+      const moreQueued = queued.get(plan.id) ?? 0
+      if (moreRunning === 0 && moreQueued === 0 && !busy.has(plan.id)) return plan
+      return {
+        ...plan,
+        running: plan.running + moreRunning,
+        queued: plan.queued + moreQueued,
+        busy: plan.busy || busy.has(plan.id)
+      }
+    })
+}
 
 function headroomPercent(used: number): number {
   const raw = Math.round((1 - used) * 100)
@@ -133,7 +161,7 @@ function planFeeding(jobs: readonly JobRecord[], id: PlanStatus['id']): boolean 
   )
 }
 
-function boxClass(tone: 'lead' | 'claude' | 'cursor' | null, flash: boolean): string {
+function boxClass(tone: 'lead' | PlanStatus['id'] | null, flash: boolean): string {
   const names = ['flow-box']
   if (tone !== null) names.push(`is-${tone}`)
   if (flash) names.push('is-flash')
@@ -313,6 +341,7 @@ function Topology({
     ]
   }
   const rootRef = useRef<HTMLDivElement>(null)
+  const meters = meterPlans(plans)
   const streaming = lead.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
@@ -446,7 +475,7 @@ function Topology({
       </div>
       <div className="flow-box topo-router" data-flow="router">
         <div className="flow-router-label">router</div>
-        {plans.map((plan) => {
+        {meters.map((plan) => {
           const left = headroomPercent(plan.used)
           return (
             <div key={plan.id} className="flow-plan-row">

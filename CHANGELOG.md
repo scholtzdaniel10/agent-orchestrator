@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0
+
+- **Grok** is a third worker: the Cursor CLI on a Grok model (Grok 4.7 High unless you pick another Grok model in Settings). It spends your Cursor plan, so it costs nothing extra: the same allowance, the same rest after a limit, and the same jobs-at-once limit as Cursor.
+- Coding work (debugging, refactors, boilerplate) goes to Grok first, then Cursor, then Claude. Planning and review still go to Claude first.
+- Grok has its own face, a statue head under an orbit crossed by a comet, and appears wherever you pick a worker: New task, + Grok beside the terminals, Jobs, routines, the lead, and Settings. The usage meters stay one per plan; Grok's work counts on Cursor's.
+- `legate job --worker grok`; `legate status` lists Grok as using the Cursor plan.
+
 ## 1.6.1
 
 - In a small window the right panel and the sidebar shrink before the panel covers the terminals. The panel only floats over them when even the narrowest panels do not fit (below about 840 pixels with the sidebar shown).

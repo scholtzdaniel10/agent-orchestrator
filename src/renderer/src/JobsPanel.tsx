@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { isProviderId, planOf, PROVIDERS } from '../../core/types'
 import { RayBurst } from './Star'
 import BotAvatar from './BotAvatar'
 import JobSteps from './JobSteps'
@@ -52,14 +53,15 @@ function errorText(err: unknown): string {
 }
 
 function asPlanChoice(value: string): PlanChoice {
-  if (value === 'claude' || value === 'cursor' || value === 'both') return value
+  if (value === 'both') return value
+  if (isProviderId(value)) return value
   return 'auto'
 }
 
 function planRank(provider: JobRecord['provider']): number {
-  if (provider === 'claude') return 0
-  if (provider === 'cursor') return 1
-  return 2
+  if (provider === null) return PROVIDERS.length
+  const index = PROVIDERS.indexOf(provider)
+  return index === -1 ? PROVIDERS.length : index
 }
 
 function planAvailable(plans: readonly PlanStatus[] | null, id: ProviderId): boolean {
@@ -334,8 +336,7 @@ function JobsPanel({
   const bothReady = claudeReady && cursorReady
   const noPlanReady = plans !== null && !claudeReady && !cursorReady
   const choiceBlocked =
-    (worker === 'claude' && !claudeReady) ||
-    (worker === 'cursor' && !cursorReady) ||
+    (worker !== 'auto' && worker !== 'both' && !planAvailable(plans, planOf(worker))) ||
     (worker === 'both' && !bothReady)
   const submitDisabled = promptEmpty || noPlanReady || choiceBlocked || submitting
 
@@ -487,12 +488,11 @@ function JobsPanel({
                 onChange={(event) => setWorker(asPlanChoice(event.target.value))}
               >
                 <option value="auto">auto</option>
-                <option value="claude" disabled={!claudeReady}>
-                  claude
-                </option>
-                <option value="cursor" disabled={!cursorReady}>
-                  cursor
-                </option>
+                {PROVIDERS.map((id) => (
+                  <option key={id} value={id} disabled={!planAvailable(plans, planOf(id))}>
+                    {id}
+                  </option>
+                ))}
                 <option
                   value="both"
                   disabled={!bothReady}

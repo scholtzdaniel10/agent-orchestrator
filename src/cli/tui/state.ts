@@ -1,10 +1,11 @@
+import type { ProviderId } from '../../core/types'
 import type { StepView } from '../format'
 import { detailBody, detailPage } from './view'
 
 export { footerText, isNarrow, leftColumn } from './view'
 
 export const JOB_TYPES = ['planning', 'debugging', 'review', 'refactor', 'boilerplate'] as const
-export const WORKERS = ['auto', 'claude', 'cursor'] as const
+export const WORKERS = ['auto', 'claude', 'cursor', 'grok'] as const
 export const ACCESSES = ['read', 'edit', 'full'] as const
 
 export type JobTypeName = (typeof JOB_TYPES)[number]
@@ -119,7 +120,7 @@ export type Effect =
   | { type: 'merge'; id: string }
   | { type: 'discard'; id: string }
   | { type: 'create-worktree'; name: string }
-  | { type: 'open-agent'; provider: 'claude' | 'cursor'; cwd: string }
+  | { type: 'open-agent'; provider: ProviderId; cwd: string }
   | { type: 'load-diff'; id: string }
   | { type: 'load-changes' }
   | { type: 'run-routine'; id: string }
@@ -502,7 +503,7 @@ function stopSelected(state: TuiState): ReduceResult {
   return done(state, [{ type: 'cancel', id: job.id }])
 }
 
-function openAgent(state: TuiState, provider: 'claude' | 'cursor'): ReduceResult {
+function openAgent(state: TuiState, provider: ProviderId): ReduceResult {
   const row = selectedWorktree(state)
   const cwd = row?.path !== undefined && row.path !== '' ? row.path : state.projectPath
   if (cwd === '') return done({ ...state, error: 'Select a folder first.' }, [])

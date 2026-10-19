@@ -158,6 +158,9 @@ test('plan lines use the app wording', () => {
     )
   ).toBe('claude · ready · CLI 1.0.0 · older than tested (2.1.292) — update it · 50% left')
   expect(planLine(plan({ id: 'claude' }), '2.1.292', 0, true)).toContain('\u001b[')
+  expect(
+    planLine(plan({ id: 'grok', version: '2026.10.01-e373342' }), '2026.10.01-e373342', 0, false)
+  ).toBe('grok · uses the Cursor plan · ready · CLI 2026.10.01-e373342 · 80% left')
 })
 
 test('a goal list row, a proposal, and a check', () => {

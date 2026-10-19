@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { isJobAccess, type JobAccess, type Prefs, type ProviderId } from './types'
+import { isJobAccess, isProviderId, type JobAccess, type Prefs, type ProviderId } from './types'
 
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/=,[\]-]*$/
 
@@ -55,7 +55,7 @@ export class Settings {
 
   leadPlan(): ProviderId | undefined {
     const value = this.data.lead
-    if (value === 'claude' || value === 'cursor') return value
+    if (isProviderId(value)) return value
     return undefined
   }
 

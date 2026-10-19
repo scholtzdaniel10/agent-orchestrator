@@ -1,12 +1,15 @@
 /** Pure decisions for the New task dialog: which call to make, validation, and labels. */
 
-export type Who = 'claude' | 'cursor'
+import { planOf, type ProviderId } from '../../core/types'
+
+export type Who = ProviderId
 export type How = 'terminal' | 'background' | 'goal'
 export type JobKind = 'debugging' | 'refactor' | 'boilerplate' | 'planning' | 'review'
 
-export const WHO_OPTIONS: readonly { id: Who; label: string }[] = [
+export const WHO_OPTIONS: readonly { id: Who; label: string; note?: string }[] = [
   { id: 'cursor', label: 'Cursor' },
-  { id: 'claude', label: 'Claude' }
+  { id: 'claude', label: 'Claude' },
+  { id: 'grok', label: 'Grok', note: 'Cursor plan' }
 ]
 
 export const HOW_OPTIONS: readonly { id: How; label: string; detail: string }[] = [
@@ -84,7 +87,7 @@ export type NewTaskPlan =
   | { ok: true; action: 'goal'; input: NewTaskGoalInput; created: 'goal' }
 
 export function providerReady(who: Who, ctx: NewTaskContext): boolean {
-  return who === 'claude' ? ctx.claudeAvailable : ctx.cursorAvailable
+  return planOf(who) === 'claude' ? ctx.claudeAvailable : ctx.cursorAvailable
 }
 
 export function unavailableHint(ready: boolean): string | null {
@@ -133,7 +136,9 @@ export function asKind(value: string): JobKind {
 }
 
 function providerName(who: Who): string {
-  return who === 'cursor' ? 'Cursor' : 'Claude'
+  if (who === 'cursor') return 'Cursor'
+  if (who === 'grok') return 'Grok'
+  return 'Claude'
 }
 
 export function planNewTask(draft: NewTaskDraft, ctx: NewTaskContext): NewTaskPlan {

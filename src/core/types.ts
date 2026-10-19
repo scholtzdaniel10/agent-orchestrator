@@ -1,5 +1,29 @@
-export type ProviderId = 'claude' | 'cursor'
+export type ProviderId = 'claude' | 'cursor' | 'grok'
 export type TerminalProvider = ProviderId | 'shell'
+
+/** Every worker, in display order. */
+export const PROVIDERS: readonly ProviderId[] = ['claude', 'cursor', 'grok']
+
+/**
+ * Which plan a worker spends. A worker with its own plan maps to itself.
+ * Codex, with its own plan, is one line: `codex: 'codex'`.
+ */
+const PLAN_OF: Record<ProviderId, ProviderId> = {
+  claude: 'claude',
+  cursor: 'cursor',
+  grok: 'cursor'
+}
+
+export function planOf(id: ProviderId): ProviderId {
+  return PLAN_OF[id]
+}
+
+/** Model passed to the Cursor CLI when a Grok worker has no Grok model set. */
+export const GROK_DEFAULT_MODEL = 'grok-4.7-high'
+
+export function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === 'string' && (PROVIDERS as readonly string[]).includes(value)
+}
 export type JobType = 'planning' | 'debugging' | 'review' | 'refactor' | 'boilerplate'
 export type JobAccess = 'read' | 'edit' | 'full'
 export type VersionStatus = 'tested' | 'newer' | 'older' | 'unknown'
@@ -136,7 +160,10 @@ export interface RouterRules {
   rules: Record<JobType, ProviderId[]>
   /** Fit multiplier for providers after the first choice (first choice = 1). */
   fallbackFit: number
-  /** Estimated allowance per provider, in the units of a run's weight, per rolling window. */
+  /**
+   * Estimated allowance per plan, in the units of a run's weight, per rolling window.
+   * Keyed by the plan a worker spends (`planOf`). Grok has no row; it spends Cursor's.
+   */
   allowance: Record<ProviderId, { windowHours: number; units: number }>
   /** Hours to rest a provider after a limit error that gave no reset time. */
   defaultRestHours: number

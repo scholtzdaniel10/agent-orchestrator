@@ -111,6 +111,11 @@ test('leadPlan round-trips, null clears, and an invalid stored value is ignored'
 
     saved.setLeadPlan('cursor')
     expect(new Settings(path).leadPlan()).toBe('cursor')
+    saved.setLeadPlan('grok')
+    expect(new Settings(path).leadPlan()).toBe('grok')
+    saved.setModel('grok', 'grok-4.7-high')
+    expect(new Settings(path).model('grok')).toBe('grok-4.7-high')
+    saved.setModel('grok', null)
     saved.setLeadPlan(null)
     const cleared = new Settings(path)
     expect(cleared.leadPlan()).toBeUndefined()

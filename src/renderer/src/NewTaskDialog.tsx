@@ -45,7 +45,7 @@ interface NewTaskDialogProps {
   claudeAvailable: boolean
   cursorAvailable: boolean
   /** Starts agents in new worktrees with the task (the app already does this for the sidebar form). */
-  onStartTerminal: (text: string, provider: 'claude' | 'cursor', count: number) => void
+  onStartTerminal: (text: string, provider: Who, count: number) => void
   /** After a job or goal was created, so the app can show the right tab. */
   onCreated: (kind: 'job' | 'goal') => void
 }
@@ -204,6 +204,9 @@ function NewTaskDialogOpen(props: Omit<NewTaskDialogProps, 'open'>): React.JSX.E
                   <BotAvatar bot={option.id} state={ready ? 'idle' : 'error'} size={18} />
                   <span className="new-task-choice-body">
                     <span className="new-task-choice-name">{option.label}</span>
+                    {option.note !== undefined ? (
+                      <span className="new-task-choice-detail">{option.note}</span>
+                    ) : null}
                     {hint !== null ? <span className="new-task-choice-hint">{hint}</span> : null}
                   </span>
                 </button>

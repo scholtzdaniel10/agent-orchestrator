@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { isProviderId, planOf, PROVIDERS, type ProviderId } from '../../core/types'
 import BotAvatar from './BotAvatar'
 import SidebarMenu, { type MenuEntry } from './SidebarMenu'
 import { Star } from './Star'
@@ -19,8 +20,13 @@ type GithubRepo = Awaited<ReturnType<Window['api']['githubRepos']>>[number]
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
-type ProviderId = Parameters<Window['api']['openTerminal']>[0]
 type WorktreeId = string | null
+
+function workerLabel(id: ProviderId): string {
+  if (id === 'claude') return 'Claude'
+  if (id === 'grok') return 'Grok'
+  return 'Cursor'
+}
 type WorktreeSelectMode = 'only' | 'toggle' | 'range'
 
 function worktreeKeys(changes: readonly ChangeSet[]): WorktreeId[] {
@@ -427,17 +433,17 @@ function WorktreeCard({
             {agents.length > 0 ? (
               <span className="worktree-agents" aria-label={`${String(agents.length)} agents open`}>
                 {agents.slice(0, 3).map((info) =>
-                  info.provider === 'claude' || info.provider === 'cursor' ? (
+                  info.provider === 'shell' ? (
+                    <span key={info.id} className="worktree-shell" aria-hidden="true">
+                      $
+                    </span>
+                  ) : (
                     <BotAvatar
                       key={info.id}
                       bot={info.provider}
                       state={card.status === 'working' ? 'working' : 'idle'}
                       size={14}
                     />
-                  ) : (
-                    <span key={info.id} className="worktree-shell" aria-hidden="true">
-                      $
-                    </span>
                   )
                 )}
               </span>
@@ -575,7 +581,7 @@ function WorktreesSection({
   const [confirming, setConfirming] = useState<string | null>(null)
   const [clock, setClock] = useState(() => Date.now())
   const createRef = useRef<HTMLInputElement>(null)
-  const canTask = start === 'claude' || start === 'cursor'
+  const canTask = start !== ''
 
   // Another project's pins: reload while rendering, the pattern React recommends over an effect.
   if (marksFor !== project) {
@@ -738,22 +744,14 @@ function WorktreesSection({
     const card = cards.find((entry) => entry.key === key)
     const blocked = key !== null && worktreeJobRunning(jobs, key)
     const entries: MenuEntry[] = [
-      {
-        label: 'Open Claude here',
-        disabled: !claudeAvailable,
+      ...PROVIDERS.map((id) => ({
+        label: `Open ${workerLabel(id)} here`,
+        disabled: planOf(id) === 'claude' ? !claudeAvailable : !cursorAvailable,
         onSelect: () => {
           select(key, 'only')
-          onOpen('claude', key)
+          onOpen(id, key)
         }
-      },
-      {
-        label: 'Open Cursor here',
-        disabled: !cursorAvailable,
-        onSelect: () => {
-          select(key, 'only')
-          onOpen('cursor', key)
-        }
-      },
+      })),
       {
         label: pinned ? 'Unpin' : 'Pin to top',
         separator: true,
@@ -1002,13 +1000,17 @@ function WorktreesSection({
               aria-label="Start"
               onChange={(event) => {
                 const value = event.target.value
-                if (value === 'claude' || value === 'cursor') setStart(value)
-                else setStart('')
+                setStart(isProviderId(value) ? value : '')
               }}
             >
               <option value="">nothing</option>
-              {claudeAvailable ? <option value="claude">Claude</option> : null}
-              {cursorAvailable ? <option value="cursor">Cursor</option> : null}
+              {PROVIDERS.map((id) =>
+                (planOf(id) === 'claude' ? claudeAvailable : cursorAvailable) ? (
+                  <option key={id} value={id}>
+                    {workerLabel(id)}
+                  </option>
+                ) : null
+              )}
             </select>
           </label>
         </form>

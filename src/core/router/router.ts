@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs'
-import type { JobType, PaceRules, ProviderId, RouterRules } from '../types'
+import {
+  PROVIDERS,
+  planOf,
+  type JobType,
+  type PaceRules,
+  type ProviderId,
+  type RouterRules
+} from '../types'
 import rulesJson from './rules.json'
 import type { RunRow, Store, StoredWindow } from './store'
 
@@ -73,7 +80,7 @@ export function headroom(
   rules: RouterRules,
   now: number
 ): number {
-  const resting = store.restingUntil(provider)
+  const resting = store.restingUntil(planOf(provider))
   if (resting !== null && resting > now) return 0
   return clamp01(1 - planUsage(provider, store, rules, now).used)
 }
@@ -88,13 +95,14 @@ export function planUsage(
   rules: RouterRules,
   now: number
 ): PlanUsage {
-  const stored = store.windows(provider)
+  const plan = planOf(provider)
+  const stored = store.windows(plan)
   if (stored.length === 0) {
-    const allowance = rules.allowance[provider]
+    const allowance = rules.allowance[plan]
     const since = now - allowance.windowHours * 3600_000
     return {
       windows: [],
-      used: clamp01(weightUsed(store.runsSince(provider, since), allowance.units)),
+      used: clamp01(weightUsed(runsOnPlan(store, plan, since), allowance.units)),
       resetsAt: null,
       slack: null,
       paceFactor: 1,
@@ -213,16 +221,38 @@ export function pickWithReason(
   if (!best) return null
   let winner = best
   const limit = rules.maxParallel
-  if ((running[winner.provider] ?? 0) >= limit) {
+  if (jobsOnPlan(running, winner.provider) >= limit) {
     for (const row of scores) {
       if (row.provider === winner.provider || row.score <= 0) continue
-      if ((running[row.provider] ?? 0) >= limit) continue
+      if (jobsOnPlan(running, row.provider) >= limit) continue
       if (row.headroom <= 0) continue
       winner = row
       break
     }
   }
   return { provider: winner.provider, reason: pickReason(type, winner, scores, rules) }
+}
+
+/** Jobs already running on the plan this worker spends, across every worker that shares it. */
+function jobsOnPlan(running: Partial<Record<ProviderId, number>>, provider: ProviderId): number {
+  const plan = planOf(provider)
+  let total = 0
+  for (const id of PROVIDERS) {
+    if (planOf(id) === plan) total += running[id] ?? 0
+  }
+  return total
+}
+
+/** Weight estimate for a plan: runs of every worker that spends it. */
+function runsOnPlan(store: Store, provider: ProviderId, since: number): RunRow[] {
+  const plan = planOf(provider)
+  const rows: RunRow[] = []
+  for (const id of PROVIDERS) {
+    if (planOf(id) !== plan) continue
+    rows.push(...store.runsSince(id, since))
+  }
+  rows.sort((a, b) => a.started_at - b.started_at || (a.id ?? 0) - (b.id ?? 0))
+  return rows
 }
 
 function pickReason(type: JobType, winner: Score, scores: Score[], rules: RouterRules): string {

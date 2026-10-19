@@ -10,13 +10,19 @@ type Prefs = Awaited<ReturnType<Window['api']['getPrefs']>>
 type AppInfo = Awaited<ReturnType<Window['api']['getAppInfo']>>
 type JobAccess = Awaited<ReturnType<Window['api']['getLeadAccess']>>
 type ProviderId = PlanStatus['id']
+
+function planTitle(id: ProviderId): string {
+  if (id === 'claude') return 'Claude'
+  if (id === 'grok') return 'Grok'
+  return 'Cursor'
+}
 type SkillsState = Awaited<ReturnType<Window['api']['skillsGet']>>
 
 type SectionId = 'general' | 'agents' | 'skills' | 'projects' | 'terminal' | 'shortcuts' | 'about'
 
 const SECTIONS: { id: SectionId; label: string; blurb: string }[] = [
   { id: 'general', label: 'General', blurb: 'Look, jobs at once and notifications.' },
-  { id: 'agents', label: 'Agents', blurb: 'Claude and Cursor: sign-in, models and the lead.' },
+  { id: 'agents', label: 'Agents', blurb: 'Sign-in, models and the lead.' },
   {
     id: 'skills',
     label: 'Skills',
@@ -59,6 +65,15 @@ function planState(plan: PlanStatus): string {
   if (plan.problem === 'not-installed') return 'Not installed'
   if (plan.problem === 'signed-out' || !plan.available) return 'Signed out'
   return 'Ready'
+}
+
+function planHelp(plan: PlanStatus): string | undefined {
+  const parts: string[] = []
+  if (plan.id === 'grok') parts.push('Runs on your Cursor plan.')
+  if (plan.version !== undefined && plan.version !== null) {
+    parts.push(`CLI ${String(plan.version)}`)
+  }
+  return parts.length === 0 ? undefined : parts.join(' ')
 }
 
 function Row({
@@ -316,11 +331,8 @@ function SettingsPage({
     },
     ...plans.map((plan): Entry => ({
       section: 'agents',
-      label: plan.id === 'claude' ? 'Claude' : 'Cursor',
-      help:
-        plan.version !== undefined && plan.version !== null
-          ? `CLI ${String(plan.version)}`
-          : undefined,
+      label: planTitle(plan.id),
+      help: planHelp(plan),
       keywords: 'agent plan model sign in login install cli',
       render: () => (
         <div className="settings-plan">
@@ -376,7 +388,8 @@ function SettingsPage({
           aria-label="Lead runs on"
           onChange={(event) => {
             const value = event.target.value
-            const next = value === 'claude' || value === 'cursor' ? value : 'auto'
+            const next =
+              value === 'claude' || value === 'cursor' || value === 'grok' ? value : 'auto'
             setLeadPlan(next)
             run(window.api.setLeadPlan(next === 'auto' ? null : next).then(onLeadChanged))
           }}
@@ -384,7 +397,7 @@ function SettingsPage({
           <option value="auto">Auto</option>
           {plans.map((plan) => (
             <option key={plan.id} value={plan.id}>
-              {plan.id === 'claude' ? 'Claude' : 'Cursor'}
+              {planTitle(plan.id)}
             </option>
           ))}
         </select>

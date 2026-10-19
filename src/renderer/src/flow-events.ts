@@ -9,7 +9,7 @@ import type {
 export interface FlowEvent {
   id: number
   at: number
-  actor: 'lead' | 'router' | 'claude' | 'cursor'
+  actor: 'lead' | 'router' | PlanStatus['id']
   text: string
   result?: string
   tone?: 'ok' | 'bad' | 'warn'
@@ -141,10 +141,10 @@ function diffChanges(prev: FlowSnapshot, next: FlowSnapshot, now: number): FlowC
   return events
 }
 
-function planOrder(prev: FlowSnapshot, next: FlowSnapshot): Array<'claude' | 'cursor'> {
-  const ids: Array<'claude' | 'cursor'> = []
+function planOrder(prev: FlowSnapshot, next: FlowSnapshot): Array<PlanStatus['id']> {
+  const ids: Array<PlanStatus['id']> = []
   const seen = new Set<string>()
-  const add = (id: 'claude' | 'cursor'): void => {
+  const add = (id: PlanStatus['id']): void => {
     if (seen.has(id)) return
     seen.add(id)
     ids.push(id)
@@ -250,8 +250,8 @@ function diffJobSteps(before: JobRecord | undefined, job: JobRecord, now: number
 }
 
 function terminalActor(provider: TerminalInfo['provider']): FlowEvent['actor'] {
-  if (provider === 'claude' || provider === 'cursor') return provider
-  return 'router'
+  if (provider === 'shell') return 'router'
+  return provider
 }
 
 function diffTerminals(

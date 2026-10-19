@@ -8,6 +8,7 @@ import {
   type JobAccess,
   type JobType,
   type ProviderAdapter,
+  planOf,
   type ProviderId,
   type RouterRules,
   type VersionStatus
@@ -290,7 +291,7 @@ export class Orchestrator {
       if (!this.candidates.includes(provider)) {
         return this.failNow(job, `${provider} is not signed in`)
       }
-      const until = this.store.restingUntil(provider)
+      const until = this.store.restingUntil(planOf(provider))
       if (until !== null && until > this.now()) {
         return this.failNow(job, `${provider} is resting`)
       }
@@ -399,7 +400,7 @@ export class Orchestrator {
   workers(): WorkerInfo[] {
     const now = this.now()
     return this.adapters.map((adapter) => {
-      const until = this.store.restingUntil(adapter.id)
+      const until = this.store.restingUntil(planOf(adapter.id))
       const queue = this.queues.get(adapter.id)
       const usage = planUsage(adapter.id, this.store, this.rules, now)
       const problem = this.problems.get(adapter.id)
@@ -515,10 +516,28 @@ export class Orchestrator {
     if (set.size === 0) this.running.delete(provider)
   }
 
-  /** Start queued jobs for `provider` while it has free parallel slots. */
+  /** Jobs running on the plan `provider` spends, including workers that share it. */
+  private planRunningCount(provider: ProviderId): number {
+    const plan = planOf(provider)
+    let count = 0
+    for (const [id, ids] of this.running) {
+      if (planOf(id) === plan) count += ids.size
+    }
+    return count
+  }
+
+  /** Start queued jobs for every worker on this plan while the plan has free slots. */
+  private pumpPlan(provider: ProviderId): void {
+    const plan = planOf(provider)
+    for (const adapter of this.adapters) {
+      if (planOf(adapter.id) === plan) this.pump(adapter.id)
+    }
+  }
+
+  /** Start queued jobs for `provider` while its plan has free parallel slots. */
   private pump(provider: ProviderId): void {
     const limit = this.rules.maxParallel
-    while (this.runningCount(provider) < limit) {
+    while (this.planRunningCount(provider) < limit) {
       const queue = this.queues.get(provider)
       if (!queue?.length) return
       const id = queue.shift()
@@ -542,7 +561,7 @@ export class Orchestrator {
           this.handles.delete(id)
           this.abandoning.delete(id)
           this.cancelling.delete(id)
-          this.pump(provider)
+          this.pumpPlan(provider)
           this.resolveIdle()
         })
     }
@@ -611,7 +630,7 @@ export class Orchestrator {
           utilization = event.utilization
           if (event.windows) {
             this.store.saveWindows(
-              provider,
+              planOf(provider),
               event.windows.map((window) => ({
                 name: window.name,
                 utilization: window.utilization,
@@ -743,7 +762,7 @@ export class Orchestrator {
     const until = limitEv?.resetsAt
       ? limitEv.resetsAt * 1000
       : now + this.rules.defaultRestHours * 3600_000
-    this.store.setResting(provider, until)
+    this.store.setResting(planOf(provider), until)
     this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'limit')
     this.abandonOthers(provider, job.id)
     if (job.chosen) {
@@ -760,29 +779,35 @@ export class Orchestrator {
 
   /** Kill every other running job on a plan that just hit its limit. */
   private abandonOthers(provider: ProviderId, exceptId: string): void {
-    const ids = this.running.get(provider)
-    if (!ids) return
-    for (const id of ids) {
-      if (id === exceptId) continue
-      this.abandoning.add(id)
-      safeKill(this.handles.get(id))
+    const plan = planOf(provider)
+    for (const [id, ids] of this.running) {
+      if (planOf(id) !== plan) continue
+      for (const jobId of ids) {
+        if (jobId === exceptId) continue
+        this.abandoning.add(jobId)
+        safeKill(this.handles.get(jobId))
+      }
     }
   }
 
-  /** Move jobs still queued on a provider that just went to rest. */
+  /** Move jobs still queued on a plan that just went to rest. */
   private rerouteQueued(provider: ProviderId): void {
-    const waiting = this.queues.get(provider) ?? []
-    this.queues.set(provider, [])
-    for (const id of waiting) {
-      const job = this.byJob.get(id)
-      if (!job || job.status !== 'queued' || job.provider !== provider) continue
-      if (job.chosen) {
-        job.status = 'failed'
-        job.error = `${provider} hit its usage limit`
-        this.emitStatus(job)
-        continue
+    const plan = planOf(provider)
+    for (const adapter of this.adapters) {
+      if (planOf(adapter.id) !== plan) continue
+      const waiting = this.queues.get(adapter.id) ?? []
+      this.queues.set(adapter.id, [])
+      for (const id of waiting) {
+        const job = this.byJob.get(id)
+        if (!job || job.status !== 'queued' || job.provider !== adapter.id) continue
+        if (job.chosen) {
+          job.status = 'failed'
+          job.error = `${adapter.id} hit its usage limit`
+          this.emitStatus(job)
+          continue
+        }
+        this.requeue(job, adapter.id, false, '')
       }
-      this.requeue(job, provider, false, '')
     }
   }
 

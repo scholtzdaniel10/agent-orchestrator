@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from 'react'
+import { isProviderId, planOf, PROVIDERS } from '../../core/types'
 import { RayBurst, Star } from './Star'
 import BotAvatar from './BotAvatar'
 import { editedFilesSummary, latestStepTitle } from './job-steps'
@@ -51,7 +52,7 @@ function errorText(err: unknown): string {
 }
 
 function asPlanChoice(value: string): PlanChoice {
-  if (value === 'claude' || value === 'cursor') return value
+  if (isProviderId(value)) return value
   return 'auto'
 }
 
@@ -291,18 +292,12 @@ function LeadChat({
                   title: 'The lead splits the work across your plans',
                   onSelect: () => void newChat()
                 },
-                {
-                  label: 'Just claude',
-                  title: 'Talk straight to claude: read only, no delegation',
-                  disabled: !planAvailable(plans, 'claude'),
-                  onSelect: () => void newChat('claude')
-                },
-                {
-                  label: 'Just cursor',
-                  title: 'Talk straight to cursor: read only, no delegation',
-                  disabled: !planAvailable(plans, 'cursor'),
-                  onSelect: () => void newChat('cursor')
-                }
+                ...PROVIDERS.map((id) => ({
+                  label: `Just ${id}`,
+                  title: `Talk straight to ${id}: read only, no delegation`,
+                  disabled: !planAvailable(plans, planOf(id)),
+                  onSelect: () => void newChat(id)
+                }))
               ]}
             />
           ) : null}
@@ -341,12 +336,11 @@ function LeadChat({
               }}
             >
               <option value="auto">auto</option>
-              <option value="claude" disabled={!planAvailable(plans, 'claude')}>
-                claude
-              </option>
-              <option value="cursor" disabled={!planAvailable(plans, 'cursor')}>
-                cursor
-              </option>
+              {PROVIDERS.map((id) => (
+                <option key={id} value={id} disabled={!planAvailable(plans, planOf(id))}>
+                  {id}
+                </option>
+              ))}
             </select>
             <label htmlFor="lead-access">Workers may</label>
             <select

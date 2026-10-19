@@ -1,4 +1,6 @@
-type BotName = 'lead' | 'claude' | 'cursor'
+import type { ProviderId } from '../../preload/api-types'
+
+type BotName = 'lead' | ProviderId
 type BotState = 'idle' | 'working' | 'resting' | 'error'
 
 // A statue head on a square tile, drawn on a 24-unit grid. Each bot wears something different.
@@ -8,6 +10,11 @@ const NECK = 'M9.8 19V24M14.2 19V24'
 const BROW_AND_NOSE = 'M9 10.8H11.3V14.6H12.7M13.1 10.8H15'
 const MOUTH = 'M10.8 16.7H13.2'
 const CHEEK_HATCH = 'M14.3 14L16 12.5M14.2 15.6L16.1 13.9M13.9 17.3L15.7 15.7'
+
+/** A tilted orbit around the crown, crossed by one comet slash. */
+const GROK_ORBIT =
+  'M19.41 8.01L19.02 8.53L18.15 8.90L16.87 9.09L15.25 9.10L13.42 8.91L11.48 8.54L9.58 8.02L7.85 7.39L6.40 6.68L5.33 5.94L4.71 5.23L4.59 4.59L4.98 4.07L5.85 3.70L7.13 3.51L8.75 3.50L10.58 3.69L12.52 4.06L14.42 4.58L16.15 5.21L17.60 5.92L18.67 6.66L19.29 7.37L19.41 8.01Z'
+const GROK_SLASH = 'M5.57 10.00L4.83 8.80L18.43 0.40L19.17 1.60Z'
 
 /** Rays of a sun crown, fanned over the top of the head. */
 const SUN_RAYS = [-80, -60, -40, -20, 0, 20, 40, 60, 80]
@@ -33,14 +40,22 @@ function Headgear({ bot }: { bot: BotName }): React.JSX.Element {
     )
   }
   if (bot === 'claude') return <path className="bot-line" d={SUN_RAYS} />
+  if (bot === 'cursor') {
+    return (
+      <>
+        <path
+          className="bot-solid"
+          d="M4.6 10.5C4.6 1.4 19.4 1.4 19.4 10.5H17.6C17.6 4.2 6.4 4.2 6.4 10.5Z"
+        />
+        <path className="bot-line bot-line-thin" d="M7 9.6H17" />
+        <path className="bot-line" d="M7.5 10V15M16.5 10V15" />
+      </>
+    )
+  }
   return (
     <>
-      <path
-        className="bot-solid"
-        d="M4.6 10.5C4.6 1.4 19.4 1.4 19.4 10.5H17.6C17.6 4.2 6.4 4.2 6.4 10.5Z"
-      />
-      <path className="bot-line bot-line-thin" d="M7 9.6H17" />
-      <path className="bot-line" d="M7.5 10V15M16.5 10V15" />
+      <path className="bot-line" d={GROK_ORBIT} />
+      <path className="bot-solid" d={GROK_SLASH} />
     </>
   )
 }
