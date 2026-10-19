@@ -153,7 +153,9 @@ function createWindow(opts?: {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: false
+      webviewTag: false,
+      // No dictionaries loaded into every window; Legate is prompts and code.
+      spellcheck: false
     }
   })
 

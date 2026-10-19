@@ -67,6 +67,11 @@ function TerminalPane({
   const exitedRef = useRef(info.status === 'exited')
   const sizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const applyFitRef = useRef<() => void>(() => {})
+  // A hidden pane gives its WebGL context back; it is loaded again when the pane shows.
+  const webglRef = useRef<{ load: () => void; drop: () => void }>({
+    load: () => {},
+    drop: () => {}
+  })
   const focusedTick = useRef(0)
   const [poppedIds, setPoppedIds] = useState<string[]>([])
   const visible = placement !== 'hidden'
@@ -136,17 +141,31 @@ function TerminalPane({
     })
 
     let webgl: WebglAddon | null = null
-    try {
-      const addon = new WebglAddon()
-      addon.onContextLoss(() => {
-        addon.dispose()
-        if (webgl === addon) webgl = null
-      })
-      term.loadAddon(addon)
-      webgl = addon
-    } catch {
-      webgl = null
+    const loadWebgl = (): void => {
+      if (webgl !== null) return
+      try {
+        const addon = new WebglAddon()
+        addon.onContextLoss(() => {
+          addon.dispose()
+          if (webgl === addon) webgl = null
+        })
+        term.loadAddon(addon)
+        webgl = addon
+      } catch {
+        webgl = null
+      }
     }
+    const dropWebgl = (): void => {
+      const addon = webgl
+      webgl = null
+      try {
+        addon?.dispose()
+      } catch {
+        // Context loss already disposed the addon.
+      }
+    }
+    webglRef.current = { load: loadWebgl, drop: dropWebgl }
+    if (visibleRef.current) loadWebgl()
 
     termRef.current = term
     term.options.disableStdin = exitedRef.current
@@ -263,11 +282,8 @@ function TerminalPane({
       window.removeEventListener('themechange', onScheme)
       offPrefs()
       onData.dispose()
-      try {
-        webgl?.dispose()
-      } catch {
-        // Context loss already disposed the addon.
-      }
+      dropWebgl()
+      webglRef.current = { load: () => {}, drop: () => {} }
       fit.dispose()
       term.dispose()
       termRef.current = null
@@ -276,7 +292,12 @@ function TerminalPane({
   }, [bus, info.id, restore, popped])
 
   useLayoutEffect(() => {
-    if (!visible || popped) return
+    if (popped) return
+    if (!visible) {
+      webglRef.current.drop()
+      return
+    }
+    webglRef.current.load()
     applyFitRef.current()
   }, [visible, popped])
 
