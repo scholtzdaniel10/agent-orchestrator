@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.0
+
+- **One tree for every project.** The sidebar lists each project with its worktrees under it. Click a worktree of another project and Legate opens that project on it. Projects fold; the open one sits at the top.
+- **Usage is live.** Legate asks Claude for its real usage every 10 minutes and when you open Usage or press Refresh, so use outside Legate counts too. It costs a tiny turn on the smallest model. Cursor reports no usage; its card now says its number is an estimate.
+- **Finished agents sleep.** An agent terminal you have not looked at for a while, with no job working in its worktree, stops its process to free memory (a Cursor or Grok terminal is about 500 MB). Show it again and it resumes the same session.
+- **The lead's own model.** Pick it next to Runs on in the Lead tab; workers keep the model set in Usage.
+- **Interface size** in Settings → General, 90% by default, so the window feels less crammed. Terminals and code use JetBrains Mono Nerd Font when it is installed.
+- Memory: hidden terminals give back their GPU context, finished jobs kept in memory are capped at 200 per project, and windows no longer load spellcheck dictionaries.
+- A terminal that only renames its window no longer counts as working in the sidebar.
+
 ## 1.8.0
 
 - **The lead plans, you press Run.** The lead now reads the code in the open project (read only) before it plans, then shows its jobs as cards: title, worker, access and prompt. Edit or remove any of them, then **Run**, or **Dismiss**. Nothing starts before you say so.
