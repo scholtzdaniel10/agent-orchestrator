@@ -113,6 +113,31 @@ export class ClaudeAdapter implements ProviderAdapter {
     return { command: this.bin.command, args }
   }
 
+  /**
+   * The cheapest turn that still brings the plan's real usage windows (five_hour, seven_day),
+   * including use outside Legate: the smallest model, no tools, no settings, a one-line prompt.
+   */
+  usageProbe(cwd: string): RunHandle {
+    const args = [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--model',
+      'haiku',
+      '--system-prompt',
+      'Reply with the single word ok.',
+      '--setting-sources',
+      '',
+      '--strict-mcp-config',
+      '--tools',
+      '',
+      '--max-turns',
+      '1'
+    ]
+    return spawnCli(this.bin, args, 'ok', cwd, (line) => this.parseLine(line))
+  }
+
   run(job: Pick<Job, 'id' | 'prompt'>, cwd: string, opts?: RunOptions): RunHandle {
     const args = ['-p', '--output-format', 'stream-json', '--verbose']
     if (!opts?.bridge) args.push(...workerArgs(accessOf(opts ?? {})))

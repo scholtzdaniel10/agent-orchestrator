@@ -1,8 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
+import { updatedPhrase } from './usage-format'
+
+const CURSOR_ESTIMATE =
+  "Cursor does not report its usage. This is an estimate from Legate's own jobs."
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
@@ -175,6 +179,39 @@ function UsageMeter({
 }): React.JSX.Element {
   const [checking, setChecking] = useState(false)
   const checkingRef = useRef(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+
+  function refresh(): void {
+    setRefreshing(true)
+    window.api
+      .refreshUsage()
+      .then(
+        (result) => {
+          setRefreshError(result.ok ? null : (result.error ?? 'Could not read the usage.'))
+        },
+        (err: unknown) => {
+          setRefreshError(err instanceof Error ? err.message : String(err))
+        }
+      )
+      .finally(() => {
+        setRefreshing(false)
+      })
+  }
+
+  // Opening Usage asks Claude for its numbers; the main process skips it if they are fresh.
+  useEffect(() => {
+    let current = true
+    window.api.refreshUsage().then(
+      (result) => {
+        if (current && !result.ok) setRefreshError(result.error ?? null)
+      },
+      () => {}
+    )
+    return () => {
+      current = false
+    }
+  }, [])
 
   async function checkAgain(): Promise<void> {
     if (checkingRef.current) return
@@ -307,6 +344,29 @@ function UsageMeter({
                         </div>
                       ) : null}
                     </div>
+                    {plan.id === 'claude' ? (
+                      <p className="usage-fresh hint">
+                        <span>
+                          {plan.usageAt === null
+                            ? 'not read yet'
+                            : updatedPhrase(plan.usageAt, now)}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-compact"
+                          disabled={refreshing}
+                          title="Ask Claude for its usage now. Counts your use outside Legate too."
+                          onClick={refresh}
+                        >
+                          {refreshing ? 'Reading…' : 'Refresh'}
+                        </button>
+                      </p>
+                    ) : planOf(plan.id) === 'cursor' ? (
+                      <p className="usage-fresh hint">{CURSOR_ESTIMATE}</p>
+                    ) : null}
+                    {plan.id === 'claude' && refreshError !== null ? (
+                      <p className="field-error">{refreshError}</p>
+                    ) : null}
                     {hasDetails ? (
                       <div className="usage-details">
                         {showResting && restingUntil !== null ? (

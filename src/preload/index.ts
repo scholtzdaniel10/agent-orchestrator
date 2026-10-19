@@ -54,6 +54,9 @@ const api: OrchestratorApi = {
   cancelJob(id: string): Promise<JobRecord> {
     return ipcRenderer.invoke('jobs:cancel', id)
   },
+  refreshUsage(): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('usage:refresh')
+  },
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo> {
     return ipcRenderer.invoke('jobs:takeOver', id, cols, rows)
   },

@@ -45,7 +45,7 @@ import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import { isJobAccess, isJobType, isProviderId } from '../core/types'
+import { isJobAccess, isJobType, isProviderId, planOf } from '../core/types'
 import type {
   AppInfo,
   ChangeSet,
@@ -656,6 +656,7 @@ app.whenReady().then(async () => {
         atRisk: worker.atRisk,
         model: settings.model(worker.id) ?? null,
         windows: worker.windows,
+        usageAt: usageAt(worker.id),
         busy: worker.busy,
         running: worker.running,
         queued: worker.queued,
@@ -671,6 +672,64 @@ app.whenReady().then(async () => {
   function publishPlans(): void {
     broadcast('plans:update', plans())
   }
+
+  function usageAt(id: ProviderId): number | null {
+    const seen = shared.windows(planOf(id)).map((window) => window.observedAt)
+    return seen.length === 0 ? null : Math.max(...seen)
+  }
+
+  // Claude reports its real usage on every turn, use outside Legate included. A tiny turn on
+  // the smallest model keeps the meter current; Cursor reports nothing, so its meter stays an estimate.
+  const USAGE_EVERY_MS = 10 * 60_000
+  const USAGE_MIN_GAP_MS = 2 * 60_000
+  let usageRunning: Promise<{ ok: boolean; error?: string }> | null = null
+  let usageLast = 0
+  function refreshUsage(force: boolean): Promise<{ ok: boolean; error?: string }> {
+    if (usageRunning !== null) return usageRunning
+    if (!force && Date.now() - usageLast < USAGE_MIN_GAP_MS) return Promise.resolve({ ok: true })
+    if (!orch.workers().some((worker) => worker.id === 'claude' && worker.available)) {
+      return Promise.resolve({ ok: false, error: 'Claude is not signed in.' })
+    }
+    usageLast = Date.now()
+    const dir = join(app.getPath('userData'), 'usage-probe')
+    usageRunning = (async (): Promise<{ ok: boolean; error?: string }> => {
+      mkdirSync(dir, { recursive: true })
+      const handle = claude.usageProbe(dir)
+      let saw = false
+      for await (const event of handle.events) {
+        if (event.kind !== 'usage' || event.windows === undefined) continue
+        saw = true
+        shared.saveWindows(
+          'claude',
+          event.windows.map((window) => ({
+            name: window.name,
+            utilization: window.utilization,
+            resetsAt: window.resetsAt === undefined ? null : window.resetsAt * 1000
+          })),
+          Date.now()
+        )
+      }
+      await handle.exit
+      publishPlans()
+      return saw ? { ok: true } : { ok: false, error: 'Claude did not report its usage.' }
+    })()
+      .catch((err: unknown) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      }))
+      .finally(() => {
+        usageRunning = null
+      })
+    return usageRunning
+  }
+  setTimeout(() => {
+    void refreshUsage(false)
+  }, 15_000)
+  setInterval(() => {
+    if (BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible())) {
+      void refreshUsage(false)
+    }
+  }, USAGE_EVERY_MS)
 
   const notified = new Set<string>()
   function notifyEnded(job: JobRecord): void {
@@ -763,6 +822,7 @@ app.whenReady().then(async () => {
       )
     }
   )
+  ipcMain.handle('usage:refresh', () => refreshUsage(false))
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('jobs:cancel', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')

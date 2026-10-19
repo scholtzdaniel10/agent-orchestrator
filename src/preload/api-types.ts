@@ -57,6 +57,8 @@ export interface PlanStatus {
   model: string | null
   /** Each allowance window the plan reports (empty when only an estimate exists). */
   windows: PlanWindow[]
+  /** Epoch ms the plan last reported its windows, or null when only an estimate exists. */
+  usageAt: number | null
   /** Token from the CLI's `--version`, or null when unknown. */
   version: string | null
   versionStatus: VersionStatus
@@ -109,6 +111,8 @@ export interface OrchestratorApi {
   onJobUpdate(cb: (job: JobRecord) => void): () => void
   /** Stop a queued or running job. */
   cancelJob(id: string): Promise<JobRecord>
+  /** Asks Claude for its real usage now; at most once every two minutes. */
+  refreshUsage(): Promise<{ ok: boolean; error?: string }>
   /** Stops a job if it still runs and opens a terminal on its own session, in its folder. */
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo>
 

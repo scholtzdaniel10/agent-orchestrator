@@ -7551,3 +7551,12 @@ label,
 .project-group .worktree-group-label {
   display: none;
 }
+
+.usage-fresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 0 0;
+}
