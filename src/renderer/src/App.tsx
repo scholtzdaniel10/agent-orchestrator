@@ -21,6 +21,7 @@ import SetupScreen from './SetupScreen'
 import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import UsageMeter from './UsageMeter'
+import { meterFillClass, untilReset } from './usage-format'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -139,6 +140,23 @@ function planBarLabel(plan: PlanStatus, now: number): { text: string; bad: boole
     return { text: `${plan.id} resting`, bad: false }
   }
   return { text: `${plan.id} ${String(headroomPercent(plan.used))}% left`, bad: false }
+}
+
+/** "7% 4h 8m · 2% 6d 8h": used share and time to reset for each window. */
+function planWindowsText(plan: PlanStatus, now: number): string {
+  const windows =
+    plan.windows.length > 0 ? plan.windows : [{ used: plan.used, resetsAt: plan.resetsAt }]
+  return windows
+    .map((slot) => {
+      const used = `${String(100 - headroomPercent(slot.used))}%`
+      const left = slot.resetsAt === null ? null : untilReset(slot.resetsAt, now)
+      return left === null ? used : `${used} ${left}`
+    })
+    .join(' · ')
+}
+
+function gigabytes(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
 function activityLine(events: readonly FlowEvent[]): string {
@@ -446,6 +464,21 @@ function App(): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
   const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
+  const [memory, setMemory] = useState<number | null>(null)
+  const [rechecking, setRechecking] = useState(false)
+
+  useEffect(() => {
+    const read = (): void => {
+      window.api.getMemory().then(setMemory, () => {
+        setMemory(null)
+      })
+    }
+    read()
+    const timer = window.setInterval(read, 5000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [])
 
   // When each terminal last printed, batched to one update a second, for the sidebar's status dots.
   useEffect(() => {
@@ -1595,13 +1628,17 @@ function App(): React.JSX.Element {
         ) : null}
       </div>
       <footer className="status-bar">
+        <span className="status-bar-label">Used</span>
         {(plans ?? EMPTY_PLANS).map((plan) => {
           const label = planBarLabel(plan, now)
+          const resting = plan.restingUntil !== null && plan.restingUntil > now
+          const showMeter = !label.bad && !resting
           return (
             <button
               key={plan.id}
               type="button"
               className={label.bad ? 'status-bar-item is-bad' : 'status-bar-item'}
+              title={showMeter ? `${label.text}. Open Usage.` : undefined}
               onClick={() => {
                 if (plan.problem !== undefined) {
                   setSetupOpen(true)
@@ -1610,10 +1647,41 @@ function App(): React.JSX.Element {
                 openPanel('usage')
               }}
             >
-              {label.text}
+              {showMeter ? (
+                <>
+                  <span className="status-bar-plan">{plan.id}</span>
+                  <span className="meter meter-thin status-bar-meter" aria-hidden="true">
+                    <span
+                      className={meterFillClass(plan.id, headroomPercent(plan.used))}
+                      style={{ width: `${String(100 - headroomPercent(plan.used))}%` }}
+                    />
+                  </span>
+                  {planWindowsText(plan, now)}
+                </>
+              ) : (
+                label.text
+              )}
             </button>
           )
         })}
+        <button
+          type="button"
+          className="status-bar-item"
+          title="Check usage again"
+          aria-label="Check usage again"
+          disabled={rechecking}
+          onClick={() => {
+            setRechecking(true)
+            window.api
+              .recheckPlans()
+              .then(setPlans, () => undefined)
+              .finally(() => {
+                setRechecking(false)
+              })
+          }}
+        >
+          ↻
+        </button>
         <button
           type="button"
           className="status-bar-item"
@@ -1642,6 +1710,14 @@ function App(): React.JSX.Element {
         >
           {latestActivity === '' ? 'No activity yet' : `last: ${latestActivity}`}
         </button>
+        {memory !== null ? (
+          <span className="status-bar-item status-bar-fact" title="Memory used by Legate">
+            {gigabytes(memory)}
+          </span>
+        ) : null}
+        <span className="status-bar-item status-bar-fact" title="Open terminals">
+          {`${String(terminals.length)} ${terminals.length === 1 ? 'terminal' : 'terminals'}`}
+        </span>
       </footer>
       {settingsOpen && !setupOpen ? (
         <ErrorBoundary className="setup-slot">

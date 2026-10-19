@@ -4480,6 +4480,37 @@ button.job-step {
   cursor: pointer;
 }
 
+.status-bar-item:has(.status-bar-meter) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status-bar-label,
+.status-bar-plan {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.status-bar-meter,
+.status-bar-meter .meter-fill {
+  display: block;
+}
+
+.status-bar-meter {
+  width: 44px;
+  flex: none;
+}
+
+.status-bar-fact {
+  cursor: default;
+}
+
 .status-bar-item.is-bad {
   color: var(--bad);
 }
@@ -4849,6 +4880,16 @@ button.job-step {
   margin: 0;
   padding: 6px 8px;
   box-sizing: border-box;
+}
+
+/* Column layout: a flex-basis here would become the field's height. */
+.project-worktree-create .project-worktree-rename {
+  flex: none;
+}
+
+.project-worktree-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .project-worktree-create .project-worktree-task {

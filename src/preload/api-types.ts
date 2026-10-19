@@ -171,6 +171,8 @@ export interface OrchestratorApi {
   /** Folder picker for where GitHub clones go. Resolves null when cancelled. */
   chooseCloneDir(): Promise<Prefs | null>
   onPrefsUpdate(cb: (prefs: Prefs) => void): () => void
+  /** Bytes in use across all of Legate's processes. */
+  getMemory(): Promise<number>
   getAppInfo(): Promise<AppInfo>
   /** Open the folder that holds settings and saved chats in the file manager. */
   openDataDir(): Promise<void>

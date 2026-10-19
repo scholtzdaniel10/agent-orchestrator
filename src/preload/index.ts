@@ -154,6 +154,9 @@ const api: OrchestratorApi = {
       ipcRenderer.removeListener('prefs:update', listener)
     }
   },
+  getMemory(): Promise<number> {
+    return ipcRenderer.invoke('app:memory')
+  },
   getAppInfo(): Promise<AppInfo> {
     return ipcRenderer.invoke('app:info')
   },

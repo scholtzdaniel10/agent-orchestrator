@@ -649,6 +649,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }),
     chooseCloneDir: ok(null),
     onPrefsUpdate: off,
+    getMemory: ok(1.5 * 1024 ** 3),
     getAppInfo: ok({
       version: '1.0.3',
       dataDir: 'C:/Users/dev/AppData/Roaming/legate',

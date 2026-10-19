@@ -2,10 +2,10 @@ import { useRef, useState } from 'react'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
+import { meterFillClass, untilReset } from './usage-format'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
-const MINUTE_MS = 60_000
 const CURSOR_MODEL_HINT = 'Cursor keeps the last model used as its own default.'
 
 type PlanWord = 'not installed' | 'signed out' | 'resting' | 'busy' | 'ready'
@@ -61,18 +61,10 @@ function clock(ms: number): string {
   return `${hours}:${minutes}`
 }
 
+
 function resetPhrase(resetsAt: number, now: number): string | null {
-  const remaining = resetsAt - now
-  if (remaining <= 0) return null
-  if (remaining < MINUTE_MS) return 'resets in under 1m'
-  const days = Math.floor(remaining / (24 * 60 * MINUTE_MS))
-  const hours = Math.floor(remaining / (60 * MINUTE_MS)) % 24
-  const minutes = Math.floor(remaining / MINUTE_MS) % 60
-  const parts: string[] = []
-  if (days > 0) parts.push(`${days}d`)
-  if (hours > 0) parts.push(`${hours}h`)
-  if (minutes > 0) parts.push(`${minutes}m`)
-  return `resets in ${parts.join(' ')}`
+  const left = untilReset(resetsAt, now)
+  return left === null ? null : `resets in ${left}`
 }
 
 function usageAvatarState(word: PlanWord): 'idle' | 'working' | 'resting' {
@@ -91,11 +83,6 @@ function planUnusable(word: PlanWord): boolean {
   return word === 'not installed' || word === 'signed out'
 }
 
-function meterFillClass(id: PlanStatus['id'], left: number): string {
-  if (left < 15) return 'meter-fill meter-bad'
-  if (left < 30) return 'meter-fill meter-warn'
-  return `meter-fill meter-${id}`
-}
 
 function windowLabel(name: string): string {
   if (name === 'five_hour') return '5-hour'

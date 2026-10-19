@@ -690,6 +690,10 @@ app.whenReady().then(async () => {
     worktreesDir: worktrees.root,
     rulesMaxParallel
   }))
+  // Every Legate process (main, renderer, GPU), as the status bar shows it.
+  ipcMain.handle('app:memory', () =>
+    app.getAppMetrics().reduce((sum, metric) => sum + metric.memory.workingSetSize * 1024, 0)
+  )
   ipcMain.handle('app:openDataDir', async () => {
     const message = await shell.openPath(app.getPath('userData'))
     if (message !== '') throw new Error(message)
