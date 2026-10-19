@@ -1437,6 +1437,7 @@ select {
 }
 
 .tab-bar {
+  container: tab-bar / inline-size;
   display: flex;
   flex: none;
   flex-wrap: nowrap;
@@ -2842,6 +2843,21 @@ select {
   .compare-col + .compare-col {
     border-left: none;
     border-top: 1px solid var(--border);
+  }
+}
+
+/* Keep the open terminal's tab readable in a narrow workspace: the controls give up their words first. */
+@container tab-bar (max-width: 480px) {
+  .tab-scroll {
+    min-width: 112px;
+  }
+
+  .pane-layout-label {
+    display: none;
+  }
+
+  .pane-layout-picker select {
+    max-width: 84px;
   }
 }
 

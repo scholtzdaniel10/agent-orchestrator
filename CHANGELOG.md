@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- In a small window the right panel and the sidebar shrink before the panel covers the terminals. The panel only floats over them when even the narrowest panels do not fit (below about 840 pixels with the sidebar shown).
+- The open terminal's tab stays readable when the workspace is narrow; the pane picker drops its label instead.
+
 ## 1.6.0
 
 - A new sidebar, laid out like Orca: one project switcher on top, then **New task**, **Goals** and **Automations**, then your worktrees as cards grouped by state (Pinned, In progress, Needs you, Ready to review, Quiet). Each card shows its branch, its lines changed and its terminals. Goals that wait for you show a count.
