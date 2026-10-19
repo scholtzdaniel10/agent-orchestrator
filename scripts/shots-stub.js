@@ -269,6 +269,56 @@
           failedOver: ['cursor'],
           reason: 'failover',
           error: 'Process exited with code 1'
+        },
+        {
+          id: 'e5f6a7b8-0000',
+          type: 'refactor',
+          title: 'Move retry into failover.ts',
+          prompt:
+            'In src/core/router/orchestrator.ts, move the retry loop into src/core/router/failover.ts and keep the tests green.',
+          provider: 'grok',
+          model: 'Grok 4.7 256K High',
+          status: 'running',
+          access: 'edit',
+          edit: true,
+          leadMessage: 'm2',
+          sessionId: 'grok-s1',
+          output: 'The retry loop lives in pump(). I will move it next to the failover chain.',
+          failedOver: [],
+          steps: [
+            {
+              id: 'g1',
+              tool: 'read',
+              title: 'Read src/core/router/orchestrator.ts',
+              status: 'done',
+              startedAt: now - 40000,
+              endedAt: now - 38000
+            },
+            {
+              id: 'g2',
+              tool: 'search',
+              title: 'Searched for retry',
+              status: 'done',
+              startedAt: now - 37000,
+              endedAt: now - 36000
+            },
+            {
+              id: 'g3',
+              tool: 'edit',
+              title: 'Edited src/core/router/failover.ts',
+              status: 'done',
+              startedAt: now - 30000,
+              endedAt: now - 28000,
+              edit: { path: 'src/core/router/failover.ts', added: 31, removed: 0 }
+            },
+            {
+              id: 'g4',
+              tool: 'shell',
+              title: 'Ran pnpm test -- router',
+              status: 'running',
+              startedAt: now - 5000
+            }
+          ]
         }
       ]
   const lead = empty
@@ -287,6 +337,41 @@
           model: 'claude-opus-5-5',
           status: 'done',
           text: 'I split that into two jobs:\n\n1. **Refactor** the router — sent to Cursor.\n2. **Debug** the pty host — sent to Claude.\n\nI will report back when both finish.'
+        },
+        {
+          id: 'm3',
+          role: 'user',
+          text: 'Now add a test for the failover order and a changelog line.',
+          status: 'done'
+        },
+        {
+          id: 'm4',
+          role: 'lead',
+          provider: 'claude',
+          model: 'claude-opus-5-5',
+          status: 'done',
+          text: 'I read the router and its tests. Two small jobs; press Run when they look right.',
+          proposal: {
+            summary: 'A test for the failover order, and a changelog line.',
+            status: 'waiting',
+            jobs: [
+              {
+                title: 'Test the failover order',
+                type: 'boilerplate',
+                access: 'edit',
+                prompt:
+                  'Add a test in src/core/router/orchestrator.test.ts that a limit on cursor moves the job to grok, then claude. Run pnpm test -- router.'
+              },
+              {
+                title: 'Changelog line',
+                type: 'boilerplate',
+                access: 'edit',
+                worker: 'claude',
+                prompt:
+                  'Add one line under the newest version in CHANGELOG.md about the failover order test.'
+              }
+            ]
+          }
         }
       ]
   const chats = empty
@@ -951,6 +1036,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     setLeadAccess: ok(undefined),
     sendLead: (text) => Promise.resolve({ id: 'x', role: 'user', text, status: 'done' }),
     listLeadMessages: ok(lead),
+    runLeadProposal: ok([]),
+    dismissLeadProposal: ok(undefined),
+    takeOverJob: () => Promise.reject(new Error('Not in screenshots')),
     listLeadChats: ok(chats),
     openLeadChat: ok(lead),
     resetLead: ok(undefined),

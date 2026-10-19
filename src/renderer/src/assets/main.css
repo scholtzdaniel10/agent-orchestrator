@@ -7237,3 +7237,186 @@ label,
   min-height: 0;
   overflow: visible;
 }
+
+/* A lead plan: the jobs it proposes, editable, with Run and Dismiss */
+.lead-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.lead-plan-summary {
+  margin: 0;
+  color: var(--muted);
+}
+
+.lead-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lead-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--inset);
+}
+
+.lead-plan-row,
+.lead-plan-meta,
+.lead-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lead-plan-meta {
+  flex-wrap: wrap;
+}
+
+.lead-plan-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.lead-plan-type {
+  color: var(--faint);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-stretch: 75%;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lead-plan-prompt {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* A lead plan's agent, live in the middle beside the terminals */
+.tab-agent .tab-label {
+  font-style: italic;
+}
+
+.agent-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0 8px 8px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--deep);
+}
+
+.agent-pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-pane-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.agent-pane-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-pane-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-pane-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-pane-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.agent-pane-log p {
+  margin: 0;
+}
+
+.agent-pane-log .agent-pane-prompt {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+
+.agent-pane-step {
+  display: flex;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.agent-pane-step.is-running {
+  color: var(--text);
+}
+
+.agent-pane-word {
+  flex: none;
+  width: 7ch;
+  color: var(--accent);
+}
+
+.agent-pane-edit,
+.agent-pane-failed {
+  flex: none;
+}
+
+.agent-pane-failed,
+.agent-pane-error {
+  color: var(--bad);
+}
+
+.agent-pane-output {
+  margin-top: 8px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.agent-pane-log .agent-pane-wait,
+.agent-pane-log .agent-pane-done {
+  margin-top: 8px;
+  color: var(--muted);
+}

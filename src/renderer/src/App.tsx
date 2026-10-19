@@ -9,6 +9,7 @@ import {
   type SetStateAction
 } from 'react'
 import { planOf } from '../../core/types'
+import { agentJobs } from './agent-tabs'
 import ChangesTab from './ChangesTab'
 import ErrorBoundary from './ErrorBoundary'
 import FlowView from './FlowView'
@@ -466,6 +467,10 @@ function App(): React.JSX.Element {
     () => new Set<WorktreeId>([null])
   )
   const [placeTerminal, setPlaceTerminal] = useState<{ id: string; nonce: number } | null>(null)
+  // Jobs from lead plans shown live in the middle, and the ones the person closed.
+  const [agentTabs, setAgentTabs] = useState<string[]>([])
+  const [closedAgents, setClosedAgents] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [focusAgent, setFocusAgent] = useState<{ id: string; nonce: number } | null>(null)
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [projects, setProjects] = useState<ProjectEntry[]>([])
   const [projectError, setProjectError] = useState<{ text: string; at: number } | null>(null)
@@ -1533,6 +1538,12 @@ function App(): React.JSX.Element {
               void openInWorktree(provider, null)
             }}
             settingsNonce={settingsNonce}
+            onRunPlan={async (messageId, planned) => {
+              const started = await window.api.runLeadProposal(messageId, planned)
+              const ids = started.map((job) => job.id)
+              setAgentTabs((current) => [...current, ...ids.filter((id) => !current.includes(id))])
+              if (ids.length > 0) setFocusAgent({ id: ids[0], nonce: Date.now() })
+            }}
             onShowJob={(id) => {
               showJobNonce.current += 1
               setShowJob({ id, nonce: showJobNonce.current })
@@ -2045,6 +2056,12 @@ function App(): React.JSX.Element {
               bus={terminalBus}
               paneLayout={paneLayout}
               onPaneLayout={setPaneLayout}
+              agentJobs={agentJobs(jobs, agentTabs, closedAgents)}
+              focusAgent={focusAgent}
+              onCloseAgent={(id) => {
+                setAgentTabs((current) => current.filter((item) => item !== id))
+                setClosedAgents((current) => new Set([...current, id]))
+              }}
               onTerminal={(info) => {
                 const state = bag.current
                 const next = applyTerminalUpdate(state.terminals, info, false)

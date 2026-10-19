@@ -14,6 +14,8 @@ import {
   requestLayoutFit,
   type PaneLayoutId
 } from './layout'
+import AgentPane from './AgentPane'
+import { agentStatusLabel, agentTabLabel } from './agent-tabs'
 import ReviewPane from './ReviewPane'
 import TerminalPane from './TerminalPane'
 import TerminalTabs from './TerminalTabs'
@@ -22,6 +24,14 @@ import { terminalDisplayTitle, terminalsInSidebarOrder } from './worktree-label'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
+type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
+
+function agentAvatar(status: JobRecord['status']): 'idle' | 'working' | 'resting' | 'error' {
+  if (status === 'running') return 'working'
+  if (status === 'failed') return 'error'
+  if (status === 'queued') return 'resting'
+  return 'idle'
+}
 
 function workerLabel(id: ProviderId): string {
   if (id === 'claude') return 'Claude'
@@ -61,7 +71,10 @@ function Workers({
   bus,
   paneLayout,
   onPaneLayout,
-  onTerminal
+  onTerminal,
+  agentJobs = [],
+  focusAgent = null,
+  onCloseAgent
 }: {
   terminals: TerminalInfo[]
   initialTerminalIds: ReadonlySet<string> | null
@@ -75,6 +88,11 @@ function Workers({
   paneLayout: PaneLayoutId
   onPaneLayout: (layout: PaneLayoutId) => void
   onTerminal: (info: TerminalInfo) => void
+  /** Jobs from a lead plan, shown live as tabs beside the terminals. */
+  agentJobs?: readonly JobRecord[]
+  /** Bring this agent's tab to the front; a new nonce asks again. */
+  focusAgent?: { id: string; nonce: number } | null
+  onCloseAgent?: (id: string) => void
 }): React.JSX.Element {
   const [slots, setSlots] = useState(() => emptySlots(paneLayout))
   const [focusedIndex, setFocusedIndex] = useState(0)
@@ -85,11 +103,19 @@ function Workers({
   const openingRef = useRef(false)
   const [seenPlace, setSeenPlace] = useState<number | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [viewingAgent, setViewingAgent] = useState<string | null>(null)
+  const [seenAgentFocus, setSeenAgentFocus] = useState<number | null>(null)
+  if (focusAgent !== null && focusAgent.nonce !== seenAgentFocus) {
+    setSeenAgentFocus(focusAgent.nonce)
+    setViewingAgent(focusAgent.id)
+    setReviewingId(null)
+  }
+  const agentView = agentJobs.find((job) => job.id === viewingAgent) ?? null
   const reviewChange =
     selectedWorktree === null
       ? null
       : (changes.find((item) => item.id === selectedWorktree && item.files.length > 0) ?? null)
-  const reviewing = reviewChange !== null && reviewingId === reviewChange.id
+  const reviewing = agentView === null && reviewChange !== null && reviewingId === reviewChange.id
   const selectionKey = [...selectedWorktrees]
     .map((id) => id ?? '')
     .sort()
@@ -193,12 +219,22 @@ function Workers({
 
   const openWorktree = selectedWorktree ?? worktreeFlag()
 
+  async function takeOver(job: JobRecord): Promise<void> {
+    const info = await window.api.takeOverJob(job.id, 100, 30)
+    onTerminal(info)
+    onSelectWorktree(info.change ?? null)
+    setViewingAgent(null)
+    onCloseAgent?.(job.id)
+    requestFocus(info.id)
+  }
+
   function closeReview(): void {
     setReviewingId(null)
   }
 
   function toggleReview(): void {
     if (reviewChange === null) return
+    setViewingAgent(null)
     const id = reviewChange.id
     setReviewingId((current) => (current === id ? null : id))
   }
@@ -213,6 +249,7 @@ function Workers({
         paneLayout={paneLayout}
         opening={opening}
         onSelect={(id, source) => {
+          setViewingAgent(null)
           selectTab(id, source)
         }}
         onClose={closeTerminal}
@@ -220,6 +257,28 @@ function Workers({
           void openProvider(provider, openWorktree ?? worktree)
         }}
         onPaneLayout={changePaneLayout}
+        agents={
+          agentJobs.length === 0
+            ? undefined
+            : {
+                items: agentJobs.map((job) => ({
+                  id: job.id,
+                  label: agentTabLabel(job),
+                  provider: job.provider,
+                  status: agentStatusLabel(job),
+                  avatar: agentAvatar(job.status)
+                })),
+                active: agentView?.id ?? null,
+                onSelect: (id) => {
+                  setReviewingId(null)
+                  setViewingAgent((current) => (current === id ? null : id))
+                },
+                onClose: (id) => {
+                  if (viewingAgent === id) setViewingAgent(null)
+                  onCloseAgent?.(id)
+                }
+              }
+        }
         review={
           reviewChange === null
             ? undefined
@@ -237,7 +296,9 @@ function Workers({
       ) : opening ? (
         <p className="hint">Opening terminal…</p>
       ) : null}
-      <div className={reviewing ? 'workers-stage is-hidden' : 'workers-stage'}>
+      <div
+        className={reviewing || agentView !== null ? 'workers-stage is-hidden' : 'workers-stage'}
+      >
         {emptyWorkspace ? (
           <div className="workspace-empty">
             <p className="workspace-empty-copy">
@@ -321,6 +382,16 @@ function Workers({
           </div>
         )}
       </div>
+      {agentView !== null ? (
+        <AgentPane
+          key={agentView.id}
+          job={agentView}
+          onTakeOver={() => takeOver(agentView)}
+          onClose={() => {
+            setViewingAgent(null)
+          }}
+        />
+      ) : null}
       {reviewing && reviewChange !== null ? (
         <ReviewPane change={reviewChange} onClose={closeReview} onDone={closeReview} />
       ) : null}

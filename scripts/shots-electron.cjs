@@ -174,6 +174,36 @@ const scenes = {
       await wait(3000)
     })()`
   },
+  plan: {
+    query: '?tab=lead',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const deadline = Date.now() + 4000
+      while (Date.now() < deadline && !document.querySelector('.lead-plan')) await wait(50)
+      document.querySelector('.lead-plan')?.scrollIntoView({ block: 'center' })
+      await wait(300)
+    })()`
+  },
+  agent: {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const deadline = Date.now() + 4000
+      let tab = null
+      while (Date.now() < deadline) {
+        tab = document.querySelector('.tab-agent .tab')
+        if (tab) break
+        await wait(50)
+      }
+      await wait(1500)
+      document.querySelector('.tab-agent .tab')?.click()
+      await wait(3000)
+    })()`
+  },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
   goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
   'drag-zones': {
