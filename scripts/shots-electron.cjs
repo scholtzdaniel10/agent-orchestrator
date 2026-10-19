@@ -70,6 +70,21 @@ const scenes = {
       button?.click()
     })()`
   },
+  newworktree: {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let button
+      while (Date.now() < deadline) {
+        button = document.querySelector('button[aria-label="New worktree"]')
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+    })()`
+  },
   changes: { query: '?tab=changes', scheme: 'dark', size: [1440, 900], script: '' },
   setup: { query: '?noplans', scheme: 'dark', size: [1440, 900], script: '' },
   paper: { query: '?theme=paper', scheme: 'light', size: [1440, 900], script: openFile },

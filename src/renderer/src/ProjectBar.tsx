@@ -530,6 +530,7 @@ function WorktreesSection({
   const [clock, setClock] = useState(() => Date.now())
   const createRef = useRef<HTMLInputElement>(null)
   const canTask = start === 'claude' || start === 'cursor'
+  const defaultStart: '' | ProviderId = claudeAvailable ? 'claude' : cursorAvailable ? 'cursor' : ''
 
   // Another project's pins: reload while rendering, the pattern React recommends over an effect.
   if (marksFor !== project) {
@@ -583,7 +584,6 @@ function WorktreesSection({
     setDraft('')
     setTask('')
     setHowMany(1)
-    setStart('')
     if (save)
       onCreate(named === undefined || named === '' ? undefined : named, count, agent, prompt)
   }
@@ -873,7 +873,7 @@ function WorktreesSection({
               setDraft('')
               setTask('')
               setHowMany(1)
-              setStart('')
+              setStart(defaultStart)
               setCreating(true)
             }}
           >
@@ -965,6 +965,20 @@ function WorktreesSection({
               {cursorAvailable ? <option value="cursor">Cursor</option> : null}
             </select>
           </label>
+          <div className="project-worktree-actions">
+            <button type="submit" className="btn btn-primary btn-compact">
+              {howMany > 1 ? `Create ${String(Math.min(6, Math.max(1, Math.round(howMany))))}` : 'Create'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              onClick={() => {
+                finishCreate(false)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       ) : null}
       <div className="project-worktrees-list">
