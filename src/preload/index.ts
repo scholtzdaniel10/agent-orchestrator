@@ -365,6 +365,12 @@ const api: OrchestratorApi = {
   resizeTerminal(id: string, cols: number, rows: number): void {
     ipcRenderer.send('terminals:resize', id, cols, rows)
   },
+  sleepTerminal(id: string): Promise<boolean> {
+    return ipcRenderer.invoke('terminals:sleep', id)
+  },
+  wakeTerminal(id: string, cols: number, rows: number): Promise<TerminalInfo | null> {
+    return ipcRenderer.invoke('terminals:wake', id, cols, rows)
+  },
   closeTerminal(id: string): Promise<void> {
     return ipcRenderer.invoke('terminals:close', id)
   },

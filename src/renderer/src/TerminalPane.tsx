@@ -100,7 +100,7 @@ function TerminalPane({
     exitedRef.current = info.status === 'exited'
     const term = termRef.current
     if (term === null) return
-    term.options.disableStdin = info.status === 'exited'
+    term.options.disableStdin = info.status !== 'running'
   }, [info.status])
 
   useLayoutEffect(() => {
@@ -354,6 +354,8 @@ function TerminalPane({
             <p className="terminal-banner">
               Session ended (exit code {exitLabel}). Close the tab or open a new one.
             </p>
+          ) : info.status === 'sleeping' ? (
+            <p className="terminal-banner">Asleep to save memory. Waking it…</p>
           ) : null}
           <div ref={hostRef} className="terminal-host" />
         </>

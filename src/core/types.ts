@@ -241,7 +241,8 @@ export interface TerminalInfo {
   provider: TerminalProvider
   /** Short label, e.g. "claude 1". */
   title: string
-  status: 'running' | 'exited'
+  /** sleeping: stopped to save memory after its agent finished; it resumes its session when shown. */
+  status: 'running' | 'exited' | 'sleeping'
   exitCode: number | null
   /** Model passed to the CLI, or null for the CLI's own default. */
   model: string | null

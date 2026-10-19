@@ -295,6 +295,9 @@ export interface OrchestratorApi {
   resizeTerminal(id: string, cols: number, rows: number): void
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>
+  /** Stops a finished agent's process to free memory; its session resumes on wake. */
+  sleepTerminal(id: string): Promise<boolean>
+  wakeTerminal(id: string, cols: number, rows: number): Promise<TerminalInfo | null>
   listTerminals(): Promise<TerminalInfo[]>
   /** Reopen this project's saved Claude and Cursor terminal sessions. */
   restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]>

@@ -1028,6 +1028,18 @@ app.whenReady().then(async () => {
     if (typeof id !== 'string') return
     terms.close(id)
   })
+  ipcMain.handle('terminals:sleep', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) return false
+    // A terminal in its own window is on screen; it never sleeps.
+    if (poppedOut.has(id)) return false
+    return terms.sleep(id)
+  })
+  ipcMain.handle('terminals:wake', (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64)
+      throw new Error('invalid terminal id')
+    if (!Number.isInteger(cols) || !Number.isInteger(rows)) throw new Error('invalid size')
+    return terms.wake(id, cols as number, rows as number)
+  })
   ipcMain.handle('terminals:list', () => terms.list())
   ipcMain.handle('terminals:snapshot', (_event, id: unknown) => {
     if (typeof id !== 'string') return ''
