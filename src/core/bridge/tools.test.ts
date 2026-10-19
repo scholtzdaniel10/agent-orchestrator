@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import type { AgentEvent, ProviderAdapter, ProviderId, RunHandle } from '../types'
+import type { AgentEvent, LeadProposal, ProviderAdapter, ProviderId, RunHandle } from '../types'
 import type { Worktrees } from '../worktrees'
 import type { RouterRules } from '../types'
 import { loadRules, Orchestrator, Store } from '../router'
-import { createOrchestratorTools, startBridge, type BridgeTool } from './index'
+import { createOrchestratorTools, proposedJobs, startBridge, type BridgeTool } from './index'
 
 interface Script {
   events?: AgentEvent[]
@@ -555,4 +555,91 @@ test('send_job access passes through when allowed, is lowered, and rejects a bad
   } finally {
     store.close()
   }
+})
+
+test('with propose, the lead gets propose_jobs instead of send_job, and nothing starts', async () => {
+  const claude = new FakeAdapter('claude', [])
+  await withOrch([claude], async (orch) => {
+    const proposals: { turn: string; proposal: LeadProposal }[] = []
+    const tools = createOrchestratorTools(
+      orch,
+      () => 'm-turn',
+      () => 'edit',
+      (turn, proposal) => {
+        proposals.push({ turn, proposal })
+      }
+    )
+    expect(tools.map((item) => item.name)).toEqual([
+      'list_workers',
+      'propose_jobs',
+      'get_status',
+      'get_result'
+    ])
+    const result = (await tool(tools, 'propose_jobs').handler({
+      summary: 'Split the router',
+      jobs: [
+        { title: 'Queue', type: 'refactor', access: 'full', prompt: 'Move the queue' },
+        { title: 'Review', type: 'review', worker: 'claude', prompt: 'Check it' }
+      ]
+    })) as { status: string; jobs: number; note?: string }
+    expect(result.jobs).toBe(2)
+    expect(result.note).toContain('Access lowered to edit')
+    expect(orch.list()).toEqual([])
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0].turn).toBe('m-turn')
+    expect(proposals[0].proposal).toEqual({
+      summary: 'Split the router',
+      status: 'waiting',
+      jobs: [
+        { title: 'Queue', type: 'refactor', access: 'edit', prompt: 'Move the queue' },
+        { title: 'Review', type: 'review', access: 'read', worker: 'claude', prompt: 'Check it' }
+      ]
+    })
+  })
+})
+
+test('propose_jobs rejects bad plans and works only during a turn', async () => {
+  await withOrch([new FakeAdapter('claude', [])], async (orch) => {
+    const during = tool(
+      createOrchestratorTools(
+        orch,
+        () => 'm',
+        undefined,
+        () => {}
+      ),
+      'propose_jobs'
+    )
+    const job = { title: 'T', type: 'planning', prompt: 'p' }
+    await expect(during.handler({ summary: 's', jobs: [] })).rejects.toThrow('non-empty list')
+    await expect(during.handler({ summary: 's', jobs: Array(5).fill(job) })).rejects.toThrow(
+      'at most 4'
+    )
+    await expect(
+      during.handler({ summary: 's', jobs: [{ ...job, worker: 'codex' }] })
+    ).rejects.toThrow('jobs[0].worker')
+    await expect(during.handler({ summary: 's', jobs: [{ ...job, prompt: ' ' }] })).rejects.toThrow(
+      'jobs[0].prompt'
+    )
+    await expect(during.handler({ summary: '', jobs: [job] })).rejects.toThrow('summary')
+    const outside = tool(
+      createOrchestratorTools(
+        orch,
+        () => null,
+        undefined,
+        () => {}
+      ),
+      'propose_jobs'
+    )
+    await expect(outside.handler({ summary: 's', jobs: [job] })).rejects.toThrow(
+      'only works during a lead turn'
+    )
+  })
+})
+
+test('proposedJobs checks a plan the person edited', () => {
+  expect(
+    proposedJobs([{ title: 'A', type: 'debugging', prompt: 'fix it', access: 'full' }])
+  ).toEqual([{ title: 'A', type: 'debugging', prompt: 'fix it', access: 'full' }])
+  expect(() => proposedJobs('nope')).toThrow('non-empty list')
+  expect(() => proposedJobs([{ title: 'A', type: 'nope', prompt: 'x' }])).toThrow('jobs[0].type')
 })

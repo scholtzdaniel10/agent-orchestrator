@@ -8,6 +8,7 @@ import type {
   LeadMessage,
   ModelOption,
   Prefs,
+  ProposedJob,
   ProjectEntry,
   ProjectInfo,
   ProviderId,
@@ -108,6 +109,8 @@ export interface OrchestratorApi {
   onJobUpdate(cb: (job: JobRecord) => void): () => void
   /** Stop a queued or running job. */
   cancelJob(id: string): Promise<JobRecord>
+  /** Stops a job if it still runs and opens a terminal on its own session, in its folder. */
+  takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo>
 
   listPlans(): Promise<PlanStatus[]>
   onPlansUpdate(cb: (plans: PlanStatus[]) => void): () => void
@@ -251,6 +254,9 @@ export interface OrchestratorApi {
   setLeadAccess(access: JobAccess): Promise<void>
 
   sendLead(text: string): Promise<LeadMessage>
+  /** Starts the plan on a lead message, with the person's edits when given. */
+  runLeadProposal(messageId: string, jobs?: ProposedJob[]): Promise<JobRecord[]>
+  dismissLeadProposal(messageId: string): Promise<void>
   listLeadMessages(): Promise<LeadMessage[]>
   listLeadChats(): Promise<LeadChat[]>
   openLeadChat(id: string): Promise<LeadMessage[]>
@@ -319,6 +325,7 @@ export type {
   LeadMessage,
   ModelOption,
   ProjectEntry,
+  ProposedJob,
   ProjectInfo,
   ProviderId,
   Requirement,

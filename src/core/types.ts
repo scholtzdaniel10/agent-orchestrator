@@ -132,6 +132,8 @@ export interface RunOptions {
   edit?: boolean
   /** read: files only. edit: files, no shell. full: files and shell, no prompts. */
   access?: JobAccess
+  /** Folders a lead session may read, never write: the open project, so plans match the code. */
+  readDirs?: string[]
 }
 
 /** A model a CLI can run, for the model picker. */
@@ -197,6 +199,27 @@ export interface LeadMessage {
   status: 'streaming' | 'done' | 'error'
   /** Automatic follow-up after delegated jobs finish; no user message before it. */
   kind?: 'report'
+  /** Jobs the lead proposed in this turn; nothing runs until the person says so. */
+  proposal?: LeadProposal
+}
+
+/** One job in a lead's plan. */
+export interface ProposedJob {
+  /** A few words, shown on the card and the job's tab. */
+  title: string
+  type: JobType
+  access: JobAccess
+  /** Unset lets the router choose. */
+  worker?: ProviderId
+  prompt: string
+}
+
+export interface LeadProposal {
+  summary: string
+  jobs: ProposedJob[]
+  status: 'waiting' | 'running' | 'dismissed'
+  /** Ids of the jobs started from this plan, in the order of . */
+  jobIds?: string[]
 }
 
 export interface LeadChat {

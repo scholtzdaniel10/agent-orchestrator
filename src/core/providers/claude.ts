@@ -121,7 +121,12 @@ export class ClaudeAdapter implements ProviderAdapter {
       mkdirSync(cwd, { recursive: true })
       const configPath = join(cwd, 'orchestrator-mcp.json')
       writeFileSync(configPath, claudeMcpConfig(opts.bridge))
-      const allowed = opts.bridge.tools.map((tool) => `mcp__orchestrator__${tool}`).join(',')
+      const readDirs = opts.readDirs ?? []
+      const tools = opts.bridge.tools.map((tool) => `mcp__orchestrator__${tool}`)
+      // The lead may look at the code it plans for, never change it.
+      if (readDirs.length > 0) tools.push('Read', 'Grep', 'Glob')
+      const allowed = tools.join(',')
+      for (const dir of readDirs) args.push('--add-dir', dir)
       args.push(
         '--mcp-config',
         configPath,

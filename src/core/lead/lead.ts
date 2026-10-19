@@ -7,6 +7,8 @@ import {
   type BridgeInfo,
   type LeadChat,
   type LeadMessage,
+  type LeadProposal,
+  type ProposedJob,
   type ProviderAdapter,
   type ProviderId,
   type RouterRules,
@@ -17,8 +19,8 @@ import { headroom } from '../router/router'
 import type { Store } from '../router/store'
 
 export const LEAD_INSTRUCTIONS: string = [
-  'You are the lead of a small team of coding agents. Do not do the work yourself: split the user\'s request into independent jobs and hand each one to a worker with the send_job tool of the orchestrator MCP server. Pick the job type that fits (planning, debugging, review, refactor or boilerplate); the router chooses which worker runs it. Each job prompt must be self-contained, because the worker sees nothing else. A worker\'s access is read, edit, or full, and cannot go above the ceiling the person set (see list_workers). Pass access: "read" to only read files (the default); access: "edit" to change files in a separate worktree the user reviews and merges themselves; access: "full" to change files and run commands there. Use edit or full only when the request asks for code or files to be changed.',
-  'Send every job with send_job, then stop. Do not wait for results: never call get_result to block until a job finishes. You may use get_status to inspect the board, including jobs the user started directly, and list_workers only if you need to know who is available. After sending, tell the user in one or two lines what you sent and to whom.',
+  'You are the lead of a small team of coding agents. Do not do the work yourself. First look at the code the request is about: you may read, search and list files in the open project (never change them). Then plan independent jobs and propose them with the propose_jobs tool of the orchestrator MCP server, once, with the whole plan. Nothing runs until the person presses Run; they may edit the plan first. Give each job a short title, the type that fits (planning, debugging, review, refactor or boilerplate) and a self-contained prompt that names the files and what done looks like, because the worker sees nothing else. Leave worker out unless the person asked for one. Access is read (files only, the default), edit (change files in a separate worktree the person reviews and merges) or full (change files and run commands there); it cannot go above the ceiling the person set (see list_workers). Use edit or full only when the request asks for code or files to be changed. A small, clear request is one job.',
+  'After proposing, tell the person in one or two lines what you plan and why, then stop. Do not wait for results: the app prompts you again with the results once the jobs finish. You may use get_status to inspect the board and list_workers to see who is available.',
   'If the request is a simple question you can answer in one sentence without a worker, just answer it. The app will prompt you again later with worker results when you need to report them.',
   'Every job runs in the open project named at the top of each message. If the person asks for work in a different project or folder, do not send a job: tell them in one line to open that project in the sidebar first, then ask again. If a job fails, report its error as it is and do not guess at causes you have not checked.'
 ].join('\n\n')
@@ -70,6 +72,7 @@ export class Lead {
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private readonly listJobs: () => JobRecord[]
+  private orch: Orchestrator | null = null
   private available: ProviderId[] = []
   private history: LeadMessage[] = []
   private readonly listeners = new Set<(message: LeadMessage, chatId: string | null) => void>()
@@ -171,6 +174,7 @@ export class Lead {
   }
 
   attachOrchestrator(orch: Orchestrator): void {
+    this.orch = orch
     this.unsubJobs?.()
     this.unsubJobs = orch.onUpdate((job) => {
       this.onJobUpdate(job)
@@ -202,6 +206,56 @@ export class Lead {
   /** True while the lead is writing a reply or a report. */
   isBusy(): boolean {
     return this.busy
+  }
+
+  /** Called by the propose_jobs tool: the plan waits on the lead message for the person. */
+  attachProposal(turn: string, proposal: LeadProposal): void {
+    const index = this.history.findIndex((item) => item.id === turn)
+    if (index < 0) throw new Error('that lead turn is not open')
+    const message = this.history[index]
+    message.proposal = copyProposal(proposal)
+    this.emit(message)
+  }
+
+  /** Start the plan on a lead message, with the person's edits. Returns the started jobs. */
+  runProposal(messageId: string, jobs?: ProposedJob[]): JobRecord[] {
+    const orch = this.orch
+    if (orch === null) throw new Error('jobs cannot start yet')
+    const index = this.history.findIndex((item) => item.id === messageId)
+    const message = index < 0 ? undefined : this.history[index]
+    const proposal = message?.proposal
+    if (message === undefined || proposal === undefined) throw new Error('That plan is not open.')
+    if (proposal.status !== 'waiting') throw new Error('That plan already ran or was dismissed.')
+    const chosen = (jobs ?? proposal.jobs).filter((job) => job.prompt.trim() !== '')
+    if (chosen.length === 0) throw new Error('The plan has no jobs left to run.')
+    if (this.chatId !== null) this.turnChat.set(messageId, this.chatId)
+    const started = chosen.map((job) =>
+      orch.submit(job.type, job.prompt, job.worker, job.access, {
+        leadMessage: messageId,
+        title: job.title
+      })
+    )
+    message.proposal = {
+      ...proposal,
+      jobs: chosen.map((job) => ({ ...job })),
+      status: 'running',
+      jobIds: started.map((job) => job.id)
+    }
+    this.persistMessage(message, index)
+    this.emit(message)
+    return started
+  }
+
+  /** Drop the plan on a lead message without running it. */
+  dismissProposal(messageId: string): void {
+    const index = this.history.findIndex((item) => item.id === messageId)
+    const message = index < 0 ? undefined : this.history[index]
+    const proposal = message?.proposal
+    if (message === undefined || proposal === undefined) throw new Error('That plan is not open.')
+    if (proposal.status !== 'waiting') return
+    message.proposal = { ...proposal, status: 'dismissed' }
+    this.persistMessage(message, index)
+    this.emit(message)
   }
 
   /** Id of the lead message whose turn is running right now, or null. */
@@ -334,6 +388,11 @@ export class Lead {
     this.persistChat()
   }
 
+  private leadReadDirs(): string[] {
+    const project = this.project()
+    return project === '' ? [] : [project]
+  }
+
   private preferredPlan(): ProviderId | undefined {
     if (typeof this.prefer === 'function') return this.prefer()
     return this.prefer
@@ -462,7 +521,7 @@ export class Lead {
         direct ? this.project() : this.dir,
         {
           resume: plan.resume,
-          ...(direct ? {} : { bridge: this.bridge }),
+          ...(direct ? {} : { bridge: this.bridge, readDirs: this.leadReadDirs() }),
           model: this.modelFor?.(provider)
         }
       )
@@ -786,6 +845,17 @@ function copyMessage(message: LeadMessage): LeadMessage {
   if (message.provider !== undefined) copy.provider = message.provider
   if (message.model !== undefined) copy.model = message.model
   if (message.kind !== undefined) copy.kind = message.kind
+  if (message.proposal !== undefined) copy.proposal = copyProposal(message.proposal)
+  return copy
+}
+
+function copyProposal(proposal: LeadProposal): LeadProposal {
+  const copy: LeadProposal = {
+    summary: proposal.summary,
+    jobs: proposal.jobs.map((job) => ({ ...job })),
+    status: proposal.status
+  }
+  if (proposal.jobIds !== undefined) copy.jobIds = [...proposal.jobIds]
   return copy
 }
 

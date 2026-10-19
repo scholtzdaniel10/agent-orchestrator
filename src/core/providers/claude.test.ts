@@ -418,6 +418,22 @@ process.exit(0)
       await argsNoNote(adapter.run(job, all, { resume: 'sess-3', bridge, model: 'opus' }))
     ).toEqual([...start, '--resume', 'sess-3', ...mcpArgs(all), '--model', 'opus'])
 
+    const reading = join(root, 'reading')
+    expect(
+      await argsNoNote(adapter.run(job, reading, { bridge, readDirs: ['/work/project'] }))
+    ).toEqual([
+      ...start,
+      '--add-dir',
+      '/work/project',
+      '--mcp-config',
+      join(reading, 'orchestrator-mcp.json'),
+      '--strict-mcp-config',
+      '--allowedTools',
+      'mcp__orchestrator__send_job,mcp__orchestrator__get_result,Read,Grep,Glob',
+      '--setting-sources',
+      'project'
+    ])
+
     const editDir = join(root, 'edit')
     mkdirSync(editDir)
     expect(await argsNoNote(adapter.run(job, editDir, { access: 'read' }))).toEqual(base)

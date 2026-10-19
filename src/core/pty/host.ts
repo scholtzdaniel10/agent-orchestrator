@@ -140,16 +140,20 @@ export class PtyHost {
     provider: ProviderId,
     cols: number,
     rows: number,
-    opts?: { cwd?: string; change?: string; prompt?: string }
+    opts?: { cwd?: string; change?: string; prompt?: string; resume?: string }
   ): Promise<TerminalInfo> {
     if (this.liveCount() >= this.maxTerminals) {
       throw new Error('too many terminals')
     }
     const model = this.modelFor?.(provider)
-    const sessionId = await this.freshSessionId(provider)
+    // Taking over a job continues its own CLI session instead of starting a new one.
+    const takeOver = typeof opts?.resume === 'string' && opts.resume !== '' ? opts.resume : null
+    const sessionId = takeOver ?? (await this.freshSessionId(provider))
     const prompt = typeof opts?.prompt === 'string' && opts.prompt !== '' ? opts.prompt : undefined
     const launchOpts: LaunchOpts = { model }
-    if (sessionId !== null) {
+    if (takeOver !== null) {
+      launchOpts.resume = takeOver
+    } else if (sessionId !== null) {
       // Cursor maps sessionId to --resume; passing resume would drop the prompt.
       if (provider === 'claude' || prompt !== undefined) launchOpts.sessionId = sessionId
       else launchOpts.resume = sessionId
