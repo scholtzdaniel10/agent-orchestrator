@@ -249,6 +249,9 @@ export interface OrchestratorApi {
   getLeadPlan(): Promise<ProviderId | null>
   /** Takes effect on the next message; switching plans starts a fresh lead session. */
   setLeadPlan(plan: ProviderId | null): Promise<void>
+  /** Model the lead uses on a plan; null means the plan's own model. */
+  getLeadModel(provider: ProviderId): Promise<string | null>
+  setLeadModel(provider: ProviderId, model: string | null): Promise<void>
   /** Ceiling for jobs the lead hands out. */
   getLeadAccess(): Promise<JobAccess>
   setLeadAccess(access: JobAccess): Promise<void>

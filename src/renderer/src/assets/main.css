@@ -5787,6 +5787,15 @@ button.job-step {
   min-width: 0;
 }
 
+/* Each label stays with its menu when the row wraps. */
+.lead-option {
+  display: flex;
+  flex: 1 1 150px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* Type: the condensed display face is for the logo and panel titles; controls use the UI face. */
 .btn,
 .tab,

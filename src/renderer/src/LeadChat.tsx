@@ -198,6 +198,49 @@ function LeadChat({
     }
   }
 
+  // The lead's own model on the chosen plan; workers keep the plan's model from Settings.
+  const [leadModel, setLeadModel] = useState<{
+    plan: ProviderId
+    options: { id: string; label: string }[]
+    value: string | null
+  } | null>(null)
+  const [modelError, setModelError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (choice === 'auto') return
+    let current = true
+    Promise.all([window.api.listModels(choice), window.api.getLeadModel(choice)]).then(
+      ([options, value]) => {
+        if (current) setLeadModel({ plan: choice, options, value })
+      },
+      (err: unknown) => {
+        if (current) setModelError(errorText(err))
+      }
+    )
+    return () => {
+      current = false
+    }
+  }, [choice, settingsNonce])
+
+  const modelShown = choice !== 'auto' && leadModel !== null && leadModel.plan === choice
+  const modelOptions = modelShown
+    ? leadModel.value !== null && !leadModel.options.some((option) => option.id === leadModel.value)
+      ? [...leadModel.options, { id: leadModel.value, label: leadModel.value }]
+      : leadModel.options
+    : []
+
+  async function changeLeadModel(plan: ProviderId, value: string | null): Promise<void> {
+    setModelError(null)
+    setLeadModel((current) =>
+      current !== null && current.plan === plan ? { ...current, value } : current
+    )
+    try {
+      await window.api.setLeadModel(plan, value)
+    } catch (err: unknown) {
+      setModelError(errorText(err))
+    }
+  }
+
   async function changePlan(value: PlanChoice): Promise<void> {
     const previous = choiceRef.current
     picked.current = true
@@ -329,43 +372,77 @@ function LeadChat({
           </>
         ) : (
           <>
-            <label htmlFor="lead-plan">Runs on</label>
-            <select
-              id="lead-plan"
-              className="plan-choice"
-              title="Switching plans starts a fresh lead session."
-              value={choice}
-              disabled={leadStreaming}
-              aria-invalid={planError !== null ? true : undefined}
-              aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
-              onChange={(event) => {
-                void changePlan(asPlanChoice(event.target.value))
-              }}
-            >
-              <option value="auto">auto</option>
-              {PROVIDERS.map((id) => (
-                <option key={id} value={id} disabled={!planAvailable(plans, planOf(id))}>
-                  {id}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="lead-access">Workers may</label>
-            <select
-              id="lead-access"
-              className="plan-choice lead-access"
-              value={workerAccess}
-              disabled={leadStreaming}
-              onChange={(event) => {
-                void changeAccess(asAccess(event.target.value))
-              }}
-            >
-              <option value="read">read only</option>
-              <option value="edit">edit files</option>
-              <option value="full">do anything</option>
-            </select>
+            <span className="lead-option">
+              <label htmlFor="lead-plan">Runs on</label>
+              <select
+                id="lead-plan"
+                className="plan-choice"
+                title="Switching plans starts a fresh lead session."
+                value={choice}
+                disabled={leadStreaming}
+                aria-invalid={planError !== null ? true : undefined}
+                aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
+                onChange={(event) => {
+                  void changePlan(asPlanChoice(event.target.value))
+                }}
+              >
+                <option value="auto">auto</option>
+                {PROVIDERS.map((id) => (
+                  <option key={id} value={id} disabled={!planAvailable(plans, planOf(id))}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </span>
+            {modelShown ? (
+              <>
+                <span className="lead-option">
+                  <label htmlFor="lead-model">Model</label>
+                  <select
+                    id="lead-model"
+                    className="plan-choice lead-model"
+                    title="The lead's own model. Workers keep the model set in Settings."
+                    value={leadModel.value ?? ''}
+                    disabled={leadStreaming}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      void changeLeadModel(leadModel.plan, value === '' ? null : value)
+                    }}
+                  >
+                    <option value="">as its jobs</option>
+                    {modelOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              </>
+            ) : null}
+            <span className="lead-option">
+              <label htmlFor="lead-access">Workers may</label>
+              <select
+                id="lead-access"
+                className="plan-choice lead-access"
+                value={workerAccess}
+                disabled={leadStreaming}
+                onChange={(event) => {
+                  void changeAccess(asAccess(event.target.value))
+                }}
+              >
+                <option value="read">read only</option>
+                <option value="edit">edit files</option>
+                <option value="full">do anything</option>
+              </select>
+            </span>
           </>
         )}
       </div>
+      {modelError !== null ? (
+        <p className="field-error" role="alert">
+          {modelError}
+        </p>
+      ) : null}
       {planError !== null ? (
         <p id="lead-plan-error" className="field-error" role="alert">
           {planError}

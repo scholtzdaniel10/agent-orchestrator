@@ -343,7 +343,7 @@ app.whenReady().then(async () => {
     dir: join(app.getPath('userData'), 'lead'),
     project: projectDir,
     prefer: () => settings.leadPlan() ?? envPrefer,
-    modelFor,
+    modelFor: (id) => settings.leadModel(id) ?? settings.model(id),
     listJobs: (): JobRecord[] => orch.list()
   })
   leadRef.current = lead
@@ -777,6 +777,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
     if (plan !== null && !isProviderId(plan)) throw new Error('unknown plan')
     settings.setLeadPlan(isProviderId(plan) ? plan : null)
+  })
+  ipcMain.handle('settings:getLeadModel', (_event, provider: unknown) => {
+    if (!isProviderId(provider)) throw new Error('unknown provider')
+    return settings.leadModel(provider) ?? null
+  })
+  ipcMain.handle('settings:setLeadModel', (_event, provider: unknown, model: unknown) => {
+    if (!isProviderId(provider)) throw new Error('unknown provider')
+    if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
+    settings.setLeadModel(provider, model)
   })
   ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
   ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {

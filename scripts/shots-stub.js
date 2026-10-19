@@ -1030,7 +1030,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       output: '',
       failedOver: []
     }),
-    getLeadPlan: ok(null),
+    getLeadPlan: () => Promise.resolve(location.search.includes('leadplan') ? 'claude' : null),
+    getLeadModel: ok(null),
+    setLeadModel: ok(undefined),
     setLeadPlan: ok(undefined),
     getLeadAccess: ok('read'),
     setLeadAccess: ok(undefined),

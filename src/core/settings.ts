@@ -27,6 +27,30 @@ export class Settings {
     return value.trim()
   }
 
+  /** Model the lead uses on this plan; unset means the plan's own model, as its jobs use. */
+  leadModel(provider: ProviderId): string | undefined {
+    const models = this.data.leadModels
+    if (!isRecord(models)) return undefined
+    const value = models[provider]
+    if (!isValidModel(value)) return undefined
+    return value.trim()
+  }
+
+  setLeadModel(provider: ProviderId, model: string | null): void {
+    let stored: string | null = null
+    if (model !== null) {
+      const trimmed = model.trim()
+      if (!isValidModel(trimmed)) throw new Error('invalid model name')
+      stored = trimmed
+    }
+    const existing = this.data.leadModels
+    const models: Record<string, unknown> = isRecord(existing) ? existing : {}
+    this.data.leadModels = models
+    if (stored === null) delete models[provider]
+    else models[provider] = stored
+    this.persist()
+  }
+
   project(): string | undefined {
     const value = this.data.project
     if (typeof value !== 'string' || value === '') return undefined

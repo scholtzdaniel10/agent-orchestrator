@@ -289,6 +289,12 @@ const api: OrchestratorApi = {
   setLeadPlan(plan: ProviderId | null): Promise<void> {
     return ipcRenderer.invoke('settings:setLeadPlan', plan)
   },
+  getLeadModel(provider: ProviderId): Promise<string | null> {
+    return ipcRenderer.invoke('settings:getLeadModel', provider)
+  },
+  setLeadModel(provider: ProviderId, model: string | null): Promise<void> {
+    return ipcRenderer.invoke('settings:setLeadModel', provider, model)
+  },
   getLeadAccess(): Promise<JobAccess> {
     return ipcRenderer.invoke('settings:getLeadAccess')
   },

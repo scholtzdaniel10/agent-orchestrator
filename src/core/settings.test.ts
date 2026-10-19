@@ -289,3 +289,27 @@ test('prefs default, validate and persist', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('the lead model is its own, apart from the plan model, and clears back to it', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    expect(settings.leadModel('claude')).toBeUndefined()
+    settings.setModel('claude', 'sonnet')
+    settings.setLeadModel('claude', ' opus ')
+    settings.setLeadModel('grok', 'grok-4.7')
+    const again = new Settings(path)
+    expect(again.model('claude')).toBe('sonnet')
+    expect(again.leadModel('claude')).toBe('opus')
+    expect(again.leadModel('grok')).toBe('grok-4.7')
+    expect(again.leadModel('cursor')).toBeUndefined()
+    again.setLeadModel('claude', null)
+    expect(new Settings(path).leadModel('claude')).toBeUndefined()
+    expect(new Settings(path).model('claude')).toBe('sonnet')
+    expect(() => {
+      again.setLeadModel('claude', 'bad model; rm')
+    }).toThrow('invalid model name')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

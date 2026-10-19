@@ -53,6 +53,12 @@ const scenes = {
     })()`
   },
   lead: { query: '?tab=lead', scheme: 'dark', size: [1440, 900], script: '' },
+  'lead-model': {
+    query: '?tab=lead&leadplan',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: 'new Promise((resolve) => setTimeout(resolve, 1500))'
+  },
   newchat: {
     query: '?tab=lead',
     scheme: 'dark',
