@@ -67,6 +67,15 @@ function planState(plan: PlanStatus): string {
   return 'Ready'
 }
 
+function planHelp(plan: PlanStatus): string | undefined {
+  const parts: string[] = []
+  if (plan.id === 'grok') parts.push('Runs on your Cursor plan.')
+  if (plan.version !== undefined && plan.version !== null) {
+    parts.push(`CLI ${String(plan.version)}`)
+  }
+  return parts.length === 0 ? undefined : parts.join(' ')
+}
+
 function Row({
   label,
   help,
@@ -323,10 +332,7 @@ function SettingsPage({
     ...plans.map((plan): Entry => ({
       section: 'agents',
       label: planTitle(plan.id),
-      help:
-        plan.version !== undefined && plan.version !== null
-          ? `CLI ${String(plan.version)}`
-          : undefined,
+      help: planHelp(plan),
       keywords: 'agent plan model sign in login install cli',
       render: () => (
         <div className="settings-plan">

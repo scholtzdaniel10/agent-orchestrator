@@ -11,6 +11,11 @@ const BROW_AND_NOSE = 'M9 10.8H11.3V14.6H12.7M13.1 10.8H15'
 const MOUTH = 'M10.8 16.7H13.2'
 const CHEEK_HATCH = 'M14.3 14L16 12.5M14.2 15.6L16.1 13.9M13.9 17.3L15.7 15.7'
 
+/** A tilted orbit around the crown, crossed by one comet slash. */
+const GROK_ORBIT =
+  'M18.65 3.16L18.71 3.86L18.32 4.74L17.49 5.73L16.29 6.76L14.80 7.77L13.12 8.69L11.36 9.45L9.64 10.01L8.09 10.31L6.80 10.36L5.86 10.13L5.35 9.64L5.29 8.94L5.68 8.06L6.51 7.07L7.71 6.04L9.20 5.03L10.88 4.11L12.64 3.35L14.36 2.79L15.91 2.49L17.20 2.44L18.14 2.67L18.65 3.16Z'
+const GROK_SLASH = 'M5.99 11.20L5.21 10.00L17.81 1.80L18.59 3.00Z'
+
 /** Rays of a sun crown, fanned over the top of the head. */
 const SUN_RAYS = [-80, -60, -40, -20, 0, 20, 40, 60, 80]
   .map((angle) => {
@@ -22,8 +27,7 @@ const SUN_RAYS = [-80, -60, -40, -20, 0, 20, 40, 60, 80]
   .join('')
 
 function Headgear({ bot }: { bot: BotName }): React.JSX.Element {
-  const drawn = bot === 'grok' ? 'cursor' : bot
-  if (drawn === 'lead') {
+  if (bot === 'lead') {
     return (
       <>
         <path className="bot-solid" d="M7.3 9.2L1.2 3.2 3.6 6.3 1 5.8 3.8 8.3 1.6 8.3 7 11.2Z" />
@@ -35,15 +39,23 @@ function Headgear({ bot }: { bot: BotName }): React.JSX.Element {
       </>
     )
   }
-  if (drawn === 'claude') return <path className="bot-line" d={SUN_RAYS} />
+  if (bot === 'claude') return <path className="bot-line" d={SUN_RAYS} />
+  if (bot === 'cursor') {
+    return (
+      <>
+        <path
+          className="bot-solid"
+          d="M4.6 10.5C4.6 1.4 19.4 1.4 19.4 10.5H17.6C17.6 4.2 6.4 4.2 6.4 10.5Z"
+        />
+        <path className="bot-line bot-line-thin" d="M7 9.6H17" />
+        <path className="bot-line" d="M7.5 10V15M16.5 10V15" />
+      </>
+    )
+  }
   return (
     <>
-      <path
-        className="bot-solid"
-        d="M4.6 10.5C4.6 1.4 19.4 1.4 19.4 10.5H17.6C17.6 4.2 6.4 4.2 6.4 10.5Z"
-      />
-      <path className="bot-line bot-line-thin" d="M7 9.6H17" />
-      <path className="bot-line" d="M7.5 10V15M16.5 10V15" />
+      <path className="bot-line" d={GROK_ORBIT} />
+      <path className="bot-solid" d={GROK_SLASH} />
     </>
   )
 }

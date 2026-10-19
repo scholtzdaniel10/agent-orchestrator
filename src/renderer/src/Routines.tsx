@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { isProviderId, PROVIDERS } from '../../core/types'
 
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type JobType = Parameters<Window['api']['submitJob']>[0]
@@ -30,7 +31,7 @@ function asJobType(value: string): JobType {
 }
 
 function asWorker(value: string): RoutineWorker {
-  if (value === 'claude' || value === 'cursor' || value === 'grok') return value
+  if (isProviderId(value)) return value
   return 'auto'
 }
 
@@ -361,8 +362,11 @@ function Routines({
                 onChange={(event) => setDraft({ ...draft, worker: asWorker(event.target.value) })}
               >
                 <option value="auto">auto</option>
-                <option value="claude">claude</option>
-                <option value="cursor">cursor</option>
+                {PROVIDERS.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
               </select>
               <label htmlFor="routine-access">Access</label>
               <select

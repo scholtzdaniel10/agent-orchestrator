@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { planOf, PROVIDERS, type ProviderId } from '../../core/types'
 import { RayBurst } from './Star'
 import { parseDiff } from './diff-lines'
 import { worktreeLabel } from './worktree-label'
@@ -6,9 +7,13 @@ import { worktreeLabel } from './worktree-label'
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type ChangedFile = ChangeSet['files'][number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
-type ProviderId = Parameters<Window['api']['openTerminal']>[0]
-
 const DIFF_LINE_CAP = 5000
+
+function workerLabel(id: ProviderId): string {
+  if (id === 'claude') return 'Claude'
+  if (id === 'grok') return 'Grok'
+  return 'Cursor'
+}
 
 function errorText(err: unknown): string {
   if (err instanceof Error) {
@@ -475,30 +480,21 @@ function ChangesTab({
                   {confirming ? 'Discard for good?' : 'Discard'}
                 </button>
                 {jobRunning ? <span className="change-help">job running</span> : null}
-                {claudeAvailable ? (
-                  <button
-                    type="button"
-                    className="btn btn-quiet btn-compact"
-                    disabled={opening || busy}
-                    onClick={() => {
-                      onOpenHere('claude', selected.id)
-                    }}
-                  >
-                    Claude here
-                  </button>
-                ) : null}
-                {cursorAvailable ? (
-                  <button
-                    type="button"
-                    className="btn btn-quiet btn-compact"
-                    disabled={opening || busy}
-                    onClick={() => {
-                      onOpenHere('cursor', selected.id)
-                    }}
-                  >
-                    Cursor here
-                  </button>
-                ) : null}
+                {PROVIDERS.map((id) =>
+                  (planOf(id) === 'claude' ? claudeAvailable : cursorAvailable) ? (
+                    <button
+                      key={id}
+                      type="button"
+                      className="btn btn-quiet btn-compact"
+                      disabled={opening || busy}
+                      onClick={() => {
+                        onOpenHere(id, selected.id)
+                      }}
+                    >
+                      {`${workerLabel(id)} here`}
+                    </button>
+                  ) : null
+                )}
               </div>
               {selected.files.length > 0 ? (
                 <p className="change-help">

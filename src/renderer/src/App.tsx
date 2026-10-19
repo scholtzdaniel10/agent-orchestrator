@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction
 } from 'react'
+import { planOf } from '../../core/types'
 import ChangesTab from './ChangesTab'
 import ErrorBoundary from './ErrorBoundary'
 import FlowView from './FlowView'
@@ -2099,25 +2100,27 @@ function App(): React.JSX.Element {
         }}
       />
       <footer className="status-bar">
-        {(plans ?? EMPTY_PLANS).map((plan) => {
-          const label = planBarLabel(plan, now)
-          return (
-            <button
-              key={plan.id}
-              type="button"
-              className={label.bad ? 'status-bar-item is-bad' : 'status-bar-item'}
-              onClick={() => {
-                if (plan.problem !== undefined) {
-                  setSetupOpen(true)
-                  return
-                }
-                openPanel('usage')
-              }}
-            >
-              {label.text}
-            </button>
-          )
-        })}
+        {(plans ?? EMPTY_PLANS)
+          .filter((plan) => planOf(plan.id) === plan.id)
+          .map((plan) => {
+            const label = planBarLabel(plan, now)
+            return (
+              <button
+                key={plan.id}
+                type="button"
+                className={label.bad ? 'status-bar-item is-bad' : 'status-bar-item'}
+                onClick={() => {
+                  if (plan.problem !== undefined) {
+                    setSetupOpen(true)
+                    return
+                  }
+                  openPanel('usage')
+                }}
+              >
+                {label.text}
+              </button>
+            )
+          })}
         <button
           type="button"
           className="status-bar-item"

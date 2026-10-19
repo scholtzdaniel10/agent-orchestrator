@@ -1,11 +1,17 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { PROVIDERS, type ProviderId } from '../../core/types'
 import BotAvatar from './BotAvatar'
 import { PANE_LAYOUT_IDS, PANE_LAYOUT_LABELS, isPaneLayout, type PaneLayoutId } from './layout'
 import { terminalDisplayTitle } from './worktree-label'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
-type ProviderId = Parameters<Window['api']['openTerminal']>[0]
+
+function workerLabel(id: ProviderId): string {
+  if (id === 'claude') return 'Claude'
+  if (id === 'grok') return 'Grok'
+  return 'Cursor'
+}
 
 function terminalAvatarState(info: TerminalInfo): 'idle' | 'resting' | 'error' {
   if (info.status === 'running') return 'idle'
@@ -120,7 +126,7 @@ function TerminalTabs({
                 }}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
               >
-                {info.provider === 'claude' || info.provider === 'cursor' ? (
+                {info.provider !== 'shell' ? (
                   <BotAvatar bot={info.provider} state={terminalAvatarState(info)} size={16} />
                 ) : null}
                 <span className="tab-label">{heading}</span>
@@ -150,32 +156,22 @@ function TerminalTabs({
             <span className="tab-label">{review.label}</span>
           </button>
         ) : null}
-        <button
-          type="button"
-          className="btn btn-quiet tab-new"
-          aria-label="New Claude terminal"
-          disabled={opening}
-          onClick={() => {
-            onOpen('claude', newWorktree ? 'new' : undefined)
-          }}
-        >
-          <BotAvatar bot="claude" state="idle" size={16} />
-          <span className="tab-new-plus">+</span>
-          <span className="tab-new-label">Claude</span>
-        </button>
-        <button
-          type="button"
-          className="btn btn-quiet tab-new"
-          aria-label="New Cursor terminal"
-          disabled={opening}
-          onClick={() => {
-            onOpen('cursor', newWorktree ? 'new' : undefined)
-          }}
-        >
-          <BotAvatar bot="cursor" state="idle" size={16} />
-          <span className="tab-new-plus">+</span>
-          <span className="tab-new-label">Cursor</span>
-        </button>
+        {PROVIDERS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className="btn btn-quiet tab-new"
+            aria-label={`New ${workerLabel(id)} terminal`}
+            disabled={opening}
+            onClick={() => {
+              onOpen(id, newWorktree ? 'new' : undefined)
+            }}
+          >
+            <BotAvatar bot={id} state="idle" size={16} />
+            <span className="tab-new-plus">+</span>
+            <span className="tab-new-label">{workerLabel(id)}</span>
+          </button>
+        ))}
         <button
           type="button"
           className="btn btn-quiet tab-worktree"

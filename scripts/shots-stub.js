@@ -69,6 +69,23 @@
           version: null,
           versionStatus: 'unknown',
           testedVersion: '2026.10.01-e373342'
+        },
+        {
+          id: 'grok',
+          available: false,
+          problem: 'signed-out',
+          used: 0,
+          restingUntil: null,
+          resetsAt: null,
+          atRisk: false,
+          busy: false,
+          running: 0,
+          queued: 0,
+          model: null,
+          windows: [],
+          version: null,
+          versionStatus: 'unknown',
+          testedVersion: '2026.10.01-e373342'
         }
       ]
     : [
@@ -102,6 +119,22 @@
           running: 0,
           queued: 0,
           model: 'gpt-5',
+          windows: [],
+          version: '2026.10.01-e373342',
+          versionStatus: 'tested',
+          testedVersion: '2026.10.01-e373342'
+        },
+        {
+          id: 'grok',
+          available: true,
+          used: 0.18,
+          restingUntil: null,
+          resetsAt: now + 400 * H,
+          atRisk: false,
+          busy: !empty,
+          running: empty ? 0 : 1,
+          queued: 0,
+          model: 'grok-4.7-high',
           windows: [],
           version: '2026.10.01-e373342',
           versionStatus: 'tested',
@@ -456,6 +489,16 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           exitCode: null,
           model: 'gpt-5',
           startedAt: now - 0.2 * H
+        },
+        {
+          id: 't3',
+          provider: 'grok',
+          title: 'grok 1',
+          status: 'running',
+          exitCode: null,
+          model: 'grok-4.7-high',
+          startedAt: now - 0.1 * H,
+          change: 'b2c3d4e5'
         }
       ]
   const snapshots = {
@@ -478,6 +521,14 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       'Reading src/core/pty/host.ts',
       'The kill path waits on resize; a second close is ignored.',
       'I will split dispose out of the resize handler.'
+    ].join('\r\n'),
+    t3: [
+      'grok 1',
+      '',
+      '> Sketch how parallel jobs share a plan without starving the queue',
+      '',
+      'Reading src/core/router/router.ts',
+      'Grok spends the Cursor plan, so its jobs wait on the same slots.'
     ].join('\r\n')
   }
   const off = () => () => {}
@@ -525,10 +576,18 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listPlans: ok(plans),
     onPlansUpdate: off,
     recheckPlans: ok(plans),
-    listModels: ok([
-      { id: 'gpt-5', label: 'GPT-5' },
-      { id: 'sonnet-5', label: 'Sonnet 5' }
-    ]),
+    listModels: (provider) =>
+      Promise.resolve(
+        provider === 'grok'
+          ? [
+              { id: 'grok-4.7-high', label: 'Grok 4.7' },
+              { id: 'grok-4.7', label: 'Grok 4.7' }
+            ]
+          : [
+              { id: 'gpt-5', label: 'GPT-5' },
+              { id: 'sonnet-5', label: 'Sonnet 5' }
+            ]
+      ),
     setModel: ok(undefined),
     getProject: ok({
       path: projectPath,

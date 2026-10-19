@@ -44,7 +44,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 - **The window is a workspace.** The sidebar has a project switcher, **New task** (`Ctrl+N`), Goals, Automations, and your worktrees as cards grouped by state: in progress, needs you, ready to review. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance and what is running.
 - **The lead.** You talk to one lead. It splits your request into jobs, hands them to workers, and reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
-- **Workers and access.** You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
+- **Workers and access.** Grok is a third worker running Cursor on a Grok model on your Cursor plan, and coding work goes to Grok first. You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
 - **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
 - **Worktrees.** Any job or terminal that may change files works in its own git worktree. Create one from the sidebar with a name and a **task**, and the agent in it starts working at once; ask for several and you get several agents on the same task. Select one or many to see their terminals together.
 - **Terminals.** A terminal is a full Claude or Cursor session you talk to directly, shown in a grid of up to six panes. A terminal can move into a window of its own, and open terminals come back after a restart with their conversation.
@@ -53,7 +53,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 - **Routines and setup.** A routine is a saved job you run with one click, or after every job of a kind you choose. Setup commands (for example `pnpm install`) run in each worktree you create by hand, in a terminal you can watch.
 - **Goals.** Say what should be true, and optionally a check such as `pnpm test`. The lead proposes each round of jobs and waits for your OK; changes collect in one worktree, the check runs after every round, and it stops when the check passes, at the round limit, or when the same failure repeats. A job with a check is a small goal: it fixes until the check passes. Triggers start goals on a schedule, or when CI fails on your pull request, an issue is opened, or the default branch breaks.
 - **Skills.** Every agent Legate starts gets Legate's own skills: worktree rules and a read-only `legate` CLI for workers, how to delegate for the lead, and how to review a change for both. Add your own skill folders in Settings → Skills. They load only into Legate's agents, never into your other Claude or Cursor sessions.
-- **The router.** A rule table and how much allowance each plan has left decide who gets a job. Coding work goes to Cursor first; planning and review go to Claude. If a plan reports its limit, it rests and its queued jobs move to the other plan.
+- **The router.** A rule table and how much allowance each plan has left decide who gets a job. Coding work goes to Grok first; planning and review go to Claude. If a plan reports its limit, it rests and its queued jobs move to the other plan.
 - **Compare.** Send the same prompt to both plans, read the results side by side, keep one.
 - **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in Settings → General.
 
@@ -98,7 +98,7 @@ With no arguments, `legate` opens a terminal UI: worktrees and jobs on the left,
 legate                       open the terminal UI (also: legate ui)
 legate status                each plan, and what is running here
 legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate]
-                      [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet]
+                      [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet]
 legate jobs [--limit N]      recent jobs
 legate show <job-id>         one job with every step
 legate changes               worktrees and their changes
