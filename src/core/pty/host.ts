@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import type * as NodePty from 'node-pty'
 import { TERMINAL_SCROLLBACK_CAP, type Store } from '../router/store'
-import type { ProviderId, TerminalInfo, TerminalProvider } from '../types'
+import { isProviderId, type ProviderId, type TerminalInfo, type TerminalProvider } from '../types'
 
 export interface Launch {
   command: string
@@ -116,7 +116,7 @@ export class PtyHost {
   private readonly platform: NodeJS.Platform
   private readonly sessions: Session[] = []
   private readonly byId = new Map<string, Session>()
-  private readonly opened: Record<ProviderId, number> = { claude: 0, cursor: 0 }
+  private readonly opened: Record<ProviderId, number> = { claude: 0, cursor: 0, grok: 0 }
   private readonly dataListeners: Array<(id: string, data: string) => void> = []
   private readonly updateListeners: Array<(info: TerminalInfo, removed: boolean) => void> = []
 
@@ -568,7 +568,7 @@ export class PtyHost {
     this.markExited(session)
     session.onProbation = false
     session.relaunching = true
-    if (session.info.provider === 'cursor') {
+    if (session.info.provider === 'cursor' || session.info.provider === 'grok') {
       void this.relaunchCursor(session, exitCode)
       return
     }
@@ -586,7 +586,8 @@ export class PtyHost {
   }
 
   private async relaunchCursor(session: Session, exitCode: number): Promise<void> {
-    const sessionId = await this.freshSessionId('cursor')
+    const provider = session.info.provider === 'grok' ? 'grok' : 'cursor'
+    const sessionId = await this.freshSessionId(provider)
     if (session.removed || !session.relaunching) return
     const launchOpts: LaunchOpts = { model: session.info.model ?? undefined }
     if (sessionId !== null) launchOpts.resume = sessionId
@@ -752,12 +753,11 @@ function clampInt(value: number, min: number, max: number): number {
 }
 
 function asProvider(value: string): ProviderId | null {
-  if (value === 'claude' || value === 'cursor') return value
-  return null
+  return isProviderId(value) ? value : null
 }
 
 function asAgentProvider(value: TerminalProvider): ProviderId {
-  if (value === 'claude' || value === 'cursor') return value
+  if (isProviderId(value)) return value
   throw new Error('shell sessions have no CLI')
 }
 

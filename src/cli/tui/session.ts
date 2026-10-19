@@ -70,7 +70,7 @@ export interface TuiHost {
     run: (id: string) => JobRecord
     onJobFinished: (job: JobRecord) => void
   }
-  interactive: (provider: 'claude' | 'cursor') => AgentSpec
+  interactive: (provider: ProviderId) => AgentSpec
   spawnInherited: (spec: AgentSpec, cwd: string) => Promise<void>
 }
 

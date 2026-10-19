@@ -7214,3 +7214,30 @@ label,
   min-height: 0;
   overflow: visible;
 }
+
+/* grok worker: Cursor's look until Grok has its own */
+.bot-grok .bot-body {
+  fill: var(--brand);
+}
+
+.meter-grok {
+  background: var(--bot-cursor);
+}
+
+.flow-box.is-grok {
+  border-color: var(--signal);
+  background: var(--raised);
+}
+
+.flow-name.is-grok,
+.flow-plan-name.is-grok {
+  color: var(--text);
+}
+
+.flow-wire.is-grok {
+  stroke: var(--signal);
+}
+
+.flow-dot.is-grok {
+  background: var(--signal);
+}

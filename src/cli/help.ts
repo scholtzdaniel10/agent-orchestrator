@@ -4,7 +4,7 @@ const FULL = [
   'legate [--project <path>] <command>',
   'legate ui',
   'legate status',
-  'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet] [--verbose]',
+  'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet] [--verbose]',
   'legate jobs [--limit N]',
   'legate show <job-id>',
   'legate changes',
@@ -26,7 +26,7 @@ const FULL = [
 const LINE: Record<string, string> = {
   ui: 'legate ui',
   status: 'legate status',
-  job: 'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor] [--access read|edit|full] [--json] [--quiet] [--verbose]',
+  job: 'legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet] [--verbose]',
   jobs: 'legate jobs [--limit N]',
   show: 'legate show <job-id>',
   changes: 'legate changes',

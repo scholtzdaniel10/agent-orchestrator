@@ -159,7 +159,7 @@ test('parseRoutine rejects bad fields', () => {
   )
   expect(() => parseRoutine({ ...sample(), type: 'nope' })).toThrow('unknown job type')
   expect(() => parseRoutine({ ...sample(), worker: 'both' })).toThrow(
-    'worker must be auto, claude, or cursor'
+    'worker must be auto, claude, cursor, or grok'
   )
   expect(() => parseRoutine({ ...sample(), access: 'write' })).toThrow(
     'access must be read, edit, or full'

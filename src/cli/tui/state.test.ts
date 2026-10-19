@@ -140,6 +140,8 @@ test('the prompt edits, cycles type worker and access, and ignores an empty subm
   state = reduce(state, { type: 'key', key: keyPress({ ctrl: true, input: 'w' }) }).state
   expect(state.worker).toBe('cursor')
   state = reduce(state, { type: 'key', key: keyPress({ ctrl: true, input: 'w' }) }).state
+  expect(state.worker).toBe('grok')
+  state = reduce(state, { type: 'key', key: keyPress({ ctrl: true, input: 'w' }) }).state
   expect(state.worker).toBe('auto')
   state = reduce(state, { type: 'key', key: keyPress({ ctrl: true, input: 'a' }) }).state
   expect(state.access).toBe('edit')

@@ -1,10 +1,10 @@
 {
   "rules": {
-    "planning": ["claude", "cursor"],
-    "debugging": ["cursor", "claude"],
-    "review": ["claude", "cursor"],
-    "refactor": ["cursor", "claude"],
-    "boilerplate": ["cursor", "claude"]
+    "planning": ["claude", "cursor", "grok"],
+    "debugging": ["grok", "cursor", "claude"],
+    "review": ["claude", "cursor", "grok"],
+    "refactor": ["grok", "cursor", "claude"],
+    "boilerplate": ["grok", "cursor", "claude"]
   },
   "fallbackFit": 0.5,
   "allowance": {

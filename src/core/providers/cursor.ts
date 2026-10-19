@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  GROK_DEFAULT_MODEL,
   type StepTool,
   accessOf,
   type AgentEvent,
@@ -30,15 +31,31 @@ const LIMIT_RE = /usage limit|rate.?limit|limit reached|out of (usage|credits)|s
 const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g
 
 export class CursorAdapter implements ProviderAdapter {
-  readonly id = 'cursor' as const
+  readonly id: 'cursor' | 'grok'
   private foundBin: Bin | null
+  private readonly modelFor: (() => string | undefined) | undefined
   private plugins: AgentPlugins = NO_PLUGINS
   private cachedModels: ModelOption[] | undefined
   private versionCapture: Promise<CapturedRun> | null = null
   private readonly steps = new StepParseState()
 
-  constructor(bin?: Bin) {
+  constructor(bin?: Bin, opts?: { id?: 'cursor' | 'grok'; model?: () => string | undefined }) {
     this.foundBin = bin ?? null
+    this.id = opts?.id ?? 'cursor'
+    this.modelFor = opts?.model
+  }
+
+  /**
+   * Grok always runs with a Grok model. A caller model is kept only when it
+   * starts with `grok`; anything else falls back to the constructor model, then
+   * the default. Cursor passes the caller model through unchanged.
+   */
+  private cliModel(requested: string | undefined): string | undefined {
+    if (this.id !== 'grok') return requested
+    if (requested !== undefined && requested.startsWith('grok')) return requested
+    const given = this.modelFor?.()
+    if (given !== undefined && given.startsWith('grok')) return given
+    return GROK_DEFAULT_MODEL
   }
 
   /** Looked up again until found, so the Cursor CLI installed from Setup works without a restart. */
@@ -77,9 +94,11 @@ export class CursorAdapter implements ProviderAdapter {
     const { code, stdout } = await runCaptured(this.bin, ['models'])
     if (code !== 0) return []
     const parsed = parseCursorModels(stdout)
-    if (parsed.length === 0) return []
-    this.cachedModels = parsed
-    return parsed
+    const models =
+      this.id === 'grok' ? parsed.filter((model) => model.id.startsWith('grok')) : parsed
+    if (models.length === 0) return []
+    this.cachedModels = models
+    return models
   }
 
   /** Interactive session: the same node + index.js as `run`, with no `-p`. */
@@ -94,7 +113,8 @@ export class CursorAdapter implements ProviderAdapter {
     const args = [...(this.bin.args ?? [])]
     const resume = opts.resume ?? opts.sessionId
     if (resume) args.push('--resume', resume)
-    if (opts.model) args.push('--model', opts.model)
+    const model = this.cliModel(opts.model)
+    if (model) args.push('--model', model)
     args.push(...pluginArgs(this.plugins.worker))
     // A task means the person wants work done here now; Cursor's trust question would hold it up.
     if (opts.prompt && !opts.resume) args.push('--trust', withLegateNote(opts.prompt))
@@ -119,7 +139,8 @@ export class CursorAdapter implements ProviderAdapter {
       writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig())
       args.push('--approve-mcps')
     }
-    if (opts?.model) args.push('--model', opts.model)
+    const model = this.cliModel(opts?.model)
+    if (model) args.push('--model', model)
     args.push(...pluginArgs(opts?.bridge ? this.plugins.lead : this.plugins.worker))
     const handle = spawnCli(
       this.bin,

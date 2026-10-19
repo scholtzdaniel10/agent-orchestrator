@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type { JobRecord } from './router/orchestrator'
 import type { RoutineRow } from './router/store'
-import { isJobAccess, isJobType, type JobAccess, type JobType, type ProviderId } from './types'
+import {
+  isJobAccess,
+  isJobType,
+  isProviderId,
+  type JobAccess,
+  type JobType,
+  type ProviderId
+} from './types'
 
 const NAME_MAX = 40
 const PROMPT_MAX = 8_000
@@ -152,8 +159,8 @@ export function parseRoutine(input: unknown, makeId: () => string = randomUUID):
   }
   if (!isJobType(row.type)) throw new Error('unknown job type')
   const worker = row.worker
-  if (worker !== 'auto' && worker !== 'claude' && worker !== 'cursor') {
-    throw new Error('worker must be auto, claude, or cursor')
+  if (worker !== 'auto' && !isProviderId(worker)) {
+    throw new Error('worker must be auto, claude, cursor, or grok')
   }
   if (!isJobAccess(row.access)) throw new Error('access must be read, edit, or full')
   const routine: Routine = {

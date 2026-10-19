@@ -133,7 +133,7 @@ function planFeeding(jobs: readonly JobRecord[], id: PlanStatus['id']): boolean 
   )
 }
 
-function boxClass(tone: 'lead' | 'claude' | 'cursor' | null, flash: boolean): string {
+function boxClass(tone: 'lead' | PlanStatus['id'] | null, flash: boolean): string {
   const names = ['flow-box']
   if (tone !== null) names.push(`is-${tone}`)
   if (flash) names.push('is-flash')

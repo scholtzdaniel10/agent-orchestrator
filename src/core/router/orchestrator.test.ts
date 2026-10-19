@@ -2110,6 +2110,82 @@ test('cancel of a foreign job asks the owner to stop it', async () => {
   })
 })
 
+test('a cursor limit rests grok, and a grok limit rests cursor', async () => {
+  const now = 1_800_000_000_000
+  const resetsAt = 1_900_000_000
+  const claude = new FakeAdapter('claude', [ok('c')])
+  const cursor = new FakeAdapter('cursor', [
+    { events: [{ kind: 'limit', message: 'spent', resetsAt }] }
+  ])
+  const grok = new FakeAdapter('grok', [
+    { events: [{ kind: 'limit', message: 'spent', resetsAt: resetsAt + 10 }] }
+  ])
+  await withOrch(
+    [claude, cursor, grok],
+    async (orch, store) => {
+      const before = orch.workers()
+      expect(before.find((worker) => worker.id === 'grok')?.headroom).toBe(
+        before.find((worker) => worker.id === 'cursor')?.headroom
+      )
+
+      orch.submit('planning', 'spend cursor', 'cursor')
+      await orch.idle()
+      expect(store.restingUntil('cursor')).toBe(resetsAt * 1000)
+      expect(store.restingUntil('grok')).toBeNull()
+      const rested = orch.workers()
+      expect(rested.find((worker) => worker.id === 'grok')?.restingUntil).toBe(resetsAt * 1000)
+      expect(rested.find((worker) => worker.id === 'cursor')?.restingUntil).toBe(resetsAt * 1000)
+      expect(orch.submit('boilerplate', 'grok too', 'grok')).toMatchObject({
+        status: 'failed',
+        error: 'grok is resting'
+      })
+      expect(grok.received).toHaveLength(0)
+
+      store.clearResting('cursor')
+      orch.submit('boilerplate', 'spend grok', 'grok')
+      await orch.idle()
+      expect(store.restingUntil('cursor')).toBe((resetsAt + 10) * 1000)
+      expect(
+        orch.get(orch.list().find((job) => job.prompt === 'spend grok')?.id ?? '')
+      ).toMatchObject({
+        provider: 'grok',
+        status: 'failed'
+      })
+      expect(orch.submit('planning', 'cursor too', 'cursor')).toMatchObject({
+        status: 'failed',
+        error: 'cursor is resting'
+      })
+    },
+    () => now
+  )
+})
+
+test('maxParallel 1 a running cursor job blocks a grok job', async () => {
+  const held = gate()
+  const grokStarted = gate()
+  const claude = new FakeAdapter('claude', [ok('unused')])
+  const cursor = new FakeAdapter('cursor', [{ gate: held.promise, ...ok('from cursor') }])
+  const grok = new FakeAdapter('grok', [{ onStart: () => grokStarted.open(), ...ok('from grok') }])
+  await withOrch(
+    [claude, cursor, grok],
+    async (orch) => {
+      orch.submit('refactor', 'cursor please', 'cursor')
+      const blocked = orch.submit('refactor', 'grok please', 'grok')
+      expect(blocked).toMatchObject({ status: 'queued', provider: 'grok' })
+      expect(cursor.received.map((job) => job.prompt)).toEqual(['cursor please'])
+      expect(grok.received).toHaveLength(0)
+      held.open()
+      await grokStarted.promise
+      expect(grok.received.map((job) => job.prompt)).toEqual(['grok please'])
+      await orch.idle()
+      expect(orch.list().every((job) => job.status === 'done')).toBe(true)
+    },
+    undefined,
+    undefined,
+    { rules: rulesWith(1) }
+  )
+})
+
 test('watchStore picks up a job started in another process', async () => {
   await twoOrchs(async ({ orchA, orchB, clockB, hold }) => {
     orchB.restore('/proj')

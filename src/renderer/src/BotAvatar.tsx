@@ -1,4 +1,6 @@
-type BotName = 'lead' | 'claude' | 'cursor'
+import type { ProviderId } from '../../preload/api-types'
+
+type BotName = 'lead' | ProviderId
 type BotState = 'idle' | 'working' | 'resting' | 'error'
 
 // A statue head on a square tile, drawn on a 24-unit grid. Each bot wears something different.
@@ -20,7 +22,8 @@ const SUN_RAYS = [-80, -60, -40, -20, 0, 20, 40, 60, 80]
   .join('')
 
 function Headgear({ bot }: { bot: BotName }): React.JSX.Element {
-  if (bot === 'lead') {
+  const drawn = bot === 'grok' ? 'cursor' : bot
+  if (drawn === 'lead') {
     return (
       <>
         <path className="bot-solid" d="M7.3 9.2L1.2 3.2 3.6 6.3 1 5.8 3.8 8.3 1.6 8.3 7 11.2Z" />
@@ -32,7 +35,7 @@ function Headgear({ bot }: { bot: BotName }): React.JSX.Element {
       </>
     )
   }
-  if (bot === 'claude') return <path className="bot-line" d={SUN_RAYS} />
+  if (drawn === 'claude') return <path className="bot-line" d={SUN_RAYS} />
   return (
     <>
       <path

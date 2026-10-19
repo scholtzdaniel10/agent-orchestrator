@@ -1,6 +1,9 @@
 /** Pure decisions for the New task dialog: which call to make, validation, and labels. */
 
-export type Who = 'claude' | 'cursor'
+import type { ProviderId } from '../../preload/api-types'
+
+/** The dialog offers Claude and Cursor. Grok joins them in a later task. */
+export type Who = Exclude<ProviderId, 'grok'>
 export type How = 'terminal' | 'background' | 'goal'
 export type JobKind = 'debugging' | 'refactor' | 'boilerplate' | 'planning' | 'review'
 

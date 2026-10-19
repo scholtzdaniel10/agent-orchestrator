@@ -30,7 +30,7 @@ function asJobType(value: string): JobType {
 }
 
 function asWorker(value: string): RoutineWorker {
-  if (value === 'claude' || value === 'cursor') return value
+  if (value === 'claude' || value === 'cursor' || value === 'grok') return value
   return 'auto'
 }
 

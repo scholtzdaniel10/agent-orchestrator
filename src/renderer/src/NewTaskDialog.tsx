@@ -45,7 +45,7 @@ interface NewTaskDialogProps {
   claudeAvailable: boolean
   cursorAvailable: boolean
   /** Starts agents in new worktrees with the task (the app already does this for the sidebar form). */
-  onStartTerminal: (text: string, provider: 'claude' | 'cursor', count: number) => void
+  onStartTerminal: (text: string, provider: Who, count: number) => void
   /** After a job or goal was created, so the app can show the right tab. */
   onCreated: (kind: 'job' | 'goal') => void
 }

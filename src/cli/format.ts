@@ -52,6 +52,11 @@ const PROBLEM: Record<string, { 'not-installed': string; 'signed-out': string }>
     'not-installed':
       'The Cursor CLI is not installed. Install it, then run `agent login` in a terminal.',
     'signed-out': 'The Cursor CLI is signed out. Run `agent login` in a terminal.'
+  },
+  grok: {
+    'not-installed':
+      'The Cursor CLI is not installed. Install it, then run `agent login` in a terminal.',
+    'signed-out': 'The Cursor CLI is signed out. Run `agent login` in a terminal.'
   }
 }
 
@@ -59,7 +64,8 @@ const PROBLEM: Record<string, { 'not-installed': string; 'signed-out': string }>
 export const ACCENT = '38;2;224;52;60'
 const PLAN_CODE: Record<string, string> = {
   claude: '38;2;255;160;90',
-  cursor: '38;2;80;230;170'
+  cursor: '38;2;80;230;170',
+  grok: '38;2;80;230;170'
 }
 
 /** A plan's name in its own colour, as the app's avatars show it. */
@@ -164,7 +170,9 @@ export function planLine(plan: PlanView, tested: string, now: number, color: boo
   const word = planWord(plan, now)
   const tone =
     word === 'ready' ? '32' : word === 'not installed' || word === 'signed out' ? ACCENT : '33'
-  const parts = [planName(plan.id, color), paint(word, tone, color)]
+  const parts = [planName(plan.id, color)]
+  if (plan.id === 'grok') parts.push('uses the Cursor plan')
+  parts.push(paint(word, tone, color))
   if (plan.problem !== 'not-installed') parts.push(versionPhrase(plan, tested))
   if (word === 'not installed' || word === 'signed out') {
     const sentence = PROBLEM[plan.id]?.[plan.problem ?? 'signed-out']

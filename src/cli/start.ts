@@ -62,13 +62,15 @@ export async function start(argv: string[]): Promise<number> {
     const rules = loadRules(process.env.ORCH_RULES)
     const claude = new ClaudeAdapter()
     const cursor = new CursorAdapter()
+    const grok = new CursorAdapter(undefined, { id: 'grok', model: () => settings.model('grok') })
     // The same skills the app gives its agents. The app builds the copy of the person's skills.
     const ownSkills = existingUserPlugin(dir)
     const plugins = withPlugins(bundledPlugins(__dirname), ownSkills === null ? [] : [ownSkills])
     claude.setPlugins(plugins)
     cursor.setPlugins(plugins)
+    grok.setPlugins(plugins)
     const orch = new Orchestrator({
-      adapters: [claude, cursor],
+      adapters: [claude, cursor, grok],
       store,
       rules,
       cwd: () => project,
@@ -96,7 +98,8 @@ export async function start(argv: string[]): Promise<number> {
           prompt,
           workers: orch.workers(),
           preferred: settings.leadPlan(),
-          adapter: (provider) => (provider === 'claude' ? claude : cursor),
+          adapter: (provider) =>
+            provider === 'claude' ? claude : provider === 'grok' ? grok : cursor,
           modelFor
         }),
       runCheck: (command, folder) => runGoalCheck(command, folder),
@@ -121,8 +124,11 @@ export async function start(argv: string[]): Promise<number> {
         columns: process.stdout.columns || 80,
         rows: process.stdout.rows || 24
       }),
-      interactive: (provider) =>
-        provider === 'claude' ? claude.interactive() : cursor.interactive(),
+      interactive: (provider) => {
+        if (provider === 'claude') return claude.interactive()
+        if (provider === 'grok') return grok.interactive()
+        return cursor.interactive()
+      },
       spawnInherited,
       stdout: (text) => {
         process.stdout.write(text)
