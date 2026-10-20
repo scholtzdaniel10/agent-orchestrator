@@ -27,7 +27,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 1.9, Windows. Unit-tested throughout (596 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 0.1 preview, Windows. The first version anyone outside the project gets to try. Unit-tested throughout (596 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
 
 ## The chain of command
 
