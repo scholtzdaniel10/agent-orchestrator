@@ -732,9 +732,10 @@ app.whenReady().then(async () => {
     return usageRunning
   }
   setTimeout(() => {
-    void refreshUsage(false)
+    if (settings.prefs().usageCheck) void refreshUsage(false)
   }, 15_000)
   setInterval(() => {
+    if (!settings.prefs().usageCheck) return
     if (BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible())) {
       void refreshUsage(false)
     }

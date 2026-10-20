@@ -298,6 +298,8 @@ export interface Prefs {
   cloneDir: string | null
   /** Size of the whole window, terminals included, in percent: 80, 90, 100, 110 or 120. */
   uiScale: number
+  /** Read Claude's usage with a tiny turn every 10 minutes while a window is open. */
+  usageCheck: boolean
 }
 
 /** Read-only facts for the Settings page. */

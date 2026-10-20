@@ -11,15 +11,15 @@ description: >-
 `legate` is Legate's command line. From an agent, use only the commands below: they read state and
 change nothing. Starting jobs, merging and discarding are for the person and the lead, not for you.
 
-| Command | Shows |
-|---|---|
-| `legate status` | Each plan (Claude, Cursor): ready, busy, or resting, and what is queued |
-| `legate jobs --limit 10` | Recent jobs with id, worker, state, and the start of the prompt |
-| `legate show <job-id>` | One job: prompt, every step it took, and its result |
-| `legate changes` | Open changes (one per worktree) with their files |
-| `legate diff <change-id>` | The full diff of one change |
-| `legate worktree list` | Worktrees with name, branch and folder |
-| `legate worktree path <id-or-name>` | The folder of one worktree |
+| Command                             | Shows                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `legate status`                     | Each plan (Claude, Cursor): ready, busy, or resting, and what is queued |
+| `legate jobs --limit 10`            | Recent jobs with id, worker, state, and the start of the prompt         |
+| `legate show <job-id>`              | One job: prompt, every step it took, and its result                     |
+| `legate changes`                    | Open changes (one per worktree) with their files                        |
+| `legate diff <change-id>`           | The full diff of one change                                             |
+| `legate worktree list`              | Worktrees with name, branch and folder                                  |
+| `legate worktree path <id-or-name>` | The folder of one worktree                                              |
 
 Add `--project <path>` when you are not inside the project or one of its worktrees.
 
