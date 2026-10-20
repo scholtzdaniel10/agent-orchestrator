@@ -255,6 +255,28 @@ function SettingsPage({
   const entries: Entry[] = [
     {
       section: 'general',
+      label: 'Interface size',
+      help: 'Makes the whole window, terminals included, smaller or larger. 90% leaves the most room.',
+      keywords: 'zoom scale size font text smaller larger crammed',
+      render: () => (
+        <select
+          className="settings-select"
+          value={String(prefs?.uiScale ?? 90)}
+          aria-label="Interface size"
+          onChange={(event) => {
+            savePrefs({ uiScale: Number(event.target.value) })
+          }}
+        >
+          {[80, 90, 100, 110, 120].map((size) => (
+            <option key={size} value={size}>
+              {`${String(size)}%`}
+            </option>
+          ))}
+        </select>
+      )
+    },
+    {
+      section: 'general',
       label: 'Look',
       help: 'Colours for the whole window. System follows light or dark mode.',
       keywords: 'theme colour color dark light appearance',

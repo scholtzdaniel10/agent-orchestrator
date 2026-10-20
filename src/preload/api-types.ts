@@ -57,6 +57,8 @@ export interface PlanStatus {
   model: string | null
   /** Each allowance window the plan reports (empty when only an estimate exists). */
   windows: PlanWindow[]
+  /** Epoch ms the plan last reported its windows, or null when only an estimate exists. */
+  usageAt: number | null
   /** Token from the CLI's `--version`, or null when unknown. */
   version: string | null
   versionStatus: VersionStatus
@@ -109,6 +111,8 @@ export interface OrchestratorApi {
   onJobUpdate(cb: (job: JobRecord) => void): () => void
   /** Stop a queued or running job. */
   cancelJob(id: string): Promise<JobRecord>
+  /** Asks Claude for its real usage now; at most once every two minutes. */
+  refreshUsage(): Promise<{ ok: boolean; error?: string }>
   /** Stops a job if it still runs and opens a terminal on its own session, in its folder. */
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo>
 
@@ -249,6 +253,9 @@ export interface OrchestratorApi {
   getLeadPlan(): Promise<ProviderId | null>
   /** Takes effect on the next message; switching plans starts a fresh lead session. */
   setLeadPlan(plan: ProviderId | null): Promise<void>
+  /** Model the lead uses on a plan; null means the plan's own model. */
+  getLeadModel(provider: ProviderId): Promise<string | null>
+  setLeadModel(provider: ProviderId, model: string | null): Promise<void>
   /** Ceiling for jobs the lead hands out. */
   getLeadAccess(): Promise<JobAccess>
   setLeadAccess(access: JobAccess): Promise<void>
@@ -288,6 +295,9 @@ export interface OrchestratorApi {
   resizeTerminal(id: string, cols: number, rows: number): void
   /** Ends the session (whole process tree) and removes the terminal. */
   closeTerminal(id: string): Promise<void>
+  /** Stops a finished agent's process to free memory; its session resumes on wake. */
+  sleepTerminal(id: string): Promise<boolean>
+  wakeTerminal(id: string, cols: number, rows: number): Promise<TerminalInfo | null>
   listTerminals(): Promise<TerminalInfo[]>
   /** Reopen this project's saved Claude and Cursor terminal sessions. */
   restoreTerminals(cols: number, rows: number): Promise<TerminalInfo[]>

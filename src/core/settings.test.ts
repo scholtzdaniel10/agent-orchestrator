@@ -276,15 +276,42 @@ test('prefs default, validate and persist', () => {
       maxParallel: null,
       terminalFontSize: 13,
       notify: true,
-      cloneDir: null
+      cloneDir: null,
+      uiScale: 90
     })
     settings.setPrefs({ maxParallel: 5, notify: false, unknown: 'x' })
+    expect(settings.setPrefs({ uiScale: 110 }).uiScale).toBe(110)
+    expect(settings.setPrefs({ uiScale: 95 }).uiScale).toBe(90)
     expect(new Settings(path).prefs()).toMatchObject({ maxParallel: 5, notify: false })
     expect(settings.setPrefs({ maxParallel: 99, terminalFontSize: 2 })).toMatchObject({
       maxParallel: null,
       terminalFontSize: 13
     })
     expect(() => settings.setPrefs('nope')).toThrow('invalid settings')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the lead model is its own, apart from the plan model, and clears back to it', () => {
+  const { root, path } = tempFile()
+  try {
+    const settings = new Settings(path)
+    expect(settings.leadModel('claude')).toBeUndefined()
+    settings.setModel('claude', 'sonnet')
+    settings.setLeadModel('claude', ' opus ')
+    settings.setLeadModel('grok', 'grok-4.7')
+    const again = new Settings(path)
+    expect(again.model('claude')).toBe('sonnet')
+    expect(again.leadModel('claude')).toBe('opus')
+    expect(again.leadModel('grok')).toBe('grok-4.7')
+    expect(again.leadModel('cursor')).toBeUndefined()
+    again.setLeadModel('claude', null)
+    expect(new Settings(path).leadModel('claude')).toBeUndefined()
+    expect(new Settings(path).model('claude')).toBe('sonnet')
+    expect(() => {
+      again.setLeadModel('claude', 'bad model; rm')
+    }).toThrow('invalid model name')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -82,6 +82,9 @@ export interface JobRecord {
   cancelRequested?: boolean
 }
 
+/** Finished jobs of a project kept in memory; the rest are only in the database. */
+const KEPT_JOBS = 200
+
 interface InternalJob {
   id: string
   type: JobType
@@ -295,6 +298,7 @@ export class Orchestrator {
     }
     this.jobs.push(job)
     this.byJob.set(job.id, job)
+    this.prune(job.project)
 
     if (provider !== undefined) {
       job.provider = provider
@@ -351,7 +355,7 @@ export class Orchestrator {
       this.queues.clear()
       this.running.clear()
     }
-    for (const record of this.store.jobs(project, 200)) {
+    for (const record of this.store.jobs(project, KEPT_JOBS)) {
       if (this.byJob.has(record.id)) continue
       const job = fromRecord(record, project, this.now())
       if (this.shouldInterrupt(job)) {
@@ -390,6 +394,38 @@ export class Orchestrator {
     return this.jobs.filter(
       (job) => job.project === project && (job.status === 'queued' || job.status === 'running')
     ).length
+  }
+
+  /**
+   * Keep at most KEPT_JOBS finished jobs of a project in memory, as a restart does; older ones
+   * stay in the database. A long session would otherwise hold every job's output and steps.
+   */
+  private prune(project: string): void {
+    const finished = this.jobs.filter(
+      (job) => job.project === project && (job.status === 'done' || job.status === 'failed')
+    )
+    const extra = finished.length - KEPT_JOBS
+    if (extra <= 0) return
+    const drop = new Set(
+      finished
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(0, extra)
+        .map((job) => job.id)
+    )
+    for (const id of drop) this.byJob.delete(id)
+    for (let i = this.jobs.length - 1; i >= 0; i -= 1) {
+      if (drop.has(this.jobs[i].id)) this.jobs.splice(i, 1)
+    }
+  }
+
+  /** Worktree ids in a project with a job still queued or running in them. */
+  activeChangesIn(project: string): string[] {
+    const ids = new Set<string>()
+    for (const job of this.jobs) {
+      if (job.project !== project || job.change === undefined) continue
+      if (job.status === 'queued' || job.status === 'running') ids.add(job.change)
+    }
+    return [...ids]
   }
 
   /** The project folder a job belongs to, or null for an unknown id. */

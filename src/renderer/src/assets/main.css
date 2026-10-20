@@ -36,7 +36,9 @@
   --radius-sm: 4px;
   --radius: 7px;
   --radius-lg: 11px;
-  --font-mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+  --font-mono:
+    'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono',
+    'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
 }
 
 @media (prefers-color-scheme: light) {
@@ -5787,6 +5789,15 @@ button.job-step {
   min-width: 0;
 }
 
+/* Each label stays with its menu when the row wraps. */
+.lead-option {
+  display: flex;
+  flex: 1 1 150px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* Type: the condensed display face is for the logo and panel titles; controls use the UI face. */
 .btn,
 .tab,
@@ -7419,4 +7430,135 @@ label,
 .agent-pane-log .agent-pane-done {
   margin-top: 8px;
   color: var(--muted);
+}
+
+/* Sidebar tree: every project is a group with its worktrees under it */
+.project-tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding-bottom: 6px;
+}
+
+.sidebar-scroll {
+  overflow-y: auto;
+}
+
+.project-group + .project-group {
+  border-top: 1px solid var(--border);
+}
+
+.project-group-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 2px 6px 2px 2px;
+}
+
+.project-group-fold {
+  flex: none;
+  width: 18px;
+  margin: 0;
+  padding: 9px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-group-fold:hover,
+.project-group-fold:focus-visible {
+  color: var(--text);
+}
+
+.project-group-name {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-group.is-open .project-group-name {
+  color: var(--text);
+}
+
+.project-group-name:hover,
+.project-group-name:focus-visible {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.project-group-name:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: -1px;
+}
+
+.project-group .project-worktrees {
+  flex: none;
+  max-height: none;
+  margin-left: 14px;
+  border-bottom: 0;
+}
+
+.project-group .project-worktrees-list {
+  overflow: visible;
+}
+
+.project-other-list {
+  margin: 0 0 4px 14px;
+}
+
+.project-group-name .project-row-meta {
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.project-group .project-worktrees > .project-chats-head {
+  padding-top: 0;
+  padding-bottom: 2px;
+}
+
+.project-group .project-worktrees > .project-chats-head .project-chats-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+}
+
+.project-group .project-worktrees > .project-chats-head .head-actions {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+/* Inside the tree each card's dot shows its state, so the subheadings go. */
+.project-group .worktree-group-label {
+  display: none;
+}
+
+.usage-fresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 0 0;
 }

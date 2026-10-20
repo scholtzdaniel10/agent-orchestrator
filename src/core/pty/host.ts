@@ -115,6 +115,8 @@ export class PtyHost {
   private readonly exists: (path: string) => boolean
   private readonly platform: NodeJS.Platform
   private readonly sessions: Session[] = []
+  /** Terminals put to sleep: no process, their row and session kept, woken on demand. */
+  private readonly asleep = new Map<string, { info: TerminalInfo; project: string }>()
   private readonly byId = new Map<string, Session>()
   private readonly opened: Record<ProviderId, number> = { claude: 0, cursor: 0, grok: 0 }
   private readonly dataListeners: Array<(id: string, data: string) => void> = []
@@ -215,7 +217,7 @@ export class PtyHost {
     const restored: TerminalInfo[] = []
     for (const row of store.terminals(project)) {
       if (this.liveCount() >= this.maxTerminals) break
-      if (this.byId.has(row.id)) continue
+      if (this.byId.has(row.id) || this.asleep.has(row.id)) continue
       if (row.provider === 'shell') {
         store.deleteTerminal(row.id)
         continue
@@ -290,12 +292,25 @@ export class PtyHost {
   }
 
   close(id: string): void {
+    const sleeping = this.asleep.get(id)
+    if (sleeping !== undefined) {
+      this.asleep.delete(id)
+      this.store?.deleteTerminal(id)
+      this.emitUpdate(copyInfo(sleeping.info), true)
+      return
+    }
     const session = this.byId.get(id)
     if (!session || session.removed) return
     this.teardown(session, { keepRow: false })
   }
 
   async closeChange(id: string): Promise<void> {
+    for (const [key, entry] of [...this.asleep]) {
+      if (entry.info.change !== id) continue
+      this.asleep.delete(key)
+      this.store?.deleteTerminal(key)
+      this.emitUpdate(copyInfo(entry.info), true)
+    }
     const matching = this.sessions.filter(
       (session) => !session.removed && session.info.change === id
     )
@@ -320,13 +335,15 @@ export class PtyHost {
   /** Free a session that is both closed and exited; its output buffer is the bulk of it. */
   private forget(session: Session): void {
     if (!session.removed || !session.exited) return
-    this.byId.delete(session.info.id)
+    // A woken terminal reuses the id, so only forget the mapping if it still points here.
+    if (this.byId.get(session.info.id) === session) this.byId.delete(session.info.id)
     const index = this.sessions.indexOf(session)
     if (index >= 0) this.sessions.splice(index, 1)
     session.snapshot = ''
   }
 
   closeAll(): void {
+    this.asleep.clear()
     for (const session of [...this.sessions]) {
       if (session.removed) continue
       this.flushStore(session)
@@ -339,7 +356,70 @@ export class PtyHost {
     for (const session of this.sessions) {
       if (!session.removed) out.push(copyInfo(session.info))
     }
+    for (const entry of this.asleep.values()) out.push(copyInfo(entry.info))
     return out
+  }
+
+  /**
+   * Stop a finished agent's process to free memory, keeping its saved row and CLI session.
+   * Only a terminal whose session can be resumed sleeps. Returns whether it did.
+   */
+  sleep(id: string): boolean {
+    const session = this.running(id)
+    const store = this.store
+    if (!session || session.info.provider === 'shell' || !store) return false
+    const row = store.terminals(session.project).find((item) => item.id === id)
+    if (row === undefined || row.session_id === null) return false
+    this.flush(session)
+    this.flushStore(session)
+    session.relaunching = false
+    session.closedByHost = true
+    session.removed = true
+    try {
+      this.killTree(session.proc)
+    } catch (err) {
+      console.error(err)
+    }
+    const info: TerminalInfo = { ...copyInfo(session.info), status: 'sleeping' }
+    this.asleep.set(id, { info, project: session.project })
+    this.emitUpdate(copyInfo(info), false)
+    return true
+  }
+
+  /** Start a sleeping terminal again on its own session. Null when it is gone. */
+  wake(id: string, cols: number, rows: number): TerminalInfo | null {
+    const entry = this.asleep.get(id)
+    const store = this.store
+    if (entry === undefined || !store) return null
+    this.asleep.delete(id)
+    const row = store.terminals(entry.project).find((item) => item.id === id)
+    const provider = row === undefined ? null : asProvider(row.provider)
+    if (row === undefined || row.session_id === null || provider === null) {
+      this.emitUpdate(copyInfo(entry.info), true)
+      return null
+    }
+    const savedCwd = row.cwd === null || row.cwd === '' ? undefined : row.cwd
+    if (savedCwd !== undefined && !this.exists(savedCwd)) {
+      store.deleteTerminal(id)
+      this.emitUpdate(copyInfo(entry.info), true)
+      return null
+    }
+    const size = clampSize(cols, rows)
+    return this.boot({
+      id,
+      provider,
+      title: row.title,
+      model: row.model ?? undefined,
+      launchOpts: { model: row.model ?? undefined, resume: row.session_id },
+      cols: size.cols,
+      rows: size.rows,
+      snapshot: `${row.scrollback}${RESTORE_MARK}`,
+      startedAt: this.now(),
+      onProbation: true,
+      cwd: savedCwd,
+      change: row.change_id ?? undefined,
+      project: entry.project
+    })
   }
 
   snapshot(id: string): string {

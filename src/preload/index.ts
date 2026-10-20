@@ -54,6 +54,9 @@ const api: OrchestratorApi = {
   cancelJob(id: string): Promise<JobRecord> {
     return ipcRenderer.invoke('jobs:cancel', id)
   },
+  refreshUsage(): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('usage:refresh')
+  },
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo> {
     return ipcRenderer.invoke('jobs:takeOver', id, cols, rows)
   },
@@ -289,6 +292,12 @@ const api: OrchestratorApi = {
   setLeadPlan(plan: ProviderId | null): Promise<void> {
     return ipcRenderer.invoke('settings:setLeadPlan', plan)
   },
+  getLeadModel(provider: ProviderId): Promise<string | null> {
+    return ipcRenderer.invoke('settings:getLeadModel', provider)
+  },
+  setLeadModel(provider: ProviderId, model: string | null): Promise<void> {
+    return ipcRenderer.invoke('settings:setLeadModel', provider, model)
+  },
   getLeadAccess(): Promise<JobAccess> {
     return ipcRenderer.invoke('settings:getLeadAccess')
   },
@@ -355,6 +364,12 @@ const api: OrchestratorApi = {
   },
   resizeTerminal(id: string, cols: number, rows: number): void {
     ipcRenderer.send('terminals:resize', id, cols, rows)
+  },
+  sleepTerminal(id: string): Promise<boolean> {
+    return ipcRenderer.invoke('terminals:sleep', id)
+  },
+  wakeTerminal(id: string, cols: number, rows: number): Promise<TerminalInfo | null> {
+    return ipcRenderer.invoke('terminals:wake', id, cols, rows)
   },
   closeTerminal(id: string): Promise<void> {
     return ipcRenderer.invoke('terminals:close', id)

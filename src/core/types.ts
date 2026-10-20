@@ -241,7 +241,8 @@ export interface TerminalInfo {
   provider: TerminalProvider
   /** Short label, e.g. "claude 1". */
   title: string
-  status: 'running' | 'exited'
+  /** sleeping: stopped to save memory after its agent finished; it resumes its session when shown. */
+  status: 'running' | 'exited' | 'sleeping'
   exitCode: number | null
   /** Model passed to the CLI, or null for the CLI's own default. */
   model: string | null
@@ -295,6 +296,8 @@ export interface Prefs {
   notify: boolean
   /** Folder GitHub clones go into; null asks every time. */
   cloneDir: string | null
+  /** Size of the whole window, terminals included, in percent: 80, 90, 100, 110 or 120. */
+  uiScale: number
 }
 
 /** Read-only facts for the Settings page. */
@@ -323,6 +326,20 @@ export interface ProjectEntry extends ProjectInfo {
   chats: number
   /** Jobs queued or running in this project. */
   running: number
+  /** Worktrees of a project that is not open, for the sidebar tree. The open project uses its live list. */
+  worktrees?: ProjectWorktree[]
+}
+
+/** One worktree of a project shown in the sidebar while another project is open. */
+export interface ProjectWorktree {
+  id: string
+  name: string
+  branch: string
+  files: number
+  insertions: number
+  deletions: number
+  /** A job is queued or running in it. */
+  working: boolean
 }
 
 /** One repository from `gh repo list`. */

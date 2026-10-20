@@ -1225,3 +1225,56 @@ function waitUntil(pred: () => boolean, ms: number): Promise<boolean> {
     tick()
   })
 }
+
+test('sleep stops a finished agent and keeps its row; wake resumes its own session', async () => {
+  const store = new Store(':memory:')
+  try {
+    const { host, ptys, calls } = makeHost({ store, cwd: 'work', now: () => 1 })
+    const updates: Array<{ status: string; removed: boolean }> = []
+    host.onUpdate((info, removed) => {
+      updates.push({ status: info.status, removed })
+    })
+    const info = await host.open('claude', 80, 24)
+    const session = calls[0].args[1]
+    ptys[0].push('done.\r\n')
+
+    expect(host.sleep(info.id)).toBe(true)
+    expect(host.list()).toEqual([expect.objectContaining({ id: info.id, status: 'sleeping' })])
+    expect(updates.at(-1)).toEqual({ status: 'sleeping', removed: false })
+    ptys[0].exit(0)
+    expect(host.list().map((item) => item.status)).toEqual(['sleeping'])
+    expect(store.terminals('work').map((row) => row.id)).toEqual([info.id])
+    expect(host.sleep(info.id)).toBe(false)
+
+    const woken = host.wake(info.id, 100, 30)
+    expect(woken?.id).toBe(info.id)
+    expect(woken?.status).toBe('running')
+    expect(calls[1].args).toEqual(['--resume', session])
+    expect(host.list().map((item) => item.status)).toEqual(['running'])
+    expect(host.wake(info.id, 100, 30)).toBeNull()
+
+    expect(host.sleep(info.id)).toBe(true)
+    host.close(info.id)
+    expect(host.list()).toEqual([])
+    expect(store.terminals('work')).toEqual([])
+  } finally {
+    store.close()
+  }
+})
+
+test('a shell never sleeps', () => {
+  const store = new Store(':memory:')
+  try {
+    const { host } = makeHost({ store, cwd: 'work' })
+    const shell = host.openShell({
+      cwd: 'work',
+      title: 'setup',
+      commands: ['echo hi'],
+      cols: 80,
+      rows: 24
+    })
+    expect(host.sleep(shell.id)).toBe(false)
+  } finally {
+    store.close()
+  }
+})

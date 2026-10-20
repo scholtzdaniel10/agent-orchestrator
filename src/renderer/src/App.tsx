@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { planOf } from '../../core/types'
 import { agentJobs } from './agent-tabs'
+import { printsSomething, terminalsToSleep, terminalsToWake } from './terminal-sleep'
 import ChangesTab from './ChangesTab'
 import ErrorBoundary from './ErrorBoundary'
 import FlowView from './FlowView'
@@ -480,11 +481,54 @@ function App(): React.JSX.Element {
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
   const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 
+  // Finished agents out of sight sleep to free memory; shown again, they resume their session.
+  const visibleTerminalIds = new Set(
+    terminals.filter((info) => selectedWorktrees.has(info.change ?? null)).map((info) => info.id)
+  )
+  const visibleKey = [...visibleTerminalIds].sort().join('\0')
+  const sleepInput = useRef({
+    terminals,
+    visible: visibleTerminalIds,
+    activity: terminalActivity,
+    jobs
+  })
+  useEffect(() => {
+    sleepInput.current = {
+      terminals,
+      visible: visibleTerminalIds,
+      activity: terminalActivity,
+      jobs
+    }
+  })
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const input = sleepInput.current
+      for (const id of terminalsToSleep({ ...input, now: Date.now() })) {
+        window.api.sleepTerminal(id).catch(() => {})
+      }
+    }, 30_000)
+    return () => {
+      clearInterval(timer)
+    }
+  }, [])
+  useEffect(() => {
+    const input = sleepInput.current
+    for (const id of terminalsToWake(input.terminals, input.visible)) {
+      window.api.wakeTerminal(id, 100, 30).then(
+        () => {
+          requestLayoutFit()
+        },
+        () => {}
+      )
+    }
+  }, [visibleKey, terminals])
+
   // When each terminal last printed, batched to one update a second, for the sidebar's status dots.
   useEffect(() => {
     let pending: Record<string, number> = {}
     let timer: number | undefined
-    const off = window.api.onTerminalData((id) => {
+    const off = window.api.onTerminalData((id, data) => {
+      if (!printsSomething(data)) return
       pending[id] = Date.now()
       if (timer !== undefined) return
       timer = window.setTimeout(() => {
@@ -1053,12 +1097,16 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function switchProject(path: string): Promise<void> {
+  async function switchProject(path: string, worktree?: string | null): Promise<void> {
     if (choosing.current) return
     choosing.current = true
     try {
       const next = await window.api.switchProject(path)
       await adoptProject(next)
+      if (typeof worktree === 'string') {
+        setSelectedWorktree(worktree)
+        setSelectedWorktrees(new Set<WorktreeId>([worktree]))
+      }
     } catch (err: unknown) {
       setProjectError({ text: errorText(err), at: Date.now() })
     } finally {
@@ -1953,8 +2001,8 @@ function App(): React.JSX.Element {
                   void changeProject()
                 }}
                 onGithubClone={cloneFromGithub}
-                onSwitch={(path) => {
-                  void switchProject(path)
+                onSwitch={(path, worktree) => {
+                  void switchProject(path, worktree)
                 }}
                 onRemove={(path) => {
                   void removeProject(path)

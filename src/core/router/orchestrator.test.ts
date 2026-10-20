@@ -2207,3 +2207,26 @@ test('watchStore picks up a job started in another process', async () => {
     await orchA.idle()
   })
 })
+
+test('a long session keeps at most 200 finished jobs in memory; the oldest go first', async () => {
+  const claude = new FakeAdapter('claude', [])
+  const cursor = new FakeAdapter('cursor', [])
+  cursor.signedIn = false
+  let tick = 1_800_000_000_000
+  await withOrch(
+    [claude, cursor],
+    async (orch) => {
+      const ids: string[] = []
+      for (let i = 0; i < 205; i += 1) {
+        tick += 1
+        ids.push(orch.submit('planning', `job ${String(i)}`, 'cursor').id)
+      }
+      const kept = orch.list()
+      expect(kept.length).toBeLessThanOrEqual(201)
+      expect(kept.some((job) => job.id === ids[0])).toBe(false)
+      expect(kept.some((job) => job.id === ids[204])).toBe(true)
+      expect(orch.get(ids[0])).toBeNull()
+    },
+    () => tick
+  )
+})

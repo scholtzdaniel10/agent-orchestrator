@@ -890,7 +890,7 @@ function WorktreesSection({
     <div className="project-worktrees">
       <div className="project-chats-head">
         <span className="project-chats-label">
-          Worktrees
+          {changes.length === 1 ? '1 worktree' : `${String(changes.length)} worktrees`}
           {working > 0 ? (
             <span className="project-worktree-shown">{`${String(working)} working`}</span>
           ) : null}
@@ -1155,6 +1155,160 @@ function GithubPanel({
   )
 }
 
+/** A project's row in the sidebar tree: fold it, open it, right-click for its actions. */
+function ProjectGroupHead({
+  entry,
+  folded,
+  busy,
+  onToggle,
+  onOpen,
+  onMenu
+}: {
+  entry: ProjectEntry
+  folded: boolean
+  busy: boolean
+  onToggle: () => void
+  onOpen: () => void
+  onMenu: (at: { x: number; y: number }) => void
+}): React.JSX.Element {
+  const running = entry.active ? busy || entry.running > 0 : entry.running > 0
+  const name = folderName(entry.path)
+  return (
+    <div
+      className={entry.active ? 'project-group-head is-open' : 'project-group-head'}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onMenu({ x: event.clientX, y: event.clientY })
+      }}
+    >
+      <button
+        type="button"
+        className="project-group-fold"
+        aria-expanded={!folded}
+        aria-label={folded ? `Show ${name}` : `Fold ${name}`}
+        onClick={onToggle}
+      >
+        {folded ? '▸' : '▾'}
+      </button>
+      <button
+        type="button"
+        className="project-group-name"
+        title={entry.active ? entry.path : `Open ${name}`}
+        aria-current={entry.active ? 'true' : undefined}
+        onClick={entry.active ? onToggle : onOpen}
+        onKeyDown={(event) => {
+          if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
+          event.preventDefault()
+          const rect = event.currentTarget.getBoundingClientRect()
+          onMenu({ x: rect.left, y: rect.bottom })
+        }}
+      >
+        <FolderGlyph />
+        <span className="project-row-body">
+          <span className="project-name">{name}</span>
+          <span className="project-row-meta">
+            {!entry.isRepo ? (
+              <span className="project-note">not a git repository</span>
+            ) : entry.branch !== null ? (
+              <span className="project-branch">{entry.branch}</span>
+            ) : (
+              <span className="project-note">no commits yet</span>
+            )}
+            {running ? (
+              <span className="status status-running project-row-run">
+                <span className="status-dot" aria-hidden="true" />
+                {entry.running > 1 ? `${String(entry.running)} running` : 'running'}
+              </span>
+            ) : null}
+          </span>
+          {entry.active ? <ProjectStatus entry={entry} /> : null}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+/** Worktrees of a project that is not open. A click opens the project on that worktree. */
+function OtherProjectWorktrees({
+  entry,
+  filter,
+  onOpen
+}: {
+  entry: ProjectEntry
+  filter: string
+  onOpen: (worktree: string | null) => void
+}): React.JSX.Element {
+  const needle = filter.trim().toLowerCase()
+  const worktrees = (entry.worktrees ?? []).filter(
+    (item) =>
+      needle === '' ||
+      item.name.toLowerCase().includes(needle) ||
+      item.id.toLowerCase().includes(needle)
+  )
+  return (
+    <ul className="worktree-group-list project-other-list">
+      <li className="project-worktree-item is-idle is-compact">
+        <button
+          type="button"
+          className="project-worktree-row"
+          title={`Open ${folderName(entry.path)} on its project folder`}
+          onClick={() => {
+            onOpen(null)
+          }}
+        >
+          <span className="worktree-dot is-idle" aria-hidden="true" />
+          <span className="project-worktree-body">
+            <span className="project-worktree-line">
+              <span className="project-worktree-name">{entry.branch ?? 'project folder'}</span>
+              <span className="worktree-primary">primary</span>
+            </span>
+          </span>
+        </button>
+      </li>
+      {worktrees.map((item) => {
+        const status: CardStatus = item.working ? 'working' : 'idle'
+        return (
+          <li key={item.id} className={`project-worktree-item is-${status}`}>
+            <button
+              type="button"
+              className="project-worktree-row"
+              title={`Open ${folderName(entry.path)} on ${item.name === '' ? item.id : item.name}`}
+              onClick={() => {
+                onOpen(item.id)
+              }}
+            >
+              <span
+                className={`worktree-dot is-${status}`}
+                role="img"
+                aria-label={STATUS_TEXT[status]}
+                title={STATUS_TEXT[status]}
+              />
+              <span className="project-worktree-body">
+                <span className="project-worktree-line">
+                  <span
+                    className={item.name === '' ? 'project-worktree-id' : 'project-worktree-name'}
+                  >
+                    {item.name === '' ? item.id : item.name}
+                  </span>
+                </span>
+                <span className="project-worktree-meta">
+                  <span className="project-worktree-branch">{item.branch}</span>
+                  {item.insertions > 0 || item.deletions > 0 ? (
+                    <span>
+                      <span className="stat-add">{`+${String(item.insertions)}`}</span>{' '}
+                      <span className="stat-del">{`−${String(item.deletions)}`}</span>
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function ProjectBar({
   projects,
   chats,
@@ -1207,7 +1361,8 @@ function ProjectBar({
   cursorAvailable: boolean
   onAdd: () => void
   onGithubClone: (nameWithOwner: string) => Promise<boolean>
-  onSwitch: (path: string) => void
+  /** Open a project; with a worktree id, select that worktree once it is open. */
+  onSwitch: (path: string, worktree?: string | null) => void
   onRemove: (path: string) => void
   onOpenChat: (id: string) => void
   onNewChat: () => void
@@ -1248,11 +1403,35 @@ function ProjectBar({
   } | null>(null)
   const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null)
   const [chatsOpen, setChatsOpen] = useState(() => readJson('legate.sidebar.chatsOpen') !== false)
+  const [folds, setFolds] = useState<Record<string, boolean>>(() => {
+    const raw = readJson('legate.sidebar.folds')
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+    const out: Record<string, boolean> = {}
+    for (const [key, value] of Object.entries(raw)) if (typeof value === 'boolean') out[key] = value
+    return out
+  })
   const searchRef = useRef<HTMLInputElement>(null)
   const chatsPanelId = useId()
   const needle = search.trim().toLowerCase()
   const activeProject = projects.find((entry) => entry.active)
-  const switcherName = activeProject === undefined ? 'No project' : folderName(activeProject.path)
+  // The open project first, then the rest in the order they were added.
+  const treeProjects = [
+    ...projects.filter((entry) => entry.active),
+    ...projects.filter((entry) => !entry.active)
+  ]
+
+  function isFolded(entry: ProjectEntry): boolean {
+    const saved = folds[entry.path]
+    if (saved !== undefined) return saved
+    // A project with worktrees starts open; an empty or commit-less one starts folded.
+    return !entry.active && (entry.worktrees ?? []).length === 0
+  }
+
+  function toggleFold(entry: ProjectEntry): void {
+    const next = { ...folds, [entry.path]: !isFolded(entry) }
+    setFolds(next)
+    writeJson('legate.sidebar.folds', next)
+  }
   const goalCount = goalsNeedingYou ?? 0
   const shown = chats
     .filter((chat) => needle === '' || chat.title.toLowerCase().includes(needle))
@@ -1460,65 +1639,6 @@ function ProjectBar({
       <div className="sidebar-top">
         <button
           type="button"
-          className="sidebar-switcher"
-          title={activeProject?.path ?? 'Open a folder'}
-          aria-haspopup="menu"
-          aria-expanded={switcherAt !== null}
-          onClick={(event) => {
-            setProjectMenu(null)
-            setOptionsAt(null)
-            const rect = event.currentTarget.getBoundingClientRect()
-            setSwitcherAt({ x: rect.left, y: rect.bottom })
-          }}
-          onContextMenu={(event) => {
-            if (activeProject === undefined) return
-            event.preventDefault()
-            setSwitcherAt(null)
-            setOptionsAt(null)
-            setProjectMenu({
-              path: activeProject.path,
-              at: { x: event.clientX, y: event.clientY }
-            })
-          }}
-          onKeyDown={(event) => {
-            if (activeProject === undefined) return
-            if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return
-            event.preventDefault()
-            setSwitcherAt(null)
-            const rect = event.currentTarget.getBoundingClientRect()
-            setProjectMenu({
-              path: activeProject.path,
-              at: { x: rect.left, y: rect.bottom }
-            })
-          }}
-        >
-          <Star size={12} />
-          <FolderGlyph />
-          <span className="project-row-body">
-            <span className="project-name">{switcherName}</span>
-            {activeProject !== undefined ? (
-              <span className="project-row-meta">
-                {activeProject.isRepo && activeProject.branch !== null ? (
-                  <span className="project-branch">{activeProject.branch}</span>
-                ) : (
-                  <span className="project-note">not a git repository</span>
-                )}
-              </span>
-            ) : null}
-            {activeProject !== undefined ? <ProjectStatus entry={activeProject} /> : null}
-            {activeProject !== undefined && (busy || activeProject.running > 0) ? (
-              <span className="status status-running project-row-run">
-                <span className="status-dot" aria-hidden="true" />
-                running
-              </span>
-            ) : null}
-          </span>
-          <span className="sidebar-switcher-chevron" aria-hidden="true">
-            ▾
-          </span>
-        </button>
-        <button
-          type="button"
           className="btn sidebar-new-task"
           onClick={() => {
             onNewTask?.()
@@ -1641,28 +1761,90 @@ function ProjectBar({
         />
       ) : null}
       <div className="sidebar-scroll">
-        {activeProject !== undefined && activeProject.isRepo ? (
-          <WorktreesSection
-            project={activeProject.path}
-            activity={activity}
-            options={options}
-            filter={search}
-            onReveal={onReveal}
-            branch={activeProject.branch}
-            changes={changes}
-            jobs={jobs}
-            terminals={terminals}
-            selectedWorktrees={selectedWorktrees}
-            claudeAvailable={claudeAvailable}
-            cursorAvailable={cursorAvailable}
-            onSelect={onSelectWorktree}
-            onSelectAll={onSelectAllWorktrees}
-            onCreate={onCreateWorktree}
-            onRename={onRenameWorktree}
-            onDiscard={onDiscardWorktree}
-            onOpen={onOpenInWorktree}
-          />
-        ) : null}
+        <div className="project-chats-head project-tree-head">
+          <span className="project-chats-label project-tree-label">
+            <Star size={12} />
+            Projects
+          </span>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Open a folder or clone a repository"
+            aria-label="Add a project"
+            aria-haspopup="menu"
+            aria-expanded={switcherAt !== null}
+            onClick={(event) => {
+              setProjectMenu(null)
+              setOptionsAt(null)
+              const rect = event.currentTarget.getBoundingClientRect()
+              setSwitcherAt({ x: rect.left, y: rect.bottom })
+            }}
+          >
+            +
+          </button>
+        </div>
+        <div className="project-tree">
+          {treeProjects.map((entry) => {
+            const folded = isFolded(entry)
+            return (
+              <div
+                key={entry.path}
+                className={entry.active ? 'project-group is-open' : 'project-group'}
+                role="group"
+                aria-label={folderName(entry.path)}
+              >
+                <ProjectGroupHead
+                  entry={entry}
+                  folded={folded}
+                  busy={busy}
+                  onToggle={() => {
+                    toggleFold(entry)
+                  }}
+                  onOpen={() => {
+                    onSwitch(entry.path)
+                  }}
+                  onMenu={(at) => {
+                    setSwitcherAt(null)
+                    setOptionsAt(null)
+                    setProjectMenu({ path: entry.path, at })
+                  }}
+                />
+                {folded ? null : entry.active ? (
+                  entry.isRepo ? (
+                    <WorktreesSection
+                      project={entry.path}
+                      activity={activity}
+                      options={options}
+                      filter={search}
+                      onReveal={onReveal}
+                      branch={entry.branch}
+                      changes={changes}
+                      jobs={jobs}
+                      terminals={terminals}
+                      selectedWorktrees={selectedWorktrees}
+                      claudeAvailable={claudeAvailable}
+                      cursorAvailable={cursorAvailable}
+                      onSelect={onSelectWorktree}
+                      onSelectAll={onSelectAllWorktrees}
+                      onCreate={onCreateWorktree}
+                      onRename={onRenameWorktree}
+                      onDiscard={onDiscardWorktree}
+                      onOpen={onOpenInWorktree}
+                    />
+                  ) : null
+                ) : entry.isRepo && entry.branch !== null ? (
+                  <OtherProjectWorktrees
+                    entry={entry}
+                    filter={search}
+                    onOpen={(worktree) => {
+                      onSwitch(entry.path, worktree)
+                    }}
+                  />
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
       </div>
       {activeProject !== undefined ? (
         <div className="project-chats sidebar-chats">

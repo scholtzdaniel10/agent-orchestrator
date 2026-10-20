@@ -536,7 +536,27 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
           ahead: 2,
           behind: 0,
           chats: 3,
-          running: 0
+          running: 1,
+          worktrees: [
+            {
+              id: 'c3d4e5f6',
+              name: 'search filters',
+              branch: 'orch/c3d4e5f6',
+              files: 4,
+              insertions: 160,
+              deletions: 131,
+              working: true
+            },
+            {
+              id: 'd4e5f6a7',
+              name: 'agent card',
+              branch: 'orch/d4e5f6a7',
+              files: 1,
+              insertions: 12,
+              deletions: 8,
+              working: false
+            }
+          ]
         },
         {
           path: 'C:/Users/dev/projects/notes',
@@ -1030,7 +1050,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       output: '',
       failedOver: []
     }),
-    getLeadPlan: ok(null),
+    getLeadPlan: () => Promise.resolve(location.search.includes('leadplan') ? 'claude' : null),
+    getLeadModel: ok(null),
+    setLeadModel: ok(undefined),
     setLeadPlan: ok(undefined),
     getLeadAccess: ok('read'),
     setLeadAccess: ok(undefined),

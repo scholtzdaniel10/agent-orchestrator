@@ -45,7 +45,7 @@ import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
 import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
-import { isJobAccess, isJobType, isProviderId } from '../core/types'
+import { isJobAccess, isJobType, isProviderId, planOf } from '../core/types'
 import type {
   AppInfo,
   ChangeSet,
@@ -68,6 +68,8 @@ let store: Store | null = null
 let bridge: Bridge | null = null
 let terminals: PtyHost | null = null
 let publishChanges: () => void = () => {}
+/** Zoom for every window, from Settings → General → Interface size. */
+let uiZoom = 0.9
 let stopStoreWatch: () => void = () => {}
 let changeRefresh: ChangeRefresh | null = null
 const poppedOut = new PoppedOutRegistry()
@@ -151,7 +153,9 @@ function createWindow(opts?: {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: false
+      webviewTag: false,
+      // No dictionaries loaded into every window; Legate is prompts and code.
+      spellcheck: false
     }
   })
 
@@ -165,6 +169,7 @@ function createWindow(opts?: {
   })
 
   win.webContents.on('did-finish-load', () => {
+    win.webContents.setZoomFactor(uiZoom)
     publishChanges()
   })
 
@@ -275,6 +280,10 @@ app.whenReady().then(async () => {
   function applyPrefs(): Prefs {
     const prefs = settings.prefs()
     rules.maxParallel = prefs.maxParallel ?? rulesMaxParallel
+    uiZoom = prefs.uiScale / 100
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.setZoomFactor(uiZoom)
+    }
     return prefs
   }
   applyPrefs()
@@ -343,7 +352,7 @@ app.whenReady().then(async () => {
     dir: join(app.getPath('userData'), 'lead'),
     project: projectDir,
     prefer: () => settings.leadPlan() ?? envPrefer,
-    modelFor,
+    modelFor: (id) => settings.leadModel(id) ?? settings.model(id),
     listJobs: (): JobRecord[] => orch.list()
   })
   leadRef.current = lead
@@ -419,6 +428,15 @@ app.whenReady().then(async () => {
   })
   orch.onUpdate((job) => {
     goals.onJob(job)
+  })
+  // A job in a project that is not open starting or ending changes its group in the sidebar tree.
+  const otherStatus = new Map<string, string>()
+  orch.onUpdate((job) => {
+    const project = orch.projectOf(job.id)
+    if (project === null || project === projectDir()) return
+    if (otherStatus.get(job.id) === job.status) return
+    otherStatus.set(job.id, job.status)
+    publishChanges()
   })
 
   // Triggers start goals: on a schedule, or when GitHub shows a failing PR, a new issue, or a
@@ -647,6 +665,7 @@ app.whenReady().then(async () => {
         atRisk: worker.atRisk,
         model: settings.model(worker.id) ?? null,
         windows: worker.windows,
+        usageAt: usageAt(worker.id),
         busy: worker.busy,
         running: worker.running,
         queued: worker.queued,
@@ -662,6 +681,64 @@ app.whenReady().then(async () => {
   function publishPlans(): void {
     broadcast('plans:update', plans())
   }
+
+  function usageAt(id: ProviderId): number | null {
+    const seen = shared.windows(planOf(id)).map((window) => window.observedAt)
+    return seen.length === 0 ? null : Math.max(...seen)
+  }
+
+  // Claude reports its real usage on every turn, use outside Legate included. A tiny turn on
+  // the smallest model keeps the meter current; Cursor reports nothing, so its meter stays an estimate.
+  const USAGE_EVERY_MS = 10 * 60_000
+  const USAGE_MIN_GAP_MS = 2 * 60_000
+  let usageRunning: Promise<{ ok: boolean; error?: string }> | null = null
+  let usageLast = 0
+  function refreshUsage(force: boolean): Promise<{ ok: boolean; error?: string }> {
+    if (usageRunning !== null) return usageRunning
+    if (!force && Date.now() - usageLast < USAGE_MIN_GAP_MS) return Promise.resolve({ ok: true })
+    if (!orch.workers().some((worker) => worker.id === 'claude' && worker.available)) {
+      return Promise.resolve({ ok: false, error: 'Claude is not signed in.' })
+    }
+    usageLast = Date.now()
+    const dir = join(app.getPath('userData'), 'usage-probe')
+    usageRunning = (async (): Promise<{ ok: boolean; error?: string }> => {
+      mkdirSync(dir, { recursive: true })
+      const handle = claude.usageProbe(dir)
+      let saw = false
+      for await (const event of handle.events) {
+        if (event.kind !== 'usage' || event.windows === undefined) continue
+        saw = true
+        shared.saveWindows(
+          'claude',
+          event.windows.map((window) => ({
+            name: window.name,
+            utilization: window.utilization,
+            resetsAt: window.resetsAt === undefined ? null : window.resetsAt * 1000
+          })),
+          Date.now()
+        )
+      }
+      await handle.exit
+      publishPlans()
+      return saw ? { ok: true } : { ok: false, error: 'Claude did not report its usage.' }
+    })()
+      .catch((err: unknown) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      }))
+      .finally(() => {
+        usageRunning = null
+      })
+    return usageRunning
+  }
+  setTimeout(() => {
+    void refreshUsage(false)
+  }, 15_000)
+  setInterval(() => {
+    if (BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible())) {
+      void refreshUsage(false)
+    }
+  }, USAGE_EVERY_MS)
 
   const notified = new Set<string>()
   function notifyEnded(job: JobRecord): void {
@@ -754,6 +831,7 @@ app.whenReady().then(async () => {
       )
     }
   )
+  ipcMain.handle('usage:refresh', () => refreshUsage(false))
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('jobs:cancel', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
@@ -777,6 +855,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:setLeadPlan', (_event, plan: unknown) => {
     if (plan !== null && !isProviderId(plan)) throw new Error('unknown plan')
     settings.setLeadPlan(isProviderId(plan) ? plan : null)
+  })
+  ipcMain.handle('settings:getLeadModel', (_event, provider: unknown) => {
+    if (!isProviderId(provider)) throw new Error('unknown provider')
+    return settings.leadModel(provider) ?? null
+  })
+  ipcMain.handle('settings:setLeadModel', (_event, provider: unknown, model: unknown) => {
+    if (!isProviderId(provider)) throw new Error('unknown provider')
+    if (model !== null && !isValidModel(model)) throw new Error('invalid model name')
+    settings.setLeadModel(provider, model)
   })
   ipcMain.handle('settings:getLeadAccess', () => settings.leadAccess())
   ipcMain.handle('settings:setLeadAccess', (_event, access: unknown) => {
@@ -950,6 +1037,18 @@ app.whenReady().then(async () => {
     if (typeof id !== 'string') return
     terms.close(id)
   })
+  ipcMain.handle('terminals:sleep', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) return false
+    // A terminal in its own window is on screen; it never sleeps.
+    if (poppedOut.has(id)) return false
+    return terms.sleep(id)
+  })
+  ipcMain.handle('terminals:wake', (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string' || id === '' || id.length > 64)
+      throw new Error('invalid terminal id')
+    if (!Number.isInteger(cols) || !Number.isInteger(rows)) throw new Error('invalid size')
+    return terms.wake(id, cols as number, rows as number)
+  })
   ipcMain.handle('terminals:list', () => terms.list())
   ipcMain.handle('terminals:snapshot', (_event, id: unknown) => {
     if (typeof id !== 'string') return ''
@@ -1008,10 +1107,23 @@ app.whenReady().then(async () => {
       Object.assign(entry, await worktrees.info(path))
       if (!entry.isRepo) return entry
       Object.assign(entry, await worktrees.status(path))
-      for (const change of await listedChanges(path)) {
+      const changes = await listedChanges(path)
+      for (const change of changes) {
         entry.changes += 1
         entry.insertions += change.insertions
         entry.deletions += change.deletions
+      }
+      if (!active) {
+        const working = new Set(orch.activeChangesIn(path))
+        entry.worktrees = changes.map((change) => ({
+          id: change.id,
+          name: change.name ?? '',
+          branch: change.branch,
+          files: change.files.length,
+          insertions: change.insertions,
+          deletions: change.deletions,
+          working: working.has(change.id)
+        }))
       }
     } catch (err: unknown) {
       console.error(err)
