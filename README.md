@@ -114,14 +114,48 @@ legate goals                 goals in this project
 
 In a checkout, run `pnpm cli -- status`. In an installed copy, add the app's `resources\bin` folder to PATH.
 
-## Subscription use
+## Terms and plans
 
-- Legate runs the unmodified official CLIs, each signed in by you with your own plan.
-- It never reads, stores or forwards login tokens or session credentials.
-- It does not use any Agent SDK and makes no pay-per-token API calls.
-- Jobs are started by a person. A routine runs only after something you did, never on a timer.
+Legate exists so the plans you already pay for get used instead of expiring. Here is exactly how it
+uses them, so you can judge it against each provider's terms yourself.
 
-You are responsible for staying within each provider's terms.
+**What it does**
+
+- It starts the official, unmodified `claude` and Cursor `agent` CLIs on your own machine. You sign
+  in to each one yourself, in that tool's own sign-in.
+- Terminals run the normal interactive CLI. Background jobs and the lead run the same CLI in its
+  headless print mode (`claude -p`, `agent -p`).
+- Grok runs through the Cursor CLI on your Cursor plan.
+
+**What it never does**
+
+- Read, store or forward login tokens or session credentials.
+- Offer a sign-in of its own, use an Agent SDK, or make pay-per-token API calls.
+- Send your code or prompts anywhere except to the CLIs on your machine.
+
+**What runs without you pressing a button**
+
+- **Live usage:** every 10 minutes while a window is open, a one-line Claude turn on the smallest model
+  reads your real usage. Turn it off in Settings → General → Live usage.
+- **Triggers you set up:** a schedule or a GitHub event starts a goal. The lead plans one round, then
+  waits for your OK before any job runs.
+- Nothing else. Jobs, plans and merges wait for you.
+
+**The terms themselves**
+
+Anthropic says signing in with a Claude plan is meant for ordinary use of Claude Code and its own
+apps, and that third-party apps may not offer Claude sign-in or route requests through a Pro or Max
+plan. It has also discussed billing headless use such as `claude -p` separately from chat use. Legate's
+reading is that it is your own Claude Code, run by you, on your machine. That reading is not legal
+advice, and the providers may see it differently or change their terms. Check them yourself:
+
+- Anthropic: [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and
+  [Usage Policy](https://www.anthropic.com/legal/aup)
+- Cursor: [Terms of Service](https://cursor.com/terms-of-service)
+
+Use Legate for your own work, on your own account. Running many jobs at once spends your allowance
+faster and looks more like automation to a provider, so keep **Jobs at once per plan** modest
+(Settings → General). If a provider's terms change, Legate will follow them.
 
 ## Security
 
@@ -137,6 +171,9 @@ You are responsible for staying within each provider's terms.
 - The terminals are full CLI sessions; what they may do is whatever you approve inside them.
 
 ## Develop
+
+New here? [CONTRIBUTING.md](CONTRIBUTING.md) has the five-minute setup, and issues labelled
+[good first issue](https://github.com/scholtzdaniel10/agent-orchestrator/labels/good%20first%20issue) are a good place to start.
 
 Requires Node 22.5 or newer and pnpm.
 

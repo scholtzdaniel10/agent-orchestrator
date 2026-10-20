@@ -16,6 +16,8 @@ files:
   - '!**/*.test.*'
   - '!vitest*.ts'
   - '!.orchestrator/**'
+  - '!packaging/**'
+  - '!CONTRIBUTING.md'
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**

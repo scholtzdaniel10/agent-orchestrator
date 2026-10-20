@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Live usage** can be turned off in Settings → General. With it off, Usage updates only when you press Refresh or a job runs.
+- The README says plainly what Legate runs on its own and how it uses each plan, with links to the providers' terms.
+- A contributor guide, and winget manifests ready to submit.
+
 ## 0.1.0 — first public preview
 
 Legate is a desktop app that hands your coding work to Claude Code, Cursor and Grok, on the plans you already pay for. This is the first version anyone outside the project gets to try. Please report what breaks.

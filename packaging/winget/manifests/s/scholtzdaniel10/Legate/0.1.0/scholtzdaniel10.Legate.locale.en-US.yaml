@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: scholtzdaniel10.Legate
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: scholtzdaniel10
+PublisherUrl: https://github.com/scholtzdaniel10
+PublisherSupportUrl: https://github.com/scholtzdaniel10/agent-orchestrator/issues
+PackageName: Legate
+PackageUrl: https://github.com/scholtzdaniel10/agent-orchestrator
+License: MIT
+LicenseUrl: https://github.com/scholtzdaniel10/agent-orchestrator/blob/main/LICENSE
+ShortDescription: One lead that hands your coding work to Claude Code, Cursor and Grok on the plans you already pay for.
+Description: |-
+  Legate is a desktop app for people with more than one AI coding plan. You give one order; a lead reads the code, proposes jobs you can edit, and nothing runs until you press Run. Each agent works in its own git worktree, every file it reads and every command it runs is shown live, and you review and merge each change. It runs the official Claude Code and Cursor CLIs, signed in by you.
+Tags:
+  - ai
+  - claude-code
+  - cursor
+  - coding-agent
+  - git-worktree
+  - developer-tools
+ReleaseNotesUrl: https://github.com/scholtzdaniel10/agent-orchestrator/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

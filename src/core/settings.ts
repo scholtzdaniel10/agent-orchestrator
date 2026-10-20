@@ -134,7 +134,8 @@ export class Settings {
       cloneDir: typeof raw.cloneDir === 'string' && raw.cloneDir !== '' ? raw.cloneDir : null,
       uiScale: UI_SCALES.includes(raw.uiScale as number)
         ? (raw.uiScale as number)
-        : DEFAULT_UI_SCALE
+        : DEFAULT_UI_SCALE,
+      usageCheck: raw.usageCheck !== false
     }
   }
 
@@ -142,7 +143,14 @@ export class Settings {
   setPrefs(patch: unknown): Prefs {
     if (!isRecord(patch)) throw new Error('invalid settings')
     const next: Record<string, unknown> = isRecord(this.data.prefs) ? { ...this.data.prefs } : {}
-    for (const key of ['maxParallel', 'terminalFontSize', 'notify', 'cloneDir', 'uiScale']) {
+    for (const key of [
+      'maxParallel',
+      'terminalFontSize',
+      'notify',
+      'cloneDir',
+      'uiScale',
+      'usageCheck'
+    ]) {
       if (Object.hasOwn(patch, key)) next[key] = patch[key]
     }
     this.data.prefs = next

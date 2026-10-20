@@ -351,6 +351,25 @@ function SettingsPage({
         </label>
       )
     },
+    {
+      section: 'general',
+      label: 'Live usage',
+      help: 'Every 10 minutes while Legate is open, a one-line Claude turn on the smallest model reads your real usage. Off: Usage updates only when you press Refresh or a job runs.',
+      keywords: 'usage check claude allowance refresh automatic background',
+      render: () => (
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={prefs?.usageCheck ?? true}
+            disabled={prefs === null}
+            onChange={(event) => {
+              savePrefs({ usageCheck: event.target.checked })
+            }}
+          />
+          {"Check Claude's usage every 10 minutes"}
+        </label>
+      )
+    },
     ...plans.map((plan): Entry => ({
       section: 'agents',
       label: planTitle(plan.id),
