@@ -1950,30 +1950,33 @@ function App(): React.JSX.Element {
             </p>
           ) : null}
         </div>
-        <div className="app-header-tools">
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            onClick={() => {
-              void window.api.newWindow().catch((err: unknown) => {
-                setProjectError({ text: errorText(err), at: Date.now() })
-              })
-            }}
-          >
-            Window
-          </button>
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            aria-pressed={drawerOpen}
-            title="Panel (Ctrl+B)"
-            onClick={() => {
-              setDrawerOpen((open) => !open)
-            }}
-          >
-            Panel
-          </button>
-        </div>
+        {/* Setup comes first; the workspace tools appear once it is done or skipped. */}
+        {setupOpen ? null : (
+          <div className="app-header-tools">
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              onClick={() => {
+                void window.api.newWindow().catch((err: unknown) => {
+                  setProjectError({ text: errorText(err), at: Date.now() })
+                })
+              }}
+            >
+              Window
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              aria-pressed={drawerOpen}
+              title="Panel (Ctrl+B)"
+              onClick={() => {
+                setDrawerOpen((open) => !open)
+              }}
+            >
+              Panel
+            </button>
+          </div>
+        )}
       </header>
       <div className="app-body">
         {sidebarShown ? (

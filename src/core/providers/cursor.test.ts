@@ -4,7 +4,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import { GROK_DEFAULT_MODEL, type AgentEvent, type Job, type RunHandle } from '../types'
-import { CursorAdapter, cursorEnv, parseCursorModels } from './cursor'
+import {
+  CursorAdapter,
+  cursorEnv,
+  cursorVersionDirs,
+  parseCursorModels,
+  resolveCursorBin
+} from './cursor'
 import { withLegateNote } from './legate-note'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
@@ -806,4 +812,60 @@ test('skills: Cursor workers and terminals get the worker plugins, the lead the 
     '--trust',
     withLegateNote('go')
   ])
+})
+
+function makeVersion(versionsDir: string, name: string, files: string[]): string {
+  const dir = join(versionsDir, name)
+  mkdirSync(dir, { recursive: true })
+  for (const file of files) writeFileSync(join(dir, file), '')
+  return dir
+}
+
+test('resolveCursorBin finds the CLI the Cursor editor keeps when there is no standalone install', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-bin-'))
+  try {
+    const env = { LOCALAPPDATA: join(root, 'local'), APPDATA: join(root, 'roaming') }
+    const [standalone, editor] = cursorVersionDirs(env)
+    expect(standalone).toBe(join(root, 'local', 'cursor-agent', 'versions'))
+    const dir = makeVersion(editor, '2026.10.01-e373342', ['node.exe', 'index.js'])
+    makeVersion(editor, '2026.09.28-64d2043', ['node.exe', 'index.js'])
+
+    expect(resolveCursorBin(env, 'win32')).toEqual({
+      command: join(dir, 'node.exe'),
+      args: [join(dir, 'index.js')]
+    })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('resolveCursorBin prefers the standalone install and skips incomplete versions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-bin-'))
+  try {
+    const env = { LOCALAPPDATA: join(root, 'local'), APPDATA: join(root, 'roaming') }
+    const [standalone, editor] = cursorVersionDirs(env)
+    makeVersion(editor, '2026.12.01-newer', ['node.exe', 'index.js'])
+    makeVersion(standalone, '2026.11.01-partial', ['node.exe'])
+    const dir = makeVersion(standalone, '2026.10.01-whole', ['node.exe', 'index.js'])
+
+    expect(resolveCursorBin(env, 'win32')).toEqual({
+      command: join(dir, 'node.exe'),
+      args: [join(dir, 'index.js')]
+    })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('resolveCursorBin falls back to agent on PATH', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-cursor-bin-'))
+  try {
+    const env = { LOCALAPPDATA: join(root, 'local'), APPDATA: join(root, 'roaming') }
+    expect(resolveCursorBin(env, 'win32')).toEqual({ command: 'agent' })
+    expect(resolveCursorBin({}, 'win32')).toEqual({ command: 'agent' })
+    makeVersion(cursorVersionDirs(env)[1], '2026.10.01-e373342', ['node.exe', 'index.js'])
+    expect(resolveCursorBin(env, 'linux')).toEqual({ command: 'agent' })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
