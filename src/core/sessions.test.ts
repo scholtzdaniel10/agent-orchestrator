@@ -110,3 +110,26 @@ test('reads a Cursor chat store: its query, not the workspace preamble', async (
 test('no session folders at all is an empty list, not an error', async () => {
   expect((await new Sessions(home()).scan()).sessions).toEqual([])
 })
+
+test('a long log is sampled from both ends: title and newest message, no exact count', async () => {
+  const root = home()
+  const dir = join(root, '.claude', 'projects', 'p')
+  mkdirSync(dir, { recursive: true })
+  const filler = JSON.stringify({ type: 'attachment', data: 'x'.repeat(1000) })
+  const lines = [
+    JSON.stringify({
+      type: 'user',
+      sessionId: 'big',
+      cwd: 'C:/work',
+      message: { content: 'start' }
+    }),
+    ...Array.from({ length: 5000 }, () => filler),
+    JSON.stringify({ type: 'ai-title', aiTitle: 'Big one', sessionId: 'big' }),
+    JSON.stringify({ type: 'assistant', sessionId: 'big', message: { content: 'the end' } })
+  ]
+  writeFileSync(join(dir, 'big.jsonl'), lines.join('\n') + '\n')
+  const scan = await new Sessions(root).scan()
+  expect(scan.sessions).toEqual([
+    expect.objectContaining({ title: 'Big one', last: 'the end', messages: null, cwd: 'C:/work' })
+  ])
+})

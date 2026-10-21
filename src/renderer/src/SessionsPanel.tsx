@@ -92,7 +92,11 @@ function SessionsPanel({
     .filter(
       (session) => words === '' || `${session.title} ${session.last}`.toLowerCase().includes(words)
     )
-    .sort((a, b) => (sort === 'messages' ? b.messages - a.messages : b.updatedAt - a.updatedAt))
+    .sort((a, b) =>
+      sort === 'messages'
+        ? (b.messages ?? Infinity) - (a.messages ?? Infinity) || b.updatedAt - a.updatedAt
+        : b.updatedAt - a.updatedAt
+    )
   const groups = new Map<string, AgentSession[]>()
   for (const session of matching.slice(0, shown)) {
     const name = session.cwd === null ? 'Unknown folder' : folderName(session.cwd)
@@ -215,7 +219,11 @@ function SessionsPanel({
                 <span className="sessions-row-facts">
                   <BotAvatar bot={session.provider} state="idle" size={14} />
                   <span>{session.provider === 'claude' ? 'Claude' : 'Cursor'}</span>
-                  <span>{`${String(session.messages)} msgs`}</span>
+                  <span>
+                    {session.messages === null
+                      ? 'long session'
+                      : `${String(session.messages)} msgs`}
+                  </span>
                   <span>{ago(session.updatedAt, now)}</span>
                   {session.model !== null ? <span className="mono">{session.model}</span> : null}
                   {opening === session.id ? <span>Opening…</span> : null}

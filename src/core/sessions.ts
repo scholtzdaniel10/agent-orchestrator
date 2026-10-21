@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -14,7 +14,8 @@ export interface AgentSession {
   /** The newest message, for the preview line. */
   last: string
   lastRole: 'you' | 'agent'
-  messages: number
+  /** Messages in the session; null for a long log, which is only sampled. */
+  messages: number | null
   model: string | null
   /** Folder the session ran in; null when the log does not say. */
   cwd: string | null
@@ -30,6 +31,13 @@ export interface SessionScan {
 const PREVIEW = 160
 /** Logs past this are skipped: a session that size is a runaway, and reading it stalls a scan. */
 const MAX_LOG_BYTES = 200 * 1024 * 1024
+/**
+ * Logs up to this are read whole. A longer one (a long session can pass 40 MB) is sampled: its
+ * first and last part only, enough for the title, folder and newest message, so a scan never
+ * reads hundreds of megabytes (and never makes the virus scanner read them too).
+ */
+const FULL_READ_BYTES = 4 * 1024 * 1024
+const SAMPLE_BYTES = 512 * 1024
 
 interface Cached {
   key: string
@@ -61,7 +69,7 @@ export class Sessions {
         try {
           session =
             file.kind === 'claude'
-              ? await readClaudeLog(file.path, file.mtime)
+              ? await readClaudeLog(file.path, file.mtime, file.size)
               : readCursorStore(file.path, file.mtime)
         } catch {
           session = null
@@ -128,7 +136,12 @@ async function statFile(path: string, kind: Found['kind']): Promise<Found | null
 }
 
 /** One Claude Code session log (`~/.claude/projects/<folder>/<id>.jsonl`), read line by line. */
-export async function readClaudeLog(path: string, mtime: number): Promise<AgentSession | null> {
+export async function readClaudeLog(
+  path: string,
+  mtime: number,
+  size = 0
+): Promise<AgentSession | null> {
+  const sampled = size > FULL_READ_BYTES
   let id: string | null = null
   let title: string | null = null
   let firstPrompt: string | null = null
@@ -136,7 +149,9 @@ export async function readClaudeLog(path: string, mtime: number): Promise<AgentS
   let messages = 0
   let model: string | null = null
   let cwd: string | null = null
-  const lines = createInterface({ input: createReadStream(path, 'utf8'), crlfDelay: Infinity })
+  const lines = sampled
+    ? await sampleLines(path, size)
+    : createInterface({ input: createReadStream(path, 'utf8'), crlfDelay: Infinity })
   for await (const line of lines) {
     // Most lines are tool output and snapshots; only these few are parsed.
     if (line.startsWith('{"type":"ai-title"')) {
@@ -168,10 +183,27 @@ export async function readClaudeLog(path: string, mtime: number): Promise<AgentS
     title: oneLine(title ?? firstPrompt ?? 'Untitled session'),
     last: oneLine(messageText(last?.message)),
     lastRole: last?.type === 'user' ? 'you' : 'agent',
-    messages,
+    messages: sampled ? null : messages,
     model,
     cwd,
     updatedAt: mtime
+  }
+}
+
+/** Whole lines from the first and last SAMPLE_BYTES of a file; a line cut at either edge is dropped. */
+async function sampleLines(path: string, size: number): Promise<string[]> {
+  const file = await open(path, 'r')
+  try {
+    const read = async (from: number): Promise<string> => {
+      const buf = Buffer.alloc(Math.min(SAMPLE_BYTES, size - from))
+      await file.read(buf, 0, buf.length, from)
+      return buf.toString('utf8')
+    }
+    const head = (await read(0)).split(/\r?\n/).slice(0, -1)
+    const tail = (await read(size - SAMPLE_BYTES)).split(/\r?\n/).slice(1)
+    return [...head, ...tail]
+  } finally {
+    await file.close()
   }
 }
 
