@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Star } from './Star'
+import Select from './Select'
 
 type Goal = Awaited<ReturnType<Window['api']['listGoals']>>[number]
 type PlannedJob = Goal['rounds'][number]['jobs'][number]
@@ -155,6 +156,7 @@ function GoalsPanel({
           }}
         >
           <textarea
+            className="field"
             rows={3}
             value={text}
             placeholder="What should be true when this is done? e.g. Login keeps the session after a token refresh."
@@ -162,6 +164,7 @@ function GoalsPanel({
             onChange={(event) => setText(event.target.value)}
           />
           <input
+            className="field"
             value={check}
             placeholder="Check, optional: a command that passes when it is done, e.g. pnpm test"
             aria-label="Check command"
@@ -171,6 +174,7 @@ function GoalsPanel({
             <label className="goal-rounds">
               At most
               <input
+                className="field"
                 type="number"
                 min={1}
                 max={20}
@@ -201,7 +205,7 @@ function GoalsPanel({
           </p>
         </form>
       ) : null}
-      {error !== null ? <p className="field-error">{error}</p> : null}
+      {error !== null ? <p className="error-text">{error}</p> : null}
       {goals !== null && goals.length === 0 && !creating ? (
         <p className="hint">
           No goals yet. Start one here, or add a check to a job in Jobs to fix until it passes.
@@ -259,32 +263,28 @@ function GoalsPanel({
               {edited.map((job, index) => (
                 <div key={index} className="goal-job">
                   <div className="goal-job-head">
-                    <select
+                    <Select
                       value={job.type}
                       aria-label="Job type"
-                      onChange={(event) =>
-                        editJob(index, { type: event.target.value as PlannedJob['type'] })
-                      }
+                      onChange={(next) => editJob(index, { type: next as PlannedJob['type'] })}
                     >
                       {JOB_TYPES.map((type) => (
                         <option key={type} value={type}>
                           {type}
                         </option>
                       ))}
-                    </select>
-                    <select
+                    </Select>
+                    <Select
                       value={job.access}
                       aria-label="Access"
-                      onChange={(event) =>
-                        editJob(index, { access: event.target.value as PlannedJob['access'] })
-                      }
+                      onChange={(next) => editJob(index, { access: next as PlannedJob['access'] })}
                     >
                       {ACCESS.map((value) => (
                         <option key={value} value={value}>
                           {value === 'full' ? 'edit + run commands' : 'edit files'}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="btn btn-quiet btn-compact"
@@ -555,19 +555,21 @@ function TriggersSection(): React.JSX.Element {
           }}
         >
           <div className="goal-form-foot">
-            <select
+            <Select
+              className="field"
               value={kind}
               aria-label="When"
-              onChange={(event) => setKind(event.target.value as Trigger['kind'])}
+              onChange={(next) => setKind(next as Trigger['kind'])}
             >
               {(Object.keys(TRIGGER_LABEL) as Trigger['kind'][]).map((value) => (
                 <option key={value} value={value}>
                   {TRIGGER_LABEL[value]}
                 </option>
               ))}
-            </select>
+            </Select>
             {kind === 'daily' ? (
               <input
+                className="field"
                 type="time"
                 value={at}
                 aria-label="Time"
@@ -578,6 +580,7 @@ function TriggersSection(): React.JSX.Element {
               <label className="goal-rounds">
                 every
                 <input
+                  className="field"
                   type="number"
                   min={1}
                   max={168}
@@ -596,6 +599,7 @@ function TriggersSection(): React.JSX.Element {
             </p>
           ) : null}
           <textarea
+            className="field"
             rows={2}
             value={text}
             placeholder={
@@ -607,6 +611,7 @@ function TriggersSection(): React.JSX.Element {
             onChange={(event) => setText(event.target.value)}
           />
           <input
+            className="field"
             value={check}
             placeholder="Check, optional: e.g. pnpm test"
             aria-label="Check command"
@@ -623,7 +628,7 @@ function TriggersSection(): React.JSX.Element {
           </div>
         </form>
       ) : null}
-      {error !== null ? <p className="field-error">{error}</p> : null}
+      {error !== null ? <p className="error-text">{error}</p> : null}
       {triggers.length > 0 ? (
         <ul className="goal-list">
           {triggers.map((trigger) => (

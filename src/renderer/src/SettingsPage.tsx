@@ -3,6 +3,7 @@ import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
 import { Star } from './Star'
 import { THEMES, type ThemeId } from './theme'
+import Select from './Select'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
@@ -259,12 +260,12 @@ function SettingsPage({
       help: 'Makes the whole window, terminals included, smaller or larger. 90% leaves the most room.',
       keywords: 'zoom scale size font text smaller larger crammed',
       render: () => (
-        <select
+        <Select
           className="settings-select"
           value={String(prefs?.uiScale ?? 90)}
           aria-label="Interface size"
-          onChange={(event) => {
-            savePrefs({ uiScale: Number(event.target.value) })
+          onChange={(picked) => {
+            savePrefs({ uiScale: Number(picked) })
           }}
         >
           {[80, 90, 100, 110, 120].map((size) => (
@@ -272,7 +273,45 @@ function SettingsPage({
               {`${String(size)}%`}
             </option>
           ))}
-        </select>
+        </Select>
+      )
+    },
+    {
+      section: 'general',
+      label: 'Usage shows',
+      help: 'How the usage meters and the status bar read each plan: what is left of it, or what is used, as Claude’s own usage page shows it.',
+      keywords: 'usage percent left used remaining meter allowance plan',
+      render: () => (
+        <Select
+          className="settings-select"
+          value={prefs?.usageShows ?? 'left'}
+          aria-label="Usage shows"
+          onChange={(picked) => {
+            savePrefs({ usageShows: picked === 'used' ? 'used' : 'left' })
+          }}
+        >
+          <option value="left">What is left</option>
+          <option value="used">What is used</option>
+        </Select>
+      )
+    },
+    {
+      section: 'general',
+      label: 'Cursor models',
+      help: 'Which models the Cursor pickers list. Cursor’s own are Auto, Composer and Grok, the plan’s Cursor Models pool. All adds Claude, GPT, Gemini and others, which spend the Other Models quota.',
+      keywords: 'cursor models composer grok auto other quota list picker clutter',
+      render: () => (
+        <Select
+          className="settings-select"
+          value={prefs?.cursorModels ?? 'own'}
+          aria-label="Cursor models"
+          onChange={(picked) => {
+            savePrefs({ cursorModels: picked === 'all' ? 'all' : 'own' })
+          }}
+        >
+          <option value="own">Cursor’s own</option>
+          <option value="all">All models</option>
+        </Select>
       )
     },
     {
@@ -281,12 +320,12 @@ function SettingsPage({
       help: 'Colours for the whole window. System follows light or dark mode.',
       keywords: 'theme colour color dark light appearance',
       render: () => (
-        <select
+        <Select
           className="settings-select"
           value={theme}
           aria-label="Look"
-          onChange={(event) => {
-            const next = THEMES.find((item) => item.id === event.target.value)
+          onChange={(picked) => {
+            const next = THEMES.find((item) => item.id === picked)
             if (next !== undefined) onTheme(next.id)
           }}
         >
@@ -295,7 +334,7 @@ function SettingsPage({
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
       )
     },
     {
@@ -404,12 +443,12 @@ function SettingsPage({
       help: 'The plan that plans and hands out work. Auto picks the one with the most allowance left.',
       keywords: 'lead plan auto delegate',
       render: () => (
-        <select
+        <Select
           className="settings-select"
           value={leadPlan}
           aria-label="Lead runs on"
-          onChange={(event) => {
-            const value = event.target.value
+          onChange={(picked) => {
+            const value = picked
             const next =
               value === 'claude' || value === 'cursor' || value === 'grok' ? value : 'auto'
             setLeadPlan(next)
@@ -422,7 +461,7 @@ function SettingsPage({
               {planTitle(plan.id)}
             </option>
           ))}
-        </select>
+        </Select>
       )
     },
     {
@@ -431,12 +470,12 @@ function SettingsPage({
       help: 'The highest access a job from the lead can get. Jobs you start yourself are not limited.',
       keywords: 'access permission read edit full commands',
       render: () => (
-        <select
+        <Select
           className="settings-select"
           value={access}
           aria-label="Most the lead may hand out"
-          onChange={(event) => {
-            const value = event.target.value
+          onChange={(picked) => {
+            const value = picked
             if (value !== 'read' && value !== 'edit' && value !== 'full') return
             setAccess(value)
             run(window.api.setLeadAccess(value).then(onLeadChanged))
@@ -447,7 +486,7 @@ function SettingsPage({
               {ACCESS_TEXT[value]}
             </option>
           ))}
-        </select>
+        </Select>
       )
     },
     {
@@ -795,7 +834,7 @@ function SettingsPage({
         </nav>
         <div className="settings-content">
           {error !== null ? (
-            <p className="field-error" role="alert">
+            <p className="error-text" role="alert">
               {error}
             </p>
           ) : null}

@@ -3,6 +3,7 @@ import { PROVIDERS, type ProviderId } from '../../core/types'
 import BotAvatar from './BotAvatar'
 import { PANE_LAYOUT_IDS, PANE_LAYOUT_LABELS, isPaneLayout, type PaneLayoutId } from './layout'
 import { terminalDisplayTitle } from './worktree-label'
+import Select from './Select'
 
 type TerminalInfo = Awaited<ReturnType<Window['api']['listTerminals']>>[number]
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
@@ -245,11 +246,11 @@ function TerminalTabs({
               Panes
             </span>
           </label>
-          <select
+          <Select
             id="pane-layout"
             value={paneLayout}
-            onChange={(event) => {
-              const next = event.target.value
+            onChange={(picked) => {
+              const next = picked
               if (!isPaneLayout(next)) return
               onPaneLayout(next)
             }}
@@ -259,7 +260,7 @@ function TerminalTabs({
                 {PANE_LAYOUT_LABELS[id]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
     </div>

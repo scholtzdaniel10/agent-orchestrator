@@ -12,9 +12,16 @@ import type { RunRow, Store, StoredWindow } from './store'
 
 const JOB_TYPES: readonly JobType[] = ['planning', 'debugging', 'review', 'refactor', 'boilerplate']
 
+/**
+ * A reading the person copied from their plan's dashboard (Cursor reports no usage itself).
+ * Legate's own runs since the reading are added on top until the next one.
+ */
+export const DASHBOARD_WINDOW = 'dashboard'
+
 const WINDOW_MS: Record<string, number> = {
   five_hour: 5 * 3600_000,
-  seven_day: 168 * 3600_000
+  seven_day: 168 * 3600_000,
+  [DASHBOARD_WINDOW]: 30 * 24 * 3600_000
 }
 
 export const DEFAULT_PACE: PaceRules = {
@@ -110,7 +117,11 @@ export function planUsage(
     }
   }
 
-  const windows = stored.map((row) => toWindow(row, now))
+  const windows = stored.map((row) =>
+    row.name === DASHBOARD_WINDOW
+      ? dashboardWindow(row, store, plan, rules.allowance[plan].units, now)
+      : toWindow(row, now)
+  )
   let worst = windows[0]
   for (let i = 1; i < windows.length; i++) {
     const window = windows[i]
@@ -270,6 +281,77 @@ function toWindow(row: StoredWindow, now: number): WindowState {
     return { name: row.name, used: 0, resetsAt: null, lengthMs }
   }
   return { name: row.name, used: clamp01(row.utilization), resetsAt: row.resetsAt, lengthMs }
+}
+
+/**
+ * A dashboard reading as stored: the share used and when that cycle resets. A message saying what
+ * is wrong when the input is not a percentage from 0 to 100 and a reset time in the future.
+ */
+export function dashboardReading(
+  usedPercent: unknown,
+  resetsAt: unknown,
+  now: number
+): { name: string; utilization: number; resetsAt: number } | string {
+  if (typeof usedPercent !== 'number' || !Number.isFinite(usedPercent)) {
+    return 'Enter how much is used, as a percentage.'
+  }
+  if (usedPercent < 0 || usedPercent > 100) return 'Usage must be between 0 and 100%.'
+  if (typeof resetsAt !== 'number' || !Number.isFinite(resetsAt)) {
+    return 'Enter the date your usage resets.'
+  }
+  if (resetsAt <= now) return 'The reset date has to be in the future.'
+  return { name: DASHBOARD_WINDOW, utilization: usedPercent / 100, resetsAt }
+}
+
+/**
+ * The dashboard reading plus Legate's runs since it. Once the cycle the reading belongs to has
+ * reset, it counts only runs since that reset, and the next reset is a month on.
+ */
+function dashboardWindow(
+  row: StoredWindow,
+  store: Store,
+  plan: ProviderId,
+  units: number,
+  now: number
+): WindowState {
+  const lengthMs = WINDOW_MS[DASHBOARD_WINDOW]
+  if (row.resetsAt === null || row.resetsAt > now) {
+    const since = runsOnPlan(store, plan, row.observedAt)
+    return {
+      name: row.name,
+      used: clamp01(row.utilization + weightUsed(since, units)),
+      resetsAt: row.resetsAt,
+      lengthMs
+    }
+  }
+  let months = 1
+  let cycleStart = row.resetsAt
+  let next = addMonths(row.resetsAt, months)
+  while (next <= now) {
+    cycleStart = next
+    months += 1
+    next = addMonths(row.resetsAt, months)
+  }
+  return {
+    name: row.name,
+    used: clamp01(weightUsed(runsOnPlan(store, plan, cycleStart), units)),
+    resetsAt: next,
+    lengthMs
+  }
+}
+
+/**
+ * The same day and time `months` calendar months later, clamped to the month's last day. Counted
+ * from one anchor so a cycle that starts on the 31st stays on the 31st after a short month.
+ */
+export function addMonths(ms: number, months: number): number {
+  const date = new Date(ms)
+  const day = date.getDate()
+  date.setDate(1)
+  date.setMonth(date.getMonth() + months)
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  date.setDate(Math.min(day, lastDay))
+  return date.getTime()
 }
 
 /** Pace window: the longest known window that still has a future reset. */

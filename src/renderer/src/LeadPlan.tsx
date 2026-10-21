@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PROVIDERS } from '../../core/types'
 import BotAvatar from './BotAvatar'
+import Select from './Select'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type LeadProposal = NonNullable<LeadMessage['proposal']>
@@ -110,11 +111,11 @@ function LeadPlan({
                 </button>
               </div>
               <div className="lead-plan-meta">
-                <select
+                <Select
                   aria-label={`Worker for ${job.title}`}
                   value={job.worker ?? 'auto'}
-                  onChange={(event) => {
-                    const value = event.target.value
+                  onChange={(next) => {
+                    const value = next
                     const worker = PROVIDERS.find((id) => id === value)
                     change(index, { worker })
                   }}
@@ -125,12 +126,12 @@ function LeadPlan({
                       {workerName(id)}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   aria-label={`Access for ${job.title}`}
                   value={job.access}
-                  onChange={(event) => {
-                    const value = event.target.value
+                  onChange={(next) => {
+                    const value = next
                     change(index, {
                       access: value === 'edit' || value === 'full' ? value : 'read'
                     })
@@ -141,7 +142,7 @@ function LeadPlan({
                       {ACCESS_LABEL[access]}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <span className="lead-plan-type">{job.type}</span>
               </div>
               {expanded ? (
@@ -164,7 +165,7 @@ function LeadPlan({
         })}
       </ol>
       {error !== null ? (
-        <p className="field-error" role="alert">
+        <p className="error-text" role="alert">
           {error}
         </p>
       ) : null}

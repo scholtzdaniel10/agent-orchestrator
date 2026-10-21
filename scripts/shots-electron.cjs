@@ -212,6 +212,33 @@ const scenes = {
   },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
   goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
+  usage: { query: '?tab=usage', scheme: 'dark', size: [1440, 900], script: '' },
+  'usage-reading': {
+    query: '?tab=usage',
+    scheme: 'dark',
+    size: [1440, 1240],
+    script: `(async () => {
+      const deadline = Date.now() + 5000
+      let button = null
+      while (Date.now() < deadline) {
+        button = [...document.querySelectorAll('button')].find(
+          (el) => el.textContent === 'Set from dashboard'
+        )
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const slider = document.querySelector('.usage-reading-percent input[type=range]')
+      if (slider) {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+        set.call(slider, '37')
+        slider.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      const days = [...document.querySelectorAll('.reset-calendar-day:not(:disabled)')]
+      days[5]?.click()
+    })()`
+  },
   'drag-zones': {
     query: '',
     scheme: 'dark',

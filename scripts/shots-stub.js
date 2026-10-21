@@ -104,6 +104,7 @@
             { name: 'five_hour', used: 0.62, resetsAt: now + 2.4 * H },
             { name: 'seven_day', used: 0.31, resetsAt: now + 90 * H }
           ],
+          usageAt: now - 4 * 60_000,
           version: '2.1.292',
           versionStatus: 'tested',
           testedVersion: '2.1.292'
@@ -681,6 +682,9 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     listPlans: ok(plans),
     onPlansUpdate: off,
     recheckPlans: ok(plans),
+    refreshUsage: ok({ ok: true }),
+    setCursorReading: ok({ ok: true }),
+    clearCursorReading: ok(undefined),
     listModels: (provider) =>
       Promise.resolve(
         provider === 'grok'

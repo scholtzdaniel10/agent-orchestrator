@@ -375,7 +375,7 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
       {showLoading ? <p className="files-status">Loading files…</p> : null}
       {error !== null ? (
         <div className="files-error">
-          <p className="field-error" role="alert">
+          <p className="error-text" role="alert">
             {error}
           </p>
           <button type="button" className="btn btn-quiet btn-compact" onClick={() => load(true)}>
@@ -496,7 +496,7 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
                 </div>
               </div>
               {openError !== null ? (
-                <p className="field-error" role="alert">
+                <p className="error-text" role="alert">
                   {openError}
                 </p>
               ) : null}

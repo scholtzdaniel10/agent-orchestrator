@@ -1,4 +1,7 @@
 import { useEffect, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import Select from './Select'
+import { visibleModels } from './model-pool'
+import { usePrefs } from './use-prefs'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ModelOption = Awaited<ReturnType<Window['api']['listModels']>>[number]
@@ -93,26 +96,30 @@ function ModelField({
         </span>
       ) : null}
       <div className="model-row">
-        <select
+        <Select
           id={selectId}
-          className="model-input"
+          className="model-input field"
           value={typing ? OTHER : saved}
           disabled={disabled}
           aria-invalid={error !== null ? true : undefined}
           aria-describedby={describedBy === '' ? undefined : describedBy}
-          onChange={(event) => {
-            onSelect(event.target.value)
+          onChange={(picked) => {
+            onSelect(picked)
           }}
         >
           <option value="">CLI default</option>
           {savedIsListed ? null : <option value={saved}>{saved}</option>}
           {listed.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label === option.id ? option.id : `${option.label} · ${option.id}`}
+            <option
+              key={option.id}
+              value={option.id}
+              data-detail={option.label === option.id ? undefined : option.id}
+            >
+              {option.label}
             </option>
           ))}
           <option value={OTHER}>Other…</option>
-        </select>
+        </Select>
       </div>
       {typing ? (
         <div className="model-row">
@@ -121,7 +128,7 @@ function ModelField({
           </label>
           <input
             id={otherId}
-            className="model-input"
+            className="model-input field"
             placeholder="Model name, then Enter"
             value={typed}
             disabled={disabled}
@@ -137,7 +144,7 @@ function ModelField({
         </div>
       ) : null}
       {error !== null ? (
-        <p id={errorId} className="field-error" role="alert">
+        <p id={errorId} className="error-text" role="alert">
           {error}
         </p>
       ) : null}
@@ -156,6 +163,8 @@ function ModelPicker({
 }): React.JSX.Element {
   const [models, setModels] = useState<ModelOption[] | null>(null)
   const { id, available } = plan
+  // Settings → Cursor models: Cursor's own pool only unless the person wants every model.
+  const show = usePrefs()?.cursorModels ?? 'own'
 
   // Load the list up front: every model has to be there the first time the menu opens.
   useEffect(() => {
@@ -179,7 +188,7 @@ function ModelPicker({
       key={plan.model ?? ''}
       plan={plan}
       disabled={disabled}
-      models={models}
+      models={models === null ? null : visibleModels(models, id, show)}
       labelTitle={labelTitle}
     />
   )

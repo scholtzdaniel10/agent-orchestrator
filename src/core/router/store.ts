@@ -278,6 +278,10 @@ export class Store {
     }
   }
 
+  deleteWindow(provider: string, name: string): void {
+    this.db.prepare('DELETE FROM usage_windows WHERE provider = ? AND name = ?').run(provider, name)
+  }
+
   /** One row per window name, ordered by name. */
   windows(provider: string): StoredWindow[] {
     const rows = this.db

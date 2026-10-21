@@ -4,7 +4,7 @@
   --brand: rgb(214, 38, 46);
   --text: rgb(242, 242, 242);
   --ray: rgb(255, 150, 150);
-  --on-accent: rgb(242, 242, 242);
+  --on-accent: rgb(255, 255, 255);
   --signal: rgb(255, 230, 0);
   --bad: rgb(255, 150, 140);
   --diff-add: rgb(140, 230, 180);
@@ -36,6 +36,16 @@
   --radius-sm: 4px;
   --radius: 7px;
   --radius-lg: 11px;
+  --radius-pill: 999px;
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
   --font-mono:
     'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono',
     'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
@@ -53,8 +63,8 @@
     --bad: rgb(160, 32, 24);
     --diff-add: rgb(0, 100, 50);
     --diff-del: rgb(160, 32, 24);
-    --bot-claude: rgb(200, 90, 30);
-    --bot-cursor: rgb(0, 130, 95);
+    --bot-claude: rgb(158, 71, 24);
+    --bot-cursor: rgb(0, 111, 81);
     --bot-grok: rgb(110, 60, 200);
     --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
     --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
@@ -74,7 +84,7 @@
   --brand: rgb(214, 38, 46);
   --text: rgb(242, 242, 242);
   --ray: rgb(255, 150, 150);
-  --on-accent: rgb(242, 242, 242);
+  --on-accent: rgb(255, 255, 255);
   --signal: rgb(255, 230, 0);
   --bad: rgb(255, 150, 140);
   --diff-add: rgb(140, 230, 180);
@@ -95,8 +105,8 @@
   --bad: rgb(160, 32, 24);
   --diff-add: rgb(0, 100, 50);
   --diff-del: rgb(160, 32, 24);
-  --bot-claude: rgb(200, 90, 30);
-  --bot-cursor: rgb(0, 130, 95);
+  --bot-claude: rgb(158, 71, 24);
+  --bot-cursor: rgb(0, 111, 81);
   --bot-grok: rgb(110, 60, 200);
   --inset: color-mix(in srgb, var(--brand) 6%, var(--bg));
   --deep: color-mix(in srgb, var(--brand) 11%, var(--bg));
@@ -139,6 +149,8 @@
   --bot-claude: rgb(255, 168, 64);
   --bot-cursor: rgb(80, 170, 255);
   --bot-grok: rgb(230, 130, 255);
+  /* Less brand than the default 15%, so muted and the plan colours hold 4.5:1 on it. */
+  --selected: color-mix(in srgb, var(--brand) 13%, var(--inset));
 }
 
 :root[data-theme='graphite'] {
@@ -155,6 +167,8 @@
   --bot-claude: rgb(210, 140, 78);
   --bot-cursor: rgb(86, 176, 154);
   --bot-grok: rgb(176, 140, 255);
+  /* Less brand than the default 15%, so muted and the plan colours hold 4.5:1 on it. */
+  --selected: color-mix(in srgb, var(--brand) 8%, var(--inset));
 }
 
 :root[data-theme='dusk'] {
@@ -191,7 +205,7 @@
 
 *::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--border) 70%, transparent) padding-box;
 }
 
@@ -227,7 +241,7 @@ body {
 
 button,
 input,
-select,
+.select,
 textarea {
   font: inherit;
   color: inherit;
@@ -236,7 +250,7 @@ textarea {
 button,
 .job-row,
 input,
-select,
+.select,
 textarea {
   transition:
     background-color 120ms ease,
@@ -277,7 +291,7 @@ textarea {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
   height: 40px;
   min-width: 0;
   padding: 0 16px;
@@ -289,7 +303,7 @@ textarea {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -335,7 +349,7 @@ textarea {
   display: flex;
   flex: 1;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -352,7 +366,7 @@ textarea {
 }
 
 .app-context-branch {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .app-body {
@@ -369,7 +383,7 @@ textarea {
   flex: none;
   flex-shrink: 0;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-12);
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -384,7 +398,7 @@ textarea {
 .app-stat {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -422,7 +436,7 @@ textarea {
 .app-stat.is-zero,
 .app-stat.is-zero .app-stat-count,
 .app-stat.is-zero .app-stat-label {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .app-stat.is-zero .app-stat-dot {
@@ -442,7 +456,7 @@ textarea {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -491,7 +505,7 @@ textarea {
   display: flex;
   flex: 1;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 1px 6px;
   padding: 8px 10px;
@@ -525,7 +539,7 @@ textarea {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -550,7 +564,7 @@ textarea {
 .project-branch {
   min-width: 0;
   overflow: hidden;
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-ligatures: none;
@@ -636,7 +650,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   padding: 8px 10px 4px;
 }
@@ -672,7 +686,7 @@ textarea {
   display: flex;
   flex: 1;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 1px 6px;
   padding: 6px 10px 6px 20px;
@@ -713,11 +727,11 @@ textarea {
   display: flex;
   flex: none;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .project-chat-run {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .project-chat-age {
@@ -734,7 +748,7 @@ textarea {
   right: 4px;
   display: none;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
 }
 
 .project-chat-item:hover .project-chat-actions,
@@ -795,7 +809,7 @@ textarea {
   flex: 1;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   padding: 6px 10px 6px 20px;
   border-radius: var(--radius);
@@ -813,7 +827,7 @@ textarea {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   max-height: 40%;
   margin: 0 0 4px;
@@ -825,7 +839,7 @@ textarea {
 .github-panel-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -878,7 +892,7 @@ textarea {
 .github-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   margin: 0;
   padding: 6px 8px;
@@ -903,7 +917,7 @@ textarea {
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -1136,7 +1150,7 @@ textarea {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   min-height: 28px;
 }
 
@@ -1144,7 +1158,7 @@ textarea {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -1158,7 +1172,7 @@ textarea {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -1208,7 +1222,7 @@ label {
 
 .model-hint {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
   text-transform: none;
   letter-spacing: 0;
@@ -1234,7 +1248,7 @@ label {
   flex-direction: column;
   align-items: flex-start;
   align-self: stretch;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   min-height: 120px;
   justify-content: center;
@@ -1272,7 +1286,7 @@ label {
 }
 
 .btn:hover:not(:disabled),
-select:hover:not(:disabled) {
+.select:hover:not(:disabled) {
   border-color: var(--border-strong);
 }
 
@@ -1311,7 +1325,7 @@ select:hover:not(:disabled) {
 
 button:disabled,
 input:disabled,
-select:disabled,
+.select:disabled,
 textarea:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1321,7 +1335,7 @@ textarea:disabled {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .composer-box {
@@ -1346,7 +1360,7 @@ textarea {
 }
 
 .composer textarea::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 @media (max-height: 759px) {
@@ -1359,7 +1373,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 8px;
   border-top: 1px solid var(--border);
 }
@@ -1368,7 +1382,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -1389,7 +1403,7 @@ textarea {
 .edit-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-height: 28px;
   white-space: nowrap;
   cursor: pointer;
@@ -1424,12 +1438,12 @@ textarea {
   letter-spacing: 0;
 }
 
-select,
+.select,
 input:not([type='checkbox']):not([type='radio']) {
   height: 28px;
 }
 
-select {
+.select {
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1442,7 +1456,7 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 0;
 }
 
@@ -1452,7 +1466,7 @@ select {
   flex: none;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
@@ -1487,7 +1501,7 @@ select {
 }
 
 .tab {
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   padding: 0 12px;
   overflow: hidden;
@@ -1570,12 +1584,12 @@ select {
   flex: none;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
 .tab-new {
-  gap: 6px;
+  gap: var(--space-6);
   padding: 0 8px;
 }
 
@@ -1593,7 +1607,7 @@ select {
   min-width: 0;
   height: auto;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--muted);
   font-size: 11px;
@@ -1637,7 +1651,7 @@ select {
 .terminal-pane {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 0;
   padding: 8px;
@@ -1773,7 +1787,7 @@ select {
 .dots {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   height: 1.5em;
 }
 
@@ -1880,7 +1894,7 @@ select {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   margin: 0 0 2px;
   padding: 8px 10px;
   border-radius: var(--radius);
@@ -1902,7 +1916,7 @@ select {
 .job-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -1926,7 +1940,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   padding-left: 28px;
   color: var(--muted);
@@ -1970,13 +1984,13 @@ select {
 .lead-delegated-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .lead-job-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -1997,7 +2011,7 @@ select {
 .lead-job-card-main {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -2053,7 +2067,7 @@ select {
 
 .job-id {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .job-reason,
@@ -2071,7 +2085,7 @@ select {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-4);
   color: var(--text);
   font-family: var(--font-display);
   font-size: 11px;
@@ -2124,7 +2138,7 @@ select {
 }
 
 .usage .status {
-  gap: 5px;
+  gap: var(--space-4);
   height: auto;
   padding: 0;
   border-radius: var(--radius-sm);
@@ -2137,7 +2151,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   padding-left: 28px;
   color: var(--muted);
   font-size: 11px;
@@ -2155,12 +2169,12 @@ select {
 .failover-hop {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .failover-arrow {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .empty-state {
@@ -2170,7 +2184,7 @@ select {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-height: 0;
   padding: 16px;
   text-align: center;
@@ -2212,7 +2226,7 @@ select {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
@@ -2234,8 +2248,7 @@ select {
   overflow: auto;
 }
 
-.output-error,
-.field-error {
+.output-error {
   margin: 0;
   padding: 8px;
   border: 1px solid var(--bad);
@@ -2243,6 +2256,28 @@ select {
   background: transparent;
   color: var(--bad);
   font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* An error is plain bad-coloured text. The box is only for an error that blocks a whole form. */
+.error-text {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.field-error {
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--bad);
+  font: inherit;
+  font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2284,21 +2319,16 @@ select {
   flex: none;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 8px 12px;
   border-top: 1px solid var(--border);
-}
-
-.field-error {
-  padding: 4px 8px;
-  font-size: 12px;
 }
 
 .changes-pane {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-height: 0;
 }
 
@@ -2345,7 +2375,7 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -2356,7 +2386,7 @@ select {
   display: flex;
   flex: none;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -2382,14 +2412,14 @@ select {
 
 .diff-binary {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .change-actions {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .change-help,
@@ -2401,7 +2431,7 @@ select {
 
 .change-help,
 .diff-status {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .change-ok {
@@ -2418,7 +2448,7 @@ select {
   flex: none;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -2430,7 +2460,7 @@ select {
 .change-pr-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   width: 100%;
   min-width: 0;
 }
@@ -2467,7 +2497,7 @@ select {
 .change-file {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -2518,7 +2548,7 @@ select {
 }
 
 .diff-line.is-meta {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .usage-list {
@@ -2535,7 +2565,7 @@ select {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
@@ -2548,7 +2578,7 @@ select {
 .usage-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   padding: 0;
   border: none;
   border-radius: var(--radius-lg);
@@ -2557,14 +2587,14 @@ select {
 .usage-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .usage-problem {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .output-head > .btn {
@@ -2588,13 +2618,13 @@ select {
 .model-picker {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .usage-figure {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .usage-percent {
@@ -2625,13 +2655,13 @@ select {
 .meter {
   height: 6px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--inset);
 }
 
 .meter-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .meter-claude {
@@ -2661,13 +2691,13 @@ select {
 .usage-windows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .usage-window {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
   font-size: 11px;
   line-height: 1.3;
@@ -2677,7 +2707,7 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -2699,7 +2729,7 @@ select {
 }
 
 .usage-window-reset {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2708,7 +2738,7 @@ select {
 .usage-risk {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-6);
   margin: 0;
   padding: 0;
   border-radius: var(--radius-sm);
@@ -2732,13 +2762,12 @@ select {
 .model-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
-.model-input {
-  flex: 1;
-  min-width: 0;
+/* The one dark field: the model picker and the goal and trigger forms. */
+.field {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -2747,9 +2776,21 @@ select {
   color: var(--text);
 }
 
-.model-input::placeholder {
+.field::placeholder {
   color: var(--muted);
   opacity: 1;
+}
+
+textarea.field {
+  height: auto;
+  min-height: 28px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.model-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .bot-avatar {
@@ -2874,7 +2915,7 @@ select {
     display: none;
   }
 
-  .pane-layout-picker select {
+  .pane-layout-picker .select {
     max-width: 84px;
   }
 }
@@ -2906,7 +2947,7 @@ select {
   .btn,
   .job-row,
   input,
-  select,
+  .select,
   textarea {
     animation: none;
     transition: none;
@@ -2939,7 +2980,7 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   min-height: 0;
   font-size: 12px;
@@ -2948,7 +2989,7 @@ select {
 .flow-live {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-4);
   height: auto;
   padding: 0;
   border-radius: var(--radius-lg);
@@ -2999,7 +3040,7 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
   min-height: 0;
   padding: 8px 0 0;
@@ -3073,14 +3114,14 @@ select {
 .flow-event {
   display: grid;
   grid-template-columns: 8.5ch 7ch minmax(0, 1fr) auto;
-  column-gap: 8px;
+  column-gap: var(--space-8);
   align-items: baseline;
   min-height: 18px;
   line-height: 18px;
 }
 
 .flow-time {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
@@ -3126,7 +3167,7 @@ select {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   align-items: stretch;
   width: 100%;
   max-width: 100%;
@@ -3140,7 +3181,7 @@ select {
 .topo-you {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   align-self: start;
   padding: 4px 10px;
   border: 1px solid var(--border);
@@ -3166,7 +3207,7 @@ select {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -3203,7 +3244,7 @@ select {
 .flow-line {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   height: 20px;
 }
@@ -3284,7 +3325,7 @@ select {
 .flow-plan-row {
   display: grid;
   grid-template-columns: 56px minmax(48px, 1fr) 36px auto;
-  gap: 6px;
+  gap: var(--space-6);
   align-items: center;
   min-width: 0;
 }
@@ -3306,7 +3347,7 @@ select {
   flex: none;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -3450,7 +3491,7 @@ select {
   flex: none;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-12);
   min-width: 0;
 }
 
@@ -3459,7 +3500,7 @@ select {
   flex: none;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -3469,14 +3510,14 @@ select {
 .job-steps-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   margin-bottom: 10px;
 }
 
 .job-edits {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
   border: 1px solid var(--border);
   background: var(--deep);
@@ -3486,7 +3527,7 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 8px 10px;
 }
 
@@ -3503,7 +3544,7 @@ select {
 .job-edits-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -3539,7 +3580,7 @@ select {
 
 .job-edits-chevron {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
   transition: transform 0.12s ease;
 }
 
@@ -3595,7 +3636,7 @@ select {
 .job-step {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -3625,7 +3666,7 @@ button.job-step {
   white-space: nowrap;
 }
 
-.theme-picker select {
+.theme-picker .select {
   width: 132px;
 }
 
@@ -3682,7 +3723,7 @@ button.job-step {
 
 .job-step-time {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -3728,7 +3769,7 @@ button.job-step {
 /* A narrow panel keeps every header control reachable: they wrap instead of running off the edge. */
 .panel-head {
   flex-wrap: wrap;
-  row-gap: 6px;
+  row-gap: var(--space-6);
 }
 
 .head-actions {
@@ -3741,7 +3782,7 @@ button.job-step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -3756,7 +3797,7 @@ button.job-step {
   white-space: nowrap;
 }
 
-.pane-layout-picker select {
+.pane-layout-picker .select {
   width: auto;
   max-width: 148px;
 }
@@ -3901,7 +3942,7 @@ button.job-step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
   min-height: 22px;
 }
@@ -3924,7 +3965,7 @@ button.job-step {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 0;
   padding: 8px;
@@ -3937,7 +3978,7 @@ button.job-step {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 @media (max-width: 1099px) {
@@ -4030,7 +4071,7 @@ button.job-step {
   display: flex;
   flex: 1 1 80px;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 1px 6px;
   padding: 6px 10px 6px 20px;
@@ -4058,7 +4099,7 @@ button.job-step {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -4090,7 +4131,7 @@ button.job-step {
 .project-worktree-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .project-worktree-terms {
@@ -4102,7 +4143,7 @@ button.job-step {
   flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
   padding: 0 10px 6px 20px;
 }
@@ -4143,7 +4184,7 @@ button.job-step {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
   min-height: 32px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
@@ -4183,7 +4224,7 @@ button.job-step {
 .terminal-window-missing {
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--space-12);
 }
 
 .terminal-window-missing p {
@@ -4197,7 +4238,7 @@ button.job-step {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 0;
   color: var(--muted);
@@ -4215,7 +4256,7 @@ button.job-step {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-16);
   min-height: 0;
   overflow: auto;
   padding: 10px;
@@ -4235,7 +4276,7 @@ button.job-step {
 .routines-setup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .routines-setup textarea {
@@ -4250,7 +4291,7 @@ button.job-step {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .routines-list {
@@ -4262,14 +4303,14 @@ button.job-step {
 .routines-row-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-4);
   padding-left: 0;
 }
 
 .routines-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 10px 0;
 }
 
@@ -4280,7 +4321,7 @@ button.job-step {
 
 .routines-form-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .project-chats-label .project-worktree-shown {
@@ -4298,7 +4339,7 @@ button.job-step {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: var(--space-6) var(--space-8);
   min-width: 0;
   padding: 0 10px 6px 10px;
 }
@@ -4315,7 +4356,7 @@ button.job-step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   color: var(--muted);
   font-size: 11px;
 }
@@ -4327,7 +4368,7 @@ button.job-step {
   font-size: 12px;
 }
 
-.project-worktree-start select {
+.project-worktree-start .select {
   width: auto;
   max-width: 108px;
   margin: 0;
@@ -4345,7 +4386,7 @@ button.job-step {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: var(--space-16);
   min-width: 0;
   min-height: 0;
   padding: 24px;
@@ -4363,7 +4404,7 @@ button.job-step {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .drawer {
@@ -4452,7 +4493,7 @@ button.job-step {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-height: 0;
 }
 
@@ -4483,7 +4524,7 @@ button.job-step {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   height: 28px;
   padding: 0 10px;
@@ -4524,7 +4565,7 @@ button.job-step {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-10);
   min-width: 0;
   min-height: 0;
   padding: 16px;
@@ -4568,7 +4609,7 @@ button.job-step {
 .files-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -4583,7 +4624,7 @@ button.job-step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -4609,7 +4650,7 @@ button.job-step {
 .files-count {
   flex: 1;
   min-width: 0;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -4630,7 +4671,7 @@ button.job-step {
 }
 
 .files-filter::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .files-panel .btn[aria-pressed='true'] {
@@ -4649,7 +4690,7 @@ button.job-step {
   flex: none;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 0 2px;
 }
 
@@ -4683,7 +4724,7 @@ button.job-step {
 .files-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   overflow: hidden;
   cursor: pointer;
@@ -4695,7 +4736,7 @@ button.job-step {
 }
 
 .files-row.is-deleted .files-name {
-  color: var(--faint);
+  color: var(--muted);
   text-decoration: line-through;
 }
 
@@ -4788,7 +4829,7 @@ button.job-step {
 
 .files-preview-size {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -4822,7 +4863,7 @@ button.job-step {
   flex: none;
   width: 44px;
   padding: 0 8px 0 6px;
-  color: var(--faint);
+  color: var(--muted);
   text-align: right;
   user-select: none;
 }
@@ -4846,7 +4887,7 @@ button.job-step {
   flex-direction: column;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   width: 100%;
   padding: 0 10px 8px 10px;
@@ -4860,7 +4901,7 @@ button.job-step {
   flex: none;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: var(--space-4);
   width: 100%;
   min-width: 0;
   color: var(--muted);
@@ -4870,7 +4911,7 @@ button.job-step {
 .project-worktree-create .project-worktree-rename,
 .project-worktree-create .project-worktree-task,
 .project-worktree-create .project-worktree-how input,
-.project-worktree-create .project-worktree-start select {
+.project-worktree-create .project-worktree-start .select {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -4931,7 +4972,7 @@ button.job-step {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-16);
   width: 100%;
   max-width: 760px;
   padding: 28px 20px 32px;
@@ -4963,7 +5004,7 @@ button.job-step {
 .setup-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-12);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4972,7 +5013,7 @@ button.job-step {
 .setup-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   padding: 12px;
   border: 1px solid var(--border);
   background: var(--inset);
@@ -4983,14 +5024,14 @@ button.job-step {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .setup-row-name {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -5004,7 +5045,7 @@ button.job-step {
 }
 
 .setup-tag {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -5023,7 +5064,7 @@ button.job-step {
 }
 
 .setup-version {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -5037,14 +5078,14 @@ button.job-step {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .setup-command {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   padding: 8px 10px;
   box-sizing: border-box;
@@ -5087,7 +5128,7 @@ button.job-step {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .setup-footer {
@@ -5095,7 +5136,7 @@ button.job-step {
 }
 
 .topo {
-  gap: 16px;
+  gap: var(--space-16);
   overflow: hidden;
 }
 
@@ -5114,7 +5155,7 @@ button.job-step {
 .topo-workers {
   flex-direction: row;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .topo-workers > .flow-box {
@@ -5127,7 +5168,7 @@ button.job-step {
 .project-search-row {
   display: flex;
   flex: none;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
@@ -5147,7 +5188,7 @@ button.job-step {
 }
 
 .project-search::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .project-search:focus-visible {
@@ -5176,11 +5217,11 @@ button.job-step {
 .worktree-group-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   padding: 6px 10px 2px 20px;
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-stretch: 75%;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -5208,7 +5249,7 @@ button.job-step {
 .project-worktree-line {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -5267,13 +5308,13 @@ button.job-step {
 .worktree-pin {
   flex: none;
   color: var(--signal);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .worktree-agents {
   display: inline-flex;
   flex: none;
-  gap: 2px;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -5341,9 +5382,9 @@ button.job-step {
 
 .side-menu-heading {
   padding: 4px 12px 2px;
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-stretch: 75%;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -5352,7 +5393,7 @@ button.job-step {
 .side-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   padding: 5px 12px 5px 8px;
   border: 0;
@@ -5384,7 +5425,7 @@ button.job-step {
   flex: none;
   width: 10px;
   color: var(--signal);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 /* Sidebar footer: Settings */
@@ -5397,7 +5438,7 @@ button.job-step {
 .project-foot-button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   padding: 8px 10px;
   border: 0;
@@ -5445,7 +5486,7 @@ button.job-step {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
@@ -5460,7 +5501,7 @@ button.job-step {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   width: 220px;
   padding: 12px 0;
   border-right: 1px solid var(--border);
@@ -5531,7 +5572,7 @@ button.job-step {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--space-24);
   padding: 12px 0;
   border-top: 1px solid var(--border);
 }
@@ -5540,7 +5581,7 @@ button.job-step {
   display: flex;
   flex: 1 1 260px;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5571,7 +5612,7 @@ button.job-step {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -5598,14 +5639,14 @@ button.job-step {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
 .settings-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .settings-stepper-value {
@@ -5617,7 +5658,7 @@ button.job-step {
 .settings-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   font-size: 12px;
 }
 
@@ -5633,7 +5674,7 @@ button.job-step {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .settings-plan-head {
@@ -5641,7 +5682,7 @@ button.job-step {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .settings-ok {
@@ -5669,7 +5710,7 @@ button.job-step {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 6px 0;
 }
 
@@ -5686,14 +5727,14 @@ button.job-step {
 .settings-project-name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   font-size: 13px;
 }
 
 .settings-tag {
   color: var(--signal);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-stretch: 75%;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -5728,7 +5769,7 @@ button.job-step {
 
   .settings-row {
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-8);
   }
 
   .settings-row-control {
@@ -5777,7 +5818,7 @@ button.job-step {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: var(--space-6) var(--space-8);
   margin: 8px 0 4px;
   padding: 6px 8px;
   border-radius: var(--radius);
@@ -5794,7 +5835,7 @@ button.job-step {
   display: flex;
   flex: 1 1 150px;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -5896,14 +5937,14 @@ label,
   font-stretch: normal;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 /* Settings → Skills: the person's skill folders and Legate's own. */
 .settings-skills {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -5916,9 +5957,9 @@ label,
 .project-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
+  gap: var(--space-2) var(--space-8);
   min-width: 0;
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-ligatures: none;
@@ -5945,7 +5986,7 @@ label,
 .history-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -5968,7 +6009,7 @@ label,
 .history-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   width: 100%;
   height: 30px;
   padding: 0 8px 0 0;
@@ -6015,7 +6056,7 @@ label,
   margin-right: 6px;
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: 11px;
   line-height: 16px;
@@ -6034,8 +6075,8 @@ label,
 .history-meta {
   display: flex;
   flex: none;
-  gap: 8px;
-  color: var(--faint);
+  gap: var(--space-8);
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -6055,7 +6096,7 @@ label,
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-height: 0;
   padding-top: 8px;
   overflow-y: auto;
@@ -6066,7 +6107,7 @@ label,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   font-size: 12px;
 }
 
@@ -6097,7 +6138,7 @@ label,
 .history-file {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   padding: 3px 6px;
   border: none;
@@ -6175,7 +6216,7 @@ label,
 
 .project-children .project-chats-head {
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 /* Docks: panel tabs above or below the terminals, or under the projects. */
@@ -6223,7 +6264,7 @@ label,
 
 .dock-empty {
   margin: auto;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -6284,7 +6325,7 @@ label,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-10);
   color: var(--muted);
   font-size: 13px;
   text-align: center;
@@ -6296,7 +6337,7 @@ label,
 
 .dock-popped-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 /* A panel in a window of its own: just that tab, full size. */
@@ -6333,7 +6374,7 @@ label,
 .flow.is-across .flow-body {
   flex-flow: row wrap;
   align-content: flex-start;
-  gap: 12px 16px;
+  gap: var(--space-12) var(--space-16);
 }
 
 .flow.is-across .flow-topology {
@@ -6351,7 +6392,7 @@ label,
 .topo.is-across {
   flex-direction: row;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-24);
   width: auto;
   padding: 4px 4px 4px 0;
 }
@@ -6390,7 +6431,7 @@ label,
 .goals {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-width: 0;
 }
 
@@ -6398,11 +6439,19 @@ label,
 .goal-answer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
+}
+
+.goal-form .field {
+  font-size: 12px;
 }
 
 .goal-form textarea,
-.goal-form input,
+.goal-form input {
+  width: 100%;
+  min-width: 0;
+}
+
 .goal-answer textarea,
 .goal-job textarea,
 .composer-check {
@@ -6428,7 +6477,7 @@ label,
 .goal-job-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .goal-form-foot {
@@ -6438,7 +6487,7 @@ label,
 .goal-rounds {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   color: var(--muted);
   font-size: 12px;
 }
@@ -6452,7 +6501,7 @@ label,
 .goal-round-jobs {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -6462,7 +6511,7 @@ label,
 .goal-round-job {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   padding: 6px 8px;
   border: none;
@@ -6494,7 +6543,7 @@ label,
 
 .goal-round {
   flex: none;
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -6504,9 +6553,9 @@ label,
   flex: none;
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
 }
 
@@ -6538,7 +6587,7 @@ label,
 .goal-detail {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
@@ -6572,26 +6621,26 @@ label,
 .goal-proposal {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .goal-job {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius, 6px);
 }
 
-.goal-job-head select {
+.goal-job-head .select {
   min-width: 0;
 }
 
 .goal-round-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
   padding: 6px 0;
   border-top: 1px solid var(--border);
 }
@@ -6639,7 +6688,7 @@ label,
 .goal-triggers {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
@@ -6662,7 +6711,7 @@ label,
 .trigger-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   padding: 6px 4px;
 }
 
@@ -6679,21 +6728,10 @@ label,
 
 .trigger-sub {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.goal-form select,
-.goal-form input[type='time'] {
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius, 6px);
-  background: var(--inset);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
 }
 
 .link-button {
@@ -6734,7 +6772,7 @@ label,
 .new-task-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .new-task-kicker {
@@ -6747,12 +6785,12 @@ label,
 .new-task-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 .new-task textarea,
 .new-task-field input,
-.new-task-field select,
+.new-task-field .select,
 .new-task-count input,
 .new-task-rounds input {
   width: 100%;
@@ -6773,10 +6811,10 @@ label,
 
 .new-task textarea::placeholder,
 .new-task input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
 }
 
-.new-task-field select,
+.new-task-field .select,
 .new-task-count input,
 .new-task-rounds input {
   height: 28px;
@@ -6787,19 +6825,19 @@ label,
 .new-task-who {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .new-task-how {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .new-task-choice {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
   width: 100%;
   margin: 0;
   padding: 8px 10px;
@@ -6838,7 +6876,7 @@ label,
 .new-task-choice-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -6854,7 +6892,7 @@ label,
 }
 
 .new-task-choice-hint {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12px;
   font-weight: 400;
 }
@@ -6863,7 +6901,7 @@ label,
 .new-task-rounds {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
@@ -6884,7 +6922,7 @@ label,
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: var(--space-8) var(--space-12);
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
@@ -6897,7 +6935,7 @@ label,
 .new-task-actions {
   display: flex;
   flex: none;
-  gap: 8px;
+  gap: var(--space-8);
   margin-left: auto;
 }
 
@@ -6906,7 +6944,7 @@ label,
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   padding: 0 10px;
 }
@@ -6914,7 +6952,7 @@ label,
 .sidebar-switcher {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   margin: 0;
   padding: 8px 4px 8px 2px;
@@ -6954,7 +6992,7 @@ label,
 
 .sidebar-new-task {
   width: 100%;
-  gap: 6px;
+  gap: var(--space-6);
   border-color: var(--accent);
   background: var(--accent);
   color: var(--on-accent);
@@ -6975,13 +7013,13 @@ label,
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-1);
 }
 
 .sidebar-nav-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   margin: 0;
   padding: 6px 12px;
@@ -7052,7 +7090,7 @@ label,
 .sidebar-chats-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -7079,9 +7117,9 @@ label,
   padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
   font-stretch: 75%;
   letter-spacing: 0.08em;
   line-height: 1.4;
@@ -7094,7 +7132,7 @@ label,
 }
 
 .drawer-tabs .tab {
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .tab-icon {
@@ -7142,7 +7180,7 @@ label,
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-10);
   min-width: 0;
   min-height: 0;
   padding: 12px;
@@ -7154,7 +7192,7 @@ label,
   flex: none;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-12);
   min-width: 0;
 }
 
@@ -7162,7 +7200,7 @@ label,
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -7170,7 +7208,7 @@ label,
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -7190,7 +7228,7 @@ label,
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .review-confirm {
@@ -7198,7 +7236,7 @@ label,
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .review-confirm-copy {
@@ -7217,7 +7255,7 @@ label,
   display: flex;
   flex: 1;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -7253,7 +7291,7 @@ label,
 .lead-plan {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   margin-top: 10px;
 }
 
@@ -7265,7 +7303,7 @@ label,
 .lead-plan-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -7274,7 +7312,7 @@ label,
 .lead-plan-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-6);
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -7287,7 +7325,7 @@ label,
 .lead-plan-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -7302,7 +7340,7 @@ label,
 }
 
 .lead-plan-type {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font-display);
   font-size: 11px;
   font-stretch: 75%;
@@ -7327,7 +7365,7 @@ label,
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   min-height: 0;
   margin: 0 8px 8px;
@@ -7342,13 +7380,13 @@ label,
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-10);
 }
 
 .agent-pane-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10);
   min-width: 0;
 }
 
@@ -7371,7 +7409,7 @@ label,
 
 .agent-pane-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-8);
 }
 
 .agent-pane-log {
@@ -7396,7 +7434,7 @@ label,
 
 .agent-pane-step {
   display: flex;
-  gap: 10px;
+  gap: var(--space-10);
   color: var(--muted);
 }
 
@@ -7436,13 +7474,13 @@ label,
 .project-tree-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
 }
 
 .project-tree {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2);
   min-height: 0;
   padding-bottom: 6px;
 }
@@ -7458,7 +7496,7 @@ label,
 .project-group-head {
   display: flex;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--space-2);
   padding: 2px 6px 2px 2px;
 }
 
@@ -7484,7 +7522,7 @@ label,
   display: flex;
   flex: 1;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-8);
   min-width: 0;
   margin: 0;
   padding: 7px 4px;
@@ -7529,7 +7567,7 @@ label,
 
 .project-group-name .project-row-meta {
   flex-wrap: wrap;
-  gap: 2px 8px;
+  gap: var(--space-2) var(--space-8);
 }
 
 .project-group .project-worktrees > .project-chats-head {
@@ -7540,13 +7578,13 @@ label,
 .project-group .project-worktrees > .project-chats-head .project-chats-label {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 6px;
+  gap: 0 var(--space-6);
 }
 
 .project-group .project-worktrees > .project-chats-head .head-actions {
   flex: none;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: var(--space-4);
 }
 
 /* Inside the tree each card's dot shows its state, so the subheadings go. */
@@ -7559,6 +7597,314 @@ label,
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--space-6);
   margin: 4px 0 0;
+}
+
+/* Cursor's usage, copied from its dashboard. */
+.usage-reading-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  margin: 4px 0 0;
+}
+
+.usage-reading-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.usage-reading-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.usage-reading-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-reading-percent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+/* The slider reads like the meter above it: a thin track filled in the plan's colour. */
+.usage-reading-percent input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.usage-reading-percent input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--bot-cursor) var(--fill, 0%),
+    var(--deep) var(--fill, 0%)
+  );
+}
+
+.usage-reading-percent input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 3px solid var(--bot-cursor);
+  border-radius: 50%;
+  background: var(--bg);
+  appearance: none;
+}
+
+/* Two small arrows beside the slider, stacked like a spin box without the box. */
+.usage-reading-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.usage-reading-step button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--deep);
+  color: var(--text);
+}
+
+.usage-reading-step button:hover:not(:disabled) {
+  border-color: var(--bot-cursor);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.usage-reading-actions {
+  display: flex;
+  gap: var(--space-6);
+}
+
+/* A month grid like the Windows 11 calendar: round days, today ringed, the pick filled. */
+.reset-calendar {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--deep);
+}
+
+.reset-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 6px 6px;
+}
+
+.reset-calendar-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reset-calendar-nav {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.reset-calendar-step {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reset-calendar-step:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.reset-calendar-step:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.reset-calendar-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reset-calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  justify-items: center;
+}
+
+.reset-calendar-weekday {
+  padding: 2px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.reset-calendar-day {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.reset-calendar-day:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.reset-calendar-day:disabled {
+  color: var(--faint);
+}
+
+.reset-calendar-day.is-today {
+  border-color: var(--muted);
+}
+
+.reset-calendar-day.is-selected,
+.reset-calendar-day.is-selected:hover:not(:disabled) {
+  border-color: var(--bot-cursor);
+  background: var(--bot-cursor);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+/* Select: Legate's own dropdown (Select.tsx). The button keeps the field look above; its list
+   is drawn like the right-click menu (.side-menu), in a layer over the window. */
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select[aria-expanded='true'] {
+  border-color: var(--border-strong);
+}
+
+/* The label reads in the UI face even on a code-face field (the model picker); ids go in
+   .select-detail. */
+.select-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select > .select-detail {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.select[aria-expanded='true'] .select-chevron {
+  transform: rotate(180deg);
+}
+
+.select-list {
+  position: fixed;
+  z-index: 60;
+  max-width: min(480px, calc(100vw - 16px));
+  margin: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  list-style: none;
+  outline: none;
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 28px;
+  padding: 0 var(--space-10) 0 var(--space-6);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.select-option.is-active {
+  background: var(--raised);
+}
+
+.select-option[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.select-mark {
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  width: 12px;
+  color: var(--accent);
+}
+
+.select-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-detail {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.select-option .select-detail {
+  margin-left: var(--space-16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-chevron {
+    transition: none;
+  }
 }

@@ -102,7 +102,7 @@ function DiffPane({ id }: { id: string }): React.JSX.Element {
     <div className="diff-block" role="region" aria-label="Diff" aria-busy={loading}>
       {loading ? <p className="diff-status">Loading diff…</p> : null}
       {!loading && error !== null ? (
-        <p className="field-error" role="alert">
+        <p className="error-text" role="alert">
           {error}
         </p>
       ) : null}
@@ -502,7 +502,7 @@ function ChangesTab({
                 </p>
               ) : null}
               {badNotice !== null ? (
-                <p className="field-error" role="alert">
+                <p className="error-text" role="alert">
                   {badNotice}
                 </p>
               ) : null}

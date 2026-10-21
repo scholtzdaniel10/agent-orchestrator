@@ -5,6 +5,7 @@ import BotAvatar from './BotAvatar'
 import JobSteps from './JobSteps'
 import { latestStepTitle } from './job-steps'
 import RichText from './RichText'
+import Select from './Select'
 
 type ChangeSet = Awaited<ReturnType<Window['api']['listChanges']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -468,24 +469,24 @@ function JobsPanel({
           <div className="composer-foot">
             <div className="composer-tools">
               <label htmlFor="job-type">Job type</label>
-              <select
+              <Select
                 id="job-type"
                 className="job-type"
                 value={jobType}
-                onChange={(event) => setJobType(event.target.value as JobType)}
+                onChange={(next) => setJobType(next as JobType)}
               >
                 {JOB_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {type}
                   </option>
                 ))}
-              </select>
+              </Select>
               <label htmlFor="job-worker">Worker</label>
-              <select
+              <Select
                 id="job-worker"
                 className="plan-choice"
                 value={worker}
-                onChange={(event) => setWorker(asPlanChoice(event.target.value))}
+                onChange={(next) => setWorker(asPlanChoice(next))}
               >
                 <option value="auto">auto</option>
                 {PROVIDERS.map((id) => (
@@ -502,15 +503,15 @@ function JobsPanel({
                 >
                   both (compare)
                 </option>
-              </select>
+              </Select>
               <label htmlFor="job-access">Access</label>
-              <select
+              <Select
                 id="job-access"
                 className="job-access"
                 value={isRepo ? access : 'read'}
                 title={isRepo ? undefined : 'Open a git repository to let jobs edit files.'}
-                onChange={(event) => {
-                  const value = asAccess(event.target.value)
+                onChange={(next) => {
+                  const value = asAccess(next)
                   setAccess(value)
                   saveAccess(value)
                 }}
@@ -522,7 +523,7 @@ function JobsPanel({
                 <option value="full" disabled={!isRepo}>
                   Full access
                 </option>
-              </select>
+              </Select>
               {access === 'full' && isRepo ? (
                 <span className="composer-hint access-hint">
                   Runs commands on your computer without asking. Its file changes still wait in

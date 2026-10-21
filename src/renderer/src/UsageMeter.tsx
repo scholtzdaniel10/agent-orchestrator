@@ -3,10 +3,24 @@ import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
-import { updatedPhrase } from './usage-format'
+import ResetCalendar from './ResetCalendar'
+import {
+  agoPhrase,
+  dateFromValue,
+  dateValue,
+  resetChoices,
+  resetLabel,
+  updatedPhrase,
+  usageFigure,
+  type UsageShows
+} from './usage-format'
 
 const CURSOR_ESTIMATE =
   "Cursor does not report its usage. This is an estimate from Legate's own jobs."
+/** Where Cursor shows the plan's usage so far and the date it resets. */
+const CURSOR_DASHBOARD = 'https://cursor.com/dashboard/spending'
+/** Window name the main process stores a dashboard reading under. */
+const DASHBOARD_WINDOW = 'dashboard'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
@@ -132,7 +146,209 @@ function meterFillClass(id: PlanStatus['id'], left: number): string {
 function windowLabel(name: string): string {
   if (name === 'five_hour') return '5-hour'
   if (name === 'seven_day') return 'weekly'
+  if (name === DASHBOARD_WINDOW) return 'this month'
   return name
+}
+
+function Chevron({ up }: { up: boolean }): React.JSX.Element {
+  return (
+    <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true" focusable="false">
+      <path
+        d={up ? 'M1 5 5 1l4 4' : 'M1 1l4 4 4-4'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** The slider's position for what is typed: clamped to 0–100, 0 while it is not a number yet. */
+function sliderValue(percent: string): number {
+  const value = Number(percent)
+  if (percent.trim() === '' || !Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
+/** "37% used · 63% left", as the card will show it once saved. */
+function usedSummary(percent: string): string {
+  const value = Number(percent)
+  if (percent.trim() === '' || !Number.isFinite(value) || value < 0 || value > 100) {
+    return 'enter 0 to 100'
+  }
+  const used = Math.round(value * 10) / 10
+  const left = Math.round((100 - value) * 10) / 10
+  return `${String(used)}% used · ${String(left)}% left`
+}
+
+/**
+ * Cursor reports no usage, so the person can copy it from their dashboard. Legate then adds its
+ * own Cursor and Grok jobs on top until the next reading.
+ */
+function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.JSX.Element {
+  const reading = plan.windows.find((slot) => slot.name === DASHBOARD_WINDOW)
+  const [editing, setEditing] = useState(false)
+  const [percent, setPercent] = useState('')
+  const [resets, setResets] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function startEditing(): void {
+    // Start from what the card shows now, so a new reading is a nudge from there.
+    setPercent(String(reading === undefined ? 0 : Math.round(reading.used * 100)))
+    // Keep the date of the last reading when it is still one of the choices.
+    const last = reading?.resetsAt != null ? dateValue(reading.resetsAt) : ''
+    setResets(resetChoices(now).some((choice) => choice.value === last) ? last : '')
+    setError(null)
+    setEditing(true)
+  }
+
+  function save(): void {
+    const resetsAt = dateFromValue(resets)
+    const used = percent.trim() === '' ? Number.NaN : Number(percent)
+    setSaving(true)
+    window.api
+      .setCursorReading(used, resetsAt ?? Number.NaN)
+      .then(
+        (result) => {
+          if (result.ok) {
+            setEditing(false)
+            setError(null)
+          } else {
+            setError(result.error ?? 'Could not save the reading.')
+          }
+        },
+        (err: unknown) => {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      )
+      .finally(() => {
+        setSaving(false)
+      })
+  }
+
+  function clear(): void {
+    window.api.clearCursorReading().catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
+  }
+
+  if (editing) {
+    return (
+      <form
+        className="usage-reading-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          save()
+        }}
+      >
+        <p className="hint">
+          Copy these from{' '}
+          <a href={CURSOR_DASHBOARD} target="_blank" rel="noreferrer">
+            your Cursor spending page
+          </a>
+          , for the usage your Legate jobs draw on.
+        </p>
+        <div className="usage-reading-field">
+          <div className="usage-reading-label">
+            <span>Used</span>
+            <span className="usage-reading-value">{usedSummary(percent)}</span>
+          </div>
+          <div className="usage-reading-percent">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={sliderValue(percent)}
+              autoFocus
+              aria-label="Percent of Cursor usage used"
+              style={{ '--fill': `${String(sliderValue(percent))}%` } as React.CSSProperties}
+              onChange={(event) => setPercent(event.target.value)}
+            />
+            {/* Fine-tune after a drag: one percent per click, like the slider's arrow keys. */}
+            <span className="usage-reading-step">
+              <button
+                type="button"
+                aria-label="One percent more"
+                disabled={sliderValue(percent) >= 100}
+                onClick={() =>
+                  setPercent(String(Math.min(100, Math.round(sliderValue(percent)) + 1)))
+                }
+              >
+                <Chevron up />
+              </button>
+              <button
+                type="button"
+                aria-label="One percent less"
+                disabled={sliderValue(percent) <= 0}
+                onClick={() =>
+                  setPercent(String(Math.max(0, Math.round(sliderValue(percent)) - 1)))
+                }
+              >
+                <Chevron up={false} />
+              </button>
+            </span>
+          </div>
+        </div>
+        <div className="usage-reading-field">
+          <div className="usage-reading-label">
+            <span>Resets on</span>
+            <span className="usage-reading-value">
+              {resets === '' ? 'pick a day' : resetLabel(dateFromValue(resets) ?? now, now)}
+            </span>
+          </div>
+          <ResetCalendar value={resets} now={now} onChange={setResets} />
+        </div>
+        {error !== null ? <p className="field-error">{error}</p> : null}
+        <div className="usage-reading-actions">
+          <button type="submit" className="btn btn-compact" disabled={saving}>
+            Save
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={() => {
+              setEditing(false)
+              setError(null)
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <>
+      <p className="usage-fresh hint">
+        <span>
+          {reading === undefined || plan.usageAt === null
+            ? CURSOR_ESTIMATE
+            : `From your dashboard, read ${agoPhrase(plan.usageAt, now)}, plus Legate's jobs since.`}
+        </span>
+        <span className="usage-reading-actions">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Enter the usage shown on cursor.com/dashboard/spending"
+            onClick={startEditing}
+          >
+            {reading === undefined ? 'Set from dashboard' : 'Update'}
+          </button>
+          {reading !== undefined ? (
+            <button type="button" className="btn btn-quiet btn-compact" onClick={clear}>
+              Clear
+            </button>
+          ) : null}
+        </span>
+      </p>
+      {error !== null ? <p className="error-text">{error}</p> : null}
+    </>
+  )
 }
 
 function WarnGlyph(): React.JSX.Element {
@@ -171,11 +387,14 @@ function UsageHeading({ onOpenSetup }: { onOpenSetup: () => void }): React.JSX.E
 function UsageMeter({
   plans,
   now,
-  onOpenSetup
+  onOpenSetup,
+  shows = 'left'
 }: {
   plans: PlanStatus[] | null
   now: number
   onOpenSetup: () => void
+  /** Settings → General → Usage shows: what is left of each plan, or what is used. */
+  shows?: UsageShows
 }): React.JSX.Element {
   const [checking, setChecking] = useState(false)
   const checkingRef = useRef(false)
@@ -288,27 +507,29 @@ function UsageMeter({
                 ) : (
                   <>
                     <div className="usage-readout">
+                      {/* The warning colours follow what is left, whichever way it reads. */}
                       <div className="usage-figure">
-                        <span className="usage-percent">{left}%</span>
-                        <span className="usage-left-word">left</span>
+                        <span className="usage-percent">{usageFigure(plan.used, shows)}%</span>
+                        <span className="usage-left-word">{shows}</span>
                       </div>
                       <div
                         className="meter"
                         role="meter"
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={left}
-                        aria-label={`${plan.id} allowance left`}
+                        aria-valuenow={usageFigure(plan.used, shows)}
+                        aria-label={`${plan.id} allowance ${shows}`}
                       >
                         <div
                           className={meterFillClass(plan.id, left)}
-                          style={{ width: `${left}%` }}
+                          style={{ width: `${String(usageFigure(plan.used, shows))}%` }}
                         />
                       </div>
                       {hasWindows ? (
                         <div className="usage-windows">
                           {plan.windows.map((slot, index) => {
                             const slotLeft = headroomPercent(slot.used)
+                            const slotFigure = usageFigure(slot.used, shows)
                             const slotLabel = windowLabel(slot.name)
                             const slotReset =
                               slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
@@ -318,19 +539,21 @@ function UsageMeter({
                                   <span className="usage-window-label" title={slotLabel}>
                                     {slotLabel}
                                   </span>
-                                  <span className="usage-window-left">{slotLeft}% left</span>
+                                  <span className="usage-window-left">
+                                    {slotFigure}% {shows}
+                                  </span>
                                 </div>
                                 <div
                                   className="meter meter-thin"
                                   role="meter"
                                   aria-valuemin={0}
                                   aria-valuemax={100}
-                                  aria-valuenow={slotLeft}
-                                  aria-label={`${plan.id} ${slotLabel} allowance left`}
+                                  aria-valuenow={slotFigure}
+                                  aria-label={`${plan.id} ${slotLabel} allowance ${shows}`}
                                 >
                                   <div
                                     className={meterFillClass(plan.id, slotLeft)}
-                                    style={{ width: `${slotLeft}%` }}
+                                    style={{ width: `${String(slotFigure)}%` }}
                                   />
                                 </div>
                                 {slotReset !== null ? (
@@ -362,10 +585,10 @@ function UsageMeter({
                         </button>
                       </p>
                     ) : planOf(plan.id) === 'cursor' ? (
-                      <p className="usage-fresh hint">{CURSOR_ESTIMATE}</p>
+                      <CursorReading plan={plan} now={now} />
                     ) : null}
                     {plan.id === 'claude' && refreshError !== null ? (
-                      <p className="field-error">{refreshError}</p>
+                      <p className="error-text">{refreshError}</p>
                     ) : null}
                     {hasDetails ? (
                       <div className="usage-details">

@@ -267,18 +267,54 @@ function cursorCliConfig(): string {
   })
 }
 
-function resolveCursorBin(): Bin {
-  if (process.platform !== 'win32') return { command: 'agent' }
-  const localAppData = process.env.LOCALAPPDATA
-  if (!localAppData) return { command: 'agent' }
-  const versionsDir = join(localAppData, 'cursor-agent', 'versions')
+/**
+ * Folders that hold the Cursor CLI's versions on Windows, in the order they are tried: the
+ * standalone install, then the copy the Cursor editor keeps for its own agent, which is never on
+ * PATH. People who only have the editor still have a signed-in CLI there.
+ */
+export function cursorVersionDirs(env: NodeJS.ProcessEnv): string[] {
+  const dirs: string[] = []
+  if (env.LOCALAPPDATA) dirs.push(join(env.LOCALAPPDATA, 'cursor-agent', 'versions'))
+  if (env.APPDATA) {
+    dirs.push(
+      join(
+        env.APPDATA,
+        'Cursor',
+        'User',
+        'globalStorage',
+        'anysphere.cursor-agent-worker',
+        'agent-cli',
+        '.local',
+        'share',
+        'cursor-agent',
+        'versions'
+      )
+    )
+  }
+  return dirs
+}
+
+export function resolveCursorBin(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): Bin {
+  if (platform !== 'win32') return { command: 'agent' }
+  for (const versionsDir of cursorVersionDirs(env)) {
+    const bin = newestIn(versionsDir)
+    if (bin !== null) return bin
+  }
+  return { command: 'agent' }
+}
+
+/** node.exe + index.js of the newest complete version in `versionsDir`, or null. */
+function newestIn(versionsDir: string): Bin | null {
   let names: string[]
   try {
     names = readdirSync(versionsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
   } catch {
-    return { command: 'agent' }
+    return null
   }
   names.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
   for (const name of names) {
@@ -287,7 +323,7 @@ function resolveCursorBin(): Bin {
     const index = join(dir, 'index.js')
     if (existsSync(node) && existsSync(index)) return { command: node, args: [index] }
   }
-  return { command: 'agent' }
+  return null
 }
 
 function mapCursor(

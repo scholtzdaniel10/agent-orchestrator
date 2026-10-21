@@ -57,6 +57,15 @@ const api: OrchestratorApi = {
   refreshUsage(): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('usage:refresh')
   },
+  setCursorReading(
+    usedPercent: number,
+    resetsAt: number
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('usage:setReading', usedPercent, resetsAt)
+  },
+  clearCursorReading(): Promise<void> {
+    return ipcRenderer.invoke('usage:clearReading')
+  },
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo> {
     return ipcRenderer.invoke('jobs:takeOver', id, cols, rows)
   },

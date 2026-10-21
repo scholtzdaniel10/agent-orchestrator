@@ -113,6 +113,13 @@ export interface OrchestratorApi {
   cancelJob(id: string): Promise<JobRecord>
   /** Asks Claude for its real usage now; at most once every two minutes. */
   refreshUsage(): Promise<{ ok: boolean; error?: string }>
+  /**
+   * Cursor's usage as read off cursor.com/dashboard/spending: percent used and when it resets (epoch ms).
+   * Legate adds its own Cursor and Grok jobs on top until the next reading.
+   */
+  setCursorReading(usedPercent: number, resetsAt: number): Promise<{ ok: boolean; error?: string }>
+  /** Forget the dashboard reading; the Cursor meter goes back to Legate's own estimate. */
+  clearCursorReading(): Promise<void>
   /** Stops a job if it still runs and opens a terminal on its own session, in its folder. */
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo>
 

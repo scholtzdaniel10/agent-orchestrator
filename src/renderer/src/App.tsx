@@ -68,6 +68,8 @@ import {
 } from './layout'
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
 import { applyTheme, loadTheme, type ThemeId } from './theme'
+import { usageFigure, type UsageShows } from './usage-format'
+import { usePrefs } from './use-prefs'
 
 export { RayBurst, Star } from './Star'
 
@@ -145,15 +147,11 @@ function folderName(path: string): string {
   return trimmed.slice(index + 1)
 }
 
-function headroomPercent(used: number): number {
-  const raw = Math.round((1 - used) * 100)
-  if (!Number.isFinite(raw)) return 0
-  if (raw < 0) return 0
-  if (raw > 100) return 100
-  return raw
-}
-
-function planBarLabel(plan: PlanStatus, now: number): { text: string; bad: boolean } {
+function planBarLabel(
+  plan: PlanStatus,
+  now: number,
+  shows: UsageShows = 'left'
+): { text: string; bad: boolean } {
   if (plan.problem === 'not-installed') return { text: `${plan.id} not installed`, bad: true }
   if (plan.problem === 'signed-out' || !plan.available) {
     return { text: `${plan.id} signed out`, bad: true }
@@ -161,7 +159,7 @@ function planBarLabel(plan: PlanStatus, now: number): { text: string; bad: boole
   if (plan.restingUntil !== null && plan.restingUntil > now) {
     return { text: `${plan.id} resting`, bad: false }
   }
-  return { text: `${plan.id} ${String(headroomPercent(plan.used))}% left`, bad: false }
+  return { text: `${plan.id} ${String(usageFigure(plan.used, shows))}% ${shows}`, bad: false }
 }
 
 function activityLine(events: readonly FlowEvent[]): string {
@@ -478,6 +476,8 @@ function App(): React.JSX.Element {
   const [githubAvailable, setGithubAvailable] = useState(false)
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  // Settings → General → Usage shows; the meters and the status bar read it.
+  const usageShows: UsageShows = usePrefs()?.usageShows === 'used' ? 'used' : 'left'
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
   const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 
@@ -1665,6 +1665,7 @@ function App(): React.JSX.Element {
           <UsageMeter
             plans={plans}
             now={now}
+            shows={usageShows}
             onOpenSetup={() => {
               setSetupOpen(true)
             }}
@@ -1950,30 +1951,33 @@ function App(): React.JSX.Element {
             </p>
           ) : null}
         </div>
-        <div className="app-header-tools">
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            onClick={() => {
-              void window.api.newWindow().catch((err: unknown) => {
-                setProjectError({ text: errorText(err), at: Date.now() })
-              })
-            }}
-          >
-            Window
-          </button>
-          <button
-            type="button"
-            className="btn btn-quiet btn-compact"
-            aria-pressed={drawerOpen}
-            title="Panel (Ctrl+B)"
-            onClick={() => {
-              setDrawerOpen((open) => !open)
-            }}
-          >
-            Panel
-          </button>
-        </div>
+        {/* Setup comes first; the workspace tools appear once it is done or skipped. */}
+        {setupOpen ? null : (
+          <div className="app-header-tools">
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              onClick={() => {
+                void window.api.newWindow().catch((err: unknown) => {
+                  setProjectError({ text: errorText(err), at: Date.now() })
+                })
+              }}
+            >
+              Window
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              aria-pressed={drawerOpen}
+              title="Panel (Ctrl+B)"
+              onClick={() => {
+                setDrawerOpen((open) => !open)
+              }}
+            >
+              Panel
+            </button>
+          </div>
+        )}
       </header>
       <div className="app-body">
         {sidebarShown ? (
@@ -2168,7 +2172,7 @@ function App(): React.JSX.Element {
         {(plans ?? EMPTY_PLANS)
           .filter((plan) => planOf(plan.id) === plan.id)
           .map((plan) => {
-            const label = planBarLabel(plan, now)
+            const label = planBarLabel(plan, now, usageShows)
             return (
               <button
                 key={plan.id}
