@@ -69,6 +69,7 @@ import {
 import { createTerminalBus, type TerminalBus } from './terminal-bus'
 import { applyTheme, loadTheme, type ThemeId } from './theme'
 import { usageFigure, type UsageShows } from './usage-format'
+import { usePrefs } from './use-prefs'
 
 export { RayBurst, Star } from './Star'
 
@@ -476,19 +477,7 @@ function App(): React.JSX.Element {
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   // Settings → General → Usage shows; the meters and the status bar read it.
-  const [usageShows, setUsageShows] = useState<UsageShows>('left')
-  useEffect(() => {
-    let current = true
-    const apply = (prefs: { usageShows?: UsageShows }): void => {
-      if (current) setUsageShows(prefs.usageShows === 'used' ? 'used' : 'left')
-    }
-    window.api.getPrefs().then(apply, () => {})
-    const off = window.api.onPrefsUpdate(apply)
-    return () => {
-      current = false
-      off()
-    }
-  }, [])
+  const usageShows: UsageShows = usePrefs()?.usageShows === 'used' ? 'used' : 'left'
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
   const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 

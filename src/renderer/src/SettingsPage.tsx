@@ -297,6 +297,25 @@ function SettingsPage({
     },
     {
       section: 'general',
+      label: 'Cursor models',
+      help: 'Which models the Cursor pickers list. Cursor’s own are Auto, Composer and Grok, the plan’s Cursor Models pool. All adds Claude, GPT, Gemini and others, which spend the Other Models quota.',
+      keywords: 'cursor models composer grok auto other quota list picker clutter',
+      render: () => (
+        <Select
+          className="settings-select"
+          value={prefs?.cursorModels ?? 'own'}
+          aria-label="Cursor models"
+          onChange={(picked) => {
+            savePrefs({ cursorModels: picked === 'all' ? 'all' : 'own' })
+          }}
+        >
+          <option value="own">Cursor’s own</option>
+          <option value="all">All models</option>
+        </Select>
+      )
+    },
+    {
+      section: 'general',
       label: 'Look',
       help: 'Colours for the whole window. System follows light or dark mode.',
       keywords: 'theme colour color dark light appearance',

@@ -135,7 +135,8 @@ export class Settings {
       uiScale: UI_SCALES.includes(raw.uiScale as number)
         ? (raw.uiScale as number)
         : DEFAULT_UI_SCALE,
-      usageShows: raw.usageShows === 'used' ? 'used' : 'left'
+      usageShows: raw.usageShows === 'used' ? 'used' : 'left',
+      cursorModels: raw.cursorModels === 'all' ? 'all' : 'own'
     }
   }
 
@@ -149,7 +150,8 @@ export class Settings {
       'notify',
       'cloneDir',
       'uiScale',
-      'usageShows'
+      'usageShows',
+      'cursorModels'
     ]) {
       if (Object.hasOwn(patch, key)) next[key] = patch[key]
     }

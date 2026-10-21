@@ -14,6 +14,8 @@ import LeadPlan from './LeadPlan'
 import RichText from './RichText'
 import SidebarMenu from './SidebarMenu'
 import Select from './Select'
+import { visibleModels } from './model-pool'
+import { usePrefs } from './use-prefs'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -223,11 +225,14 @@ function LeadChat({
     }
   }, [choice, settingsNonce])
 
+  const showModels = usePrefs()?.cursorModels ?? 'own'
   const modelShown = choice !== 'auto' && leadModel !== null && leadModel.plan === choice
+  // Narrowed to Cursor's own pool unless Settings says all; the lead's model always stays listed.
+  const listedModels = modelShown ? visibleModels(leadModel.options, choice, showModels) : []
   const modelOptions = modelShown
-    ? leadModel.value !== null && !leadModel.options.some((option) => option.id === leadModel.value)
-      ? [...leadModel.options, { id: leadModel.value, label: leadModel.value }]
-      : leadModel.options
+    ? leadModel.value !== null && !listedModels.some((option) => option.id === leadModel.value)
+      ? [...listedModels, { id: leadModel.value, label: leadModel.value }]
+      : listedModels
     : []
 
   async function changeLeadModel(plan: ProviderId, value: string | null): Promise<void> {

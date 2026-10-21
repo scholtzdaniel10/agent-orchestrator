@@ -278,7 +278,8 @@ test('prefs default, validate and persist', () => {
       notify: true,
       cloneDir: null,
       uiScale: 90,
-      usageShows: 'left'
+      usageShows: 'left',
+      cursorModels: 'own'
     })
     settings.setPrefs({ maxParallel: 5, notify: false, unknown: 'x' })
     expect(settings.setPrefs({ uiScale: 110 }).uiScale).toBe(110)
@@ -286,6 +287,8 @@ test('prefs default, validate and persist', () => {
     expect(settings.setPrefs({ usageShows: 'used' }).usageShows).toBe('used')
     expect(new Settings(path).prefs().usageShows).toBe('used')
     expect(settings.setPrefs({ usageShows: 'both' }).usageShows).toBe('left')
+    expect(settings.setPrefs({ cursorModels: 'all' }).cursorModels).toBe('all')
+    expect(settings.setPrefs({ cursorModels: 'some' }).cursorModels).toBe('own')
     expect(new Settings(path).prefs()).toMatchObject({ maxParallel: 5, notify: false })
     expect(settings.setPrefs({ maxParallel: 99, terminalFontSize: 2 })).toMatchObject({
       maxParallel: null,

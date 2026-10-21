@@ -300,6 +300,11 @@ export interface Prefs {
   uiScale: number
   /** Usage meters read as what is left of a plan, or as what is used (as Claude's own page does). */
   usageShows: 'left' | 'used'
+  /**
+   * Which Cursor models the pickers list: Cursor's own (Auto, Composer, Grok: the plan's
+   * Cursor Models pool) or every model, Claude, GPT and Gemini too (the Other Models quota).
+   */
+  cursorModels: 'own' | 'all'
 }
 
 /** Read-only facts for the Settings page. */

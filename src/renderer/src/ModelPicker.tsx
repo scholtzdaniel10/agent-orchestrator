@@ -1,5 +1,7 @@
 import { useEffect, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import Select from './Select'
+import { visibleModels } from './model-pool'
+import { usePrefs } from './use-prefs'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ModelOption = Awaited<ReturnType<Window['api']['listModels']>>[number]
@@ -161,6 +163,8 @@ function ModelPicker({
 }): React.JSX.Element {
   const [models, setModels] = useState<ModelOption[] | null>(null)
   const { id, available } = plan
+  // Settings → Cursor models: Cursor's own pool only unless the person wants every model.
+  const show = usePrefs()?.cursorModels ?? 'own'
 
   // Load the list up front: every model has to be there the first time the menu opens.
   useEffect(() => {
@@ -184,7 +188,7 @@ function ModelPicker({
       key={plan.model ?? ''}
       plan={plan}
       disabled={disabled}
-      models={models}
+      models={models === null ? null : visibleModels(models, id, show)}
       labelTitle={labelTitle}
     />
   )
