@@ -291,14 +291,14 @@ const scenes = {
       const deadline = Date.now() + 4000
       let dir
       while (Date.now() < deadline) {
-        dir = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.trim() === 'src')
+        dir = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.trim() === 'bootstrap')
         if (dir) break
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
       dir?.click()
       await new Promise((resolve) => setTimeout(resolve, 200))
-      const file = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.includes('app.ts'))
-      file?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      const file = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.includes('app.php'))
+      file?.click()
       await new Promise((resolve) => setTimeout(resolve, 600))
     })()`
   },

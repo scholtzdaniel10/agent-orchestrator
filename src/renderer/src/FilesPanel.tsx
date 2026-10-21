@@ -399,7 +399,7 @@ function FilesPanel({
         <div
           ref={treeRef}
           className="files-tree"
-          style={{ flex: `${String(split)} 1 0` }}
+          style={{ flex: onEdit !== undefined ? '1 1 0' : `${String(split)} 1 0` }}
           role="tree"
           aria-label="Files"
           aria-busy={loading}
@@ -434,22 +434,33 @@ function FilesPanel({
                       (row.status === 'deleted' ? ' is-deleted' : '') +
                       (row.status === 'ignored' ? ' is-ignored' : '')
                     }
-                    style={{ paddingLeft: 8 + row.depth * 12, height: FILE_ROW_HEIGHT }}
+                    style={{ height: FILE_ROW_HEIGHT }}
                     onClick={() => {
                       setFocusedPath(row.path)
                       if (row.kind === 'dir') toggleFolder(row.path)
-                      else selectFile(row.path)
-                    }}
-                    onDoubleClick={() => {
-                      if (row.kind === 'file') onEdit?.(row.path)
+                      else {
+                        selectFile(row.path)
+                        onEdit?.(row.path)
+                      }
                     }}
                   >
+                    {Array.from({ length: row.depth }, (_, level) => (
+                      <span key={level} className="files-indent" aria-hidden="true" />
+                    ))}
                     {row.kind === 'dir' ? (
-                      <span className={open ? 'files-chevron is-open' : 'files-chevron'} />
+                      <svg
+                        className={open ? 'files-chevron is-open' : 'files-chevron'}
+                        viewBox="0 0 16 16"
+                        width="12"
+                        height="12"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 4L10 8L6 12" />
+                      </svg>
                     ) : (
                       <span className="files-chevron-gap" />
                     )}
-                    <FileGlyph kind={row.kind} open={open} />
+                    <FileGlyph kind={row.kind} open={open} name={row.name} />
                     <span className="files-name">{row.name}</span>
                     {row.status === 'ignored' ? (
                       <span className="files-ignored" title="Ignored by .gitignore">
@@ -466,91 +477,113 @@ function FilesPanel({
             </div>
           </div>
         </div>
-        <div
-          className="files-split"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize preview"
-          onPointerDown={onSplitDown}
-        />
-        <div className="files-preview" style={{ flex: `${String(1 - split)} 1 0` }}>
-          {selected === null ? (
-            <p className="files-status">Select a file.</p>
-          ) : (
-            <>
-              <div className="files-preview-head">
-                <span className="files-preview-path" title={selected.path}>
-                  {selected.path}
-                </span>
-                {bytes !== null ? (
-                  <span className="files-preview-size">{formatBytes(bytes)}</span>
-                ) : null}
-                <div className="files-preview-actions">
-                  <button
-                    type="button"
-                    className="btn btn-quiet btn-compact"
-                    aria-pressed={mode === 'file'}
-                    onClick={() => setPreview('file')}
-                  >
-                    File
-                  </button>
-                  {dirty ? (
-                    <button
-                      type="button"
-                      className="btn btn-quiet btn-compact"
-                      aria-pressed={mode === 'changes'}
-                      onClick={() => setPreview('changes')}
-                    >
-                      Changes
-                    </button>
+        {onEdit !== undefined ? null : (
+          <>
+            <div
+              className="files-split"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize preview"
+              onPointerDown={onSplitDown}
+            />
+            <div className="files-preview" style={{ flex: `${String(1 - split)} 1 0` }}>
+              {selected === null ? (
+                <p className="files-status">Select a file.</p>
+              ) : (
+                <>
+                  <div className="files-preview-head">
+                    <span className="files-preview-path" title={selected.path}>
+                      {selected.path}
+                    </span>
+                    {bytes !== null ? (
+                      <span className="files-preview-size">{formatBytes(bytes)}</span>
+                    ) : null}
+                    <div className="files-preview-actions">
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-compact"
+                        aria-pressed={mode === 'file'}
+                        onClick={() => setPreview('file')}
+                      >
+                        File
+                      </button>
+                      {dirty ? (
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-compact"
+                          aria-pressed={mode === 'changes'}
+                          onClick={() => setPreview('changes')}
+                        >
+                          Changes
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-compact"
+                        disabled={opening}
+                        onClick={() => {
+                          void openSelected()
+                        }}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  </div>
+                  {openError !== null ? (
+                    <p className="error-text" role="alert">
+                      {openError}
+                    </p>
                   ) : null}
-                  {onEdit !== undefined ? (
-                    <button
-                      type="button"
-                      className="btn btn-compact"
-                      onClick={() => {
-                        onEdit(selected.path)
-                      }}
-                    >
-                      Edit
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn-quiet btn-compact"
-                    disabled={opening}
-                    onClick={() => {
-                      void openSelected()
-                    }}
-                  >
-                    Open
-                  </button>
-                </div>
-              </div>
-              {openError !== null ? (
-                <p className="error-text" role="alert">
-                  {openError}
-                </p>
-              ) : null}
-              <div className="files-preview-body">
-                {mode === 'changes' ? (
-                  <DiffBlock text={shownDiff} />
-                ) : (
-                  <FileBody content={shownContent} />
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                  <div className="files-preview-body">
+                    {mode === 'changes' ? (
+                      <DiffBlock text={shownDiff} />
+                    ) : (
+                      <FileBody content={shownContent} />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
 /** Folder (open or shut) and file outlines, in the tab icons' 16-unit, 1.5px style. */
-function FileGlyph({ kind, open }: { kind: 'dir' | 'file'; open: boolean }): React.JSX.Element {
+/** A colour per kind of file, from the theme, so a tree reads at a glance in every look. */
+function glyphTone(name: string): string {
+  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+  if (['ts', 'tsx', 'mts', 'cts'].includes(ext)) return 'is-ts'
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(ext)) return 'is-js'
+  if (['json', 'jsonc', 'yml', 'yaml', 'toml', 'xml', 'ini', 'env'].includes(ext)) return 'is-data'
+  if (['css', 'scss', 'less', 'html', 'htm', 'vue', 'svelte'].includes(ext)) return 'is-web'
+  if (['php', 'py', 'rb', 'go', 'rs', 'java', 'cs', 'c', 'cpp', 'h', 'kt', 'swift'].includes(ext)) {
+    return 'is-code'
+  }
+  if (['md', 'markdown', 'txt', 'rst'].includes(ext)) return 'is-doc'
+  return ''
+}
+
+function FileGlyph({
+  kind,
+  open,
+  name
+}: {
+  kind: 'dir' | 'file'
+  open: boolean
+  name: string
+}): React.JSX.Element {
+  const tone = kind === 'dir' ? (open ? 'is-open-dir' : 'is-dir') : glyphTone(name)
   return (
-    <svg className="files-glyph" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <svg
+      className={`files-glyph ${tone}`}
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      aria-hidden="true"
+    >
       {kind === 'file' ? (
         <path d="M4 1.75H9.5L12.5 4.75V14.25H4V1.75ZM9.5 1.75V4.75H12.5" />
       ) : open ? (

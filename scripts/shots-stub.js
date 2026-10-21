@@ -993,6 +993,7 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         { path: 'out/', status: 'ignored' },
         { path: 'README.md', status: 'clean' },
         { path: 'old.txt', status: 'deleted' },
+        { path: 'bootstrap/app.php', status: 'clean' },
         { path: 'src/app.ts', status: 'modified' },
         { path: 'src/new.ts', status: 'added' },
         { path: 'tmp.log', status: 'untracked' }
@@ -1006,6 +1007,22 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }
       if (path === 'README.md') {
         const text = '# Legate\n\nOne lead, every plan you already pay for.\n'
+        return Promise.resolve({ kind: 'text', text, bytes: text.length })
+      }
+      if (path === 'bootstrap/app.php') {
+        const text = [
+          '<?php',
+          '',
+          'declare(strict_types=1);',
+          '',
+          String.raw`use App\Core\Application;`,
+          '',
+          '// Create the application',
+          '$app = new Application(dirname(__DIR__));',
+          '',
+          'return $app;',
+          ''
+        ].join('\n')
         return Promise.resolve({ kind: 'text', text, bytes: text.length })
       }
       if (path === 'src/app.ts') {

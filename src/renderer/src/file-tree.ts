@@ -6,7 +6,7 @@ export interface FileEntry {
   status: FileStatus
 }
 
-export const FILE_ROW_HEIGHT = 24
+export const FILE_ROW_HEIGHT = 22
 export const FILE_WINDOW_THRESHOLD = 500
 export const FILE_LINE_CAP = 5000
 

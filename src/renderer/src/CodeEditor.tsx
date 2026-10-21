@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { basicSetup } from 'codemirror'
-import { css } from '@codemirror/lang-css'
-import { html } from '@codemirror/lang-html'
-import { javascript } from '@codemirror/lang-javascript'
-import { json } from '@codemirror/lang-json'
-import { markdown } from '@codemirror/lang-markdown'
-import { python } from '@codemirror/lang-python'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { EditorState, type Extension } from '@codemirror/state'
+import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
+import { languages } from '@codemirror/language-data'
+import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { DiffBlock } from './FilesPanel'
@@ -17,23 +12,24 @@ function errorText(err: unknown): string {
   return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }
 
-function language(path: string): Extension {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-  if (['ts', 'mts', 'cts'].includes(ext)) return javascript({ typescript: true })
-  if (ext === 'tsx') return javascript({ typescript: true, jsx: true })
-  if (['js', 'mjs', 'cjs'].includes(ext)) return javascript()
-  if (ext === 'jsx') return javascript({ jsx: true })
-  if (ext === 'json' || ext === 'jsonc') return json()
-  if (ext === 'css') return css()
-  if (ext === 'html' || ext === 'htm') return html()
-  if (ext === 'md' || ext === 'markdown') return markdown()
-  if (ext === 'py') return python()
-  return []
+/** The language for a file name (PHP, SQL, YAML, Go, Rust… over a hundred), loaded on demand. */
+function languageFor(path: string): LanguageDescription | null {
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  return LanguageDescription.matchFilename(languages, name)
 }
 
 // Every colour is a theme token, so the editor follows all six looks, Paper included.
 const highlight = HighlightStyle.define([
-  { tag: [tags.keyword, tags.modifier, tags.operatorKeyword], color: 'var(--accent)' },
+  {
+    tag: [tags.keyword, tags.modifier, tags.operatorKeyword, tags.controlKeyword],
+    color: 'var(--accent)'
+  },
+  { tag: [tags.variableName, tags.self], color: 'var(--text)' },
+  {
+    tag: [tags.definition(tags.variableName), tags.special(tags.variableName)],
+    color: 'var(--bot-cursor)'
+  },
+  { tag: [tags.meta, tags.processingInstruction, tags.documentMeta], color: 'var(--muted)' },
   { tag: [tags.string, tags.special(tags.string), tags.regexp], color: 'var(--diff-add)' },
   { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--warn)' },
   {
@@ -136,6 +132,7 @@ function CodeEditor({
           return
         }
         saved.current = content.text
+        const lang = new Compartment()
         view.current = new EditorView({
           parent: host.current,
           state: EditorState.create({
@@ -152,7 +149,7 @@ function CodeEditor({
                   }
                 }
               ]),
-              language(path),
+              lang.of([]),
               syntaxHighlighting(highlight),
               look,
               EditorView.updateListener.of((update) => {
@@ -163,6 +160,11 @@ function CodeEditor({
         })
         setState('ready')
         view.current.focus()
+        void languageFor(path)
+          ?.load()
+          .then((support) => {
+            if (live) view.current?.dispatch({ effects: lang.reconfigure(support) })
+          })
       },
       (err: unknown) => {
         if (!live) return

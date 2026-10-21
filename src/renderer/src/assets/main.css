@@ -8150,14 +8150,6 @@ label,
   font-size: 11px;
 }
 
-/* Files: outlines beside each name, and git-ignored entries set back. */
-.files-glyph {
-  flex: none;
-  margin-right: var(--space-6);
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.5;
-}
 
 .files-row.is-ignored .files-name {
   color: var(--muted);
@@ -8255,4 +8247,92 @@ label,
   display: flex;
   flex: 1 0 auto;
   min-height: 480px;
+}
+
+/* Files, VS Code style: indent guides, thin chevrons, a colour per kind of file, a quiet
+   selected row marked by an accent edge. */
+.files-tree .files-row {
+  gap: 0;
+  padding: 0 var(--space-8) 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.files-tree .files-row:hover {
+  background: var(--inset);
+}
+
+.files-tree .files-row.is-selected,
+.files-tree .files-row.is-focused {
+  background: var(--raised);
+}
+
+.files-tree .files-row.is-selected {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.files-indent {
+  flex: none;
+  align-self: stretch;
+  width: 14px;
+  margin-left: 5px;
+  border-left: 1px solid var(--border);
+}
+
+.files-tree:hover .files-indent {
+  border-left-color: var(--border-strong);
+}
+
+svg.files-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-right: var(--space-2);
+  border: 0;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  transition: transform 120ms ease;
+}
+
+.files-tree .files-chevron-gap {
+  width: 14px;
+}
+
+.files-glyph {
+  flex: none;
+  margin-right: var(--space-6);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.files-glyph.is-dir,
+.files-glyph.is-open-dir {
+  stroke: var(--warn);
+}
+
+.files-glyph.is-ts {
+  stroke: var(--bot-cursor);
+}
+
+.files-glyph.is-js {
+  stroke: var(--warn);
+}
+
+.files-glyph.is-data {
+  stroke: var(--signal);
+}
+
+.files-glyph.is-web {
+  stroke: var(--bot-claude);
+}
+
+.files-glyph.is-code {
+  stroke: var(--accent);
+}
+
+.files-glyph.is-doc {
+  stroke: var(--text);
 }

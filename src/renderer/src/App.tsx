@@ -1589,9 +1589,14 @@ function App(): React.JSX.Element {
           <FilesPanel
             where={selectedWorktree}
             label={filesLabel}
-            onEdit={(path) => {
-              setEditing({ where: selectedWorktree, path })
-            }}
+            // A panel in its own window has no editor beside it, so it keeps its preview.
+            onEdit={
+              SOLO === null
+                ? (path) => {
+                    setEditing({ where: selectedWorktree, path })
+                  }
+                : undefined
+            }
           />
         )
       case 'lead':
