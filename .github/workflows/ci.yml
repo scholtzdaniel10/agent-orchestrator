@@ -1,10 +1,12 @@
 name: CI
 
+# Every pushed branch gets CI, so a branch is checked before it has a pull request. A pull request
+# runs again on its merge with main. Tags are left to the Release workflow.
 on:
   pull_request:
   push:
     branches:
-      - main
+      - '**'
 
 permissions:
   contents: read
