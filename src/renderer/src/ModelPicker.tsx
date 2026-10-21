@@ -95,7 +95,7 @@ function ModelField({
       <div className="model-row">
         <select
           id={selectId}
-          className="model-input"
+          className="model-input field"
           value={typing ? OTHER : saved}
           disabled={disabled}
           aria-invalid={error !== null ? true : undefined}
@@ -121,7 +121,7 @@ function ModelField({
           </label>
           <input
             id={otherId}
-            className="model-input"
+            className="model-input field"
             placeholder="Model name, then Enter"
             value={typed}
             disabled={disabled}

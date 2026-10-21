@@ -36,6 +36,7 @@
   --radius-sm: 4px;
   --radius: 7px;
   --radius-lg: 11px;
+  --radius-pill: 999px;
   --font-mono:
     'JetBrainsMono Nerd Font', 'JetBrainsMono NF', 'JetBrainsMono Nerd Font Mono', 'JetBrains Mono',
     'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
@@ -191,7 +192,7 @@
 
 *::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--border) 70%, transparent) padding-box;
 }
 
@@ -1593,7 +1594,7 @@ select {
   min-width: 0;
   height: auto;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--muted);
   font-size: 11px;
@@ -2625,13 +2626,13 @@ select {
 .meter {
   height: 6px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--inset);
 }
 
 .meter-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .meter-claude {
@@ -2736,9 +2737,8 @@ select {
   min-width: 0;
 }
 
-.model-input {
-  flex: 1;
-  min-width: 0;
+/* The one dark field: the model picker and the goal and trigger forms. */
+.field {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -2747,9 +2747,21 @@ select {
   color: var(--text);
 }
 
-.model-input::placeholder {
+.field::placeholder {
   color: var(--muted);
   opacity: 1;
+}
+
+textarea.field {
+  height: auto;
+  min-height: 28px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.model-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .bot-avatar {
@@ -6015,7 +6027,7 @@ label,
   margin-right: 6px;
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: 11px;
   line-height: 16px;
@@ -6401,8 +6413,16 @@ label,
   gap: 6px;
 }
 
+.goal-form .field {
+  font-size: 12px;
+}
+
 .goal-form textarea,
-.goal-form input,
+.goal-form input {
+  width: 100%;
+  min-width: 0;
+}
+
 .goal-answer textarea,
 .goal-job textarea,
 .composer-check {
@@ -6504,7 +6524,7 @@ label,
   flex: none;
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: 10px;
   line-height: 16px;
@@ -6683,17 +6703,6 @@ label,
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.goal-form select,
-.goal-form input[type='time'] {
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius, 6px);
-  background: var(--inset);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
 }
 
 .link-button {
@@ -7610,7 +7619,7 @@ label,
 
 .usage-reading-percent input[type='range']::-webkit-slider-runnable-track {
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(
     to right,
     var(--bot-cursor) var(--fill, 0%),
@@ -7626,14 +7635,6 @@ label,
   border-radius: 50%;
   background: var(--bg);
   appearance: none;
-}
-
-.usage-reading-percent input[type='range']:focus-visible {
-  outline: none;
-}
-
-.usage-reading-percent input[type='range']:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bot-cursor) 35%, transparent);
 }
 
 /* Two small arrows beside the slider, stacked like a spin box without the box. */
@@ -7653,17 +7654,12 @@ label,
   border-radius: var(--radius-sm);
   background: var(--deep);
   color: var(--text);
-  cursor: pointer;
 }
 
 .usage-reading-step button:hover:not(:disabled) {
   border-color: var(--bot-cursor);
   color: var(--text);
-}
-
-.usage-reading-step button:disabled {
-  opacity: 0.4;
-  cursor: default;
+  cursor: pointer;
 }
 
 .usage-reading-actions {
@@ -7756,8 +7752,6 @@ label,
 
 .reset-calendar-day:disabled {
   color: var(--faint);
-  opacity: 0.5;
-  cursor: default;
 }
 
 .reset-calendar-day.is-today {
@@ -7770,9 +7764,4 @@ label,
   background: var(--bot-cursor);
   color: var(--bg);
   font-weight: 600;
-}
-
-.reset-calendar-day:focus-visible {
-  outline: 2px solid var(--bot-cursor);
-  outline-offset: 1px;
 }

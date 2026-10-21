@@ -155,6 +155,7 @@ function GoalsPanel({
           }}
         >
           <textarea
+            className="field"
             rows={3}
             value={text}
             placeholder="What should be true when this is done? e.g. Login keeps the session after a token refresh."
@@ -162,6 +163,7 @@ function GoalsPanel({
             onChange={(event) => setText(event.target.value)}
           />
           <input
+            className="field"
             value={check}
             placeholder="Check, optional: a command that passes when it is done, e.g. pnpm test"
             aria-label="Check command"
@@ -171,6 +173,7 @@ function GoalsPanel({
             <label className="goal-rounds">
               At most
               <input
+                className="field"
                 type="number"
                 min={1}
                 max={20}
@@ -556,6 +559,7 @@ function TriggersSection(): React.JSX.Element {
         >
           <div className="goal-form-foot">
             <select
+              className="field"
               value={kind}
               aria-label="When"
               onChange={(event) => setKind(event.target.value as Trigger['kind'])}
@@ -568,6 +572,7 @@ function TriggersSection(): React.JSX.Element {
             </select>
             {kind === 'daily' ? (
               <input
+                className="field"
                 type="time"
                 value={at}
                 aria-label="Time"
@@ -578,6 +583,7 @@ function TriggersSection(): React.JSX.Element {
               <label className="goal-rounds">
                 every
                 <input
+                  className="field"
                   type="number"
                   min={1}
                   max={168}
@@ -596,6 +602,7 @@ function TriggersSection(): React.JSX.Element {
             </p>
           ) : null}
           <textarea
+            className="field"
             rows={2}
             value={text}
             placeholder={
@@ -607,6 +614,7 @@ function TriggersSection(): React.JSX.Element {
             onChange={(event) => setText(event.target.value)}
           />
           <input
+            className="field"
             value={check}
             placeholder="Check, optional: e.g. pnpm test"
             aria-label="Check command"
