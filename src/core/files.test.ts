@@ -272,3 +272,25 @@ test('refuses a file inside a symlinked folder that points outside the root', as
   await expect(files.diff(project, 'link/secret.txt')).rejects.toThrow(OUTSIDE_PROJECT)
   expect(files.resolve.bind(files, project, 'kept.txt')()).toBeTruthy()
 })
+
+test('list shows an ignored folder once, as the folder, and ignored files by name', async () => {
+  writeFileSync(join(project, '.gitignore'), 'out/\n*.log\n')
+  mkdirSync(join(project, 'out'))
+  writeFileSync(join(project, 'out', 'bundle.js'), 'x\n')
+  writeFileSync(join(project, 'debug.log'), 'x\n')
+  const map = byPath((await new Files(real).list(project)).entries)
+  expect(map.get('out/')?.status).toBe('ignored')
+  expect(map.has('out/bundle.js')).toBe(false)
+  expect(map.get('debug.log')?.status).toBe('ignored')
+})
+
+test('write saves over an existing project file and refuses anything else', async () => {
+  const files = new Files(real)
+  await files.write(project, 'src/lib.ts', 'export const x = 1\n')
+  expect(await files.read(project, 'src/lib.ts')).toMatchObject({ text: 'export const x = 1\n' })
+  await expect(files.write(project, 'new.txt', 'x')).rejects.toThrow('missing')
+  await expect(files.write(project, '../outside.txt', 'x')).rejects.toThrow(OUTSIDE_PROJECT)
+  await expect(files.write(project, '.git/config', 'x')).rejects.toThrow(OUTSIDE_PROJECT)
+  await expect(files.write(project, 'src', 'x')).rejects.toThrow('missing')
+  await expect(files.write(project, 'kept.txt', 42)).rejects.toThrow('Nothing to save')
+})

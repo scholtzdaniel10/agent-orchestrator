@@ -27,6 +27,9 @@ import { RayBurst, Star } from './Star'
 import { TabIcon } from './TabIcon'
 import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
+import CodeEditor from './CodeEditor'
+import SessionsPanel from './SessionsPanel'
+import SourceControlPanel from './SourceControlPanel'
 import GoalsPanel from './GoalsPanel'
 import NewTaskDialog from './NewTaskDialog'
 import Workers from './Workers'
@@ -478,6 +481,8 @@ function App(): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
   // Settings → General → Usage shows; the meters and the status bar read it.
   const prefs = usePrefs()
+  // A file open in the editor, in place of the terminals, which keep running underneath.
+  const [editing, setEditing] = useState<{ where: string | null; path: string } | null>(null)
   const usageShows: UsageShows = prefs?.usageShows === 'used' ? 'used' : 'left'
   const runMode = prefs?.runMode ?? 'ask'
   const legit = runMode === 'legit'
@@ -1581,7 +1586,15 @@ function App(): React.JSX.Element {
     }
     switch (tab) {
       case 'files':
-        return <FilesPanel where={selectedWorktree} label={filesLabel} />
+        return (
+          <FilesPanel
+            where={selectedWorktree}
+            label={filesLabel}
+            onEdit={(path) => {
+              setEditing({ where: selectedWorktree, path })
+            }}
+          />
+        )
       case 'lead':
         return (
           <LeadChat
@@ -1697,6 +1710,28 @@ function App(): React.JSX.Element {
           <HistoryPanel
             where={selectedWorktree}
             label={filesLabel}
+            refreshKey={`${String(changes.length)}:${String(jobs.filter((job) => job.status === 'done').length)}`}
+          />
+        ) : null
+      case 'sessions':
+        return shown ? (
+          <SessionsPanel
+            workspace={
+              changes.find((change) => change.id === selectedWorktree)?.path ?? project?.path ?? ''
+            }
+            projectFolders={[
+              ...(project === null ? [] : [project.path]),
+              ...changes.map((change) => change.path)
+            ]}
+          />
+        ) : null
+      case 'git':
+        return shown ? (
+          <SourceControlPanel
+            where={selectedWorktree}
+            onOpenFile={(path) => {
+              setEditing({ where: selectedWorktree, path })
+            }}
             refreshKey={`${String(changes.length)}:${String(jobs.filter((job) => job.status === 'done').length)}`}
           />
         ) : null
@@ -2149,7 +2184,21 @@ function App(): React.JSX.Element {
           <section className="workspace" aria-label="Workspace">
             {sideDock('top')}
             {dropZone('top')}
-            <ErrorBoundary className="workspace-slot">
+            {editing !== null ? (
+              <ErrorBoundary className="editor-slot">
+                <CodeEditor
+                  key={`${editing.where ?? ''}:${editing.path}`}
+                  where={editing.where}
+                  path={editing.path}
+                  onClose={() => {
+                    setEditing(null)
+                  }}
+                />
+              </ErrorBoundary>
+            ) : null}
+            <ErrorBoundary
+              className={editing !== null ? 'workspace-slot is-hidden' : 'workspace-slot'}
+            >
               <Workers
                 terminals={terminals.filter(
                   (info) => !(info.provider === 'shell' && info.change === undefined)

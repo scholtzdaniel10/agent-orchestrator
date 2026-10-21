@@ -19,6 +19,8 @@ import type { JobRecord } from '../core/router'
 import type { Routine } from '../core/routines'
 import type { Requirement } from '../core/setup'
 import type { CommitDetail, CommitPage } from '../core/history'
+import type { SessionScan } from '../core/sessions'
+import type { BranchStatus } from '../core/source-control'
 import type { Goal, PlannedJob } from '../core/goals'
 import type { Trigger } from '../core/triggers'
 import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
@@ -120,6 +122,10 @@ export interface OrchestratorApi {
   setCursorReading(usedPercent: number, resetsAt: number): Promise<{ ok: boolean; error?: string }>
   /** Forget the dashboard reading; the Cursor meter goes back to Legate's own estimate. */
   clearCursorReading(): Promise<void>
+  /** Claude and Cursor sessions found in this machine's session logs, newest first. */
+  listSessions(): Promise<SessionScan>
+  /** Opens a session from the last list again in a terminal, in the folder it ran in. */
+  resumeSession(id: string, cols: number, rows: number): Promise<TerminalInfo>
   /** Stops a job if it still runs and opens a terminal on its own session, in its folder. */
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo>
 
@@ -225,10 +231,20 @@ export interface OrchestratorApi {
   runTrigger(id: string): Promise<void>
   onTriggersUpdate(cb: (triggers: Trigger[]) => void): () => void
   /** Commits of the project (null) or a worktree, newest first, a page at a time. */
+  /** Branch, upstream, uncommitted files and what the branch changes against its base. */
+  branchStatus(where: string | null): Promise<BranchStatus>
+  /** Commits every change in the folder, new files included. */
+  commitAll(where: string | null, message: string): Promise<void>
+  /** Pushes the branch; the first push publishes it to origin. */
+  pushBranch(where: string | null): Promise<void>
+  /** Opens a pull request from the pushed branch and returns its link. */
+  createBranchPr(where: string | null): Promise<string>
   commitLog(where: string | null, skip: number): Promise<CommitPage>
   commitDetail(where: string | null, hash: string): Promise<CommitDetail>
   /** One file's diff in a commit, against its first parent. */
   commitFileDiff(where: string | null, hash: string, path: string): Promise<string>
+  /** Saves the editor's text over an existing file of the project or worktree. */
+  writeFile(where: string | null, path: string, text: string): Promise<void>
   readFile(where: string | null, path: string): Promise<FileContent>
   /** Unified diff of one file against HEAD. Empty when unchanged. */
   fileDiff(where: string | null, path: string): Promise<string>

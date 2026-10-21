@@ -72,6 +72,23 @@ export function TabIcon({ tab }: { tab: DrawerTab }): React.JSX.Element {
           <circle cx="12" cy="6.5" r="1.4" fill="currentColor" stroke="none" />
         </>
       )
+    case 'git':
+      return glyph(
+        <>
+          <circle cx="4.5" cy="3.5" r="1.5" />
+          <circle cx="4.5" cy="12.5" r="1.5" />
+          <circle cx="11.5" cy="5.5" r="1.5" />
+          <line x1="4.5" y1="5" x2="4.5" y2="11" />
+          <path d="M11.5 7C11.5 9.5 4.5 8.5 4.5 11" />
+        </>
+      )
+    case 'sessions':
+      return glyph(
+        <>
+          <circle cx="8" cy="8" r="5.5" />
+          <polyline points="8 5 8 8 10.5 9.5" />
+        </>
+      )
     case 'goals':
       return glyph(
         <>

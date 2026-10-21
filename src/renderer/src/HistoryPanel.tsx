@@ -40,7 +40,7 @@ function curve(line: GraphLine, y1: number, y2: number): string {
   return `M${String(x1)} ${String(y1)}C${String(x1)} ${String(mid)} ${String(x2)} ${String(mid)} ${String(x2)} ${String(y2)}`
 }
 
-function Graph({
+export function Graph({
   row,
   width,
   head

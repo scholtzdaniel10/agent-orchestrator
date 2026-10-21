@@ -1,5 +1,5 @@
 export type FileStatus =
-  'clean' | 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+  'clean' | 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted' | 'ignored'
 
 export interface FileEntry {
   path: string
@@ -35,6 +35,7 @@ export interface VisibleRow {
 }
 
 const STATUS_RANK: Record<FileStatus, number> = {
+  ignored: -1,
   clean: 0,
   untracked: 1,
   added: 2,
@@ -44,7 +45,7 @@ const STATUS_RANK: Record<FileStatus, number> = {
   conflicted: 6
 }
 
-export const STATUS_MARK: Record<Exclude<FileStatus, 'clean'>, string> = {
+export const STATUS_MARK: Record<Exclude<FileStatus, 'clean' | 'ignored'>, string> = {
   modified: 'M',
   added: 'A',
   untracked: 'U',
@@ -84,13 +85,16 @@ export function buildTree(entries: readonly FileEntry[]): TreeNode[] {
     path: string
     dirs: Map<string, Draft>
     files: Map<string, FileEntry>
+    ignored?: boolean
   }
   const root: Draft = { name: '', path: '', dirs: new Map(), files: new Map() }
   for (const entry of entries) {
     const parts = entry.path.split('/').filter((part) => part !== '')
     if (parts.length === 0) continue
+    // `out/`: a folder git ignores, listed as the folder alone.
+    const folder = entry.path.endsWith('/')
     let node = root
-    for (let i = 0; i < parts.length - 1; i += 1) {
+    for (let i = 0; i < parts.length - (folder ? 0 : 1); i += 1) {
       const name = parts[i] ?? ''
       const path = parts.slice(0, i + 1).join('/')
       let next = node.dirs.get(name)
@@ -99,6 +103,10 @@ export function buildTree(entries: readonly FileEntry[]): TreeNode[] {
         node.dirs.set(name, next)
       }
       node = next
+    }
+    if (folder) {
+      node.ignored = true
+      continue
     }
     const fileName = parts[parts.length - 1] ?? ''
     node.files.set(fileName, entry)
@@ -111,7 +119,7 @@ export function buildTree(entries: readonly FileEntry[]): TreeNode[] {
         kind: 'dir',
         name: child.name,
         path: child.path,
-        status: folderStatus(children),
+        status: child.ignored === true ? 'ignored' : folderStatus(children),
         children
       })
     }
@@ -135,7 +143,7 @@ function fileMatches(
   filter: string,
   changedOnly: boolean
 ): boolean {
-  if (changedOnly && status === 'clean') return false
+  if (changedOnly && (status === 'clean' || status === 'ignored')) return false
   if (filter !== '' && !path.toLowerCase().includes(filter)) return false
   return true
 }
@@ -157,7 +165,7 @@ export function flattenVisible(
   function walk(list: readonly TreeNode[], depth: number): void {
     for (const node of list) {
       if (filtering && !dirHasMatch(node, filter, changedOnly)) continue
-      const hasChanged = node.status !== 'clean'
+      const hasChanged = node.status !== 'clean' && node.status !== 'ignored'
       rows.push({
         kind: node.kind,
         name: node.name,

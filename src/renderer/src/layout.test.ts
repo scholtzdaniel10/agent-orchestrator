@@ -330,7 +330,9 @@ test('a saved tab order keeps known tabs once and adds tabs it lacks at the end'
     'routines',
     'usage',
     'history',
-    'goals'
+    'goals',
+    'git',
+    'sessions'
   ])
   expect(tabOrderFrom(undefined)).toEqual([...DRAWER_TABS])
   expect(isDefaultTabOrder(tabOrderFrom(null))).toBe(true)
@@ -349,7 +351,9 @@ test('moveTab puts a tab at a place in the order without it', () => {
     'usage',
     'activity',
     'history',
-    'goals'
+    'goals',
+    'git',
+    'sessions'
   ])
   expect(moveTab(order, 'lead', -5)[0]).toBe('lead')
 })
@@ -363,7 +367,7 @@ test('docks: every tab sits in one dock; unknown and repeated tabs are dropped',
   expect(docks.top).toEqual(['activity'])
   expect(docks.left).toEqual(['lead', 'history'])
   expect(docks.bottom).toEqual([])
-  expect(docks.right).toEqual(['files', 'jobs', 'changes', 'routines', 'usage', 'goals'])
+  expect(docks.right).toEqual(['files', 'jobs', 'changes', 'routines', 'usage', 'goals', 'git', 'sessions'])
   expect(tabsInOrder(docks).sort()).toEqual([...DRAWER_TABS].sort())
   expect(dockOf(docks, 'history')).toBe('left')
 })

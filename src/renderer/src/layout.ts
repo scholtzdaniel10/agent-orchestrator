@@ -54,7 +54,9 @@ export const DRAWER_TABS = [
   'usage',
   'activity',
   'history',
-  'goals'
+  'goals',
+  'git',
+  'sessions'
 ] as const
 
 export type DrawerTab = (typeof DRAWER_TABS)[number]
@@ -68,7 +70,9 @@ export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
   usage: 'Usage',
   activity: 'Activity',
   history: 'History',
-  goals: 'Goals'
+  goals: 'Goals',
+  git: 'Source control',
+  sessions: 'Sessions'
 }
 
 export type LayoutShortcut = 'drawer' | 'sidebar' | DrawerTab

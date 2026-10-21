@@ -7937,3 +7937,324 @@ label,
   align-items: flex-start;
   gap: var(--space-6);
 }
+
+/* Sessions: past Claude and Cursor sessions, read from the CLIs' logs. */
+.sessions-panel,
+.sc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-height: 0;
+  height: 100%;
+  padding: var(--space-12);
+  overflow: auto;
+}
+
+.sessions-head,
+.sc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.sessions-title {
+  font-weight: 600;
+}
+
+.sessions-scopes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.sessions-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sessions-sort {
+  width: auto;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.sessions-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sessions-group-head,
+.sc-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-4) 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sessions-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sessions-row:hover {
+  border-color: var(--border-strong);
+  background: var(--raised);
+}
+
+.sessions-row-title {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sessions-row-last {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sessions-row-who {
+  color: var(--text);
+}
+
+.sessions-row-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sessions-more {
+  align-self: stretch;
+}
+
+/* Source control: the selected folder's branch, commit, push and graph. */
+.sc-branch {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-8);
+  font-size: 12px;
+}
+
+.sc-branch-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.sc-branch-base,
+.sc-branch-sync {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sc-branch-totals {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.sc-message {
+  min-height: 56px;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--deep);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.sc-primary {
+  width: 100%;
+}
+
+.sc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sc-file {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
+  min-width: 0;
+  padding: var(--space-4) var(--space-6);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sc-file:hover {
+  background: var(--raised);
+}
+
+.sc-file-name {
+  flex: none;
+}
+
+.sc-file-dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sc-file-stat,
+.sc-file-mark {
+  flex: none;
+  font-size: 11px;
+}
+
+.sc-graph .history-list {
+  margin: 0;
+  padding: 0;
+}
+
+/* Files: outlines beside each name, and git-ignored entries set back. */
+.files-glyph {
+  flex: none;
+  margin-right: var(--space-6);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.files-row.is-ignored .files-name {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.files-ignored {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The editor, in place of the terminals while a file is open. */
+.workspace-slot.is-hidden {
+  display: none;
+}
+
+.editor-slot {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.code-editor {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.code-editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-12);
+  border-bottom: 1px solid var(--border);
+}
+
+.code-editor-path {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.code-editor-dirty {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.code-editor-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-6);
+}
+
+.code-editor-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-editor-body[hidden] {
+  display: none;
+}
+
+.code-editor-diff {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sessions-panel > *,
+.sc-panel > * {
+  flex: none;
+}
+
+.sessions-scopes .btn[aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--selected);
+}
+
+.sc-graph .history-ref {
+  margin-left: var(--space-6);
+}

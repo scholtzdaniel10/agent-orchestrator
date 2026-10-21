@@ -27,6 +27,8 @@ import {
   type Trigger
 } from '../core/triggers'
 import { History, requireHash } from '../core/history'
+import { Sessions, type AgentSession } from '../core/sessions'
+import { SourceControl } from '../core/source-control'
 import { Github } from '../core/github'
 import { Setup } from '../core/setup'
 import { refreshPath } from '../core/fresh-path'
@@ -256,6 +258,10 @@ app.whenReady().then(async () => {
   const github = new Github(runGh)
   const files = new Files(runGh)
   const history = new History(runGh)
+  const sessions = new Sessions()
+  const sourceControl = new SourceControl(runGh)
+  /** The last scan, so a resume can only name a session Legate itself found. */
+  let sessionsSeen: AgentSession[] = []
   const setupByChange = new Map<string, 'running' | 'failed' | 'done'>()
   const signInIds = new Set<string>()
 
@@ -1036,6 +1042,20 @@ app.whenReady().then(async () => {
       return info
     }
   )
+  ipcMain.handle('sessions:list', async () => {
+    const scan = await sessions.scan()
+    sessionsSeen = scan.sessions
+    return scan
+  })
+  // A past Claude or Cursor session opens again in a terminal, in the folder it ran in.
+  ipcMain.handle('sessions:resume', async (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string' || !/^[\w-]{1,80}$/.test(id)) throw new Error('invalid session id')
+    if (!Number.isInteger(cols) || !Number.isInteger(rows)) throw new Error('invalid size')
+    const session = sessionsSeen.find((item) => item.id === id)
+    if (session === undefined) throw new Error('That session is gone. Refresh the list.')
+    const cwd = session.cwd !== null && isFolder(session.cwd) ? session.cwd : projectDir()
+    return terms.open(session.provider, cols as number, rows as number, { cwd, resume: id })
+  })
   // A job's live view becomes a real terminal on the job's own CLI session, in its folder.
   ipcMain.handle('jobs:takeOver', async (_event, id: unknown, cols: unknown, rows: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
@@ -1432,6 +1452,30 @@ app.whenReady().then(async () => {
     setupByChange.delete(changeId)
     pushChanges()
   })
+  ipcMain.handle('git:status', (_event, where: unknown) => sourceControl.status(filesRoot(where)))
+  ipcMain.handle('git:commit', async (_event, where: unknown, message: unknown) => {
+    await sourceControl.commit(filesRoot(where), message)
+    pushChanges()
+  })
+  ipcMain.handle('git:push', (_event, where: unknown) => sourceControl.push(filesRoot(where)))
+  // A pull request from the pushed branch into its base, titled by its newest commit.
+  ipcMain.handle('git:createPr', async (_event, where: unknown) => {
+    const dir = filesRoot(where)
+    const status = await sourceControl.status(dir)
+    if (status.upstream === null) throw new Error('Publish the branch first.')
+    if (status.base === null) throw new Error('This repository has no origin to open it on.')
+    const newest = await runGh('git', ['log', '-1', '--format=%s'], dir)
+    const title = newest.stdout.trim() || status.branch
+    const url = await github.createPr(
+      dir,
+      title,
+      '',
+      status.base.replace(/^origin\//, ''),
+      status.branch
+    )
+    if (url.startsWith('https://')) await shell.openExternal(url)
+    return url
+  })
   ipcMain.handle('history:log', (_event, where: unknown, skip: unknown) => {
     const from = typeof skip === 'number' && Number.isInteger(skip) && skip >= 0 ? skip : 0
     return history.log(filesRoot(where), from)
@@ -1447,6 +1491,10 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('files:read', (_event, where: unknown, path: unknown) => {
     return files.read(filesRoot(where), requireFilePath(path))
+  })
+  ipcMain.handle('files:write', async (_event, where: unknown, path: unknown, text: unknown) => {
+    await files.write(filesRoot(where), requireFilePath(path), text)
+    pushChanges()
   })
   ipcMain.handle('files:diff', (_event, where: unknown, path: unknown) => {
     return files.diff(filesRoot(where), requireFilePath(path))

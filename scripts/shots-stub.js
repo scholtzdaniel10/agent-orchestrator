@@ -989,6 +989,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
     renameWorktree: ok(undefined),
     listFiles: ok({
       entries: [
+        { path: '.github/workflows/ci.yml', status: 'clean' },
+        { path: 'out/', status: 'ignored' },
         { path: 'README.md', status: 'clean' },
         { path: 'old.txt', status: 'deleted' },
         { path: 'src/app.ts', status: 'modified' },
@@ -1007,11 +1009,98 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         return Promise.resolve({ kind: 'text', text, bytes: text.length })
       }
       if (path === 'src/app.ts') {
-        const text = "export function boot(): void {\n  console.log('ready')\n}\n"
+        const text = [
+          "import { Router } from './router'",
+          '',
+          '/** Starts the app: one router, three plans. */',
+          'export function boot(plans: number = 3): Router {',
+          "  const router = new Router({ name: 'legate', plans })",
+          '  if (plans > 2) router.enable(true)',
+          "  console.log('ready', router.size)",
+          '  return router',
+          '}',
+          ''
+        ].join('\n')
         return Promise.resolve({ kind: 'text', text, bytes: text.length })
       }
       return Promise.resolve({ kind: 'text', text: 'hello\nworld\n', bytes: 12 })
     },
+    writeFile: ok(undefined),
+    listSessions: ok({
+      files: 342,
+      scannedAt: now - 3 * 60_000,
+      sessions: [
+        [
+          'claude',
+          'Dispatching Cursor for grunt work',
+          'agent',
+          'Both tabs are in and the tests pass.',
+          2464,
+          4
+        ],
+        [
+          'cursor',
+          'Fix the diff parser tests',
+          'agent',
+          'The diff tests failed because the parser was missing; added it.',
+          53,
+          18 * 24 * 60
+        ],
+        [
+          'cursor',
+          'Editing jobs in a private worktree',
+          'agent',
+          'Editing jobs now run in a private git worktree, then merge as staged changes.',
+          50,
+          18 * 24 * 60
+        ],
+        [
+          'claude',
+          'Explain how this orchestrator works',
+          'you',
+          'How does the lead pick a plan?',
+          39,
+          19 * 24 * 60
+        ]
+      ].map(([provider, title, lastRole, last, messages, minutes], index) => ({
+        id: `s-${String(index)}`,
+        provider,
+        title,
+        last,
+        lastRole,
+        messages,
+        model: provider === 'claude' ? 'claude-opus-5-5' : null,
+        cwd: 'C:/Users/dev/projects/agent-orchestrator',
+        updatedAt: now - minutes * 60_000
+      }))
+    }),
+    resumeSession: () => new Promise(() => {}),
+    branchStatus: ok({
+      branch: 'leg-it',
+      upstream: null,
+      base: 'origin/main',
+      behind: 0,
+      ahead: 0,
+      uncommitted: [],
+      commits: 17,
+      insertions: 481,
+      deletions: 117,
+      files: [
+        {
+          path: 'resources/plugins/legate-lead/skills/legate-leg-it/SKILL.md',
+          added: 34,
+          removed: 0
+        },
+        { path: 'scripts/shots-electron.cjs', added: 23, removed: 0 },
+        { path: 'src/core/lead/lead.ts', added: 29, removed: 1 },
+        { path: 'src/core/providers/claude.ts', added: 6, removed: 1 },
+        { path: 'src/renderer/src/App.tsx', added: 156, removed: 97 },
+        { path: 'src/renderer/src/SettingsPage.tsx', added: 74, removed: 1 }
+      ]
+    }),
+    commitAll: ok(undefined),
+    pushBranch: ok(undefined),
+    createBranchPr: ok('https://github.com/acme/demo/pull/1'),
     fileDiff: ok(
       'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
     ),

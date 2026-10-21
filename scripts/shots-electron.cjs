@@ -281,6 +281,27 @@ const scenes = {
       await wait(300)
     })()`
   },
+  git: { query: '?tab=git', scheme: 'dark', size: [1440, 900], script: '' },
+  sessions: { query: '?tab=sessions', scheme: 'dark', size: [1440, 900], script: '' },
+  editor: {
+    query: '',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 4000
+      let dir
+      while (Date.now() < deadline) {
+        dir = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.trim() === 'src')
+        if (dir) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      dir?.click()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      const file = [...document.querySelectorAll('.files-row')].find((el) => el.textContent.includes('app.ts'))
+      file?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 600))
+    })()`
+  },
   legit: { size: [1440, 900], query: '?runmode=legit&tab=lead', scheme: 'dark' },
   legitsettings: {
     size: [1440, 900],

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { JobRecord } from '../core/router'
 import type { CommitDetail, CommitPage } from '../core/history'
+import type { SessionScan } from '../core/sessions'
+import type { BranchStatus } from '../core/source-control'
 import type { Goal, PlannedJob } from '../core/goals'
 import type { Trigger } from '../core/triggers'
 import type { Routine } from '../core/routines'
@@ -65,6 +67,12 @@ const api: OrchestratorApi = {
   },
   clearCursorReading(): Promise<void> {
     return ipcRenderer.invoke('usage:clearReading')
+  },
+  listSessions(): Promise<SessionScan> {
+    return ipcRenderer.invoke('sessions:list')
+  },
+  resumeSession(id: string, cols: number, rows: number): Promise<TerminalInfo> {
+    return ipcRenderer.invoke('sessions:resume', id, cols, rows)
   },
   takeOverJob(id: string, cols: number, rows: number): Promise<TerminalInfo> {
     return ipcRenderer.invoke('jobs:takeOver', id, cols, rows)
@@ -229,6 +237,18 @@ const api: OrchestratorApi = {
       ipcRenderer.removeListener('triggers:update', listener)
     }
   },
+  branchStatus(where: string | null): Promise<BranchStatus> {
+    return ipcRenderer.invoke('git:status', where)
+  },
+  commitAll(where: string | null, message: string): Promise<void> {
+    return ipcRenderer.invoke('git:commit', where, message)
+  },
+  pushBranch(where: string | null): Promise<void> {
+    return ipcRenderer.invoke('git:push', where)
+  },
+  createBranchPr(where: string | null): Promise<string> {
+    return ipcRenderer.invoke('git:createPr', where)
+  },
   commitLog(where: string | null, skip: number): Promise<CommitPage> {
     return ipcRenderer.invoke('history:log', where, skip)
   },
@@ -237,6 +257,9 @@ const api: OrchestratorApi = {
   },
   commitFileDiff(where: string | null, hash: string, path: string): Promise<string> {
     return ipcRenderer.invoke('history:diff', where, hash, path)
+  },
+  writeFile(where: string | null, path: string, text: string): Promise<void> {
+    return ipcRenderer.invoke('files:write', where, path, text)
   },
   readFile(where: string | null, path: string): Promise<FileContent> {
     return ipcRenderer.invoke('files:read', where, path)

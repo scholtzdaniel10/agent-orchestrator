@@ -1,4 +1,9 @@
-import { readdir as readdirFn, readFile as readFileFn, stat as statFn } from 'node:fs/promises'
+import {
+  readdir as readdirFn,
+  readFile as readFileFn,
+  stat as statFn,
+  writeFile as writeFileFn
+} from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
@@ -13,10 +18,19 @@ export interface FilesFs {
   readFile: (target: string) => Promise<Buffer>
   stat: (target: string) => Promise<{ isFile(): boolean; isDirectory(): boolean; size: number }>
   readdir: (dir: string) => Promise<string[]>
+  writeFile?: (target: string, text: string) => Promise<void>
 }
 
 export type FileStatus =
-  'clean' | 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+  | 'clean'
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'untracked'
+  | 'conflicted'
+  /** Matched by .gitignore; a folder of them is listed once, as the folder, with no files. */
+  | 'ignored'
 
 export interface FileEntry {
   path: string
@@ -43,7 +57,8 @@ const defaultFs: FilesFs = {
   realpathSync: (target) => realpathSync.native(target),
   readFile: (target) => readFileFn(target),
   stat: (target) => statFn(target),
-  readdir: (dir) => readdirFn(dir)
+  readdir: (dir) => readdirFn(dir),
+  writeFile: (target, text) => writeFileFn(target, text, 'utf8')
 }
 
 export class Files {
@@ -83,6 +98,18 @@ export class Files {
         byPath.set(row.path, row.status)
       }
     }
+    // Ignored folders come back as `out/`, one entry each, so build output never floods the list.
+    const ignored = await this.run(
+      'git',
+      ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+      root
+    )
+    if (ignored.code === 0) {
+      for (const path of splitz(ignored.stdout)) {
+        const rel = slash(path)
+        if (rel !== '' && !byPath.has(rel)) byPath.set(rel, 'ignored')
+      }
+    }
     const entries = [...byPath.entries()]
       .map(([path, fileStatus]) => ({ path, status: fileStatus }))
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
@@ -107,6 +134,28 @@ export class Files {
     const probe = buf.subarray(0, Math.min(BINARY_PROBE, bytes))
     if (probe.includes(0)) return { kind: 'binary', bytes }
     return { kind: 'text', text: buf.toString('utf8'), bytes }
+  }
+
+  /**
+   * Saves the editor's text over a file that already exists in the project. Never creates files,
+   * never writes inside .git.
+   */
+  async write(root: string, path: string, text: unknown): Promise<void> {
+    if (typeof text !== 'string') throw new Error('Nothing to save.')
+    if (Buffer.byteLength(text, 'utf8') > TEXT_CAP)
+      throw new Error('This file is too large to save.')
+    if (path.split(/[/\\]+/).some((part) => part.toLowerCase() === '.git')) {
+      throw new Error(OUTSIDE_PROJECT)
+    }
+    const abs = this.resolve(root, path)
+    let info: { isFile(): boolean }
+    try {
+      info = await this.fs.stat(abs)
+    } catch {
+      throw new Error('That file is missing.')
+    }
+    if (!info.isFile()) throw new Error('That file is missing.')
+    await (this.fs.writeFile ?? defaultFs.writeFile)?.(abs, text)
   }
 
   async diff(root: string, path: string): Promise<string> {

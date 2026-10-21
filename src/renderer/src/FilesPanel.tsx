@@ -53,7 +53,16 @@ function markClass(status: FileStatus): string {
   return `files-mark is-${status}`
 }
 
-function FilesPanel({ where, label }: { where: string | null; label: string }): React.JSX.Element {
+function FilesPanel({
+  where,
+  label,
+  onEdit
+}: {
+  where: string | null
+  label: string
+  /** Opens a file in Legate's editor; without it, Enter opens the file outside. */
+  onEdit?: (path: string) => void
+}): React.JSX.Element {
   const key = whereKey(where)
   const [seenWhere, setSeenWhere] = useState(where)
   const [list, setList] = useState<FileList | null>(null)
@@ -301,8 +310,10 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      if (row.kind === 'file') void openSelected()
-      else toggleFolder(row.path)
+      if (row.kind === 'file') {
+        if (onEdit !== undefined) onEdit(row.path)
+        else void openSelected()
+      } else toggleFolder(row.path)
     }
   }
 
@@ -341,7 +352,7 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
   }, [list, split])
 
   const showLoading = loading && list === null
-  const dirty = selected !== null && selected.status !== 'clean'
+  const dirty = selected !== null && selected.status !== 'clean' && selected.status !== 'ignored'
   const mode = dirty && preview === 'changes' ? 'changes' : 'file'
   const bytes = shownContent !== null && shownContent.kind !== 'missing' ? shownContent.bytes : null
 
@@ -420,7 +431,8 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
                       'files-row' +
                       (chosen ? ' is-selected' : '') +
                       (focused ? ' is-focused' : '') +
-                      (row.status === 'deleted' ? ' is-deleted' : '')
+                      (row.status === 'deleted' ? ' is-deleted' : '') +
+                      (row.status === 'ignored' ? ' is-ignored' : '')
                     }
                     style={{ paddingLeft: 8 + row.depth * 12, height: FILE_ROW_HEIGHT }}
                     onClick={() => {
@@ -428,15 +440,24 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
                       if (row.kind === 'dir') toggleFolder(row.path)
                       else selectFile(row.path)
                     }}
+                    onDoubleClick={() => {
+                      if (row.kind === 'file') onEdit?.(row.path)
+                    }}
                   >
                     {row.kind === 'dir' ? (
                       <span className={open ? 'files-chevron is-open' : 'files-chevron'} />
                     ) : (
                       <span className="files-chevron-gap" />
                     )}
+                    <FileGlyph kind={row.kind} open={open} />
                     <span className="files-name">{row.name}</span>
+                    {row.status === 'ignored' ? (
+                      <span className="files-ignored" title="Ignored by .gitignore">
+                        ignored
+                      </span>
+                    ) : null}
                     {row.kind === 'dir' && row.hasChanged ? <span className="files-dot" /> : null}
-                    {row.kind === 'file' && row.status !== 'clean' ? (
+                    {row.kind === 'file' && row.status !== 'clean' && row.status !== 'ignored' ? (
                       <span className={markClass(row.status)}>{STATUS_MARK[row.status]}</span>
                     ) : null}
                   </div>
@@ -483,6 +504,17 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
                       Changes
                     </button>
                   ) : null}
+                  {onEdit !== undefined ? (
+                    <button
+                      type="button"
+                      className="btn btn-compact"
+                      onClick={() => {
+                        onEdit(selected.path)
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-quiet btn-compact"
@@ -512,6 +544,21 @@ function FilesPanel({ where, label }: { where: string | null; label: string }): 
         </div>
       </div>
     </div>
+  )
+}
+
+/** Folder (open or shut) and file outlines, in the tab icons' 16-unit, 1.5px style. */
+function FileGlyph({ kind, open }: { kind: 'dir' | 'file'; open: boolean }): React.JSX.Element {
+  return (
+    <svg className="files-glyph" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      {kind === 'file' ? (
+        <path d="M4 1.75H9.5L12.5 4.75V14.25H4V1.75ZM9.5 1.75V4.75H12.5" />
+      ) : open ? (
+        <path d="M1.75 3.25H6L7.5 4.75H13.25V6.5M1.75 3.25V13.25H12.5L14.5 6.5H4L1.75 13.25" />
+      ) : (
+        <path d="M1.75 3.25H6L7.5 4.75H14.25V13.25H1.75V3.25Z" />
+      )}
+    </svg>
   )
 }
 
