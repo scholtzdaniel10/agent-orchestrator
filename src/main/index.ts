@@ -7,6 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startAutoUpdate } from './updater'
 import { ChangeRefresh } from './debounce'
+import { USAGE_TICK_MS, usageCheckDue, type UsageTrigger } from './usage-schedule'
 import { cascadeBounds, PoppedOutRegistry, refuseWindow, TerminalClaims } from './windows'
 import { createOrchestratorTools, proposedJobs, startBridge, type Bridge } from '../core/bridge'
 import { Files } from '../core/files'
@@ -696,13 +697,25 @@ app.whenReady().then(async () => {
 
   // Claude reports its real usage on every turn, use outside Legate included. A tiny turn on
   // the smallest model keeps the meter current; Cursor reports nothing, so its meter stays an estimate.
-  const USAGE_EVERY_MS = 10 * 60_000
-  const USAGE_MIN_GAP_MS = 2 * 60_000
+  // When a check is due: usage-schedule.ts.
   let usageRunning: Promise<{ ok: boolean; error?: string }> | null = null
-  let usageLast = 0
-  function refreshUsage(force: boolean): Promise<{ ok: boolean; error?: string }> {
+  let usageLast: number | null = null
+  function windowsShown(): { focused: boolean; visible: boolean } {
+    const open = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed())
+    return {
+      focused: open.some((win) => win.isFocused()),
+      visible: open.some((win) => win.isVisible() && !win.isMinimized())
+    }
+  }
+  function refreshUsage(trigger: UsageTrigger): Promise<{ ok: boolean; error?: string }> {
     if (usageRunning !== null) return usageRunning
-    if (!force && Date.now() - usageLast < USAGE_MIN_GAP_MS) return Promise.resolve({ ok: true })
+    // A job's own report counts as a reading too, so a check right after one is skipped.
+    const reported = usageAt('claude')
+    const last =
+      usageLast === null ? reported : reported === null ? usageLast : Math.max(usageLast, reported)
+    if (!usageCheckDue(trigger, Date.now(), last, windowsShown())) {
+      return Promise.resolve({ ok: true })
+    }
     if (!orch.workers().some((worker) => worker.id === 'claude' && worker.available)) {
       return Promise.resolve({ ok: false, error: 'Claude is not signed in.' })
     }
@@ -739,13 +752,15 @@ app.whenReady().then(async () => {
     return usageRunning
   }
   setTimeout(() => {
-    void refreshUsage(false)
+    void refreshUsage('focus')
   }, 15_000)
   setInterval(() => {
-    if (BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible())) {
-      void refreshUsage(false)
-    }
-  }, USAGE_EVERY_MS)
+    void refreshUsage('tick')
+  }, USAGE_TICK_MS)
+  // Coming back to Legate, often after using Claude elsewhere, reads the usage again.
+  app.on('browser-window-focus', () => {
+    void refreshUsage('focus')
+  })
 
   const notified = new Set<string>()
   function notifyEnded(job: JobRecord): void {
@@ -838,7 +853,7 @@ app.whenReady().then(async () => {
       )
     }
   )
-  ipcMain.handle('usage:refresh', () => refreshUsage(false))
+  ipcMain.handle('usage:refresh', () => refreshUsage('manual'))
   // Cursor reports no usage, so the person copies it from cursor.com/dashboard/spending.
   ipcMain.handle('usage:setReading', (_event, usedPercent: unknown, resetsAt: unknown) => {
     const now = Date.now()
