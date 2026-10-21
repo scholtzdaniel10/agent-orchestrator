@@ -839,7 +839,7 @@ app.whenReady().then(async () => {
     }
   )
   ipcMain.handle('usage:refresh', () => refreshUsage(false))
-  // Cursor reports no usage, so the person copies it from cursor.com/dashboard.
+  // Cursor reports no usage, so the person copies it from cursor.com/dashboard/spending.
   ipcMain.handle('usage:setReading', (_event, usedPercent: unknown, resetsAt: unknown) => {
     const now = Date.now()
     const reading = dashboardReading(usedPercent, resetsAt, now)

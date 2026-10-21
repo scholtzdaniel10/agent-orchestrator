@@ -114,7 +114,7 @@ export interface OrchestratorApi {
   /** Asks Claude for its real usage now; at most once every two minutes. */
   refreshUsage(): Promise<{ ok: boolean; error?: string }>
   /**
-   * Cursor's usage as read off cursor.com/dashboard: percent used and when it resets (epoch ms).
+   * Cursor's usage as read off cursor.com/dashboard/spending: percent used and when it resets (epoch ms).
    * Legate adds its own Cursor and Grok jobs on top until the next reading.
    */
   setCursorReading(usedPercent: number, resetsAt: number): Promise<{ ok: boolean; error?: string }>

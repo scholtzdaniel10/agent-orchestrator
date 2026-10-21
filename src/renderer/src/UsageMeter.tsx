@@ -15,7 +15,8 @@ import {
 
 const CURSOR_ESTIMATE =
   "Cursor does not report its usage. This is an estimate from Legate's own jobs."
-const CURSOR_DASHBOARD = 'https://cursor.com/dashboard'
+/** Where Cursor shows the plan's usage so far and the date it resets. */
+const CURSOR_DASHBOARD = 'https://cursor.com/dashboard/spending'
 /** Window name the main process stores a dashboard reading under. */
 const DASHBOARD_WINDOW = 'dashboard'
 
@@ -244,7 +245,7 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
         <p className="hint">
           Copy these from{' '}
           <a href={CURSOR_DASHBOARD} target="_blank" rel="noreferrer">
-            your Cursor dashboard
+            your Cursor spending page
           </a>
           , for the usage your Legate jobs draw on.
         </p>
@@ -331,7 +332,7 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
           <button
             type="button"
             className="btn btn-quiet btn-compact"
-            title="Enter the usage shown on cursor.com/dashboard"
+            title="Enter the usage shown on cursor.com/dashboard/spending"
             onClick={startEditing}
           >
             {reading === undefined ? 'Set from dashboard' : 'Update'}
