@@ -1,4 +1,5 @@
 import { useEffect, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import Select from './Select'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ModelOption = Awaited<ReturnType<Window['api']['listModels']>>[number]
@@ -93,26 +94,30 @@ function ModelField({
         </span>
       ) : null}
       <div className="model-row">
-        <select
+        <Select
           id={selectId}
           className="model-input field"
           value={typing ? OTHER : saved}
           disabled={disabled}
           aria-invalid={error !== null ? true : undefined}
           aria-describedby={describedBy === '' ? undefined : describedBy}
-          onChange={(event) => {
-            onSelect(event.target.value)
+          onChange={(picked) => {
+            onSelect(picked)
           }}
         >
           <option value="">CLI default</option>
           {savedIsListed ? null : <option value={saved}>{saved}</option>}
           {listed.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label === option.id ? option.id : `${option.label} · ${option.id}`}
+            <option
+              key={option.id}
+              value={option.id}
+              data-detail={option.label === option.id ? undefined : option.id}
+            >
+              {option.label}
             </option>
           ))}
           <option value={OTHER}>Other…</option>
-        </select>
+        </Select>
       </div>
       {typing ? (
         <div className="model-row">

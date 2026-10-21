@@ -13,6 +13,7 @@ import { editedFilesSummary, latestStepTitle } from './job-steps'
 import LeadPlan from './LeadPlan'
 import RichText from './RichText'
 import SidebarMenu from './SidebarMenu'
+import Select from './Select'
 
 type LeadMessage = Awaited<ReturnType<Window['api']['listLeadMessages']>>[number]
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
@@ -374,7 +375,7 @@ function LeadChat({
           <>
             <span className="lead-option">
               <label htmlFor="lead-plan">Runs on</label>
-              <select
+              <Select
                 id="lead-plan"
                 className="plan-choice"
                 title="Switching plans starts a fresh lead session."
@@ -382,8 +383,8 @@ function LeadChat({
                 disabled={leadStreaming}
                 aria-invalid={planError !== null ? true : undefined}
                 aria-describedby={planError !== null ? 'lead-plan-error' : undefined}
-                onChange={(event) => {
-                  void changePlan(asPlanChoice(event.target.value))
+                onChange={(next) => {
+                  void changePlan(asPlanChoice(next))
                 }}
               >
                 <option value="auto">auto</option>
@@ -392,20 +393,20 @@ function LeadChat({
                     {id}
                   </option>
                 ))}
-              </select>
+              </Select>
             </span>
             {modelShown ? (
               <>
                 <span className="lead-option">
                   <label htmlFor="lead-model">Model</label>
-                  <select
+                  <Select
                     id="lead-model"
                     className="plan-choice lead-model"
                     title="The lead's own model. Workers keep the model set in Settings."
                     value={leadModel.value ?? ''}
                     disabled={leadStreaming}
-                    onChange={(event) => {
-                      const value = event.target.value
+                    onChange={(next) => {
+                      const value = next
                       void changeLeadModel(leadModel.plan, value === '' ? null : value)
                     }}
                   >
@@ -415,25 +416,25 @@ function LeadChat({
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </span>
               </>
             ) : null}
             <span className="lead-option">
               <label htmlFor="lead-access">Workers may</label>
-              <select
+              <Select
                 id="lead-access"
                 className="plan-choice lead-access"
                 value={workerAccess}
                 disabled={leadStreaming}
-                onChange={(event) => {
-                  void changeAccess(asAccess(event.target.value))
+                onChange={(next) => {
+                  void changeAccess(asAccess(next))
                 }}
               >
                 <option value="read">read only</option>
                 <option value="edit">edit files</option>
                 <option value="full">do anything</option>
-              </select>
+              </Select>
             </span>
           </>
         )}

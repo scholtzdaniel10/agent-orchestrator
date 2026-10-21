@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { isProviderId, PROVIDERS } from '../../core/types'
+import Select from './Select'
 
 type JobRecord = Awaited<ReturnType<Window['api']['listJobs']>>[number]
 type JobType = Parameters<Window['api']['submitJob']>[0]
@@ -342,24 +343,24 @@ function Routines({
             />
             <div className="composer-tools">
               <label htmlFor="routine-type">Job type</label>
-              <select
+              <Select
                 id="routine-type"
                 className="job-type"
                 value={draft.type}
-                onChange={(event) => setDraft({ ...draft, type: asJobType(event.target.value) })}
+                onChange={(next) => setDraft({ ...draft, type: asJobType(next) })}
               >
                 {JOB_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {type}
                   </option>
                 ))}
-              </select>
+              </Select>
               <label htmlFor="routine-worker">Worker</label>
-              <select
+              <Select
                 id="routine-worker"
                 className="plan-choice"
                 value={draft.worker}
-                onChange={(event) => setDraft({ ...draft, worker: asWorker(event.target.value) })}
+                onChange={(next) => setDraft({ ...draft, worker: asWorker(next) })}
               >
                 <option value="auto">auto</option>
                 {PROVIDERS.map((id) => (
@@ -367,24 +368,24 @@ function Routines({
                     {id}
                   </option>
                 ))}
-              </select>
+              </Select>
               <label htmlFor="routine-access">Access</label>
-              <select
+              <Select
                 id="routine-access"
                 className="job-access"
                 value={draft.access}
-                onChange={(event) => setDraft({ ...draft, access: asAccess(event.target.value) })}
+                onChange={(next) => setDraft({ ...draft, access: asAccess(next) })}
               >
                 <option value="read">Read only</option>
                 <option value="edit">Edit files</option>
                 <option value="full">Full access</option>
-              </select>
+              </Select>
               <label htmlFor="routine-after">Run automatically</label>
-              <select
+              <Select
                 id="routine-after"
                 value={draft.after}
-                onChange={(event) => {
-                  const value = event.target.value
+                onChange={(next) => {
+                  const value = next
                   setDraft({
                     ...draft,
                     after: value === '' ? '' : asJobType(value)
@@ -397,7 +398,7 @@ function Routines({
                     {`after every ${type} job`}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="routines-form-actions">
               <button type="submit" className="btn btn-primary" disabled={saving}>

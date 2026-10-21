@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Star } from './Star'
+import Select from './Select'
 
 type Goal = Awaited<ReturnType<Window['api']['listGoals']>>[number]
 type PlannedJob = Goal['rounds'][number]['jobs'][number]
@@ -262,32 +263,28 @@ function GoalsPanel({
               {edited.map((job, index) => (
                 <div key={index} className="goal-job">
                   <div className="goal-job-head">
-                    <select
+                    <Select
                       value={job.type}
                       aria-label="Job type"
-                      onChange={(event) =>
-                        editJob(index, { type: event.target.value as PlannedJob['type'] })
-                      }
+                      onChange={(next) => editJob(index, { type: next as PlannedJob['type'] })}
                     >
                       {JOB_TYPES.map((type) => (
                         <option key={type} value={type}>
                           {type}
                         </option>
                       ))}
-                    </select>
-                    <select
+                    </Select>
+                    <Select
                       value={job.access}
                       aria-label="Access"
-                      onChange={(event) =>
-                        editJob(index, { access: event.target.value as PlannedJob['access'] })
-                      }
+                      onChange={(next) => editJob(index, { access: next as PlannedJob['access'] })}
                     >
                       {ACCESS.map((value) => (
                         <option key={value} value={value}>
                           {value === 'full' ? 'edit + run commands' : 'edit files'}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="btn btn-quiet btn-compact"
@@ -558,18 +555,18 @@ function TriggersSection(): React.JSX.Element {
           }}
         >
           <div className="goal-form-foot">
-            <select
+            <Select
               className="field"
               value={kind}
               aria-label="When"
-              onChange={(event) => setKind(event.target.value as Trigger['kind'])}
+              onChange={(next) => setKind(next as Trigger['kind'])}
             >
               {(Object.keys(TRIGGER_LABEL) as Trigger['kind'][]).map((value) => (
                 <option key={value} value={value}>
                   {TRIGGER_LABEL[value]}
                 </option>
               ))}
-            </select>
+            </Select>
             {kind === 'daily' ? (
               <input
                 className="field"

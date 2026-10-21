@@ -13,6 +13,7 @@ import {
   type SidebarOptions
 } from './sidebar-cards'
 import { worktreeLabel, worktreeNameFromTask } from './worktree-label'
+import Select from './Select'
 
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
 type LeadChat = Awaited<ReturnType<Window['api']['listLeadChats']>>[number]
@@ -995,11 +996,11 @@ function WorktreesSection({
           </label>
           <label className="project-worktree-start">
             Start
-            <select
+            <Select
               value={start}
               aria-label="Start"
-              onChange={(event) => {
-                const value = event.target.value
+              onChange={(next) => {
+                const value = next
                 setStart(isProviderId(value) ? value : '')
               }}
             >
@@ -1011,7 +1012,7 @@ function WorktreesSection({
                   </option>
                 ) : null
               )}
-            </select>
+            </Select>
           </label>
         </form>
       ) : null}

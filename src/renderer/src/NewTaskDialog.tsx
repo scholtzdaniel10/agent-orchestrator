@@ -37,6 +37,7 @@ import {
   type NewTaskContext,
   type Who
 } from './new-task'
+import Select from './Select'
 
 interface NewTaskDialogProps {
   open: boolean
@@ -263,10 +264,10 @@ function NewTaskDialogOpen(props: Omit<NewTaskDialogProps, 'open'>): React.JSX.E
           {how === 'background' ? (
             <label className="new-task-field">
               Kind
-              <select
+              <Select
                 value={kind}
-                onChange={(event) => {
-                  setKind(asKind(event.target.value))
+                onChange={(next) => {
+                  setKind(asKind(next))
                 }}
               >
                 {JOB_KINDS.map((item) => (
@@ -274,7 +275,7 @@ function NewTaskDialogOpen(props: Omit<NewTaskDialogProps, 'open'>): React.JSX.E
                     {item}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : null}
           {props.isRepo && (how === 'background' || how === 'goal') ? (
