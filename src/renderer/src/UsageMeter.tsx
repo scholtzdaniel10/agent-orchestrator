@@ -10,7 +10,9 @@ import {
   dateValue,
   resetChoices,
   resetLabel,
-  updatedPhrase
+  updatedPhrase,
+  usageFigure,
+  type UsageShows
 } from './usage-format'
 
 const CURSOR_ESTIMATE =
@@ -385,11 +387,14 @@ function UsageHeading({ onOpenSetup }: { onOpenSetup: () => void }): React.JSX.E
 function UsageMeter({
   plans,
   now,
-  onOpenSetup
+  onOpenSetup,
+  shows = 'left'
 }: {
   plans: PlanStatus[] | null
   now: number
   onOpenSetup: () => void
+  /** Settings → General → Usage shows: what is left of each plan, or what is used. */
+  shows?: UsageShows
 }): React.JSX.Element {
   const [checking, setChecking] = useState(false)
   const checkingRef = useRef(false)
@@ -502,27 +507,29 @@ function UsageMeter({
                 ) : (
                   <>
                     <div className="usage-readout">
+                      {/* The warning colours follow what is left, whichever way it reads. */}
                       <div className="usage-figure">
-                        <span className="usage-percent">{left}%</span>
-                        <span className="usage-left-word">left</span>
+                        <span className="usage-percent">{usageFigure(plan.used, shows)}%</span>
+                        <span className="usage-left-word">{shows}</span>
                       </div>
                       <div
                         className="meter"
                         role="meter"
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={left}
-                        aria-label={`${plan.id} allowance left`}
+                        aria-valuenow={usageFigure(plan.used, shows)}
+                        aria-label={`${plan.id} allowance ${shows}`}
                       >
                         <div
                           className={meterFillClass(plan.id, left)}
-                          style={{ width: `${left}%` }}
+                          style={{ width: `${String(usageFigure(plan.used, shows))}%` }}
                         />
                       </div>
                       {hasWindows ? (
                         <div className="usage-windows">
                           {plan.windows.map((slot, index) => {
                             const slotLeft = headroomPercent(slot.used)
+                            const slotFigure = usageFigure(slot.used, shows)
                             const slotLabel = windowLabel(slot.name)
                             const slotReset =
                               slot.resetsAt === null ? null : resetPhrase(slot.resetsAt, now)
@@ -532,19 +539,21 @@ function UsageMeter({
                                   <span className="usage-window-label" title={slotLabel}>
                                     {slotLabel}
                                   </span>
-                                  <span className="usage-window-left">{slotLeft}% left</span>
+                                  <span className="usage-window-left">
+                                    {slotFigure}% {shows}
+                                  </span>
                                 </div>
                                 <div
                                   className="meter meter-thin"
                                   role="meter"
                                   aria-valuemin={0}
                                   aria-valuemax={100}
-                                  aria-valuenow={slotLeft}
-                                  aria-label={`${plan.id} ${slotLabel} allowance left`}
+                                  aria-valuenow={slotFigure}
+                                  aria-label={`${plan.id} ${slotLabel} allowance ${shows}`}
                                 >
                                   <div
                                     className={meterFillClass(plan.id, slotLeft)}
-                                    style={{ width: `${slotLeft}%` }}
+                                    style={{ width: `${String(slotFigure)}%` }}
                                   />
                                 </div>
                                 {slotReset !== null ? (

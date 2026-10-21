@@ -298,6 +298,8 @@ export interface Prefs {
   cloneDir: string | null
   /** Size of the whole window, terminals included, in percent: 80, 90, 100, 110 or 120. */
   uiScale: number
+  /** Usage meters read as what is left of a plan, or as what is used (as Claude's own page does). */
+  usageShows: 'left' | 'used'
 }
 
 /** Read-only facts for the Settings page. */

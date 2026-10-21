@@ -277,11 +277,15 @@ test('prefs default, validate and persist', () => {
       terminalFontSize: 13,
       notify: true,
       cloneDir: null,
-      uiScale: 90
+      uiScale: 90,
+      usageShows: 'left'
     })
     settings.setPrefs({ maxParallel: 5, notify: false, unknown: 'x' })
     expect(settings.setPrefs({ uiScale: 110 }).uiScale).toBe(110)
     expect(settings.setPrefs({ uiScale: 95 }).uiScale).toBe(90)
+    expect(settings.setPrefs({ usageShows: 'used' }).usageShows).toBe('used')
+    expect(new Settings(path).prefs().usageShows).toBe('used')
+    expect(settings.setPrefs({ usageShows: 'both' }).usageShows).toBe('left')
     expect(new Settings(path).prefs()).toMatchObject({ maxParallel: 5, notify: false })
     expect(settings.setPrefs({ maxParallel: 99, terminalFontSize: 2 })).toMatchObject({
       maxParallel: null,

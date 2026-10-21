@@ -278,6 +278,25 @@ function SettingsPage({
     },
     {
       section: 'general',
+      label: 'Usage shows',
+      help: 'How the usage meters and the status bar read each plan: what is left of it, or what is used, as Claude’s own usage page shows it.',
+      keywords: 'usage percent left used remaining meter allowance plan',
+      render: () => (
+        <Select
+          className="settings-select"
+          value={prefs?.usageShows ?? 'left'}
+          aria-label="Usage shows"
+          onChange={(picked) => {
+            savePrefs({ usageShows: picked === 'used' ? 'used' : 'left' })
+          }}
+        >
+          <option value="left">What is left</option>
+          <option value="used">What is used</option>
+        </Select>
+      )
+    },
+    {
+      section: 'general',
       label: 'Look',
       help: 'Colours for the whole window. System follows light or dark mode.',
       keywords: 'theme colour color dark light appearance',

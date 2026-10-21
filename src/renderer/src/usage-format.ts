@@ -9,6 +9,19 @@ export function agoPhrase(at: number, now: number): string {
   return days === 1 ? '1 day ago' : `${String(days)} days ago`
 }
 
+/** How usage meters read, chosen in Settings: what is left of a plan, or what is used. */
+export type UsageShows = 'left' | 'used'
+
+/**
+ * A plan's share as a whole percent, 0–100, read the way the person chose. `used` is the
+ * fraction used (0–1). Used is 100 minus left, so the two readings always add up to 100.
+ */
+export function usageFigure(used: number, shows: UsageShows): number {
+  const raw = Math.round((1 - used) * 100)
+  const left = Number.isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 0
+  return shows === 'left' ? left : 100 - left
+}
+
 /** "updated just now", "updated 4 min ago", "updated 2 h ago". */
 export function updatedPhrase(at: number, now: number): string {
   const minutes = Math.max(0, Math.floor((now - at) / 60_000))

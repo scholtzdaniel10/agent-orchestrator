@@ -7,7 +7,8 @@ import {
   monthTitle,
   monthWeeks,
   resetChoices,
-  updatedPhrase
+  updatedPhrase,
+  usageFigure
 } from './usage-format'
 
 test('how long ago the usage was read', () => {
@@ -71,4 +72,14 @@ test('a month as calendar weeks, Sunday first', () => {
       .filter((day) => day !== null)
   ).toHaveLength(31)
   expect(monthTitle(2026, 10)).toBe('November 2026')
+})
+
+test('a plan reads as what is left or what is used, always adding up to 100', () => {
+  expect(usageFigure(0.18, 'left')).toBe(82)
+  expect(usageFigure(0.18, 'used')).toBe(18)
+  expect(usageFigure(0.775, 'left') + usageFigure(0.775, 'used')).toBe(100)
+  expect(usageFigure(1.2, 'left')).toBe(0)
+  expect(usageFigure(1.2, 'used')).toBe(100)
+  expect(usageFigure(-0.1, 'used')).toBe(0)
+  expect(usageFigure(Number.NaN, 'left')).toBe(0)
 })
