@@ -86,7 +86,12 @@ function byId(list: Requirement[]): Record<RequirementId, Requirement> {
 test('status returns four rows in order with labels and needs', async () => {
   const list = await setupOf().status()
   expect(list.map((row) => row.id)).toEqual(['git', 'claude', 'cursor', 'gh'])
-  expect(list.map((row) => row.label)).toEqual(['Git', 'Claude Code', 'Cursor CLI', 'GitHub CLI'])
+  expect(list.map((row) => row.label)).toEqual([
+    'Git',
+    'Claude Code CLI',
+    'Cursor CLI',
+    'GitHub CLI'
+  ])
   expect(list.map((row) => row.need)).toEqual(['required', 'plan', 'plan', 'optional'])
   expect(list[0]?.signIn).toBeNull()
   expect(list[1]?.signIn).toBe('claude auth login')
@@ -131,7 +136,7 @@ test('claude and cursor cover missing, signed-out, and ready', async () => {
       installed: false,
       signedIn: false,
       state: 'missing',
-      note: 'Install Claude Code, then sign in.'
+      note: 'Install the Claude Code CLI, then sign in. Claude Code inside the Claude app does not count.'
     },
     {
       id: 'claude',
@@ -312,7 +317,9 @@ test('a hanging check counts as missing', async () => {
   expect(rows.git.state).toBe('missing')
   expect(rows.git.note).toBe('Needed for worktrees.')
   expect(rows.claude.state).toBe('missing')
-  expect(rows.claude.note).toBe('Install Claude Code, then sign in.')
+  expect(rows.claude.note).toBe(
+    'Install the Claude Code CLI, then sign in. Claude Code inside the Claude app does not count.'
+  )
   expect(rows.cursor.state).toBe('ready')
   expect(rows.gh.state).toBe('ready')
 })

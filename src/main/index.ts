@@ -1439,7 +1439,8 @@ app.whenReady().then(async () => {
     if (id !== 'claude' && id !== 'cursor' && id !== 'gh') {
       throw new Error('unknown setup tool')
     }
-    const label = id === 'claude' ? 'Claude Code' : id === 'cursor' ? 'Cursor CLI' : 'GitHub CLI'
+    const label =
+      id === 'claude' ? 'Claude Code CLI' : id === 'cursor' ? 'Cursor CLI' : 'GitHub CLI'
     const command = signInCommand(id, claude, cursor)
     const info = terms.openShell({
       cwd: app.getPath('home'),

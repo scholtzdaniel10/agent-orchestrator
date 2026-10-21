@@ -25,7 +25,7 @@ export interface SetupAdapter {
 
 const LABELS: Record<RequirementId, string> = {
   git: 'Git',
-  claude: 'Claude Code',
+  claude: 'Claude Code CLI',
   cursor: 'Cursor CLI',
   gh: 'GitHub CLI'
 }
@@ -156,7 +156,7 @@ function noteFor(id: RequirementId, state: RequirementState): string {
   if (id === 'claude') {
     return state === 'signed-out'
       ? 'Installed. Sign in to use your Claude plan.'
-      : 'Install Claude Code, then sign in.'
+      : 'Install the Claude Code CLI, then sign in. Claude Code inside the Claude app does not count.'
   }
   if (id === 'cursor') {
     return state === 'signed-out'
