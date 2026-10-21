@@ -7636,25 +7636,34 @@ label,
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--bot-cursor) 35%, transparent);
 }
 
-.usage-reading-number {
+/* Two small arrows beside the slider, stacked like a spin box without the box. */
+.usage-reading-step {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 12px;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.usage-reading-number input {
-  width: 58px;
-  height: 28px;
-  padding: 0 8px;
+.usage-reading-step button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 15px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--deep);
   color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  text-align: right;
+  cursor: pointer;
+}
+
+.usage-reading-step button:hover:not(:disabled) {
+  border-color: var(--bot-cursor);
+  color: var(--text);
+}
+
+.usage-reading-step button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .usage-reading-actions {

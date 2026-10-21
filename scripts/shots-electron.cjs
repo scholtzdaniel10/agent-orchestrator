@@ -229,11 +229,11 @@ const scenes = {
       }
       button?.click()
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      const number = document.querySelector('.usage-reading-number input')
-      if (number) {
+      const slider = document.querySelector('.usage-reading-percent input[type=range]')
+      if (slider) {
         const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
-        set.call(number, '37')
-        number.dispatchEvent(new Event('input', { bubbles: true }))
+        set.call(slider, '37')
+        slider.dispatchEvent(new Event('input', { bubbles: true }))
       }
       const days = [...document.querySelectorAll('.reset-calendar-day:not(:disabled)')]
       days[5]?.click()

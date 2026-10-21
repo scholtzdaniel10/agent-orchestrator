@@ -147,6 +147,21 @@ function windowLabel(name: string): string {
   return name
 }
 
+function Chevron({ up }: { up: boolean }): React.JSX.Element {
+  return (
+    <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true" focusable="false">
+      <path
+        d={up ? 'M1 5 5 1l4 4' : 'M1 1l4 4 4-4'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** The slider's position for what is typed: clamped to 0–100, 0 while it is not a number yet. */
 function sliderValue(percent: string): number {
   const value = Number(percent)
@@ -245,24 +260,33 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
               max={100}
               step={1}
               value={sliderValue(percent)}
+              autoFocus
               aria-label="Percent of Cursor usage used"
               style={{ '--fill': `${String(sliderValue(percent))}%` } as React.CSSProperties}
               onChange={(event) => setPercent(event.target.value)}
             />
-            <span className="usage-reading-number">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step="any"
-                inputMode="decimal"
-                value={percent}
-                autoFocus
-                aria-label="Percent used, exact"
-                onFocus={(event) => event.target.select()}
-                onChange={(event) => setPercent(event.target.value)}
-              />
-              %
+            {/* Fine-tune after a drag: one percent per click, like the slider's arrow keys. */}
+            <span className="usage-reading-step">
+              <button
+                type="button"
+                aria-label="One percent more"
+                disabled={sliderValue(percent) >= 100}
+                onClick={() =>
+                  setPercent(String(Math.min(100, Math.round(sliderValue(percent)) + 1)))
+                }
+              >
+                <Chevron up />
+              </button>
+              <button
+                type="button"
+                aria-label="One percent less"
+                disabled={sliderValue(percent) <= 0}
+                onClick={() =>
+                  setPercent(String(Math.max(0, Math.round(sliderValue(percent)) - 1)))
+                }
+              >
+                <Chevron up={false} />
+              </button>
             </span>
           </div>
         </div>
