@@ -12,6 +12,7 @@ import {
   type ProviderAdapter,
   type ProviderId,
   type RouterRules,
+  type RunMode,
   type RunHandle
 } from '../types'
 import type { JobRecord, Orchestrator } from '../router/orchestrator'
@@ -31,6 +32,20 @@ export function projectLine(path: string): string {
 }
 
 const REPORT_OUTPUT_MAX = 4000
+
+/** Plans the lead may start by itself after one message from the person, in Auto or LEG IT!. */
+export const MAX_AUTO_ROUNDS = 5
+
+/** Told to the lead on every turn outside Ask, since a resumed session keeps the old rules. */
+export function modeLine(mode: RunMode): string {
+  if (mode === 'auto') {
+    return 'Auto is on: your plan runs as soon as you propose it; nobody presses Run.'
+  }
+  if (mode === 'legit') {
+    return 'LEG IT! is on: your plan runs as soon as you propose it, with full access allowed. Follow the legate-leg-it skill: no progress reports, keep going until the work is checked and done, then report once.'
+  }
+  return ''
+}
 
 const NO_PLAN = 'No plan is available for the lead right now.'
 
@@ -72,6 +87,9 @@ export class Lead {
   private readonly now: () => number
   private readonly modelFor?: (provider: ProviderId) => string | undefined
   private readonly listJobs: () => JobRecord[]
+  private readonly runMode: () => RunMode
+  /** Plans started without the person since their last message. */
+  private autoRounds = 0
   private orch: Orchestrator | null = null
   private available: ProviderId[] = []
   private history: LeadMessage[] = []
@@ -109,6 +127,7 @@ export class Lead {
     now?: () => number
     modelFor?: (provider: ProviderId) => string | undefined
     listJobs?: () => JobRecord[]
+    runMode?: () => RunMode
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -121,6 +140,7 @@ export class Lead {
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
     this.listJobs = opts.listJobs ?? ((): JobRecord[] => [])
+    this.runMode = opts.runMode ?? ((): RunMode => 'ask')
   }
 
   /** Providers that are installed and signed in become the candidate set. */
@@ -141,6 +161,7 @@ export class Lead {
     if (text.trim() === '') throw new Error('empty message')
     if (this.busy) throw new Error('lead is busy')
     this.busy = true
+    this.autoRounds = 0
     const user: LeadMessage = { id: randomUUID(), role: 'user', text, status: 'done' }
     const lead: LeadMessage = { id: randomUUID(), role: 'lead', text: '', status: 'streaming' }
     this.ensureChat(text)
@@ -215,6 +236,11 @@ export class Lead {
     const message = this.history[index]
     message.proposal = copyProposal(proposal)
     this.emit(message)
+    // Past the cap the plan waits for Run, so a lead that keeps re-planning cannot drain a plan.
+    if (this.runMode() !== 'ask' && this.autoRounds < MAX_AUTO_ROUNDS) {
+      this.autoRounds += 1
+      this.runProposal(turn)
+    }
   }
 
   /** Start the plan on a lead message, with the person's edits. Returns the started jobs. */
@@ -423,7 +449,9 @@ export class Lead {
       }
       return { provider: this.direct, resume, prompt: text }
     }
-    const line = userRequest ? projectLine(this.project()) : ''
+    const line = [userRequest ? projectLine(this.project()) : '', modeLine(this.runMode())]
+      .filter((part) => part !== '')
+      .join('\n')
     if (this.sessionProvider !== null && this.sessionId) {
       return {
         provider: this.sessionProvider,

@@ -1,7 +1,15 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { isJobAccess, isProviderId, type JobAccess, type Prefs, type ProviderId } from './types'
+import {
+  isJobAccess,
+  isProviderId,
+  isRunMode,
+  type JobAccess,
+  type Prefs,
+  type ProviderId
+} from './types'
 
+const TAB_RE = /^[a-z]{1,20}$/
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/=,[\]-]*$/
 
 export function isValidModel(value: unknown): value is string {
@@ -136,7 +144,15 @@ export class Settings {
         ? (raw.uiScale as number)
         : DEFAULT_UI_SCALE,
       usageShows: raw.usageShows === 'used' ? 'used' : 'left',
-      cursorModels: raw.cursorModels === 'all' ? 'all' : 'own'
+      cursorModels: raw.cursorModels === 'all' ? 'all' : 'own',
+      runMode: isRunMode(raw.runMode) ? raw.runMode : 'ask',
+      legItHidden: Array.isArray(raw.legItHidden)
+        ? raw.legItHidden.filter(
+            (tab): tab is string => typeof tab === 'string' && TAB_RE.test(tab)
+          )
+        : [],
+      legItNoTerminals: raw.legItNoTerminals === true,
+      legItLeadOnly: raw.legItLeadOnly !== false
     }
   }
 
@@ -151,7 +167,11 @@ export class Settings {
       'cloneDir',
       'uiScale',
       'usageShows',
-      'cursorModels'
+      'cursorModels',
+      'runMode',
+      'legItHidden',
+      'legItNoTerminals',
+      'legItLeadOnly'
     ]) {
       if (Object.hasOwn(patch, key)) next[key] = patch[key]
     }

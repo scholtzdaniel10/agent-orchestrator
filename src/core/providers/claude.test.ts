@@ -613,3 +613,13 @@ process.exit(0)
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('Auto and LEG IT! pick the permission mode; Ask adds nothing', () => {
+  const plain = new ClaudeAdapter({ command: 'claude.exe' })
+  expect(noNote(plain.interactive({ mode: 'ask' })).args).toEqual([])
+  expect(noNote(plain.interactive({ mode: 'auto' })).args).toEqual(['--permission-mode', 'auto'])
+  expect(noNote(plain.interactive({ mode: 'legit' })).args).toEqual([
+    '--permission-mode',
+    'bypassPermissions'
+  ])
+})

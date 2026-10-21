@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction
 } from 'react'
-import { planOf } from '../../core/types'
+import { planOf, type RunMode } from '../../core/types'
 import { agentJobs } from './agent-tabs'
 import { printsSomething, terminalsToSleep, terminalsToWake } from './terminal-sleep'
 import ChangesTab from './ChangesTab'
@@ -477,7 +477,14 @@ function App(): React.JSX.Element {
   const [initialTerminalIds, setInitialTerminalIds] = useState<ReadonlySet<string> | null>(null)
   const [now, setNow] = useState(() => Date.now())
   // Settings → General → Usage shows; the meters and the status bar read it.
-  const usageShows: UsageShows = usePrefs()?.usageShows === 'used' ? 'used' : 'left'
+  const prefs = usePrefs()
+  const usageShows: UsageShows = prefs?.usageShows === 'used' ? 'used' : 'left'
+  const runMode = prefs?.runMode ?? 'ask'
+  const legit = runMode === 'legit'
+  const leadOnly = legit && prefs?.legItLeadOnly !== false
+  const noTerminals = legit && prefs?.legItNoTerminals === true
+  // While LEG IT! is on, the tabs Settings → LEG IT! hides; the Lead tab always stays.
+  const legitHidden = new Set(legit ? (prefs?.legItHidden ?? []).filter((t) => t !== 'lead') : [])
   const [terminalActivity, setTerminalActivity] = useState<Record<string, number>>({})
   const [leadMode, setLeadMode] = useState<ProviderId | null>(null)
 
@@ -1386,7 +1393,8 @@ function App(): React.JSX.Element {
     dragging === 'horizontal' ? 'is-dragging-row' : '',
     !sidebarShown ? 'is-hide-sidebar' : '',
     !drawerOpen ? 'is-hide-drawer' : '',
-    overlay && drawerOpen ? 'is-drawer-overlay' : ''
+    overlay && drawerOpen ? 'is-drawer-overlay' : '',
+    noTerminals ? 'is-legit-no-terminals' : ''
   ]
     .filter((name) => name !== '')
     .join(' ')
@@ -1711,7 +1719,7 @@ function App(): React.JSX.Element {
   }
 
   function renderTabBar(dock: DockId): React.JSX.Element {
-    const tabs = docks[dock]
+    const tabs = docks[dock].filter((tab) => !legitHidden.has(tab))
     const active = activeIn(dock)
     const order = tabsInOrder(docks)
     return (
@@ -1829,15 +1837,17 @@ function App(): React.JSX.Element {
         }}
       >
         {docks[dock].length === 0 ? <p className="dock-empty">Drag a tab here.</p> : null}
-        {docks[dock].map((tab) => (
-          <div
-            key={tab}
-            className={active === tab ? 'drawer-page' : 'drawer-page is-hidden'}
-            inert={active === tab ? undefined : true}
-          >
-            <ErrorBoundary>{tabContent(tab, active === tab)}</ErrorBoundary>
-          </div>
-        ))}
+        {docks[dock]
+          .filter((tab) => !legitHidden.has(tab))
+          .map((tab) => (
+            <div
+              key={tab}
+              className={active === tab ? 'drawer-page' : 'drawer-page is-hidden'}
+              inert={active === tab ? undefined : true}
+            >
+              <ErrorBoundary>{tabContent(tab, active === tab)}</ErrorBoundary>
+            </div>
+          ))}
       </div>
     )
   }
@@ -1921,6 +1931,96 @@ function App(): React.JSX.Element {
       />
     ) : null
 
+  function setRunMode(next: RunMode): void {
+    window.api.setPrefs({ runMode: next }).catch((err: unknown) => {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    })
+  }
+
+  const headerNode = (
+    <header className="app-header">
+      <div className="app-brand">
+        <RayBurst />
+        <span className="app-mark" aria-hidden="true">
+          <Star size={16} />
+        </span>
+        <div className="app-name">Legate</div>
+        {projectLabel !== '' ? (
+          <p className="app-context">
+            <span className="app-context-project">{projectLabel}</span>
+            {branchLabel !== null ? (
+              <span className="app-context-branch">{branchLabel}</span>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+      {/* Setup comes first; the workspace tools appear once it is done or skipped. */}
+      {setupOpen ? null : (
+        <div className="app-header-tools">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            aria-pressed={runMode === 'auto'}
+            title="Lead plans run at once, and the CLIs approve safe steps themselves"
+            onClick={() => {
+              setRunMode(runMode === 'auto' ? 'ask' : 'auto')
+            }}
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            className="btn btn-compact btn-legit"
+            aria-pressed={legit}
+            title="Everything runs without asking, in the project folder. Settings → LEG IT! sets what stays on screen."
+            onClick={() => {
+              setRunMode(legit ? 'ask' : 'legit')
+            }}
+          >
+            LEG IT!
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={() => {
+              void window.api.newWindow().catch((err: unknown) => {
+                setProjectError({ text: errorText(err), at: Date.now() })
+              })
+            }}
+          >
+            Window
+          </button>
+          {leadOnly ? null : (
+            <button
+              type="button"
+              className="btn btn-quiet btn-compact"
+              aria-pressed={drawerOpen}
+              title="Panel (Ctrl+B)"
+              onClick={() => {
+                setDrawerOpen((open) => !open)
+              }}
+            >
+              Panel
+            </button>
+          )}
+        </div>
+      )}
+    </header>
+  )
+
+  if (leadOnly && SOLO === null) {
+    return (
+      <div className={appClass} style={appStyle}>
+        {headerNode}
+        <section className="solo-panel legit-lead" aria-label={DRAWER_TAB_LABELS.lead}>
+          <div className="drawer-page">
+            <ErrorBoundary>{tabContent('lead', true)}</ErrorBoundary>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   if (SOLO !== null) {
     return (
       <div className={`${appClass} is-solo`} style={appStyle}>
@@ -1935,50 +2035,7 @@ function App(): React.JSX.Element {
 
   return (
     <div className={appClass} style={appStyle}>
-      <header className="app-header">
-        <div className="app-brand">
-          <RayBurst />
-          <span className="app-mark" aria-hidden="true">
-            <Star size={16} />
-          </span>
-          <div className="app-name">Legate</div>
-          {projectLabel !== '' ? (
-            <p className="app-context">
-              <span className="app-context-project">{projectLabel}</span>
-              {branchLabel !== null ? (
-                <span className="app-context-branch">{branchLabel}</span>
-              ) : null}
-            </p>
-          ) : null}
-        </div>
-        {/* Setup comes first; the workspace tools appear once it is done or skipped. */}
-        {setupOpen ? null : (
-          <div className="app-header-tools">
-            <button
-              type="button"
-              className="btn btn-quiet btn-compact"
-              onClick={() => {
-                void window.api.newWindow().catch((err: unknown) => {
-                  setProjectError({ text: errorText(err), at: Date.now() })
-                })
-              }}
-            >
-              Window
-            </button>
-            <button
-              type="button"
-              className="btn btn-quiet btn-compact"
-              aria-pressed={drawerOpen}
-              title="Panel (Ctrl+B)"
-              onClick={() => {
-                setDrawerOpen((open) => !open)
-              }}
-            >
-              Panel
-            </button>
-          </div>
-        )}
-      </header>
+      {headerNode}
       <div className="app-body">
         {sidebarShown ? (
           <div className="sidebar-slot">
@@ -2088,45 +2145,47 @@ function App(): React.JSX.Element {
             onDragState={setDragging}
           />
         ) : null}
-        <section className="workspace" aria-label="Workspace">
-          {sideDock('top')}
-          {dropZone('top')}
-          <ErrorBoundary className="workspace-slot">
-            <Workers
-              terminals={terminals.filter(
-                (info) => !(info.provider === 'shell' && info.change === undefined)
-              )}
-              initialTerminalIds={initialTerminalIds}
-              changes={changes}
-              selectedWorktree={selectedWorktree}
-              selectedWorktrees={selectedWorktrees}
-              placeTerminal={placeTerminal}
-              onSelectWorktree={(id) => {
-                selectWorktree(id, 'only')
-              }}
-              project={project?.path ?? ''}
-              bus={terminalBus}
-              paneLayout={paneLayout}
-              onPaneLayout={setPaneLayout}
-              agentJobs={agentJobs(jobs, agentTabs, closedAgents)}
-              focusAgent={focusAgent}
-              onCloseAgent={(id) => {
-                setAgentTabs((current) => current.filter((item) => item !== id))
-                setClosedAgents((current) => new Set([...current, id]))
-              }}
-              onTerminal={(info) => {
-                const state = bag.current
-                const next = applyTerminalUpdate(state.terminals, info, false)
-                state.terminals = next
-                setTerminals(next)
-                publish(state, setEvents)
-              }}
-            />
-          </ErrorBoundary>
-          {dropZone('bottom')}
-          {sideDock('bottom')}
-        </section>
-        {drawerOpen ? (
+        {noTerminals ? null : (
+          <section className="workspace" aria-label="Workspace">
+            {sideDock('top')}
+            {dropZone('top')}
+            <ErrorBoundary className="workspace-slot">
+              <Workers
+                terminals={terminals.filter(
+                  (info) => !(info.provider === 'shell' && info.change === undefined)
+                )}
+                initialTerminalIds={initialTerminalIds}
+                changes={changes}
+                selectedWorktree={selectedWorktree}
+                selectedWorktrees={selectedWorktrees}
+                placeTerminal={placeTerminal}
+                onSelectWorktree={(id) => {
+                  selectWorktree(id, 'only')
+                }}
+                project={project?.path ?? ''}
+                bus={terminalBus}
+                paneLayout={paneLayout}
+                onPaneLayout={setPaneLayout}
+                agentJobs={agentJobs(jobs, agentTabs, closedAgents)}
+                focusAgent={focusAgent}
+                onCloseAgent={(id) => {
+                  setAgentTabs((current) => current.filter((item) => item !== id))
+                  setClosedAgents((current) => new Set([...current, id]))
+                }}
+                onTerminal={(info) => {
+                  const state = bag.current
+                  const next = applyTerminalUpdate(state.terminals, info, false)
+                  state.terminals = next
+                  setTerminals(next)
+                  publish(state, setEvents)
+                }}
+              />
+            </ErrorBoundary>
+            {dropZone('bottom')}
+            {sideDock('bottom')}
+          </section>
+        )}
+        {drawerOpen && !noTerminals ? (
           <ResizeHandle
             className="layout-handle layout-handle-drawer"
             orientation="vertical"
@@ -2144,7 +2203,7 @@ function App(): React.JSX.Element {
             onDragState={setDragging}
           />
         ) : null}
-        {drawerOpen ? (
+        {drawerOpen || noTerminals ? (
           <aside className="drawer" aria-label="Panel">
             {renderTabBar('right')}
             {renderPages('right')}

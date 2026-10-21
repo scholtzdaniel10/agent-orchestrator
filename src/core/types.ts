@@ -305,6 +305,24 @@ export interface Prefs {
    * Cursor Models pool) or every model, Claude, GPT and Gemini too (the Other Models quota).
    */
   cursorModels: 'own' | 'all'
+  /**
+   * Who approves each step. ask: the person presses Run on the lead's plans and answers each
+   * terminal prompt. auto: plans run at once and the CLIs' own classifiers approve safe steps.
+   * legit (LEG IT!): plans run at once with full access and terminals skip every prompt.
+   */
+  runMode: RunMode
+  /** Panel tabs hidden while LEG IT! is on. */
+  legItHidden: string[]
+  /** Hide the terminals and the buttons that start them while LEG IT! is on. */
+  legItNoTerminals: boolean
+  /** While LEG IT! is on the window shows only the header and the Lead chat. */
+  legItLeadOnly: boolean
+}
+
+export type RunMode = 'ask' | 'auto' | 'legit'
+
+export function isRunMode(value: unknown): value is RunMode {
+  return value === 'ask' || value === 'auto' || value === 'legit'
 }
 
 /** Read-only facts for the Settings page. */

@@ -644,7 +644,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       { name: 'legate-review', givenTo: 'every agent' },
       { name: 'legate-cli', givenTo: 'workers' },
       { name: 'legate-worktree', givenTo: 'workers' },
-      { name: 'legate-delegate', givenTo: 'lead' }
+      { name: 'legate-delegate', givenTo: 'lead' },
+      { name: 'legate-leg-it', givenTo: 'lead' }
     ],
     folders: [
       {
@@ -1020,7 +1021,11 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       maxParallel: null,
       terminalFontSize: 13,
       notify: true,
-      cloneDir: 'C:/Users/dev/projects'
+      cloneDir: 'C:/Users/dev/projects',
+      runMode: params.get('runmode') ?? 'ask',
+      legItHidden: ['activity', 'history'],
+      legItNoTerminals: false,
+      legItLeadOnly: true
     }),
     setPrefs: (patch) =>
       Promise.resolve({

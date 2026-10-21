@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import type {
+  RunMode,
   AgentEvent,
   BridgeInfo,
   Job,
@@ -13,7 +14,7 @@ import { createOrchestratorTools, startBridge, type Bridge } from '../bridge'
 import { Orchestrator } from '../router/orchestrator'
 import { headroom, loadRules } from '../router/router'
 import { Store } from '../router/store'
-import { Lead, LEAD_INSTRUCTIONS, projectLine } from './lead'
+import { Lead, LEAD_INSTRUCTIONS, modeLine, projectLine } from './lead'
 
 const DIR = 'lead-work'
 const NO_PLAN = 'No plan is available for the lead right now.'
@@ -173,6 +174,7 @@ async function withLeadOrch(
     now?: () => number
     prefer?: ProviderId | (() => ProviderId | undefined)
     project?: () => string
+    runMode?: () => RunMode
   }
 ): Promise<void> {
   const store = new Store(':memory:')
@@ -200,7 +202,8 @@ async function withLeadOrch(
       project: opts?.project ?? ((): string => '/project'),
       prefer: opts?.prefer,
       now: opts?.now,
-      listJobs: (): import('../router/orchestrator').JobRecord[] => orch.list()
+      listJobs: (): import('../router/orchestrator').JobRecord[] => orch.list(),
+      runMode: opts?.runMode
     })
     leadRef.current = lead
     await lead.init()
@@ -1362,6 +1365,35 @@ test('a proposed plan waits for Run, then starts its jobs with titles and one re
     expect(orch.get(started[0].id)?.sessionId).toBe('w1')
     expect(lead.messages().filter((item) => item.kind === 'report')).toHaveLength(1)
   })
+})
+
+test('in Auto a proposed plan runs at once, and the lead is told so', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('lead-s', 'plan'),
+    done('w1', 'one'),
+    done('lead-s', 'reported')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch(
+    [cursor, claude],
+    async (lead, orch) => {
+      const message = await lead.send('do a thing')
+      expect(cursor.calls[0].job.prompt).toContain(modeLine('auto'))
+      lead.attachProposal(message.id, {
+        summary: 's',
+        status: 'waiting',
+        jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: 'p' }]
+      })
+      expect(lead.messages().find((item) => item.id === message.id)?.proposal?.status).toBe(
+        'running'
+      )
+      expect(orch.list()).toHaveLength(1)
+      await orch.idle()
+      await lead.whenQuiet()
+    },
+    { runMode: () => 'auto' }
+  )
 })
 
 test('a dismissed plan never runs', async () => {

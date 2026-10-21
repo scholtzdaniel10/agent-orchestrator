@@ -10,6 +10,7 @@ import {
   type ModelOption,
   type ProviderAdapter,
   type RunHandle,
+  type RunMode,
   type RunOptions
 } from '../types'
 import {
@@ -103,7 +104,9 @@ export class CursorAdapter implements ProviderAdapter {
 
   /** Interactive session: the same node + index.js as `run`, with no `-p`. */
   interactive(
-    modelOrOpts?: string | { model?: string; sessionId?: string; resume?: string; prompt?: string }
+    modelOrOpts?:
+      | string
+      | { model?: string; sessionId?: string; resume?: string; prompt?: string; mode?: RunMode }
   ): {
     command: string
     args: string[]
@@ -115,6 +118,8 @@ export class CursorAdapter implements ProviderAdapter {
     if (resume) args.push('--resume', resume)
     const model = this.cliModel(opts.model)
     if (model) args.push('--model', model)
+    if (opts.mode === 'auto') args.push('--auto-review')
+    if (opts.mode === 'legit') args.push('--force')
     args.push(...pluginArgs(this.plugins.worker))
     // A task means the person wants work done here now; Cursor's trust question would hold it up.
     if (opts.prompt && !opts.resume) args.push('--trust', withLegateNote(opts.prompt))

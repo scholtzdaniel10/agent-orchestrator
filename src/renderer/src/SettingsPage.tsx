@@ -4,6 +4,7 @@ import ModelPicker from './ModelPicker'
 import { Star } from './Star'
 import { THEMES, type ThemeId } from './theme'
 import Select from './Select'
+import { DRAWER_TABS, DRAWER_TAB_LABELS } from './layout'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 type ProjectEntry = Awaited<ReturnType<Window['api']['listProjects']>>[number]
@@ -19,10 +20,16 @@ function planTitle(id: ProviderId): string {
 }
 type SkillsState = Awaited<ReturnType<Window['api']['skillsGet']>>
 
-type SectionId = 'general' | 'agents' | 'skills' | 'projects' | 'terminal' | 'shortcuts' | 'about'
+type SectionId =
+  'general' | 'legit' | 'agents' | 'skills' | 'projects' | 'terminal' | 'shortcuts' | 'about'
 
 const SECTIONS: { id: SectionId; label: string; blurb: string }[] = [
   { id: 'general', label: 'General', blurb: 'Look, jobs at once and notifications.' },
+  {
+    id: 'legit',
+    label: 'LEG IT!',
+    blurb: 'What the window shows while LEG IT! runs everything without asking.'
+  },
   { id: 'agents', label: 'Agents', blurb: 'Sign-in, models and the lead.' },
   {
     id: 'skills',
@@ -253,7 +260,73 @@ function SettingsPage({
     )
   }
 
+  const hidden = new Set(prefs?.legItHidden ?? [])
+
   const entries: Entry[] = [
+    {
+      section: 'legit',
+      label: 'Lead only',
+      help: 'The window shows just the header and the Lead chat, so nothing else pulls at you while it works.',
+      keywords: 'leg it emergency one shot focus minimal lead chat only distraction',
+      render: () => (
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={prefs?.legItLeadOnly ?? true}
+            disabled={prefs === null}
+            onChange={(event) => {
+              savePrefs({ legItLeadOnly: event.target.checked })
+            }}
+          />
+          Only the Lead chat
+        </label>
+      )
+    },
+    {
+      section: 'legit',
+      label: 'Terminals',
+      help: 'Hides the terminals and the buttons that start them. Used when Lead only is off.',
+      keywords: 'leg it terminals spawner start new hide',
+      render: () => (
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={prefs?.legItNoTerminals ?? false}
+            disabled={prefs === null}
+            onChange={(event) => {
+              savePrefs({ legItNoTerminals: event.target.checked })
+            }}
+          />
+          Hide the terminals and their spawner
+        </label>
+      )
+    },
+    {
+      section: 'legit',
+      label: 'Panel tabs',
+      help: 'Tabs to hide. Used when Lead only is off; the Lead tab always stays.',
+      keywords: 'leg it tabs hide panel files jobs changes usage activity',
+      render: () => (
+        <span className="settings-checks">
+          {DRAWER_TABS.filter((tab) => tab !== 'lead').map((tab) => (
+            <label key={tab} className="settings-check">
+              <input
+                type="checkbox"
+                checked={hidden.has(tab)}
+                disabled={prefs === null}
+                onChange={(event) => {
+                  const next = new Set(hidden)
+                  if (event.target.checked) next.add(tab)
+                  else next.delete(tab)
+                  savePrefs({ legItHidden: [...next] })
+                }}
+              />
+              {`Hide ${DRAWER_TAB_LABELS[tab]}`}
+            </label>
+          ))}
+        </span>
+      )
+    },
     {
       section: 'general',
       label: 'Interface size',

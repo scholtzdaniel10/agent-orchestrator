@@ -7908,3 +7908,32 @@ label,
     transition: none;
   }
 }
+
+/* LEG IT!: the header button, and the layouts Settings → LEG IT! picks. */
+.btn-legit {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.app-header-tools .btn-legit[aria-pressed='true'] {
+  border-color: var(--bad);
+  background: var(--bad);
+  color: var(--on-accent);
+}
+
+.legit-lead {
+  grid-row: 2 / -1;
+  height: auto;
+}
+
+.app.is-legit-no-terminals .drawer {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.settings-checks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
