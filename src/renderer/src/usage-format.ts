@@ -33,3 +33,28 @@ export function dateFromValue(value: string): number | null {
   if (date.getDate() !== Number(match[3])) return null
   return date.getTime()
 }
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** How far ahead a monthly reset can be: a month of 31 days, and a day to spare. */
+export const RESET_DAYS_AHEAD = 32
+
+/**
+ * The days a monthly usage reset can fall on, from tomorrow to `days` days ahead:
+ * `{ value: '2026-11-05', label: 'Thu 5 Nov · in 15 days' }`.
+ */
+export function resetChoices(
+  now: number,
+  days = RESET_DAYS_AHEAD
+): { value: string; label: string }[] {
+  const today = new Date(now)
+  const choices: { value: string; label: string }[] = []
+  for (let ahead = 1; ahead <= days; ahead++) {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead)
+    const day = `${WEEKDAYS[date.getDay()]} ${String(date.getDate())} ${MONTHS[date.getMonth()]}`
+    const when = ahead === 1 ? 'tomorrow' : `in ${String(ahead)} days`
+    choices.push({ value: dateValue(date.getTime()), label: `${day} · ${when}` })
+  }
+  return choices
+}

@@ -3,7 +3,7 @@ import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
-import { agoPhrase, dateFromValue, dateValue, updatedPhrase } from './usage-format'
+import { agoPhrase, dateFromValue, dateValue, resetChoices, updatedPhrase } from './usage-format'
 
 const CURSOR_ESTIMATE =
   "Cursor does not report its usage. This is an estimate from Legate's own jobs."
@@ -151,9 +151,13 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const choices = resetChoices(now)
+
   function startEditing(): void {
     setPercent('')
-    setResets(reading?.resetsAt != null ? dateValue(reading.resetsAt) : '')
+    // Keep the date of the last reading when it is still one of the choices.
+    const last = reading?.resetsAt != null ? dateValue(reading.resetsAt) : ''
+    setResets(choices.some((choice) => choice.value === last) ? last : '')
     setError(null)
     setEditing(true)
   }
@@ -222,15 +226,22 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
               %
             </span>
           </label>
-          <label>
+          <label className="usage-reading-reset">
             Resets on
-            <input
-              type="date"
+            <select
               value={resets}
-              min={dateValue(now + 24 * 60 * MINUTE_MS)}
               aria-label="Date Cursor usage resets"
               onChange={(event) => setResets(event.target.value)}
-            />
+            >
+              <option value="" disabled>
+                Choose a day
+              </option>
+              {choices.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         {error !== null ? <p className="field-error">{error}</p> : null}

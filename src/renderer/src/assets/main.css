@@ -7591,15 +7591,28 @@ label,
   gap: 4px;
 }
 
-.usage-reading-fields input {
+/* Same height and surface as the model picker below them. */
+.usage-reading-fields input,
+.usage-reading-fields select {
   min-width: 0;
-  padding: 4px 6px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius, 6px);
-  background: var(--inset);
+  border-radius: var(--radius);
+  background: var(--deep);
   color: var(--text);
   font: inherit;
   font-size: 12px;
+}
+
+.usage-reading-reset {
+  flex: 1;
+  min-width: 160px;
+}
+
+.usage-reading-reset select {
+  width: 100%;
+  cursor: pointer;
 }
 
 .usage-reading-percent input {
