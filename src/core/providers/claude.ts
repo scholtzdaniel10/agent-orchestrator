@@ -112,7 +112,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     else if (opts.sessionId) args.push('--session-id', opts.sessionId)
     if (opts.model) args.push('--model', opts.model)
     if (opts.mode === 'auto') args.push('--permission-mode', 'auto')
-    if (opts.mode === 'legit') args.push('--permission-mode', 'bypassPermissions')
+    if (opts.mode === 'legit') args.push(...BYPASS)
     args.push('--append-system-prompt', LEGATE_NOTE, ...pluginArgs(this.plugins.worker))
     if (opts.prompt && !opts.resume) args.push(opts.prompt)
     return { command: this.bin.command, args }
@@ -153,19 +153,14 @@ export class ClaudeAdapter implements ProviderAdapter {
       writeFileSync(configPath, claudeMcpConfig(opts.bridge))
       const readDirs = opts.readDirs ?? []
       const tools = opts.bridge.tools.map((tool) => `mcp__orchestrator__${tool}`)
-      // The lead may look at the code it plans for, never change it.
+      // The lead may look at the code it plans for, never change it; LEG IT! lifts that.
       if (readDirs.length > 0) tools.push('Read', 'Grep', 'Glob')
       const allowed = tools.join(',')
       for (const dir of readDirs) args.push('--add-dir', dir)
-      args.push(
-        '--mcp-config',
-        configPath,
-        '--strict-mcp-config',
-        '--allowedTools',
-        allowed,
-        '--setting-sources',
-        'project'
-      )
+      args.push('--mcp-config', configPath, '--strict-mcp-config')
+      if (opts.unrestricted === true) args.push(...BYPASS)
+      else args.push('--allowedTools', allowed)
+      args.push('--setting-sources', 'project')
     }
     if (opts?.model) args.push('--model', opts.model)
     args.push('--append-system-prompt', LEGATE_NOTE)
@@ -209,6 +204,17 @@ const WRITE_TOOLS = ['Edit', 'Write', 'NotebookEdit']
  * when allowed to edit. A full-access job may run commands. Deny rules win over any allow
  * rule or permission mode.
  */
+/**
+ * Every tool without asking, and without Claude's one-time "are you sure" screen for this mode,
+ * which would hold a LEG IT! run at a prompt nobody is watching. Passed per run; nothing is saved.
+ */
+const BYPASS = [
+  '--permission-mode',
+  'bypassPermissions',
+  '--settings',
+  JSON.stringify({ skipDangerousModePermissionPrompt: true })
+]
+
 function workerArgs(access: JobAccess): string[] {
   if (access === 'full') {
     return ['--strict-mcp-config', '--permission-mode', 'bypassPermissions']

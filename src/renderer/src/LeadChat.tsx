@@ -225,7 +225,9 @@ function LeadChat({
     }
   }, [choice, settingsNonce])
 
-  const showModels = usePrefs()?.cursorModels ?? 'own'
+  const prefs = usePrefs()
+  const showModels = prefs?.cursorModels ?? 'own'
+  const legit = prefs?.runMode === 'legit'
   const modelShown = choice !== 'auto' && leadModel !== null && leadModel.plan === choice
   // Narrowed to Cursor's own pool unless Settings says all; the lead's model always stays listed.
   const listedModels = modelShown ? visibleModels(leadModel.options, choice, showModels) : []
@@ -273,6 +275,16 @@ function LeadChat({
   const leadStreaming = messages.some(
     (message) => message.role === 'lead' && message.status === 'streaming'
   )
+  // Anything of this chat still working: the lead writing, or jobs its plans started.
+  const chatIds = new Set(messages.map((message) => message.id))
+  const chatRunning =
+    leadStreaming ||
+    jobs.some(
+      (job) =>
+        job.leadMessage !== undefined &&
+        chatIds.has(job.leadMessage) &&
+        (job.status === 'running' || job.status === 'queued')
+    )
   const noPlanReady =
     plans !== null &&
     (mode === null ? !plans.some((plan) => plan.available) : !planAvailable(plans, mode))
@@ -291,6 +303,17 @@ function LeadChat({
       setSendError(errorText(err))
     } finally {
       sending.current = false
+    }
+  }
+
+  async function stop(): Promise<void> {
+    setSendError(null)
+    try {
+      const last = await window.api.stopLead()
+      // The stopped message comes back to fix and send again, unless something is typed already.
+      if (last !== null) setDraft((current) => (current.trim() === '' ? last : current))
+    } catch (err: unknown) {
+      setSendError(errorText(err))
     }
   }
 
@@ -430,8 +453,9 @@ function LeadChat({
               <Select
                 id="lead-access"
                 className="plan-choice lead-access"
-                value={workerAccess}
-                disabled={leadStreaming}
+                value={legit ? 'full' : workerAccess}
+                disabled={leadStreaming || legit}
+                title={legit ? 'LEG IT! gives every job full access' : undefined}
                 onChange={(next) => {
                   void changeAccess(asAccess(next))
                 }}
@@ -500,6 +524,9 @@ function LeadChat({
                   ) : null}
                   {!isUser && message.proposal?.status === 'dismissed' ? (
                     <p className="lead-wait hint">Plan dismissed. Nothing ran.</p>
+                  ) : null}
+                  {!isUser && message.proposal?.status === 'stopped' ? (
+                    <p className="lead-wait hint">Stopped. Edit your message and send it again.</p>
                   ) : null}
                   {!isUser && waitingJobs > 0 && message.status !== 'streaming' ? (
                     <p className="lead-wait hint">
@@ -596,9 +623,23 @@ function LeadChat({
           />
           <div className="composer-foot">
             <span className="composer-hint">Ctrl+Enter to send</span>
-            <button className="btn btn-primary" type="submit" disabled={sendDisabled}>
-              Send
-            </button>
+            <span className="composer-actions">
+              {chatRunning ? (
+                <button
+                  className="btn btn-danger"
+                  type="button"
+                  title="Stop the lead and every job of this chat; your message comes back to edit"
+                  onClick={() => {
+                    void stop()
+                  }}
+                >
+                  Stop
+                </button>
+              ) : null}
+              <button className="btn btn-primary" type="submit" disabled={sendDisabled}>
+                Send
+              </button>
+            </span>
           </div>
         </div>
       </form>

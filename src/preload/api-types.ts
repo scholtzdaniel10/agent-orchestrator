@@ -283,6 +283,8 @@ export interface OrchestratorApi {
   getLeadAccess(): Promise<JobAccess>
   setLeadAccess(access: JobAccess): Promise<void>
 
+  /** Stops the lead's turn and the open chat's jobs; returns the last message to edit and resend. */
+  stopLead(): Promise<string | null>
   sendLead(text: string): Promise<LeadMessage>
   /** Starts the plan on a lead message, with the person's edits when given. */
   runLeadProposal(messageId: string, jobs?: ProposedJob[]): Promise<JobRecord[]>

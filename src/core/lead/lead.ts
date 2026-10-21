@@ -33,7 +33,7 @@ export function projectLine(path: string): string {
 
 const REPORT_OUTPUT_MAX = 4000
 
-/** Plans the lead may start by itself after one message from the person, in Auto or LEG IT!. */
+/** Plans the lead may start by itself after one message from the person, in Auto. LEG IT! has no cap. */
 export const MAX_AUTO_ROUNDS = 5
 
 /** Told to the lead on every turn outside Ask, since a resumed session keeps the old rules. */
@@ -42,7 +42,12 @@ export function modeLine(mode: RunMode): string {
     return 'Auto is on: your plan runs as soon as you propose it; nobody presses Run.'
   }
   if (mode === 'legit') {
-    return 'LEG IT! is on: your plan runs as soon as you propose it, with full access allowed. Follow the legate-leg-it skill: no progress reports, keep going until the work is checked and done, then report once.'
+    return [
+      'LEG IT! is on, and it overrides every rule above about what you may do.',
+      'You have every tool with no prompts, and the open project is yours to change and run commands in directly. Do the work yourself, hand jobs out, or both: whatever finishes fastest.',
+      'Plans you propose run at once with full access; nobody presses Run or approves anything.',
+      'Follow the legate-leg-it skill: no progress reports, never stop to ask, keep going until the work is checked and done, then report once.'
+    ].join(' ')
   }
   return ''
 }
@@ -90,6 +95,10 @@ export class Lead {
   private readonly runMode: () => RunMode
   /** Plans started without the person since their last message. */
   private autoRounds = 0
+  /** The CLI run of the turn in progress, so Stop can end it. */
+  private turnHandle: RunHandle | undefined
+  /** Lead turns the person stopped; they end as stopped, not as errors. */
+  private readonly stoppedTurns = new Set<string>()
   private orch: Orchestrator | null = null
   private available: ProviderId[] = []
   private history: LeadMessage[] = []
@@ -234,13 +243,64 @@ export class Lead {
     const index = this.history.findIndex((item) => item.id === turn)
     if (index < 0) throw new Error('that lead turn is not open')
     const message = this.history[index]
+    const mode = this.runMode()
     message.proposal = copyProposal(proposal)
-    this.emit(message)
-    // Past the cap the plan waits for Run, so a lead that keeps re-planning cannot drain a plan.
-    if (this.runMode() !== 'ask' && this.autoRounds < MAX_AUTO_ROUNDS) {
+    // LEG IT!: every job gets full access and the plan runs at once, however many rounds it takes.
+    // Auto stops after MAX_AUTO_ROUNDS so a lead that keeps re-planning cannot drain a plan.
+    if (mode === 'legit') {
+      message.proposal.jobs = message.proposal.jobs.map((job) => ({ ...job, access: 'full' }))
+      this.runProposal(turn)
+      return
+    }
+    if (mode === 'auto' && this.autoRounds < MAX_AUTO_ROUNDS) {
       this.autoRounds += 1
       this.runProposal(turn)
+      return
     }
+    this.emit(message)
+  }
+
+  /** Starts every plan of the open chat that still waits for Run, with full access (LEG IT!). */
+  runWaiting(): void {
+    for (const message of this.history) {
+      const proposal = message.proposal
+      if (proposal?.status !== 'waiting') continue
+      proposal.jobs = proposal.jobs.map((job) => ({ ...job, access: 'full' }))
+      try {
+        this.runProposal(message.id)
+      } catch (err) {
+        console.error(err)
+      }
+    }
+  }
+
+  /**
+   * Stops the run of the open chat: the lead's turn, every job its plans started, and any report
+   * still to come. Returns the person's last message, so it can be edited and sent again.
+   */
+  stop(): string | null {
+    if (this.turnId !== null) {
+      this.stoppedTurns.add(this.turnId)
+      this.kill(this.turnHandle)
+    }
+    const ids = new Set(this.history.map((message) => message.id))
+    for (const job of this.listJobs()) {
+      if (job.leadMessage === undefined || !ids.has(job.leadMessage)) continue
+      if (job.status === 'running' || job.status === 'queued') this.orch?.cancel(job.id)
+    }
+    this.history.forEach((message, index) => {
+      const proposal = message.proposal
+      if (proposal === undefined) return
+      this.skipFollowUp.add(message.id)
+      if (proposal.status !== 'waiting' && proposal.status !== 'running') return
+      message.proposal = { ...proposal, status: 'stopped' }
+      this.persistMessage(message, index)
+      this.emit(message)
+    })
+    const chat = this.chatId
+    this.pendingFollowUps = this.pendingFollowUps.filter((item) => item.chatId !== chat)
+    const last = [...this.history].reverse().find((message) => message.role === 'user')
+    return last?.text ?? null
   }
 
   /** Start the plan on a lead message, with the person's edits. Returns the started jobs. */
@@ -549,10 +609,17 @@ export class Lead {
         direct ? this.project() : this.dir,
         {
           resume: plan.resume,
-          ...(direct ? {} : { bridge: this.bridge, readDirs: this.leadReadDirs() }),
+          ...(direct
+            ? {}
+            : {
+                bridge: this.bridge,
+                readDirs: this.leadReadDirs(),
+                unrestricted: this.runMode() === 'legit'
+              }),
           model: this.modelFor?.(provider)
         }
       )
+      this.turnHandle = handle
       for await (const event of handle.events) {
         if (event.kind === 'init') {
           sessionId = event.sessionId
@@ -601,6 +668,14 @@ export class Lead {
 
       if (limitEv) this.kill(handle)
       const exit = await handle.exit
+      if (this.stoppedTurns.delete(lead.id)) {
+        lead.status = 'done'
+        lead.text = lead.text === '' ? '[Stopped.]' : `${lead.text}\n[Stopped.]`
+        this.keepSession(provider, sessionId)
+        this.emit(lead)
+        record('ok')
+        return
+      }
       const stderrLimit =
         limitEv === null && result === null && exit.code !== 0 && adapter.isLimitError(exit.stderr)
       if (limitEv || stderrLimit) {

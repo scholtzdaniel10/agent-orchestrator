@@ -7918,7 +7918,7 @@ label,
 .app-header-tools .btn-legit[aria-pressed='true'] {
   border-color: var(--bad);
   background: var(--bad);
-  color: var(--on-accent);
+  color: var(--bg);
 }
 
 .legit-lead {
@@ -8335,4 +8335,22 @@ svg.files-chevron {
 
 .files-glyph.is-doc {
   stroke: var(--text);
+}
+
+/* Stop: ends the lead's run and its jobs. */
+.btn.btn-danger {
+  border-color: var(--bad);
+  background: var(--bad);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.btn.btn-danger:hover {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 85%, var(--text));
+}
+
+.composer-actions {
+  display: flex;
+  gap: var(--space-6);
 }

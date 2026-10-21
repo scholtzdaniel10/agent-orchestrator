@@ -134,6 +134,11 @@ export interface RunOptions {
   access?: JobAccess
   /** Folders a lead session may read, never write: the open project, so plans match the code. */
   readDirs?: string[]
+  /**
+   * LEG IT! lead: every tool, no prompts, and `readDirs` writable too. The person turned this on
+   * for one run that must not stop to ask.
+   */
+  unrestricted?: boolean
 }
 
 /** A model a CLI can run, for the model picker. */
@@ -217,7 +222,7 @@ export interface ProposedJob {
 export interface LeadProposal {
   summary: string
   jobs: ProposedJob[]
-  status: 'waiting' | 'running' | 'dismissed'
+  status: 'waiting' | 'running' | 'dismissed' | 'stopped'
   /** Ids of the jobs started from this plan, in the order of . */
   jobIds?: string[]
 }

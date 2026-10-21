@@ -620,6 +620,35 @@ test('Auto and LEG IT! pick the permission mode; Ask adds nothing', () => {
   expect(noNote(plain.interactive({ mode: 'auto' })).args).toEqual(['--permission-mode', 'auto'])
   expect(noNote(plain.interactive({ mode: 'legit' })).args).toEqual([
     '--permission-mode',
-    'bypassPermissions'
+    'bypassPermissions',
+    '--settings',
+    '{"skipDangerousModePermissionPrompt":true}'
   ])
+})
+
+test('a LEG IT! lead keeps the bridge but drops the tool list for bypass', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ao-lead-legit-'))
+  const script = writeScript(
+    root,
+    'argv.mjs',
+    `import { writeSync } from 'node:fs'
+writeSync(2, JSON.stringify(process.argv.slice(2)))
+process.exit(0)
+`
+  )
+  const adapter = new ClaudeAdapter({ command: process.execPath, args: [script] })
+  const bridge = { url: 'http://127.0.0.1:9/mcp', token: 't', tools: ['send_job'] }
+  try {
+    const plain = await argsNoNote(adapter.run({ id: 'j', prompt: 'p' }, root, { bridge }))
+    expect(plain).toContain('--allowedTools')
+    expect(plain).not.toContain('bypassPermissions')
+    const legit = await argsNoNote(
+      adapter.run({ id: 'j', prompt: 'p' }, root, { bridge, unrestricted: true })
+    )
+    expect(legit).not.toContain('--allowedTools')
+    expect(legit).toContain('bypassPermissions')
+    expect(legit).toContain('--strict-mcp-config')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

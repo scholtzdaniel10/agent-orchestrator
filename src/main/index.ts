@@ -935,6 +935,8 @@ app.whenReady().then(async () => {
     }
     return lead.runProposal(messageId, jobs === undefined ? undefined : proposedJobs(jobs))
   })
+  // Stop: the lead's turn and every job of the open chat. The last message comes back to edit.
+  ipcMain.handle('lead:stop', (): string | null => lead.stop())
   ipcMain.handle('lead:dismissProposal', (_event, messageId: unknown) => {
     if (typeof messageId !== 'string' || messageId === '' || messageId.length > 64) {
       throw new Error('invalid message id')
@@ -1387,8 +1389,11 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('prefs:get', (): Prefs => settings.prefs())
   ipcMain.handle('prefs:set', (_event, patch: unknown): Prefs => {
+    const wasLegit = settings.prefs().runMode === 'legit'
     settings.setPrefs(patch)
     const prefs = applyPrefs()
+    // Turning LEG IT! on starts any plan still waiting for Run, with full access.
+    if (prefs.runMode === 'legit' && !wasLegit) leadRef.current?.runWaiting()
     broadcast('prefs:update', prefs)
     return prefs
   })

@@ -336,6 +336,9 @@ const api: OrchestratorApi = {
   setLeadAccess(access: JobAccess): Promise<void> {
     return ipcRenderer.invoke('settings:setLeadAccess', access)
   },
+  stopLead(): Promise<string | null> {
+    return ipcRenderer.invoke('lead:stop')
+  },
   sendLead(text: string): Promise<LeadMessage> {
     return ipcRenderer.invoke('lead:send', text)
   },

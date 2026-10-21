@@ -141,8 +141,9 @@ export class CursorAdapter implements ProviderAdapter {
       const cursorDir = join(cwd, '.cursor')
       mkdirSync(cursorDir, { recursive: true })
       writeFileSync(join(cursorDir, 'mcp.json'), cursorMcpConfig(opts.bridge))
-      writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig())
+      writeFileSync(join(cursorDir, 'cli.json'), cursorCliConfig(opts.unrestricted === true))
       args.push('--approve-mcps')
+      if (opts.unrestricted === true) args.push('--force')
     }
     const model = this.cliModel(opts?.model)
     if (model) args.push('--model', model)
@@ -263,7 +264,13 @@ function allowEdits(cwd: string): (() => void) | undefined {
   }
 }
 
-function cursorCliConfig(): string {
+function cursorCliConfig(unrestricted = false): string {
+  // LEG IT!: the lead may run and change anything, so nothing is denied.
+  if (unrestricted) {
+    return JSON.stringify({
+      permissions: { allow: ['Mcp(orchestrator:*)', 'Shell(*)', 'Write(**)', 'Read(**)'], deny: [] }
+    })
+  }
   return JSON.stringify({
     permissions: {
       allow: ['Mcp(orchestrator:*)'],

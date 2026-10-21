@@ -14,7 +14,7 @@ import { createOrchestratorTools, startBridge, type Bridge } from '../bridge'
 import { Orchestrator } from '../router/orchestrator'
 import { headroom, loadRules } from '../router/router'
 import { Store } from '../router/store'
-import { Lead, LEAD_INSTRUCTIONS, modeLine, projectLine } from './lead'
+import { Lead, LEAD_INSTRUCTIONS, MAX_AUTO_ROUNDS, modeLine, projectLine } from './lead'
 
 const DIR = 'lead-work'
 const NO_PLAN = 'No plan is available for the lead right now.'
@@ -1416,5 +1416,104 @@ test('a dismissed plan never runs', async () => {
     )
     expect(() => lead.runProposal(message.id)).toThrow('already ran or was dismissed')
     expect(orch.list()).toEqual([])
+  })
+})
+
+test('in LEG IT! the lead is unrestricted, plans run at once with full access, with no cap', async () => {
+  const leadHeld = gate()
+  const scripts: Script[] = [{ ...done('lead-s', 'Working.'), gate: leadHeld.promise }]
+  for (let i = 0; i < MAX_AUTO_ROUNDS + 1; i += 1) scripts.push(done(`w${String(i)}`, 'ok'))
+  scripts.push(done('lead-s', 'Done.'))
+  const cursor = new FakeAdapter('cursor', scripts)
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch(
+    [cursor, claude],
+    async (lead, orch) => {
+      const pending = lead.send('ship it')
+      await waitUntil(() => lead.currentTurn() !== null)
+      const turn = lead.currentTurn() ?? ''
+      expect(cursor.calls[0].opts?.unrestricted).toBe(true)
+      expect(cursor.calls[0].job.prompt).toContain('LEG IT! is on')
+      // Past Auto's cap, every plan still runs at once.
+      for (let i = 0; i < MAX_AUTO_ROUNDS + 1; i += 1) {
+        lead.attachProposal(turn, {
+          summary: 's',
+          status: 'waiting',
+          jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: `p${String(i)}` }]
+        })
+        expect(lead.messages().find((item) => item.id === turn)?.proposal?.status).toBe('running')
+      }
+      expect(orch.list()).toHaveLength(MAX_AUTO_ROUNDS + 1)
+      expect(orch.list().every((job) => job.access === 'full')).toBe(true)
+      leadHeld.open()
+      await pending
+      await orch.idle()
+      await lead.whenQuiet()
+    },
+    { runMode: () => 'legit' }
+  )
+})
+
+test('Stop ends the turn and the chat jobs, and gives the last message back', async () => {
+  const leadHeld = gate()
+  const workerHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    {
+      gate: leadHeld.promise,
+      events: [{ kind: 'init', sessionId: 'lead-s' }]
+    },
+    { gate: workerHeld.promise, events: [{ kind: 'init', sessionId: 'w1' }] }
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch(
+    [cursor, claude],
+    async (lead, orch) => {
+      const pending = lead.send('fix the wrong thing')
+      await waitUntil(() => lead.currentTurn() !== null)
+      const turn = lead.currentTurn() ?? ''
+      lead.attachProposal(turn, {
+        summary: 's',
+        status: 'waiting',
+        jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: 'p' }]
+      })
+      await waitUntil(() => orch.list()[0]?.status === 'running')
+      expect(lead.stop()).toBe('fix the wrong thing')
+      leadHeld.open()
+      workerHeld.open()
+      const message = await pending
+      expect(message.status).toBe('done')
+      expect(message.text).toContain('[Stopped.]')
+      expect(message.proposal?.status).toBe('stopped')
+      await orch.idle()
+      await lead.whenQuiet()
+      expect(orch.list()[0]?.status).not.toBe('done')
+      expect(lead.messages().filter((item) => item.kind === 'report')).toHaveLength(0)
+    },
+    { runMode: () => 'auto' }
+  )
+})
+
+test('runWaiting starts a plan left waiting, with full access', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('lead-s', 'plan'),
+    done('w1', 'ok'),
+    done('lead-s', 'r')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch([cursor, claude], async (lead, orch) => {
+    const message = await lead.send('do it')
+    lead.attachProposal(message.id, {
+      summary: 's',
+      status: 'waiting',
+      jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: 'p' }]
+    })
+    expect(orch.list()).toEqual([])
+    lead.runWaiting()
+    expect(orch.list().map((job) => job.access)).toEqual(['full'])
+    await orch.idle()
+    await lead.whenQuiet()
   })
 })
