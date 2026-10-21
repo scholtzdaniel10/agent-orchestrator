@@ -508,6 +508,9 @@ function LeadChat({
                       message.text
                     ) : showDots ? (
                       <StreamingDots />
+                    ) : message.text.trim() === 'Working.' ? (
+                      // A LEG IT! round that is not finished: a quiet line, not a message.
+                      <span className="lead-working">Still working…</span>
                     ) : (
                       <RichText text={message.text} />
                     )}

@@ -46,7 +46,8 @@ export function modeLine(mode: RunMode): string {
       'LEG IT! is on, and it overrides every rule above about what you may do.',
       'You have every tool with no prompts, and the open project is yours to change and run commands in directly. Do the work yourself, hand jobs out, or both: whatever finishes fastest.',
       'Plans you propose run at once with full access; nobody presses Run or approves anything.',
-      'Follow the legate-leg-it skill: no progress reports, never stop to ask, keep going until the work is checked and done, then report once.'
+      'Follow the legate-leg-it skill. In short: decide the check that proves the work done, loop until it passes, never stop to ask, and reply only "Working." until then; report once at the end.',
+      'Even so: stay inside the project folder, never push or rewrite git history, never touch credentials or sign in, and stop and say so if the work needs any of that.'
     ].join(' ')
   }
   return ''
@@ -245,10 +246,10 @@ export class Lead {
     const message = this.history[index]
     const mode = this.runMode()
     message.proposal = copyProposal(proposal)
-    // LEG IT!: every job gets full access and the plan runs at once, however many rounds it takes.
-    // Auto stops after MAX_AUTO_ROUNDS so a lead that keeps re-planning cannot drain a plan.
+    // LEG IT!: the plan runs at once, however many rounds it takes, and a job that edits may run
+    // its own checks too. Auto stops after MAX_AUTO_ROUNDS so a re-planning lead cannot drain a plan.
     if (mode === 'legit') {
-      message.proposal.jobs = message.proposal.jobs.map((job) => ({ ...job, access: 'full' }))
+      message.proposal.jobs = message.proposal.jobs.map(legitJob)
       this.runProposal(turn)
       return
     }
@@ -260,12 +261,12 @@ export class Lead {
     this.emit(message)
   }
 
-  /** Starts every plan of the open chat that still waits for Run, with full access (LEG IT!). */
+  /** Starts every plan of the open chat that still waits for Run, as LEG IT! would have. */
   runWaiting(): void {
     for (const message of this.history) {
       const proposal = message.proposal
       if (proposal?.status !== 'waiting') continue
-      proposal.jobs = proposal.jobs.map((job) => ({ ...job, access: 'full' }))
+      proposal.jobs = proposal.jobs.map(legitJob)
       try {
         this.runProposal(message.id)
       } catch (err) {
@@ -815,7 +816,7 @@ export class Lead {
       this.turnId = lead.id
       this.turnChat.set(lead.id, chatId)
       this.emit(lead)
-      await this.turn(lead, buildReportPrompt(jobs))
+      await this.turn(lead, buildReportPrompt(jobs, this.runMode() === 'legit'))
     } catch (err) {
       lead.status = 'error'
       if (lead.text === '') lead.text = errorText(err)
@@ -962,9 +963,23 @@ function copyProposal(proposal: LeadProposal): LeadProposal {
   return copy
 }
 
-function buildReportPrompt(jobs: JobRecord[]): string {
+/**
+ * A job as LEG IT! runs it: one that edits also gets a shell, so it can run its own checks without
+ * asking. A read-only job stays read-only: full access needs a worktree, and a folder that is not
+ * a git repository has none.
+ */
+function legitJob(job: ProposedJob): ProposedJob {
+  return job.access === 'edit' ? { ...job, access: 'full' } : { ...job }
+}
+
+/** The status line of a LEG IT! turn that is not finished; the chat shows it as a quiet line. */
+export const LEGIT_WORKING = 'Working.'
+
+function buildReportPrompt(jobs: JobRecord[], legit = false): string {
   const lines = [
-    'Worker jobs from an earlier turn have finished. Report to the user in a few lines.',
+    legit
+      ? 'Worker jobs from an earlier turn have finished. LEG IT! is still on: this is not the moment to report unless the work is done.'
+      : 'Worker jobs from an earlier turn have finished. Report to the user in a few lines.',
     ''
   ]
   for (const job of jobs) {
@@ -987,7 +1002,11 @@ function buildReportPrompt(jobs: JobRecord[]): string {
     }
     lines.push('')
   }
-  lines.push('Summarize for the user; keep it short.')
+  lines.push(
+    legit
+      ? `If the check passed and nothing is left, give your one final report. Otherwise fix it yourself or propose the next plan now, and reply with exactly "${LEGIT_WORKING}"`
+      : 'Summarize for the user; keep it short.'
+  )
   return lines.join('\n')
 }
 

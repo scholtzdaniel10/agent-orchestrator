@@ -1440,7 +1440,7 @@ test('in LEG IT! the lead is unrestricted, plans run at once with full access, w
         lead.attachProposal(turn, {
           summary: 's',
           status: 'waiting',
-          jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: `p${String(i)}` }]
+          jobs: [{ title: 'T', type: 'refactor', access: 'edit', prompt: `p${String(i)}` }]
         })
         expect(lead.messages().find((item) => item.id === turn)?.proposal?.status).toBe('running')
       }
@@ -1495,7 +1495,7 @@ test('Stop ends the turn and the chat jobs, and gives the last message back', as
   )
 })
 
-test('runWaiting starts a plan left waiting, with full access', async () => {
+test('runWaiting starts a plan left waiting; an editing job gets full access', async () => {
   const cursor = new FakeAdapter('cursor', [
     done('lead-s', 'plan'),
     done('w1', 'ok'),
@@ -1508,12 +1508,47 @@ test('runWaiting starts a plan left waiting, with full access', async () => {
     lead.attachProposal(message.id, {
       summary: 's',
       status: 'waiting',
-      jobs: [{ title: 'T', type: 'planning', access: 'read', prompt: 'p' }]
+      jobs: [
+        { title: 'Read', type: 'review', access: 'read', prompt: 'look' },
+        { title: 'Edit', type: 'refactor', access: 'edit', prompt: 'change' }
+      ]
     })
     expect(orch.list()).toEqual([])
     lead.runWaiting()
-    expect(orch.list().map((job) => job.access)).toEqual(['full'])
+    expect(orch.list().map((job) => job.access)).toEqual(['read', 'full'])
     await orch.idle()
     await lead.whenQuiet()
   })
+})
+
+test('a LEG IT! report turn is told to keep going, not to summarize', async () => {
+  const leadHeld = gate()
+  const cursor = new FakeAdapter('cursor', [
+    { ...done('lead-s', 'Working.'), gate: leadHeld.promise },
+    done('w1', 'tests fail'),
+    done('lead-s', 'Working.')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch(
+    [cursor, claude],
+    async (lead, orch) => {
+      const pending = lead.send('fix it')
+      await waitUntil(() => lead.currentTurn() !== null)
+      lead.attachProposal(lead.currentTurn() ?? '', {
+        summary: 's',
+        status: 'waiting',
+        jobs: [{ title: 'T', type: 'debugging', access: 'read', prompt: 'p' }]
+      })
+      leadHeld.open()
+      await pending
+      await orch.idle()
+      await lead.whenQuiet()
+      const report = cursor.calls[2].job.prompt
+      expect(report).toContain('LEG IT! is still on')
+      expect(report).toContain('reply with exactly "Working."')
+      expect(report).not.toContain('Summarize for the user')
+    },
+    { runMode: () => 'legit' }
+  )
 })
