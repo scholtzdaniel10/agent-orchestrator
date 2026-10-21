@@ -244,7 +244,7 @@ function Routines({
           </button>
         </div>
         {setupTooLong ? (
-          <p className="field-error" role="alert">
+          <p className="error-text" role="alert">
             At most 5 commands, one per line.
           </p>
         ) : null}
@@ -258,7 +258,7 @@ function Routines({
       <section className="routines-list" aria-label="Routines">
         {loading ? <p className="hint">Loading routines…</p> : null}
         {loadError !== null ? (
-          <p className="field-error" role="alert">
+          <p className="error-text" role="alert">
             {loadError}
           </p>
         ) : null}
@@ -307,7 +307,7 @@ function Routines({
           </div>
         ))}
         {runError !== null ? (
-          <p className="field-error" role="alert">
+          <p className="error-text" role="alert">
             {runError}
           </p>
         ) : null}

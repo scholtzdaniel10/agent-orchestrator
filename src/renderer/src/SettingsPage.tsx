@@ -795,7 +795,7 @@ function SettingsPage({
         </nav>
         <div className="settings-content">
           {error !== null ? (
-            <p className="field-error" role="alert">
+            <p className="error-text" role="alert">
               {error}
             </p>
           ) : null}

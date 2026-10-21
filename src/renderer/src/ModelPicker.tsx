@@ -137,7 +137,7 @@ function ModelField({
         </div>
       ) : null}
       {error !== null ? (
-        <p id={errorId} className="field-error" role="alert">
+        <p id={errorId} className="error-text" role="alert">
           {error}
         </p>
       ) : null}

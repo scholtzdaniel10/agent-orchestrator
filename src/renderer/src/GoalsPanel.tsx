@@ -204,7 +204,7 @@ function GoalsPanel({
           </p>
         </form>
       ) : null}
-      {error !== null ? <p className="field-error">{error}</p> : null}
+      {error !== null ? <p className="error-text">{error}</p> : null}
       {goals !== null && goals.length === 0 && !creating ? (
         <p className="hint">
           No goals yet. Start one here, or add a check to a job in Jobs to fix until it passes.
@@ -631,7 +631,7 @@ function TriggersSection(): React.JSX.Element {
           </div>
         </form>
       ) : null}
-      {error !== null ? <p className="field-error">{error}</p> : null}
+      {error !== null ? <p className="error-text">{error}</p> : null}
       {triggers.length > 0 ? (
         <ul className="goal-list">
           {triggers.map((trigger) => (

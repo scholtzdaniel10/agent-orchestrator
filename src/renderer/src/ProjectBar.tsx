@@ -1888,7 +1888,7 @@ function ProjectBar({
         </div>
       ) : null}
       {error !== null ? (
-        <p className="field-error project-error" role="alert">
+        <p className="error-text project-error" role="alert">
           {error}
         </p>
       ) : null}

@@ -439,12 +439,12 @@ function LeadChat({
         )}
       </div>
       {modelError !== null ? (
-        <p className="field-error" role="alert">
+        <p className="error-text" role="alert">
           {modelError}
         </p>
       ) : null}
       {planError !== null ? (
-        <p id="lead-plan-error" className="field-error" role="alert">
+        <p id="lead-plan-error" className="error-text" role="alert">
           {planError}
         </p>
       ) : null}

@@ -211,14 +211,14 @@ function ReviewPane({
         </p>
       ) : null}
       {actionError !== null ? (
-        <p className="field-error" role="alert">
+        <p className="error-text" role="alert">
           {actionError}
         </p>
       ) : null}
       <div className="review-diff" ref={diffRef} aria-busy={shown === null}>
         {shown === null ? <p className="diff-status">Loading diff…</p> : null}
         {shown !== null && shown.error !== null ? (
-          <p className="field-error" role="alert">
+          <p className="error-text" role="alert">
             {shown.error}
           </p>
         ) : null}

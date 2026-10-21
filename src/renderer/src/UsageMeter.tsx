@@ -343,7 +343,7 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
           ) : null}
         </span>
       </p>
-      {error !== null ? <p className="field-error">{error}</p> : null}
+      {error !== null ? <p className="error-text">{error}</p> : null}
     </>
   )
 }
@@ -578,7 +578,7 @@ function UsageMeter({
                       <CursorReading plan={plan} now={now} />
                     ) : null}
                     {plan.id === 'claude' && refreshError !== null ? (
-                      <p className="field-error">{refreshError}</p>
+                      <p className="error-text">{refreshError}</p>
                     ) : null}
                     {hasDetails ? (
                       <div className="usage-details">
