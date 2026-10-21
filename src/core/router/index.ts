@@ -1,7 +1,9 @@
 export { Orchestrator } from './orchestrator'
 export type { JobRecord, JobStatus, PlanProblem, WorkerInfo } from './orchestrator'
 export {
+  DASHBOARD_WINDOW,
   DEFAULT_PACE,
+  dashboardReading,
   defaultRules,
   headroom,
   loadRules,

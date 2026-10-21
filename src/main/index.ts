@@ -43,7 +43,14 @@ import { TESTED_VERSIONS } from '../core/providers/versions'
 import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
-import { loadRules, Orchestrator, Store, type JobRecord } from '../core/router'
+import {
+  DASHBOARD_WINDOW,
+  dashboardReading,
+  loadRules,
+  Orchestrator,
+  Store,
+  type JobRecord
+} from '../core/router'
 import { isValidModel, Settings } from '../core/settings'
 import { isJobAccess, isJobType, isProviderId, planOf } from '../core/types'
 import type {
@@ -832,6 +839,19 @@ app.whenReady().then(async () => {
     }
   )
   ipcMain.handle('usage:refresh', () => refreshUsage(false))
+  // Cursor reports no usage, so the person copies it from cursor.com/dashboard.
+  ipcMain.handle('usage:setReading', (_event, usedPercent: unknown, resetsAt: unknown) => {
+    const now = Date.now()
+    const reading = dashboardReading(usedPercent, resetsAt, now)
+    if (typeof reading === 'string') return { ok: false, error: reading }
+    shared.saveWindows('cursor', [reading], now)
+    publishPlans()
+    return { ok: true }
+  })
+  ipcMain.handle('usage:clearReading', () => {
+    shared.deleteWindow('cursor', DASHBOARD_WINDOW)
+    publishPlans()
+  })
   ipcMain.handle('jobs:list', () => orch.list())
   ipcMain.handle('jobs:cancel', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')

@@ -7562,3 +7562,51 @@ label,
   gap: 6px;
   margin: 4px 0 0;
 }
+
+/* Cursor's usage, copied from its dashboard. */
+.usage-reading-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.usage-reading-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.usage-reading-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.usage-reading-percent {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.usage-reading-fields input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.usage-reading-percent input {
+  width: 64px;
+}
+
+.usage-reading-actions {
+  display: flex;
+  gap: 6px;
+}

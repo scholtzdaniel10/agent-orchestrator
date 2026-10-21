@@ -3,10 +3,13 @@ import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
-import { updatedPhrase } from './usage-format'
+import { agoPhrase, dateFromValue, dateValue, updatedPhrase } from './usage-format'
 
 const CURSOR_ESTIMATE =
   "Cursor does not report its usage. This is an estimate from Legate's own jobs."
+const CURSOR_DASHBOARD = 'https://cursor.com/dashboard'
+/** Window name the main process stores a dashboard reading under. */
+const DASHBOARD_WINDOW = 'dashboard'
 
 type PlanStatus = Awaited<ReturnType<Window['api']['listPlans']>>[number]
 
@@ -132,7 +135,151 @@ function meterFillClass(id: PlanStatus['id'], left: number): string {
 function windowLabel(name: string): string {
   if (name === 'five_hour') return '5-hour'
   if (name === 'seven_day') return 'weekly'
+  if (name === DASHBOARD_WINDOW) return 'this month'
   return name
+}
+
+/**
+ * Cursor reports no usage, so the person can copy it from their dashboard. Legate then adds its
+ * own Cursor and Grok jobs on top until the next reading.
+ */
+function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.JSX.Element {
+  const reading = plan.windows.find((slot) => slot.name === DASHBOARD_WINDOW)
+  const [editing, setEditing] = useState(false)
+  const [percent, setPercent] = useState('')
+  const [resets, setResets] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  function startEditing(): void {
+    setPercent('')
+    setResets(reading?.resetsAt != null ? dateValue(reading.resetsAt) : '')
+    setError(null)
+    setEditing(true)
+  }
+
+  function save(): void {
+    const resetsAt = dateFromValue(resets)
+    const used = percent.trim() === '' ? Number.NaN : Number(percent)
+    setSaving(true)
+    window.api
+      .setCursorReading(used, resetsAt ?? Number.NaN)
+      .then(
+        (result) => {
+          if (result.ok) {
+            setEditing(false)
+            setError(null)
+          } else {
+            setError(result.error ?? 'Could not save the reading.')
+          }
+        },
+        (err: unknown) => {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      )
+      .finally(() => {
+        setSaving(false)
+      })
+  }
+
+  function clear(): void {
+    window.api.clearCursorReading().catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
+  }
+
+  if (editing) {
+    return (
+      <form
+        className="usage-reading-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          save()
+        }}
+      >
+        <p className="hint">
+          Copy these from{' '}
+          <a href={CURSOR_DASHBOARD} target="_blank" rel="noreferrer">
+            your Cursor dashboard
+          </a>
+          , for the usage your Legate jobs draw on.
+        </p>
+        <div className="usage-reading-fields">
+          <label>
+            Used
+            <span className="usage-reading-percent">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="any"
+                inputMode="decimal"
+                value={percent}
+                autoFocus
+                aria-label="Percent of Cursor usage used"
+                onChange={(event) => setPercent(event.target.value)}
+              />
+              %
+            </span>
+          </label>
+          <label>
+            Resets on
+            <input
+              type="date"
+              value={resets}
+              min={dateValue(now + 24 * 60 * MINUTE_MS)}
+              aria-label="Date Cursor usage resets"
+              onChange={(event) => setResets(event.target.value)}
+            />
+          </label>
+        </div>
+        {error !== null ? <p className="field-error">{error}</p> : null}
+        <div className="usage-reading-actions">
+          <button type="submit" className="btn btn-compact" disabled={saving}>
+            Save
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            onClick={() => {
+              setEditing(false)
+              setError(null)
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <>
+      <p className="usage-fresh hint">
+        <span>
+          {reading === undefined || plan.usageAt === null
+            ? CURSOR_ESTIMATE
+            : `From your dashboard, read ${agoPhrase(plan.usageAt, now)}, plus Legate's jobs since.`}
+        </span>
+        <span className="usage-reading-actions">
+          <button
+            type="button"
+            className="btn btn-quiet btn-compact"
+            title="Enter the usage shown on cursor.com/dashboard"
+            onClick={startEditing}
+          >
+            {reading === undefined ? 'Set from dashboard' : 'Update'}
+          </button>
+          {reading !== undefined ? (
+            <button type="button" className="btn btn-quiet btn-compact" onClick={clear}>
+              Clear
+            </button>
+          ) : null}
+        </span>
+      </p>
+      {error !== null ? <p className="field-error">{error}</p> : null}
+    </>
+  )
 }
 
 function WarnGlyph(): React.JSX.Element {
@@ -362,7 +509,7 @@ function UsageMeter({
                         </button>
                       </p>
                     ) : planOf(plan.id) === 'cursor' ? (
-                      <p className="usage-fresh hint">{CURSOR_ESTIMATE}</p>
+                      <CursorReading plan={plan} now={now} />
                     ) : null}
                     {plan.id === 'claude' && refreshError !== null ? (
                       <p className="field-error">{refreshError}</p>

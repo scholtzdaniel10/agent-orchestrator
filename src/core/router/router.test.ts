@@ -4,6 +4,9 @@ import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { JobType } from '../types'
 import {
+  addMonths,
+  dashboardReading,
+  DASHBOARD_WINDOW,
   DEFAULT_PACE,
   headroom,
   loadRules,
@@ -495,5 +498,98 @@ test('pace changes who wins and why', () => {
       { provider: 'claude', fit: 1, headroom: 0.25, paceFactor: 1, atRisk: false, score: 0.25 },
       { provider: 'cursor', fit: 0.5, headroom: 1, paceFactor: 1, atRisk: false, score: 0.5 }
     ])
+  })
+})
+
+test('a dashboard reading counts, plus Legate runs on the plan since it', () => {
+  const rules = loadRules()
+  const units = rules.allowance.cursor.units
+  const read = new Date(2026, 9, 21, 12).getTime()
+  const resets = new Date(2026, 10, 5, 0).getTime()
+  withStore((store) => {
+    insert(store, { provider: 'cursor', started_at: read - 1, tokens: units / 2 })
+    store.saveWindows(
+      'cursor',
+      [{ name: DASHBOARD_WINDOW, utilization: 0.4, resetsAt: resets }],
+      read
+    )
+    // The run before the reading is already in the dashboard's number.
+    expect(planUsage('cursor', store, rules, read + 1).used).toBeCloseTo(0.4)
+
+    // Grok spends the Cursor plan, so its runs count too.
+    insert(store, { provider: 'grok', started_at: read + 10, tokens: units / 10 })
+    insert(store, { provider: 'cursor', started_at: read + 20, tokens: units / 10 })
+    const usage = planUsage('cursor', store, rules, read + 30)
+    expect(usage.used).toBeCloseTo(0.6)
+    expect(usage.resetsAt).toBe(resets)
+    expect(usage.windows).toEqual([
+      expect.objectContaining({ name: DASHBOARD_WINDOW, resetsAt: resets })
+    ])
+    expect(headroom('cursor', store, rules, read + 30)).toBeCloseTo(0.4)
+  })
+})
+
+test('after its reset, a dashboard reading counts only runs in the new cycle', () => {
+  const rules = loadRules()
+  const units = rules.allowance.cursor.units
+  const read = new Date(2026, 9, 21, 12).getTime()
+  const resets = new Date(2026, 10, 5, 0).getTime()
+  withStore((store) => {
+    store.saveWindows(
+      'cursor',
+      [{ name: DASHBOARD_WINDOW, utilization: 0.9, resetsAt: resets }],
+      read
+    )
+    insert(store, { provider: 'cursor', started_at: read + 10, tokens: units / 10 })
+    insert(store, { provider: 'cursor', started_at: resets + 10, tokens: units / 20 })
+
+    const usage = planUsage('cursor', store, rules, resets + 60_000)
+    expect(usage.used).toBeCloseTo(0.05)
+    expect(usage.resetsAt).toBe(new Date(2026, 11, 5, 0).getTime())
+
+    // Two cycles on, the next reset is still on the 5th.
+    const later = planUsage('cursor', store, rules, new Date(2027, 0, 6).getTime())
+    expect(later.used).toBe(0)
+    expect(later.resetsAt).toBe(new Date(2027, 1, 5, 0).getTime())
+  })
+})
+
+test('addMonths keeps the anchor day through short months', () => {
+  const jan31 = new Date(2027, 0, 31, 9).getTime()
+  expect(addMonths(jan31, 1)).toBe(new Date(2027, 1, 28, 9).getTime())
+  expect(addMonths(jan31, 2)).toBe(new Date(2027, 2, 31, 9).getTime())
+  expect(addMonths(new Date(2026, 11, 15).getTime(), 1)).toBe(new Date(2027, 0, 15).getTime())
+})
+
+test('dashboardReading checks the percentage and the reset date', () => {
+  const now = new Date(2026, 9, 21).getTime()
+  const next = new Date(2026, 10, 5).getTime()
+  expect(dashboardReading(37.5, next, now)).toEqual({
+    name: DASHBOARD_WINDOW,
+    utilization: 0.375,
+    resetsAt: next
+  })
+  expect(dashboardReading(0, next, now)).toEqual(expect.objectContaining({ utilization: 0 }))
+  expect(dashboardReading(100, next, now)).toEqual(expect.objectContaining({ utilization: 1 }))
+  expect(dashboardReading('40', next, now)).toBe('Enter how much is used, as a percentage.')
+  expect(dashboardReading(Number.NaN, next, now)).toBe('Enter how much is used, as a percentage.')
+  expect(dashboardReading(101, next, now)).toBe('Usage must be between 0 and 100%.')
+  expect(dashboardReading(-1, next, now)).toBe('Usage must be between 0 and 100%.')
+  expect(dashboardReading(40, null, now)).toBe('Enter the date your usage resets.')
+  expect(dashboardReading(40, now, now)).toBe('The reset date has to be in the future.')
+})
+
+test('deleteWindow removes one window and leaves the rest', () => {
+  withStore((store) => {
+    store.saveWindows(
+      'claude',
+      [
+        { name: 'five_hour', utilization: 0.2, resetsAt: NOW + 1 },
+        { name: DASHBOARD_WINDOW, utilization: 0.3, resetsAt: NOW + 1 }
+      ],
+      NOW
+    )
+    store.deleteWindow('claude', DASHBOARD_WINDOW)
+    expect(store.windows('claude').map((window) => window.name)).toEqual(['five_hour'])
   })
 })

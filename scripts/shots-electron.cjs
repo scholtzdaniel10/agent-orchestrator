@@ -212,6 +212,24 @@ const scenes = {
   },
   docks: { query: '?docks', scheme: 'dark', size: [1440, 900], script: openFile },
   goals: { query: '?tab=goals', scheme: 'dark', size: [1440, 900], script: '' },
+  usage: { query: '?tab=usage', scheme: 'dark', size: [1440, 900], script: '' },
+  'usage-reading': {
+    query: '?tab=usage',
+    scheme: 'dark',
+    size: [1440, 900],
+    script: `(async () => {
+      const deadline = Date.now() + 5000
+      let button = null
+      while (Date.now() < deadline) {
+        button = [...document.querySelectorAll('button')].find(
+          (el) => el.textContent === 'Set from dashboard'
+        )
+        if (button) break
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      button?.click()
+    })()`
+  },
   'drag-zones': {
     query: '',
     scheme: 'dark',
