@@ -94,8 +94,9 @@ const PANEL_TABS = [
   'routines',
   'usage',
   'activity',
-  'history',
-  'goals'
+  'goals',
+  'git',
+  'sessions'
 ]
 const PANEL_TITLES: Record<string, string> = {
   files: 'Files',
@@ -105,8 +106,9 @@ const PANEL_TITLES: Record<string, string> = {
   routines: 'Routines',
   usage: 'Usage',
   activity: 'Activity',
-  history: 'History',
-  goals: 'Goals'
+  goals: 'Goals',
+  git: 'Source control',
+  sessions: 'Sessions'
 }
 const terminalClaims = new TerminalClaims()
 

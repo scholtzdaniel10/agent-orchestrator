@@ -103,7 +103,7 @@ const scenes = {
     })()`
   },
   history: {
-    query: '?tab=history',
+    query: '?tab=git',
     scheme: 'dark',
     size: [1440, 900],
     script: `(async () => {

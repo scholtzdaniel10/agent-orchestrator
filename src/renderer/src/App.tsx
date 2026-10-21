@@ -26,7 +26,6 @@ import { markSetupSeen, setupSeen } from './setup-seen'
 import { RayBurst, Star } from './Star'
 import { TabIcon } from './TabIcon'
 import UsageMeter from './UsageMeter'
-import HistoryPanel from './HistoryPanel'
 import CodeEditor from './CodeEditor'
 import SessionsPanel from './SessionsPanel'
 import SourceControlPanel from './SourceControlPanel'
@@ -1705,14 +1704,6 @@ function App(): React.JSX.Element {
             }}
           />
         )
-      case 'history':
-        return shown ? (
-          <HistoryPanel
-            where={selectedWorktree}
-            label={filesLabel}
-            refreshKey={`${String(changes.length)}:${String(jobs.filter((job) => job.status === 'done').length)}`}
-          />
-        ) : null
       case 'sessions':
         return shown ? (
           <SessionsPanel

@@ -62,16 +62,6 @@ export function TabIcon({ tab }: { tab: DrawerTab }): React.JSX.Element {
       )
     case 'activity':
       return glyph(<polyline points="1.5 8 4 8 6 3.5 8.5 12.5 11 8 14.5 8" />)
-    case 'history':
-      return glyph(
-        <>
-          <line x1="4" y1="3.5" x2="4" y2="12.5" />
-          <line x1="4" y1="6.5" x2="11" y2="6.5" />
-          <circle cx="4" cy="3.5" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="4" cy="12.5" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="6.5" r="1.4" fill="currentColor" stroke="none" />
-        </>
-      )
     case 'git':
       return glyph(
         <>

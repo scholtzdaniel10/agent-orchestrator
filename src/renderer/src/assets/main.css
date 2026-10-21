@@ -8150,11 +8150,6 @@ label,
   font-size: 11px;
 }
 
-.sc-graph .history-list {
-  margin: 0;
-  padding: 0;
-}
-
 /* Files: outlines beside each name, and git-ignored entries set back. */
 .files-glyph {
   flex: none;
@@ -8255,6 +8250,9 @@ label,
   background: var(--selected);
 }
 
-.sc-graph .history-ref {
-  margin-left: var(--space-6);
+/* The history sits under the branch, tall enough for the graph and a commit's diff. */
+.sc-panel > .sc-history {
+  display: flex;
+  flex: 1 0 auto;
+  min-height: 480px;
 }

@@ -1,12 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { graphRows } from './commit-graph'
-import { Graph } from './HistoryPanel'
-import { ago, refBadges } from './history-format'
+import { useEffect, useState } from 'react'
+import HistoryPanel from './HistoryPanel'
 
 type BranchStatus = Awaited<ReturnType<Window['api']['branchStatus']>>
-type CommitPage = Awaited<ReturnType<Window['api']['commitLog']>>
-
-const GRAPH_ROWS = 50
 
 function errorText(err: unknown): string {
   if (!(err instanceof Error)) return String(err)
@@ -25,7 +20,7 @@ function folderOf(path: string): string {
 /**
  * The selected folder's branch, as VS Code's Source Control shows it: where it stands against its
  * upstream and base, a message box that commits everything, publish or push, a pull request, the
- * files the branch changes, and the commit graph under them.
+ * files the branch changes, and the history (graph, commits and their diffs) under them.
  */
 function SourceControlPanel({
   where,
@@ -41,12 +36,10 @@ function SourceControlPanel({
   const [nonce, setNonce] = useState(0)
   const key = `${where ?? ''}|${String(nonce)}|${refreshKey}`
   const [status, setStatus] = useState<{ key: string; value: BranchStatus } | null>(null)
-  const [log, setLog] = useState<{ key: string; page: CommitPage; at: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState<'commit' | 'push' | 'pr' | null>(null)
   const [filesOpen, setFilesOpen] = useState(true)
-  const [graphOpen, setGraphOpen] = useState(true)
 
   useEffect(() => {
     let on = true
@@ -57,12 +50,6 @@ function SourceControlPanel({
       (err: unknown) => {
         if (on) setError(errorText(err))
       }
-    )
-    window.api.commitLog(where, 0).then(
-      (page) => {
-        if (on) setLog({ key, page, at: Date.now() })
-      },
-      () => {}
     )
     return () => {
       on = false
@@ -80,10 +67,6 @@ function SourceControlPanel({
   }, [])
 
   const branch = status?.key === key ? status.value : (status?.value ?? null)
-  const commits = useMemo(() => (log?.page.commits ?? []).slice(0, GRAPH_ROWS), [log])
-  const rows = useMemo(() => graphRows(commits), [commits])
-  const width = rows.reduce((max, row) => Math.max(max, row.width), 1)
-  const now = log?.at ?? 0
 
   function act(kind: 'commit' | 'push' | 'pr', task: () => Promise<unknown>): void {
     setBusy(kind)
@@ -251,53 +234,9 @@ function SourceControlPanel({
           ) : null}
         </section>
       ) : null}
-      <section className="sc-section sc-graph" aria-label="Commits">
-        <button
-          type="button"
-          className="sc-section-head"
-          aria-expanded={graphOpen}
-          onClick={() => {
-            setGraphOpen((open) => !open)
-          }}
-        >
-          <span>Commits</span>
-          <span className="tab-badge">{`${String(commits.length)}${log?.page.more === true || (log?.page.commits.length ?? 0) > GRAPH_ROWS ? '+' : ''}`}</span>
-        </button>
-        {graphOpen ? (
-          <ol className="history-list">
-            {commits.map((commit, index) => {
-              const row = rows[index]
-              const isHead = commit.refs.some((ref) => ref === 'HEAD' || ref.startsWith('HEAD -> '))
-              return (
-                <li key={commit.hash}>
-                  <div
-                    className="history-row"
-                    title={`${commit.subject}\n${commit.author} · ${new Date(commit.time).toLocaleString()}`}
-                  >
-                    {row !== undefined ? <Graph row={row} width={width} head={isHead} /> : null}
-                    <span className="history-text">
-                      <span className="history-subject">
-                        {commit.subject}
-                        {refBadges(commit.refs).map((badge) => (
-                          <span
-                            key={`${badge.kind}-${badge.name}`}
-                            className={`history-ref is-${badge.kind}`}
-                          >
-                            {badge.name}
-                          </span>
-                        ))}
-                      </span>
-                    </span>
-                    <span className="history-meta">
-                      <span className="history-age">{ago(commit.time, now)}</span>
-                    </span>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        ) : null}
-      </section>
+      <div className="sc-history">
+        <HistoryPanel where={where} label="Commits" refreshKey={`${refreshKey}|${String(nonce)}`} />
+      </div>
     </div>
   )
 }

@@ -53,7 +53,6 @@ export const DRAWER_TABS = [
   'routines',
   'usage',
   'activity',
-  'history',
   'goals',
   'git',
   'sessions'
@@ -69,7 +68,6 @@ export const DRAWER_TAB_LABELS: Record<DrawerTab, string> = {
   routines: 'Routines',
   usage: 'Usage',
   activity: 'Activity',
-  history: 'History',
   goals: 'Goals',
   git: 'Source control',
   sessions: 'Sessions'
@@ -615,8 +613,8 @@ export function layoutShortcut(event: {
   if (event.key === '5') return 'routines'
   if (event.key === '6') return 'usage'
   if (event.key === '7') return 'activity'
-  if (event.key === '8') return 'history'
-  if (event.key === '9') return 'goals'
+  if (event.key === '8') return 'goals'
+  if (event.key === '9') return 'git'
   return null
 }
 
