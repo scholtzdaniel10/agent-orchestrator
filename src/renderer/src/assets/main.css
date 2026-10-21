@@ -7567,34 +7567,85 @@ label,
 .usage-reading-form {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   margin: 4px 0 0;
 }
 
-.usage-reading-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.usage-reading-fields label {
+.usage-reading-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+}
+
+.usage-reading-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.usage-reading-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-reading-percent {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
 }
 
-/* Same height and surface as the model picker below them. */
-.usage-reading-fields input,
-.usage-reading-fields select {
+/* The slider reads like the meter above it: a thin track filled in the plan's colour. */
+.usage-reading-percent input[type='range'] {
+  flex: 1;
   min-width: 0;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.usage-reading-percent input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--bot-cursor) var(--fill, 0%),
+    var(--deep) var(--fill, 0%)
+  );
+}
+
+.usage-reading-percent input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 3px solid var(--bot-cursor);
+  border-radius: 50%;
+  background: var(--bg);
+  appearance: none;
+}
+
+.usage-reading-percent input[type='range']:focus-visible {
+  outline: none;
+}
+
+.usage-reading-percent input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bot-cursor) 35%, transparent);
+}
+
+.usage-reading-number {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.usage-reading-number input {
+  width: 58px;
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -7603,23 +7654,116 @@ label,
   color: var(--text);
   font: inherit;
   font-size: 12px;
-}
-
-.usage-reading-reset {
-  flex: 1;
-  min-width: 160px;
-}
-
-.usage-reading-reset select {
-  width: 100%;
-  cursor: pointer;
-}
-
-.usage-reading-percent input {
-  width: 64px;
+  text-align: right;
 }
 
 .usage-reading-actions {
   display: flex;
   gap: 6px;
+}
+
+/* A month grid like the Windows 11 calendar: round days, today ringed, the pick filled. */
+.reset-calendar {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--deep);
+}
+
+.reset-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 6px 6px;
+}
+
+.reset-calendar-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reset-calendar-nav {
+  display: flex;
+  gap: 2px;
+}
+
+.reset-calendar-step {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reset-calendar-step:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.reset-calendar-step:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.reset-calendar-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reset-calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  justify-items: center;
+}
+
+.reset-calendar-weekday {
+  padding: 2px 0 4px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.reset-calendar-day {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.reset-calendar-day:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.reset-calendar-day:disabled {
+  color: var(--faint);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.reset-calendar-day.is-today {
+  border-color: var(--muted);
+}
+
+.reset-calendar-day.is-selected,
+.reset-calendar-day.is-selected:hover:not(:disabled) {
+  border-color: var(--bot-cursor);
+  background: var(--bot-cursor);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.reset-calendar-day:focus-visible {
+  outline: 2px solid var(--bot-cursor);
+  outline-offset: 1px;
 }

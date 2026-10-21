@@ -34,15 +34,65 @@ export function dateFromValue(value: string): number | null {
   return date.getTime()
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December'
+]
 
 /** How far ahead a monthly reset can be: a month of 31 days, and a day to spare. */
 export const RESET_DAYS_AHEAD = 32
 
+/** Whole calendar days from the day of `fromMs` to the day of `toMs`, in local time. */
+export function daysBetween(fromMs: number, toMs: number): number {
+  const from = new Date(fromMs)
+  const to = new Date(toMs)
+  const start = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())
+  const end = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate())
+  return Math.round((end - start) / 86_400_000)
+}
+
+/** "Nov 4 (14d)": a reset day the way Cursor's dashboard shows it, with days left from today. */
+export function resetLabel(ms: number, now: number): string {
+  const date = new Date(ms)
+  const left = daysBetween(now, ms)
+  return `${MONTHS[date.getMonth()]} ${String(date.getDate())} (${String(left)}d)`
+}
+
+/** "November 2026" */
+export function monthTitle(year: number, month: number): string {
+  return `${MONTH_NAMES[month]} ${String(year)}`
+}
+
+/**
+ * The weeks of a month for a calendar grid, Sunday first as Windows shows it. Each cell is a day
+ * of the month, or null where the week runs into the month before or after.
+ */
+export function monthWeeks(year: number, month: number): (number | null)[][] {
+  const lead = new Date(year, month, 1).getDay()
+  const length = new Date(year, month + 1, 0).getDate()
+  const cells: (number | null)[] = []
+  for (let i = 0; i < lead; i++) cells.push(null)
+  for (let day = 1; day <= length; day++) cells.push(day)
+  while (cells.length % 7 !== 0) cells.push(null)
+  const weeks: (number | null)[][] = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+  return weeks
+}
+
 /**
  * The days a monthly usage reset can fall on, from tomorrow to `days` days ahead:
- * `{ value: '2026-11-05', label: 'Thu 5 Nov · in 15 days' }`.
+ * `{ value: '2026-11-04', label: 'Nov 4 (14d)' }`.
  */
 export function resetChoices(
   now: number,
@@ -52,9 +102,7 @@ export function resetChoices(
   const choices: { value: string; label: string }[] = []
   for (let ahead = 1; ahead <= days; ahead++) {
     const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead)
-    const day = `${WEEKDAYS[date.getDay()]} ${String(date.getDate())} ${MONTHS[date.getMonth()]}`
-    const when = ahead === 1 ? 'tomorrow' : `in ${String(ahead)} days`
-    choices.push({ value: dateValue(date.getTime()), label: `${day} · ${when}` })
+    choices.push({ value: dateValue(date.getTime()), label: resetLabel(date.getTime(), now) })
   }
   return choices
 }

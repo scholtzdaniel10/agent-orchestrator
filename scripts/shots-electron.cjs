@@ -216,7 +216,7 @@ const scenes = {
   'usage-reading': {
     query: '?tab=usage',
     scheme: 'dark',
-    size: [1440, 900],
+    size: [1440, 1240],
     script: `(async () => {
       const deadline = Date.now() + 5000
       let button = null
@@ -228,6 +228,15 @@ const scenes = {
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
       button?.click()
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const number = document.querySelector('.usage-reading-number input')
+      if (number) {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+        set.call(number, '37')
+        number.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      const days = [...document.querySelectorAll('.reset-calendar-day:not(:disabled)')]
+      days[5]?.click()
     })()`
   },
   'drag-zones': {

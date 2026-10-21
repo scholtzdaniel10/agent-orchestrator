@@ -3,7 +3,15 @@ import { planOf } from '../../core/types'
 import { Star } from './Star'
 import BotAvatar from './BotAvatar'
 import ModelPicker from './ModelPicker'
-import { agoPhrase, dateFromValue, dateValue, resetChoices, updatedPhrase } from './usage-format'
+import ResetCalendar from './ResetCalendar'
+import {
+  agoPhrase,
+  dateFromValue,
+  dateValue,
+  resetChoices,
+  resetLabel,
+  updatedPhrase
+} from './usage-format'
 
 const CURSOR_ESTIMATE =
   "Cursor does not report its usage. This is an estimate from Legate's own jobs."
@@ -139,6 +147,24 @@ function windowLabel(name: string): string {
   return name
 }
 
+/** The slider's position for what is typed: clamped to 0–100, 0 while it is not a number yet. */
+function sliderValue(percent: string): number {
+  const value = Number(percent)
+  if (percent.trim() === '' || !Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
+/** "37% used · 63% left", as the card will show it once saved. */
+function usedSummary(percent: string): string {
+  const value = Number(percent)
+  if (percent.trim() === '' || !Number.isFinite(value) || value < 0 || value > 100) {
+    return 'enter 0 to 100'
+  }
+  const used = Math.round(value * 10) / 10
+  const left = Math.round((100 - value) * 10) / 10
+  return `${String(used)}% used · ${String(left)}% left`
+}
+
 /**
  * Cursor reports no usage, so the person can copy it from their dashboard. Legate then adds its
  * own Cursor and Grok jobs on top until the next reading.
@@ -151,13 +177,12 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const choices = resetChoices(now)
-
   function startEditing(): void {
-    setPercent('')
+    // Start from what the card shows now, so a new reading is a nudge from there.
+    setPercent(String(reading === undefined ? 0 : Math.round(reading.used * 100)))
     // Keep the date of the last reading when it is still one of the choices.
     const last = reading?.resetsAt != null ? dateValue(reading.resetsAt) : ''
-    setResets(choices.some((choice) => choice.value === last) ? last : '')
+    setResets(resetChoices(now).some((choice) => choice.value === last) ? last : '')
     setError(null)
     setEditing(true)
   }
@@ -208,10 +233,23 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
           </a>
           , for the usage your Legate jobs draw on.
         </p>
-        <div className="usage-reading-fields">
-          <label>
-            Used
-            <span className="usage-reading-percent">
+        <div className="usage-reading-field">
+          <div className="usage-reading-label">
+            <span>Used</span>
+            <span className="usage-reading-value">{usedSummary(percent)}</span>
+          </div>
+          <div className="usage-reading-percent">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={sliderValue(percent)}
+              aria-label="Percent of Cursor usage used"
+              style={{ '--fill': `${String(sliderValue(percent))}%` } as React.CSSProperties}
+              onChange={(event) => setPercent(event.target.value)}
+            />
+            <span className="usage-reading-number">
               <input
                 type="number"
                 min={0}
@@ -220,29 +258,22 @@ function CursorReading({ plan, now }: { plan: PlanStatus; now: number }): React.
                 inputMode="decimal"
                 value={percent}
                 autoFocus
-                aria-label="Percent of Cursor usage used"
+                aria-label="Percent used, exact"
+                onFocus={(event) => event.target.select()}
                 onChange={(event) => setPercent(event.target.value)}
               />
               %
             </span>
-          </label>
-          <label className="usage-reading-reset">
-            Resets on
-            <select
-              value={resets}
-              aria-label="Date Cursor usage resets"
-              onChange={(event) => setResets(event.target.value)}
-            >
-              <option value="" disabled>
-                Choose a day
-              </option>
-              {choices.map((choice) => (
-                <option key={choice.value} value={choice.value}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          </div>
+        </div>
+        <div className="usage-reading-field">
+          <div className="usage-reading-label">
+            <span>Resets on</span>
+            <span className="usage-reading-value">
+              {resets === '' ? 'pick a day' : resetLabel(dateFromValue(resets) ?? now, now)}
+            </span>
+          </div>
+          <ResetCalendar value={resets} now={now} onChange={setResets} />
         </div>
         {error !== null ? <p className="field-error">{error}</p> : null}
         <div className="usage-reading-actions">

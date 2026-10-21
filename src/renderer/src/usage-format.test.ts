@@ -1,5 +1,14 @@
 import { expect, test } from 'vitest'
-import { agoPhrase, dateFromValue, dateValue, resetChoices, updatedPhrase } from './usage-format'
+import {
+  agoPhrase,
+  dateFromValue,
+  dateValue,
+  daysBetween,
+  monthTitle,
+  monthWeeks,
+  resetChoices,
+  updatedPhrase
+} from './usage-format'
 
 test('how long ago the usage was read', () => {
   const now = 10 * 3_600_000
@@ -28,16 +37,38 @@ test('date input values round-trip through local midnight', () => {
   expect(dateFromValue('2026-02-30')).toBeNull()
 })
 
-test('reset choices run from tomorrow to 32 days ahead', () => {
+test('reset choices run from tomorrow to 32 days ahead, labelled as Cursor does', () => {
   const now = new Date(2026, 9, 21, 15, 30).getTime()
   const choices = resetChoices(now)
   expect(choices).toHaveLength(32)
-  expect(choices[0]).toEqual({ value: '2026-10-22', label: 'Thu 22 Oct · tomorrow' })
-  expect(choices[1]).toEqual({ value: '2026-10-23', label: 'Fri 23 Oct · in 2 days' })
-  expect(choices[14]).toEqual({ value: '2026-11-05', label: 'Thu 5 Nov · in 15 days' })
-  expect(choices[31]).toEqual({ value: '2026-11-22', label: 'Sun 22 Nov · in 32 days' })
+  expect(choices[0]).toEqual({ value: '2026-10-22', label: 'Oct 22 (1d)' })
+  expect(choices[13]).toEqual({ value: '2026-11-04', label: 'Nov 4 (14d)' })
+  expect(choices[31]).toEqual({ value: '2026-11-22', label: 'Nov 22 (32d)' })
   // Across a year end.
   expect(resetChoices(new Date(2026, 11, 31).getTime(), 1)).toEqual([
-    { value: '2027-01-01', label: 'Fri 1 Jan · tomorrow' }
+    { value: '2027-01-01', label: 'Jan 1 (1d)' }
   ])
+})
+
+test('days between counts calendar days, whatever the time of day', () => {
+  const late = new Date(2026, 9, 21, 23, 59).getTime()
+  expect(daysBetween(late, new Date(2026, 10, 4, 0, 1).getTime())).toBe(14)
+  expect(daysBetween(late, late)).toBe(0)
+  // Across the clocks going back, still whole days.
+  expect(daysBetween(new Date(2026, 2, 1).getTime(), new Date(2026, 3, 1).getTime())).toBe(31)
+})
+
+test('a month as calendar weeks, Sunday first', () => {
+  // 1 November 2026 is a Sunday; 30 days.
+  const nov = monthWeeks(2026, 10)
+  expect(nov[0]).toEqual([1, 2, 3, 4, 5, 6, 7])
+  expect(nov.at(-1)).toEqual([29, 30, null, null, null, null, null])
+  // 1 October 2026 is a Thursday.
+  expect(monthWeeks(2026, 9)[0]).toEqual([null, null, null, null, 1, 2, 3])
+  expect(
+    monthWeeks(2026, 9)
+      .flat()
+      .filter((day) => day !== null)
+  ).toHaveLength(31)
+  expect(monthTitle(2026, 10)).toBe('November 2026')
 })
