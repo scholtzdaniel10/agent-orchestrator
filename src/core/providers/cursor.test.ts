@@ -869,3 +869,10 @@ test('resolveCursorBin falls back to agent on PATH', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('Auto turns on auto-review and LEG IT! forces; Ask adds nothing', () => {
+  const plain = new CursorAdapter({ command: 'agent' })
+  expect(plain.interactive({ mode: 'ask' }).args).toEqual([])
+  expect(plain.interactive({ mode: 'auto' }).args).toEqual(['--auto-review'])
+  expect(plain.interactive({ mode: 'legit' }).args).toEqual(['--force'])
+})

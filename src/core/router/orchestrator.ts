@@ -15,6 +15,13 @@ import {
 } from '../types'
 import { JOB_STALE_MS } from '../worktree-guard'
 import { Worktrees } from '../worktrees'
+import {
+  belowCritical,
+  MEMORY_CHECK_MS,
+  memoryStopMessage,
+  startHold,
+  type MemoryReading
+} from './memory-guard'
 import { headroom, pickProvider, pickWithReason, planUsage } from './router'
 import type { Store } from './store'
 
@@ -74,6 +81,8 @@ export interface JobRecord {
   /** Branch the job's worktree starts from; unset means the project's HEAD. */
   base?: string
   error?: string
+  /** A queued job that waits because the computer is short on memory. */
+  held?: 'memory'
   /** Process that is running this job. Absent on old saved jobs. */
   ownerId?: string
   /** Epoch ms of the owner's last heartbeat. */
@@ -89,6 +98,8 @@ interface InternalJob {
   id: string
   type: JobType
   originalPrompt: string
+  /** Waits for memory before it may start. */
+  held?: 'memory'
   prompt: string
   provider: ProviderId | null
   status: JobStatus
@@ -185,6 +196,14 @@ export class Orchestrator {
   private readonly abandoning = new Set<string>()
   /** Jobs stopped by cancel(); they fail with error 'stopped' and never fail over. */
   private readonly cancelling = new Set<string>()
+  /** Jobs stopped because memory ran low, with the error they end with. */
+  private readonly memoryStops = new Map<string, string>()
+  /** When each running job started, to find the newest. */
+  private readonly startedAt = new Map<string, number>()
+  /** Reads free memory; unset turns the memory guard off. */
+  private readonly memory: (() => MemoryReading) | undefined
+  private lastStartAt = Number.NEGATIVE_INFINITY
+  private memoryTimer: unknown
   private readonly listeners = new Set<(job: JobRecord) => void>()
   private idleWaiters: Array<() => void> = []
   private readonly stepFlushAt = new Map<string, number>()
@@ -209,6 +228,11 @@ export class Orchestrator {
     ownerId?: string
     setInterval?: (fn: () => void, ms: number) => unknown
     clearInterval?: (id: unknown) => void
+    /**
+     * Free and total memory. When set, jobs start one at a time, only with room to spare, and
+     * the newest is stopped if memory runs critically low.
+     */
+    memory?: () => MemoryReading
   }) {
     this.adapters = opts.adapters
     this.byId = new Map(opts.adapters.map((adapter) => [adapter.id, adapter]))
@@ -220,6 +244,7 @@ export class Orchestrator {
     this.now = opts.now ?? ((): number => Date.now())
     this.modelFor = opts.modelFor
     this.ownerId = opts.ownerId ?? randomUUID()
+    this.memory = opts.memory
     this.startInterval = opts.setInterval ?? ((fn, ms) => setInterval(fn, ms))
     this.stopInterval =
       opts.clearInterval ?? ((id) => clearInterval(id as ReturnType<typeof setInterval>))
@@ -586,13 +611,25 @@ export class Orchestrator {
     while (this.planRunningCount(provider) < limit) {
       const queue = this.queues.get(provider)
       if (!queue?.length) return
-      const id = queue.shift()
+      const id = queue[0]
       if (id === undefined) return
       const job = this.byJob.get(id)
-      if (!job || job.status !== 'queued') continue
+      if (!job || job.status !== 'queued') {
+        queue.shift()
+        continue
+      }
+      const hold = this.startHold()
+      if (hold !== null) {
+        this.markHeld(job, hold === 'memory')
+        return
+      }
+      queue.shift()
       this.addRunning(provider, id)
+      this.lastStartAt = this.now()
+      this.startedAt.set(id, this.lastStartAt)
       job.status = 'running'
       job.provider = provider
+      delete job.held
       this.emitStatus(job)
       void this.execute(job, provider)
         .catch((err: unknown) => {
@@ -607,10 +644,76 @@ export class Orchestrator {
           this.handles.delete(id)
           this.abandoning.delete(id)
           this.cancelling.delete(id)
+          this.memoryStops.delete(id)
+          this.startedAt.delete(id)
           this.pumpPlan(provider)
           this.resolveIdle()
         })
     }
+  }
+
+  /** Why the next job may not start yet, or null. Never holds when memory cannot be read. */
+  private startHold(): 'spacing' | 'memory' | null {
+    const reading = this.readMemory()
+    if (reading === null) return null
+    return startHold(reading, this.lastStartAt, this.now())
+  }
+
+  private readMemory(): MemoryReading | null {
+    if (this.memory === undefined) return null
+    try {
+      const reading = this.memory()
+      if (!Number.isFinite(reading.free) || !Number.isFinite(reading.total) || reading.total <= 0) {
+        return null
+      }
+      return reading
+    } catch {
+      return null
+    }
+  }
+
+  /** Mark the next queued job as waiting for memory, or clear that once it only waits its turn. */
+  private markHeld(job: InternalJob, memory: boolean): void {
+    if (memory && job.held !== 'memory') {
+      job.held = 'memory'
+      this.emit(job)
+    } else if (!memory && job.held !== undefined) {
+      delete job.held
+      this.emit(job)
+    }
+    this.syncTimers()
+  }
+
+  /**
+   * Every few seconds while jobs are queued or running: stop the newest job if memory is critically
+   * low, otherwise start queued jobs that now fit.
+   */
+  private onMemoryCheck(): void {
+    const reading = this.readMemory()
+    if (reading !== null && belowCritical(reading)) {
+      const victim = this.newestRunning()
+      if (victim !== null) {
+        this.memoryStops.set(victim, memoryStopMessage(reading))
+        this.cancelling.add(victim)
+        safeKill(this.handles.get(victim))
+      }
+      return
+    }
+    for (const provider of this.queues.keys()) this.pump(provider)
+  }
+
+  /** The most recently started job this process runs that is not already being stopped. */
+  private newestRunning(): string | null {
+    let newest: string | null = null
+    let at = Number.NEGATIVE_INFINITY
+    for (const [id, started] of this.startedAt) {
+      if (this.cancelling.has(id)) continue
+      if (started >= at) {
+        newest = id
+        at = started
+      }
+    }
+    return newest
   }
 
   private workingDir(): string {
@@ -746,10 +849,12 @@ export class Orchestrator {
     result: ResultEvent | null
   ): boolean {
     if (!this.cancelling.delete(job.id)) return false
+    const memoryStop = this.memoryStops.get(job.id)
+    this.memoryStops.delete(job.id)
     if (job.status !== 'running') return true
     this.insertRun(job, provider, startedAt, durationMs, utilization, result, 'error')
     job.status = 'failed'
-    job.error = 'stopped'
+    job.error = memoryStop ?? 'stopped'
     this.emitStatus(job)
     return true
   }
@@ -1128,6 +1233,13 @@ export class Orchestrator {
       this.stopInterval(this.heartbeatTimer)
       this.heartbeatTimer = undefined
     }
+    const needMemory = this.memory !== undefined && needBeat
+    if (needMemory && this.memoryTimer === undefined) {
+      this.memoryTimer = this.startInterval(() => this.onMemoryCheck(), MEMORY_CHECK_MS)
+    } else if (!needMemory && this.memoryTimer !== undefined) {
+      this.stopInterval(this.memoryTimer)
+      this.memoryTimer = undefined
+    }
     const needWatch = this.watching || this.hasForeignUnfinished()
     if (needWatch && this.watchTimer === undefined) {
       this.watchTimer = this.startInterval(() => this.pollStore(), JOB_WATCH_MS)
@@ -1237,6 +1349,7 @@ function copy(job: InternalJob): JobRecord {
     stepsDropped: job.stepsDropped
   }
   if (job.error !== undefined) record.error = job.error
+  if (job.held !== undefined && job.status === 'queued') record.held = job.held
   if (job.model !== undefined) record.model = job.model
   if (job.reason !== undefined) record.reason = job.reason
   record.access = job.access

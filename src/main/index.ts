@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain, Notification, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
+import { freemem, totalmem } from 'os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -327,7 +328,8 @@ app.whenReady().then(async () => {
     worktrees,
     onChanges: () => {
       pushChanges()
-    }
+    },
+    memory: () => ({ free: freemem(), total: totalmem() })
   })
   await orch.init()
   const routines = new Routines({
@@ -337,12 +339,15 @@ app.whenReady().then(async () => {
       orch.submit(type, prompt, provider, access, extra)
   })
 
+  /** What the lead may hand out: LEG IT! lifts it to full, whatever Settings says. */
+  const ceiling = (): JobAccess =>
+    settings.prefs().runMode === 'legit' ? 'full' : settings.leadAccess()
   const leadRef: { current: Lead | null } = { current: null }
   const started = await startBridge(
     createOrchestratorTools(
       orch,
       () => leadRef.current?.currentTurn() ?? null,
-      () => settings.leadAccess(),
+      ceiling,
       (turn, proposal) => {
         if (leadRef.current === null) throw new Error('the lead is not ready')
         leadRef.current.attachProposal(turn, proposal)
@@ -361,7 +366,8 @@ app.whenReady().then(async () => {
     project: projectDir,
     prefer: () => settings.leadPlan() ?? envPrefer,
     modelFor: (id) => settings.leadModel(id) ?? settings.model(id),
-    listJobs: (): JobRecord[] => orch.list()
+    listJobs: (): JobRecord[] => orch.list(),
+    runMode: () => settings.prefs().runMode
   })
   leadRef.current = lead
   await lead.init()
@@ -424,7 +430,7 @@ app.whenReady().then(async () => {
     },
     plan: planGoal,
     runCheck: runGoalCheck,
-    ceiling: () => settings.leadAccess(),
+    ceiling,
     nameWorktree: (id, project, name) => {
       shared.setWorktreeName({ id, project, name, created_at: Date.now() })
     },
@@ -964,9 +970,11 @@ app.whenReady().then(async () => {
   }
   const terms = new PtyHost({
     launch: (provider, opts) => {
-      if (provider === 'claude') return claude.interactive(opts)
-      if (provider === 'grok') return grok.interactive(opts)
-      return cursor.interactive(opts)
+      // Asked at every launch, so a restart after switching to Auto or LEG IT! uses the new mode.
+      const withMode = { ...opts, mode: settings.prefs().runMode }
+      if (provider === 'claude') return claude.interactive(withMode)
+      if (provider === 'grok') return grok.interactive(withMode)
+      return cursor.interactive(withMode)
     },
     cwd: projectDir,
     modelFor,

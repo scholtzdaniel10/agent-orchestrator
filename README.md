@@ -131,6 +131,8 @@ You are responsible for staying within each provider's terms.
   - Claude workers get no shell and no edit tools when reading, no shell when editing, and never your own MCP servers, not even with full access.
   - Cursor workers are started without `--force` unless the job has full access, and an editing job gets a permission file that denies the shell. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
 - Full access runs commands on your computer without asking. Use it only in folders you trust.
+- **Auto** and **LEG IT!** start the lead's plans without Run. LEG IT! also allows full access and opens terminals that skip every prompt (Claude with `bypassPermissions`, Cursor with `--force`); it asks before it turns on in each window.
+- Jobs start one at a time, only while there is memory to spare, and Legate stops the newest job if free memory runs critically low, so a burst of agents and their tests cannot freeze the computer.
 - The lead reaches the app through a small local server with four tools (`list_workers`, `send_job`, `get_status`, `get_result`). It listens on loopback only, requires a random token that changes every start, and refuses requests that carry a browser `Origin`.
 - The Files panel can only read inside the project or worktree folder; a path that leads outside it is refused.
 - Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.

@@ -25,6 +25,9 @@ Legate diffs the whole worktree, tracked and untracked files, against where it b
 - Touch the person's project folder or any path outside this worktree.
 - Switch branches, rebase, reset, or push. The branch is Legate's, and nothing goes to a remote.
 - Install global tools or change config in the home folder.
+- Start anything that keeps running: dev servers, watch modes (`--watch`, a bare `vitest` or
+  `jest --watch`), or background processes. Run checks once, the narrowest first (one test file
+  before the whole suite), and let them finish. Other agents share this computer's memory.
 - Use the `orca` CLI or skills of other agent apps: they are not running here.
 
 ## When you finish

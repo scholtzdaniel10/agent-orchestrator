@@ -12,6 +12,12 @@ import type {
 } from '../types'
 import type { Worktrees } from '../worktrees'
 import { JOB_HEARTBEAT_MS, JOB_WATCH_MS, Orchestrator, type JobRecord } from './orchestrator'
+import {
+  MEMORY_CHECK_MS,
+  START_SPACING_MS,
+  memoryStopMessage,
+  type MemoryReading
+} from './memory-guard'
 import { headroom, loadRules } from './router'
 import { Store } from './store'
 
@@ -2229,4 +2235,130 @@ test('a long session keeps at most 200 finished jobs in memory; the oldest go fi
     },
     () => tick
   )
+})
+
+const GIB = 1024 ** 3
+
+async function withMemory(
+  adapters: FakeAdapter[],
+  fn: (args: {
+    orch: Orchestrator
+    clock: ManualClock
+    memory: MemoryReading
+    settle: () => Promise<void>
+  }) => Promise<void>
+): Promise<void> {
+  const store = new Store(':memory:')
+  const clock = new ManualClock({ ms: 1_000_000 })
+  const memory: MemoryReading = { free: 12 * GIB, total: 16 * GIB }
+  const orch = new Orchestrator({
+    adapters,
+    store,
+    rules: rulesWith(3),
+    cwd: CWD,
+    now: clock.now,
+    setInterval: clock.setInterval,
+    clearInterval: clock.clearInterval,
+    memory: () => ({ ...memory })
+  })
+  try {
+    await orch.init()
+    await fn({
+      orch,
+      clock,
+      memory,
+      settle: () => new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  } finally {
+    clock.clearAll()
+    store.close()
+  }
+}
+
+function statuses(orch: Orchestrator): string[] {
+  return orch.list().map((job) => job.status + (job.held !== undefined ? `:${job.held}` : ''))
+}
+
+test('with a memory reading, jobs start one at a time and wait while memory is short', async () => {
+  const hold = gate()
+  const claude = new FakeAdapter('claude', [
+    { gate: hold.promise, ...ok('a') },
+    { gate: hold.promise, ...ok('b') },
+    { gate: hold.promise, ...ok('c') }
+  ])
+  await withMemory([claude], async ({ orch, clock, memory, settle }) => {
+    orch.submit('planning', 'one', 'claude')
+    orch.submit('planning', 'two', 'claude')
+    orch.submit('planning', 'three', 'claude')
+    await settle()
+    // Plenty of memory, but the next start waits so the first job's memory shows up first.
+    expect(statuses(orch)).toEqual(['running', 'queued', 'queued'])
+
+    clock.tick(MEMORY_CHECK_MS)
+    await settle()
+    expect(statuses(orch)).toEqual(['running', 'queued', 'queued'])
+
+    clock.tick(START_SPACING_MS)
+    await settle()
+    expect(statuses(orch)).toEqual(['running', 'running', 'queued'])
+
+    // Not enough room for another job on top of the reserve: it waits and says why.
+    memory.free = 3 * GIB
+    clock.tick(START_SPACING_MS + MEMORY_CHECK_MS)
+    await settle()
+    expect(statuses(orch)).toEqual(['running', 'running', 'queued:memory'])
+
+    memory.free = 10 * GIB
+    clock.tick(MEMORY_CHECK_MS)
+    await settle()
+    expect(statuses(orch)).toEqual(['running', 'running', 'running'])
+    expect(claude.received).toHaveLength(3)
+
+    hold.open()
+    await orch.idle()
+    expect(statuses(orch)).toEqual(['done', 'done', 'done'])
+  })
+})
+
+test('when memory runs critically low the newest job is stopped, and nothing else starts', async () => {
+  const hold = gate()
+  const claude = new FakeAdapter('claude', [
+    { gate: hold.promise, ...ok('a') },
+    { gate: hold.promise, ...ok('b') },
+    { gate: hold.promise, ...ok('c') }
+  ])
+  const cursor = new FakeAdapter('cursor', [])
+  await withMemory([claude, cursor], async ({ orch, clock, memory, settle }) => {
+    orch.submit('planning', 'older', 'claude')
+    clock.tick(START_SPACING_MS)
+    orch.submit('planning', 'newer', 'claude')
+    orch.submit('planning', 'waiting', 'claude')
+    await settle()
+    expect(statuses(orch)).toEqual(['running', 'running', 'queued'])
+
+    memory.free = 0.5 * GIB
+    clock.tick(MEMORY_CHECK_MS)
+    await settle()
+    const [older, newer, waiting] = orch.list()
+    expect(older?.status).toBe('running')
+    expect(newer?.status).toBe('failed')
+    expect(newer?.error).toBe(memoryStopMessage({ free: 0.5 * GIB, total: 16 * GIB }))
+    // Stopped, not moved to another plan, and the queued job did not take its slot.
+    expect(newer?.failedOver).toEqual([])
+    expect(cursor.received).toHaveLength(0)
+    expect(waiting?.status).toBe('queued')
+
+    // Still critical on the next check: the next newest goes too.
+    clock.tick(MEMORY_CHECK_MS)
+    await settle()
+    expect(orch.list()[0]?.status).toBe('failed')
+    expect(orch.list()[2]?.status).toBe('queued')
+
+    memory.free = 10 * GIB
+    clock.tick(START_SPACING_MS)
+    await settle()
+    expect(orch.list()[2]?.status).toBe('running')
+    hold.open()
+    await orch.idle()
+  })
 })

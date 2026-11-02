@@ -40,7 +40,8 @@ test("finds Legate's own plugins from the code's folder and splits them by role"
     { name: 'legate-review', givenTo: 'every agent' },
     { name: 'legate-cli', givenTo: 'workers' },
     { name: 'legate-worktree', givenTo: 'workers' },
-    { name: 'legate-delegate', givenTo: 'lead' }
+    { name: 'legate-delegate', givenTo: 'lead' },
+    { name: 'legate-leg-it', givenTo: 'lead' }
   ])
 })
 

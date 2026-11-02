@@ -10,6 +10,7 @@ import {
   type ModelOption,
   type ProviderAdapter,
   type RunHandle,
+  type RunMode,
   type RunOptions,
   type UsageWindow
 } from '../types'
@@ -97,7 +98,9 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   /** Interactive session: the same binary as `run`, with no `-p`. */
   interactive(
-    modelOrOpts?: string | { model?: string; sessionId?: string; resume?: string; prompt?: string }
+    modelOrOpts?:
+      | string
+      | { model?: string; sessionId?: string; resume?: string; prompt?: string; mode?: RunMode }
   ): {
     command: string
     args: string[]
@@ -108,6 +111,8 @@ export class ClaudeAdapter implements ProviderAdapter {
     if (opts.resume) args.push('--resume', opts.resume)
     else if (opts.sessionId) args.push('--session-id', opts.sessionId)
     if (opts.model) args.push('--model', opts.model)
+    if (opts.mode === 'auto') args.push('--permission-mode', 'auto')
+    if (opts.mode === 'legit') args.push('--permission-mode', 'bypassPermissions')
     args.push('--append-system-prompt', LEGATE_NOTE, ...pluginArgs(this.plugins.worker))
     if (opts.prompt && !opts.resume) args.push(opts.prompt)
     return { command: this.bin.command, args }

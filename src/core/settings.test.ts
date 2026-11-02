@@ -279,8 +279,17 @@ test('prefs default, validate and persist', () => {
       cloneDir: null,
       uiScale: 90,
       usageShows: 'left',
-      cursorModels: 'own'
+      cursorModels: 'own',
+      runMode: 'ask',
+      legItHidden: [],
+      legItNoTerminals: false,
+      legItLeadOnly: true
     })
+    expect(settings.setPrefs({ runMode: 'legit' }).runMode).toBe('legit')
+    expect(settings.setPrefs({ runMode: 'yolo' }).runMode).toBe('ask')
+    expect(settings.setPrefs({ legItHidden: ['files', 'Bad Tab', 3, '../x'] }).legItHidden).toEqual(
+      ['files']
+    )
     settings.setPrefs({ maxParallel: 5, notify: false, unknown: 'x' })
     expect(settings.setPrefs({ uiScale: 110 }).uiScale).toBe(110)
     expect(settings.setPrefs({ uiScale: 95 }).uiScale).toBe(90)

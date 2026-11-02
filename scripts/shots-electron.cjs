@@ -281,6 +281,40 @@ const scenes = {
       await wait(300)
     })()`
   },
+  legit: { size: [1440, 900], query: '?runmode=legit&tab=lead', scheme: 'dark' },
+  'legit-confirm': {
+    size: [1440, 900],
+    query: '?tab=lead',
+    scheme: 'dark',
+    script: `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      document.querySelector('.btn-legit')?.click()
+      // A hidden window paints slowly; give the dialog time to reach the screen.
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    })()`
+  },
+  legitsettings: {
+    size: [1440, 900],
+    query: '',
+    scheme: 'dark',
+    script: `(async () => {
+      const wait = async (find) => {
+        const deadline = Date.now() + 4000
+        while (Date.now() < deadline) {
+          const found = find()
+          if (found) return found
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        return null
+      }
+      ;(await wait(() => document.querySelector('.project-foot-button')))?.click()
+      const tab = await wait(() =>
+        [...document.querySelectorAll('.settings-nav-item')].find((el) => el.textContent === 'LEG IT!')
+      )
+      tab?.click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })()`
+  },
   skills: {
     size: [1440, 900],
     query: '',
