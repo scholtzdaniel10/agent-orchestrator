@@ -142,6 +142,32 @@ test('a snippet prefers a message over the title when both hold the terms', () =
   })
 })
 
+test('an untitled job shows a field other than its prompt when as many words match there', () => {
+  withStore((store) => {
+    store.saveJob(
+      '/p',
+      10,
+      job({
+        id: 'j1',
+        prompt: 'Find why the pager skips rows',
+        output: 'The off-by-one is in paginate().'
+      })
+    )
+    store.saveJob(
+      '/p',
+      20,
+      job({ id: 'j2', title: 'Rows', prompt: 'the pager', output: 'off-by-one' })
+    )
+    const [titled, untitled] = store.search('/p', 'off-by-one pager')
+    expect(untitled).toMatchObject({
+      id: 'j1',
+      field: 'output',
+      title: 'Find why the pager skips rows'
+    })
+    expect(titled).toMatchObject({ id: 'j2', field: 'prompt' })
+  })
+})
+
 test('finds text in a lead plan', () => {
   withStore((store) => {
     chat(store, 'c1', 'Plan', 100, [

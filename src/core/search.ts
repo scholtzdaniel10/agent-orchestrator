@@ -146,7 +146,7 @@ function chatHit(chat: ChatRow, messages: LeadMessage[], terms: string[]): Searc
       })
     }
   }
-  const found = match(fields, terms)
+  const found = match(fields, terms, 'title')
   if (found === null) return null
   const best = found.best.field
   const direct = chat.direct ?? null
@@ -175,7 +175,9 @@ function jobHit(job: JobRecord, createdAt: number, terms: string[]): SearchHit |
     const parts = [step.title, step.detail ?? '', step.edit?.path ?? '']
     fields.push({ field: 'step', text: parts.join(' '), stepId: step.id })
   }
-  const found = match(fields, terms)
+  // A job with no title of its own is listed under its prompt, so the prompt is the shown line.
+  const shown = fields[0]?.field === 'title' ? 'title' : 'prompt'
+  const found = match(fields, terms, shown)
   if (found === null) return null
   const best = found.best.field
   return {
@@ -192,8 +194,15 @@ function jobHit(job: JobRecord, createdAt: number, terms: string[]): SearchHit |
   }
 }
 
-/** Null unless every term is in some field. Picks the field holding the most distinct terms. */
-function match(fields: Field[], terms: string[]): { best: Prepared; matches: number } | null {
+/**
+ * Null unless every term is in some field. Picks the field holding the most distinct terms; on a
+ * tie, one other than `shown`, the field the result is already titled with.
+ */
+function match(
+  fields: Field[],
+  terms: string[],
+  shown: SearchField
+): { best: Prepared; matches: number } | null {
   const seen = new Set<string>()
   let matches = 0
   let best: { prepared: Prepared; distinct: number } | null = null
@@ -209,13 +218,10 @@ function match(fields: Field[], terms: string[]): { best: Prepared; matches: num
       seen.add(term)
     }
     if (distinct === 0) continue
-    // The title is shown anyway, so another field with as many terms makes a better snippet.
     const better =
       best === null ||
       distinct > best.distinct ||
-      (distinct === best.distinct &&
-        best.prepared.field.field === 'title' &&
-        field.field !== 'title')
+      (distinct === best.distinct && best.prepared.field.field === shown && field.field !== shown)
     if (better) best = { prepared, distinct }
   }
   if (best === null || seen.size < terms.length) return null
