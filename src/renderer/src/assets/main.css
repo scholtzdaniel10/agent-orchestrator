@@ -7915,6 +7915,21 @@ label,
   letter-spacing: 0.04em;
 }
 
+.legit-confirm {
+  width: min(460px, 100%);
+}
+
+.legit-confirm-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-12);
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .app-header-tools .btn-legit[aria-pressed='true'] {
   border-color: var(--bad);
   background: var(--bad);

@@ -282,6 +282,17 @@ const scenes = {
     })()`
   },
   legit: { size: [1440, 900], query: '?runmode=legit&tab=lead', scheme: 'dark' },
+  'legit-confirm': {
+    size: [1440, 900],
+    query: '?tab=lead',
+    scheme: 'dark',
+    script: `(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      document.querySelector('.btn-legit')?.click()
+      // A hidden window paints slowly; give the dialog time to reach the screen.
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    })()`
+  },
   legitsettings: {
     size: [1440, 900],
     query: '',

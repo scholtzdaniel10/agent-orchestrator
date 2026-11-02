@@ -29,6 +29,8 @@ import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
 import NewTaskDialog from './NewTaskDialog'
+import LegItConfirm from './LegItConfirm'
+import { legItPress } from './leg-it'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -562,6 +564,9 @@ function App(): React.JSX.Element {
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [legItAsking, setLegItAsking] = useState(false)
+  /** LEG IT! was confirmed once in this window, so pressing it again does not ask. */
+  const legItConfirmed = useRef(false)
   /** Goals waiting for the person: a proposed round or a question. */
   const [goalsWaiting, setGoalsWaiting] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1931,6 +1936,12 @@ function App(): React.JSX.Element {
       />
     ) : null
 
+  function pressLegIt(): void {
+    const next = legItPress(runMode, legItConfirmed.current)
+    if (next === 'confirm') setLegItAsking(true)
+    else setRunMode(next)
+  }
+
   function setRunMode(next: RunMode): void {
     window.api.setPrefs({ runMode: next }).catch((err: unknown) => {
       setProjectError({ text: errorText(err), at: Date.now() })
@@ -1973,9 +1984,7 @@ function App(): React.JSX.Element {
             className="btn btn-compact btn-legit"
             aria-pressed={legit}
             title="Everything runs without asking, in the project folder. Settings → LEG IT! sets what stays on screen."
-            onClick={() => {
-              setRunMode(legit ? 'ask' : 'legit')
-            }}
+            onClick={pressLegIt}
           >
             LEG IT!
           </button>
@@ -2212,6 +2221,17 @@ function App(): React.JSX.Element {
         {dropZone('right')}
       </div>
       {tabMenuNode}
+      <LegItConfirm
+        open={legItAsking}
+        onCancel={() => {
+          setLegItAsking(false)
+        }}
+        onConfirm={() => {
+          legItConfirmed.current = true
+          setLegItAsking(false)
+          setRunMode('legit')
+        }}
+      />
       <NewTaskDialog
         open={newTaskOpen}
         onClose={() => {
