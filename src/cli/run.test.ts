@@ -3,6 +3,7 @@ import type { Goal } from '../core/goals'
 import type { JobRecord, WorkerInfo } from '../core/router/orchestrator'
 import type { Routine } from '../core/routines'
 import type { WorktreeNameRow } from '../core/router/store'
+import type { SearchHit } from '../core/search'
 import type { ChangeSet } from '../core/types'
 import { changeFooter } from './format'
 import { run, type CliContext } from './run'
@@ -76,6 +77,7 @@ function ctx(io: { out: string; err: string }, patch: Patch = {}): CliContext {
     },
     store: {
       jobsNewest: () => [],
+      search: () => [],
       worktreeNames: () => [],
       setWorktreeName: () => {},
       deleteWorktreeName: () => {}
@@ -497,6 +499,78 @@ test('jobs lists newest first and show prints every step', async () => {
   const messy = capture()
   expect(await run(['show', 'xxxx'], ctx(messy, { store: { jobsNewest: () => rows } }))).toBe(2)
   expect(messy.err).toContain('No job matches "xxxx".')
+})
+
+test('search prints each hit with its snippet, or JSON', async () => {
+  const hits: SearchHit[] = [
+    {
+      kind: 'job',
+      id: 'abcd1234-0000',
+      title: 'Fix the pager',
+      at: 10_000 - 7_200_000,
+      field: 'output',
+      snippet: '…the pager skips the last row…',
+      marks: [[5, 10]],
+      matches: 1,
+      status: 'done',
+      provider: 'cursor'
+    },
+    {
+      kind: 'chat',
+      id: 'chat9999-1111',
+      title: 'Pager talk',
+      at: 10_000 - 86_400_000 * 3,
+      field: 'message',
+      role: 'lead',
+      snippet: 'The pager is fine',
+      marks: [[4, 9]],
+      matches: 2
+    }
+  ]
+  let asked: { project: string; query: string; limit: number | undefined } | null = null
+  const store = {
+    search: (project: string, query: string, limit?: number): SearchHit[] => {
+      asked = { project, query, limit }
+      return hits
+    }
+  }
+
+  const listed = capture()
+  expect(await run(['search', 'pager', 'row', '--limit', '5'], ctx(listed, { store }))).toBe(0)
+  expect(asked).toEqual({ project: '/proj', query: 'pager row', limit: 5 })
+  expect(listed.out).toBe(
+    [
+      'job   abcd1234  2h  done  Fix the pager',
+      '    output: …the pager skips the last row…',
+      'chat  chat9999  3d  -     Pager talk',
+      '    lead: The pager is fine',
+      ''
+    ].join('\n')
+  )
+
+  const colored = capture()
+  expect(await run(['search', 'pager'], { ...ctx(colored, { store }), color: true })).toBe(0)
+  expect(colored.out).toContain('…the \u001b[1mpager\u001b[0m skips')
+
+  const json = capture()
+  expect(await run(['search', 'pager', '--json'], ctx(json, { store }))).toBe(0)
+  expect(JSON.parse(json.out)).toEqual(hits)
+
+  const none = capture()
+  expect(await run(['search', 'zzz'], ctx(none))).toBe(0)
+  expect(none.err).toBe('No chats or jobs here match "zzz".\n')
+
+  const missing = capture()
+  expect(await run(['search'], ctx(missing))).toBe(2)
+  expect(missing.err).toContain('Missing search text.')
+
+  const badLimit = capture()
+  expect(await run(['search', 'x', '--limit', '0'], ctx(badLimit))).toBe(2)
+  expect(badLimit.err).toContain('Limit must be a positive whole number.')
+
+  const badFlag = capture()
+  expect(await run(['search', 'x', '--yes'], ctx(badFlag))).toBe(2)
+  expect(badFlag.err).toContain('Unknown flag --yes.')
 })
 
 test('changes, diff, merge, and discard', async () => {

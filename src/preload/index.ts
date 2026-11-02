@@ -4,6 +4,7 @@ import type { CommitDetail, CommitPage } from '../core/history'
 import type { Goal, PlannedJob } from '../core/goals'
 import type { Trigger } from '../core/triggers'
 import type { Routine } from '../core/routines'
+import type { SearchHit } from '../core/search'
 import type {
   AppInfo,
   ChangeSet,
@@ -53,6 +54,12 @@ const api: OrchestratorApi = {
   },
   cancelJob(id: string): Promise<JobRecord> {
     return ipcRenderer.invoke('jobs:cancel', id)
+  },
+  getJob(id: string): Promise<JobRecord | null> {
+    return ipcRenderer.invoke('jobs:get', id)
+  },
+  searchHistory(query: string, limit?: number): Promise<SearchHit[]> {
+    return ipcRenderer.invoke('search:history', query, limit)
   },
   refreshUsage(): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('usage:refresh')

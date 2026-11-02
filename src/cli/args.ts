@@ -48,6 +48,7 @@ const ALLOWED: Record<string, Set<string>> = {
   jobs: new Set(['limit']),
   goal: new Set(['check', 'rounds', 'yes']),
   goals: NONE,
+  search: new Set(['limit', 'json']),
   show: NONE,
   changes: NONE,
   diff: NONE,

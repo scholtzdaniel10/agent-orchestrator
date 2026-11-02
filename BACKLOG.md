@@ -31,6 +31,7 @@ Ordered. The top item is the next one to build.
 - Job ownership so the app and the `legate` command share jobs safely.
 - New worktrees can start Claude or Cursor on a task so the agent is already working.
 - First-run setup screen: install and sign in to Git, Claude Code, the Cursor CLI, and optionally the GitHub CLI without leaving the app.
+- Search across chats and jobs: `Ctrl+Shift+F` or Search in the sidebar, and `legate search`.
 
 ## Next
 
@@ -43,5 +44,4 @@ Ordered. The top item is the next one to build.
 
 - Codex as a third worker (needs its own subscription).
 - Run agents on a remote machine over SSH.
-- Search across chats and jobs.
 - Browser tools, Linear, a mobile companion.

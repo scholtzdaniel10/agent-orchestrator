@@ -476,7 +476,11 @@ function LeadChat({
               (job) => job.status === 'queued' || job.status === 'running'
             ).length
             return (
-              <div key={message.id} className={isUser ? 'lead-row lead-row-user' : 'lead-row'}>
+              <div
+                key={message.id}
+                data-message-id={message.id}
+                className={isUser ? 'lead-row lead-row-user' : 'lead-row'}
+              >
                 <div className={messageClass(message)}>
                   <span className="lead-meta">{isUser ? 'You' : metaLine(leadMeta(message))}</span>
                   <div className="lead-body">

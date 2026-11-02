@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { likePattern, searchHistory, type SearchHit } from '../search'
 import type { LeadMessage } from '../types'
 import type { JobRecord } from './orchestrator'
 
@@ -696,6 +697,82 @@ export class Store {
       })
     }
     return out
+  }
+
+  /** One saved job of any project, or null. */
+  job(id: string): { project: string; createdAt: number; job: JobRecord } | null {
+    const row = this.db
+      .prepare(
+        `SELECT project, data, created_at, owner_id, heartbeat_at, cancel_requested
+         FROM jobs WHERE id = ?`
+      )
+      .get(id)
+    if (!row) return null
+    const record = row as Row
+    const job = jobFromRow(record)
+    if (job === null) return null
+    return { project: String(record.project), createdAt: Number(record.created_at), job }
+  }
+
+  /**
+   * The project's chats whose title or a message contains `word` (ASCII case ignored), each with
+   * all its messages. Null `word` returns every chat. Newest first.
+   */
+  chatsMatching(
+    project: string,
+    word: string | null
+  ): { chat: ChatRow; messages: LeadMessage[] }[] {
+    const columns =
+      'c.id, c.project, c.title, c.created_at, c.updated_at, c.session_id, c.session_provider, c.direct'
+    const rows =
+      word === null
+        ? this.db
+            .prepare(
+              `SELECT ${columns} FROM chats c WHERE c.project = ? ORDER BY c.updated_at DESC`
+            )
+            .all(project)
+        : this.db
+            .prepare(
+              `SELECT ${columns} FROM chats c
+               WHERE c.project = ?
+                 AND (c.title LIKE ? ESCAPE '\\'
+                   OR EXISTS (
+                     SELECT 1 FROM messages m WHERE m.chat_id = c.id AND m.data LIKE ? ESCAPE '\\'
+                   ))
+               ORDER BY c.updated_at DESC`
+            )
+            .all(project, likePattern(word), likePattern(word))
+    return rows.map((row) => {
+      const chat = mapChat(row as Row)
+      return { chat, messages: this.messages(chat.id) }
+    })
+  }
+
+  /** The project's jobs whose saved record contains `word` (ASCII case ignored). Newest first. */
+  jobsMatching(project: string, word: string | null): { createdAt: number; job: JobRecord }[] {
+    const select = 'SELECT data, created_at, owner_id, heartbeat_at, cancel_requested FROM jobs'
+    const rows =
+      word === null
+        ? this.db.prepare(`${select} WHERE project = ? ORDER BY created_at DESC`).all(project)
+        : this.db
+            .prepare(
+              `${select} WHERE project = ? AND data LIKE ? ESCAPE '\\' ORDER BY created_at DESC`
+            )
+            .all(project, likePattern(word))
+    const out: { createdAt: number; job: JobRecord }[] = []
+    for (const row of rows) {
+      const record = row as Row
+      const job = jobFromRow(record)
+      if (job === null) continue
+      const createdAt = Number(record.created_at)
+      out.push({ createdAt: Number.isFinite(createdAt) ? createdAt : 0, job })
+    }
+    return out
+  }
+
+  /** Chats and jobs of the project that contain every word of `query`. See `searchHistory`. */
+  search(project: string, query: string, limit?: number): SearchHit[] {
+    return searchHistory(this, project, query, limit)
   }
 
   close(): void {

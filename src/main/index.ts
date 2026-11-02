@@ -44,6 +44,7 @@ import { TESTED_VERSIONS } from '../core/providers/versions'
 import { runCaptured } from '../core/providers/process'
 import { PtyHost } from '../core/pty'
 import { Routines } from '../core/routines'
+import { QUERY_MAX, type SearchHit } from '../core/search'
 import {
   DASHBOARD_WINDOW,
   dashboardReading,
@@ -871,6 +872,20 @@ app.whenReady().then(async () => {
   ipcMain.handle('jobs:cancel', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
     return orch.cancel(id)
+  })
+  // A job of the open project, even one older than the jobs kept in memory.
+  ipcMain.handle('jobs:get', (_event, id: unknown): JobRecord | null => {
+    if (typeof id !== 'string' || id === '' || id.length > 64) throw new Error('invalid job id')
+    const live = orch.list().find((job) => job.id === id)
+    if (live !== undefined) return live
+    const saved = shared.job(id)
+    if (saved === null || saved.project !== projectDir()) return null
+    return saved.job
+  })
+  ipcMain.handle('search:history', (_event, query: unknown, limit: unknown): SearchHit[] => {
+    if (typeof query !== 'string') throw new Error('invalid search')
+    const max = typeof limit === 'number' && Number.isFinite(limit) ? limit : undefined
+    return shared.search(projectDir(), query.slice(0, QUERY_MAX), max)
   })
   ipcMain.handle('plans:list', () => plans())
   ipcMain.handle('plans:recheck', async () => {

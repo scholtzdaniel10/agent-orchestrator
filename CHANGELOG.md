@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Search chats and jobs.** `Ctrl+Shift+F`, or **Search** in the sidebar, looks through every saved chat and job of the open project: chat titles, messages and the lead's plans; job prompts, output, errors and steps. Every word you type must appear; put a phrase in quotes to keep it together. Results show where the words matched. A chat opens in Lead at the matching message; a job opens in Jobs, even one too old for the list.
+- `legate search "<text>" [--limit N] [--json]` does the same from a terminal.
+
 ## 0.1.0 — first public preview
 
 Legate is a desktop app that hands your coding work to Claude Code, Cursor and Grok, on the plans you already pay for. This is the first version anyone outside the project gets to try. Please report what breaks.

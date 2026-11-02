@@ -1,4 +1,5 @@
 import { accessOf, type StepTool } from '../core/types'
+import { fieldLabel, highlightSegments, type SearchHit } from '../core/search'
 
 export interface StepView {
   id: string
@@ -245,6 +246,28 @@ export function table(rows: string[][]): string {
         .join('  ')
     )
     .join('\n')
+}
+
+/** Two lines per hit: what and when, then where the text matched, matches in bold. */
+export function searchLines(hits: readonly SearchHit[], now: number, color: boolean): string[] {
+  const heads = table(
+    hits.map((hit) => [
+      hit.kind,
+      hit.id.slice(0, 8),
+      formatAge(Math.max(0, now - hit.at)),
+      hit.kind === 'job' ? (hit.status ?? '-') : '-',
+      hit.title === '' ? '(untitled)' : hit.title
+    ])
+  ).split('\n')
+  const out: string[] = []
+  hits.forEach((hit, index) => {
+    out.push(heads[index] ?? '')
+    const body = highlightSegments(hit.snippet, hit.marks)
+      .map((part) => (part.mark ? paint(part.text, '1', color) : part.text))
+      .join('')
+    out.push(`    ${fieldLabel(hit)}: ${body}`)
+  })
+  return out
 }
 
 export function oneSentence(err: unknown): string {

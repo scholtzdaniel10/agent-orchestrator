@@ -29,6 +29,7 @@ import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
 import NewTaskDialog from './NewTaskDialog'
+import SearchDialog from './SearchDialog'
 import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
@@ -295,6 +296,25 @@ function commitChanges(
   publish(bag, setEvents)
 }
 
+/** Scroll a lead chat message into view and flash it, once its row has rendered. */
+function revealMessage(messageId: string, tries = 30): void {
+  requestAnimationFrame(() => {
+    const rows = document.querySelectorAll<HTMLElement>('[data-message-id]')
+    const row = Array.from(rows).find((element) => element.dataset.messageId === messageId)
+    if (row === undefined) {
+      if (tries > 0) revealMessage(messageId, tries - 1)
+      return
+    }
+    row.scrollIntoView({ block: 'center' })
+    row.classList.remove('is-found')
+    void row.offsetWidth
+    row.classList.add('is-found')
+    window.setTimeout(() => {
+      row.classList.remove('is-found')
+    }, 1700)
+  })
+}
+
 function mergeJob(jobs: JobRecord[], job: JobRecord): JobRecord[] {
   const index = jobs.findIndex((item) => item.id === job.id)
   if (index === -1) return [...jobs, job]
@@ -555,6 +575,8 @@ function App(): React.JSX.Element {
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  /** Open search, with the text it started from. */
+  const [searchSeed, setSearchSeed] = useState<string | null>(null)
   /** Goals waiting for the person: a proposed round or a question. */
   const [goalsWaiting, setGoalsWaiting] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -982,6 +1004,21 @@ function App(): React.JSX.Element {
   }, [project?.path])
 
   useEffect(() => {
+    // Capture, so a focused terminal does not also get the key.
+    function onSearchKey(event: KeyboardEvent): void {
+      if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return
+      if (event.key !== 'F' && event.key !== 'f') return
+      event.preventDefault()
+      event.stopPropagation()
+      setSearchSeed((open) => open ?? '')
+    }
+    window.addEventListener('keydown', onSearchKey, true)
+    return () => {
+      window.removeEventListener('keydown', onSearchKey, true)
+    }
+  }, [])
+
+  useEffect(() => {
     function onNewTaskKey(event: KeyboardEvent): void {
       if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return
       if (event.key.toLowerCase() !== 'n') return
@@ -1159,6 +1196,42 @@ function App(): React.JSX.Element {
     publish(state, setEvents)
     refreshChats()
     openPanel('lead')
+  }
+
+  /** A chat found by search: open it in the Lead tab and bring the matching message into view. */
+  async function openFoundChat(id: string, messageId: string | undefined): Promise<void> {
+    try {
+      await openLeadChat(id)
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+      return
+    }
+    if (messageId !== undefined) revealMessage(messageId)
+  }
+
+  /** A job found by search, which may be older than the jobs kept in the list. */
+  async function openFoundJob(id: string): Promise<void> {
+    try {
+      const job = await window.api.getJob(id)
+      if (job === null) {
+        setProjectError({ text: 'That job is no longer saved.', at: Date.now() })
+        return
+      }
+      commitJobs(
+        bag.current,
+        mergeJob(bag.current.jobs, job),
+        setJobs,
+        setStarts,
+        setFlashes,
+        setEvents
+      )
+      showJobNonce.current += 1
+      setShowJob({ id, nonce: showJobNonce.current })
+      setSelectedJobId(id)
+      openPanel('jobs')
+    } catch (err: unknown) {
+      setProjectError({ text: errorText(err), at: Date.now() })
+    }
   }
 
   async function renameLeadChat(id: string, title: string): Promise<void> {
@@ -2026,6 +2099,9 @@ function App(): React.JSX.Element {
                 }}
                 onSelectWorktree={selectWorktree}
                 onSelectAllWorktrees={selectAllWorktrees}
+                onOpenSearch={(text) => {
+                  setSearchSeed(text)
+                }}
                 onNewTask={() => {
                   setNewTaskOpen(true)
                 }}
@@ -2166,6 +2242,21 @@ function App(): React.JSX.Element {
         }}
         onCreated={(kind) => {
           openPanel(kind === 'goal' ? 'goals' : 'jobs')
+        }}
+      />
+      <SearchDialog
+        key={project?.path ?? ''}
+        open={searchSeed !== null}
+        initialQuery={searchSeed ?? ''}
+        now={now}
+        onClose={() => {
+          setSearchSeed(null)
+        }}
+        onOpenChat={(id, messageId) => {
+          void openFoundChat(id, messageId)
+        }}
+        onOpenJob={(id) => {
+          void openFoundJob(id)
         }}
       />
       <footer className="status-bar">
