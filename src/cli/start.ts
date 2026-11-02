@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { freemem, homedir, totalmem } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Github } from '../core/github'
@@ -75,7 +75,8 @@ export async function start(argv: string[]): Promise<number> {
       rules,
       cwd: () => project,
       modelFor,
-      worktrees
+      worktrees,
+      memory: () => ({ free: freemem(), total: totalmem() })
     })
     const routines = new Routines({
       store,

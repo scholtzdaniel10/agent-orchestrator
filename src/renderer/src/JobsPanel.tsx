@@ -592,6 +592,9 @@ function JobsPanel({
                         {stepTitle}
                       </p>
                     ) : null}
+                    {job.status === 'queued' && job.held === 'memory' ? (
+                      <p className="job-step-live">Waiting for free memory before it starts</p>
+                    ) : null}
                     <div className="job-meta">
                       {metaLine(jobMetaParts(job))}
                       {visibleChange(job, changes) !== null ? (

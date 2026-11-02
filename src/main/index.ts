@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { app, shell, BrowserWindow, dialog, ipcMain, Notification, screen } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs'
+import { freemem, totalmem } from 'os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -327,7 +328,8 @@ app.whenReady().then(async () => {
     worktrees,
     onChanges: () => {
       pushChanges()
-    }
+    },
+    memory: () => ({ free: freemem(), total: totalmem() })
   })
   await orch.init()
   const routines = new Routines({

@@ -1396,6 +1396,39 @@ test('in Auto a proposed plan runs at once, and the lead is told so', async () =
   )
 })
 
+test('a lead turn cannot replace a plan that is already running', async () => {
+  const cursor = new FakeAdapter('cursor', [
+    done('lead-s', 'plan'),
+    done('w1', 'one'),
+    done('lead-s', 'reported')
+  ])
+  const claude = new FakeAdapter('claude', [])
+  claude.signedIn = false
+  await withLeadOrch(
+    [cursor, claude],
+    async (lead, orch) => {
+      const message = await lead.send('do a thing')
+      const plan = {
+        summary: 's',
+        status: 'waiting' as const,
+        jobs: [{ title: 'T', type: 'planning' as const, access: 'read' as const, prompt: 'p' }]
+      }
+      lead.attachProposal(message.id, plan)
+      expect(orch.list()).toHaveLength(1)
+      // A second propose_jobs in the same turn used to start a second plan at once.
+      expect(() => {
+        lead.attachProposal(message.id, plan)
+      }).toThrow('already running')
+      expect(orch.list()).toHaveLength(1)
+      const saved = lead.messages().find((item) => item.id === message.id)
+      expect(saved?.proposal?.jobIds).toEqual([orch.list()[0]?.id])
+      await orch.idle()
+      await lead.whenQuiet()
+    },
+    { runMode: () => 'legit' }
+  )
+})
+
 test('a dismissed plan never runs', async () => {
   const cursor = new FakeAdapter('cursor', [done('lead-s', 'plan')])
   const claude = new FakeAdapter('claude', [])

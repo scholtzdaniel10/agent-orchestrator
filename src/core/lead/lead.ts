@@ -234,6 +234,12 @@ export class Lead {
     const index = this.history.findIndex((item) => item.id === turn)
     if (index < 0) throw new Error('that lead turn is not open')
     const message = this.history[index]
+    // In Auto and LEG IT! the first plan of a turn starts at once; a second must not start more.
+    if (message.proposal?.status === 'running') {
+      throw new Error(
+        "This turn's plan is already running. Wait for its report before proposing more."
+      )
+    }
     message.proposal = copyProposal(proposal)
     this.emit(message)
     // Past the cap the plan waits for Run, so a lead that keeps re-planning cannot drain a plan.
