@@ -6775,6 +6775,145 @@ label,
   gap: var(--space-6);
 }
 
+/* Search chats and jobs (Ctrl+Shift+F). Sits on the New task overlay. */
+.search-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(70vh, 640px);
+  margin: 6vh auto auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.search-dialog-input {
+  flex: none;
+  height: 40px;
+  padding: 0 var(--space-12);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.search-dialog-input::placeholder {
+  color: var(--muted);
+}
+
+.search-dialog-input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--signal);
+}
+
+.search-results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-4);
+  list-style: none;
+  overflow: auto;
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-8);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.search-hit.is-active {
+  background: var(--selected);
+}
+
+.search-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.search-hit-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.search-hit-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.search-hit-snippet mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--signal) 28%, transparent);
+  color: var(--text);
+}
+
+.search-hit-field {
+  margin-right: var(--space-6);
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.search-status {
+  flex: none;
+  margin: 0;
+  padding: var(--space-6) var(--space-12);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.search-status.is-error {
+  color: var(--bad);
+}
+
+/* A chat message opened from search flashes once. */
+.lead-row.is-found {
+  animation: found-flash 1.6s ease-out;
+}
+
+@keyframes found-flash {
+  from {
+    background: color-mix(in srgb, var(--signal) 22%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lead-row.is-found {
+    animation: none;
+    outline: 1px solid var(--signal);
+  }
+}
+
 .new-task-kicker {
   margin: 0;
   color: var(--muted);
@@ -7041,6 +7180,15 @@ label,
   outline: none;
   background: var(--raised);
   color: var(--text);
+}
+
+.sidebar-nav-key {
+  margin-left: auto;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .sidebar-nav-count {

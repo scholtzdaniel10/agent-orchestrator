@@ -1343,6 +1343,7 @@ function ProjectBar({
   onRevealProject,
   onOpenSettings,
   onNewTask,
+  onOpenSearch,
   onOpenGoals,
   onOpenAutomations,
   goalsNeedingYou
@@ -1388,6 +1389,8 @@ function ProjectBar({
   onRevealProject: (path: string) => void
   onOpenSettings: () => void
   onNewTask?: () => void
+  /** Full-text search of chats and jobs, starting from the sidebar filter's text. */
+  onOpenSearch?: (text: string) => void
   onOpenGoals?: () => void
   onOpenAutomations?: () => void
   /** Goals waiting on the person. A badge shows when this is greater than zero. */
@@ -1651,6 +1654,21 @@ function ProjectBar({
           New task
         </button>
         <nav className="sidebar-nav" aria-label="Sidebar">
+          {onOpenSearch !== undefined ? (
+            <button
+              type="button"
+              className="sidebar-nav-row"
+              title="Search inside chats and jobs (Ctrl+Shift+F)"
+              onClick={() => {
+                onOpenSearch(search.trim())
+              }}
+            >
+              <span>Search</span>
+              <span className="sidebar-nav-key" aria-hidden="true">
+                Ctrl+Shift+F
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="sidebar-nav-row"

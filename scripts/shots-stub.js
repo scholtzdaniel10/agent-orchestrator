@@ -659,6 +659,60 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
       }
     ]
   }
+  // A rough stand-in for the real search: one word, found in job steps and lead messages.
+  const fakeSearch = {
+    marks: (word, text) => {
+      const out = []
+      const lower = text.toLowerCase()
+      let from = lower.indexOf(word)
+      while (from !== -1) {
+        out.push([from, from + word.length])
+        from = lower.indexOf(word, from + word.length)
+      }
+      return out
+    },
+    run: (query) => {
+      const word = query.trim().toLowerCase().split(/\s+/)[0] ?? ''
+      if (word === '') return []
+      const hits = []
+      for (const job of jobs) {
+        const step = (job.steps ?? []).find((item) => item.title.toLowerCase().includes(word))
+        const text = step ? step.title : job.prompt
+        if (!text.toLowerCase().includes(word)) continue
+        const marks = fakeSearch.marks(word, text)
+        hits.push({
+          kind: 'job',
+          id: job.id,
+          title: job.title ?? job.prompt,
+          at: now - 2 * H,
+          field: step ? 'step' : 'prompt',
+          snippet: text,
+          marks,
+          matches: marks.length,
+          status: job.status,
+          provider: job.provider,
+          ...(step ? { stepId: step.id } : {})
+        })
+      }
+      for (const message of lead) {
+        const text = message.text.replace(/\s+/g, ' ')
+        if (!text.toLowerCase().includes(word)) continue
+        hits.push({
+          kind: 'chat',
+          id: 'c1',
+          title: 'Tidy the router and check the pty host',
+          at: now - 3 * H,
+          field: 'message',
+          role: message.role,
+          messageId: message.id,
+          snippet: text,
+          marks: fakeSearch.marks(word, text),
+          matches: 1
+        })
+      }
+      return hits
+    }
+  }
   window.api = {
     submitJob: (type, prompt, provider) =>
       Promise.resolve({
@@ -671,6 +725,8 @@ diff --git a/src/core/router/orchestrator.ts b/src/core/router/orchestrator.ts
         failedOver: []
       }),
     listJobs: ok(jobs),
+    getJob: (id) => Promise.resolve(jobs.find((item) => item.id === id) ?? null),
+    searchHistory: (query) => Promise.resolve(fakeSearch.run(query)),
     onJobUpdate: off,
     cancelJob: (id) => {
       const job = jobs.find((item) => item.id === id)

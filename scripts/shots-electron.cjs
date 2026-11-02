@@ -33,7 +33,34 @@ const openFile = `(async () => {
   row?.click()
 })()`
 
+const openSearch = `(async () => {
+  // Let the project load first: the dialog starts over when the open project changes.
+  await new Promise((resolve) => setTimeout(resolve, 1200))
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true })
+  )
+  const deadline = Date.now() + 4000
+  let input
+  while (Date.now() < deadline) {
+    input = document.querySelector('.search-dialog-input')
+    if (input) break
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  set.call(input, 'router')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  const until = Date.now() + 4000
+  while (Date.now() < until && !document.querySelector('.search-hit')) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  // A hidden window paints slowly; give the results time to reach the screen.
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+})()`
+
 const scenes = {
+  search: { query: '?tab=lead', scheme: 'dark', size: [1440, 900], script: openSearch },
+  'search-light': { query: '?tab=lead', scheme: 'light', size: [1100, 760], script: openSearch },
   workspace: { query: '', scheme: 'dark', size: [1440, 900], script: openFile },
   jobs: {
     query: '?tab=jobs',
