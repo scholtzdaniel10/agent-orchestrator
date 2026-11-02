@@ -22,6 +22,7 @@ import type { CommitDetail, CommitPage } from '../core/history'
 import type { Goal, PlannedJob } from '../core/goals'
 import type { Trigger } from '../core/triggers'
 import type { BuiltInSkill, SkillFolderReport } from '../core/plugins'
+import type { SearchField, SearchHit } from '../core/search'
 
 /** Skills loaded into the agents Legate starts: its own, and the folders the person added. */
 export interface SkillsState {
@@ -111,6 +112,10 @@ export interface OrchestratorApi {
   onJobUpdate(cb: (job: JobRecord) => void): () => void
   /** Stop a queued or running job. */
   cancelJob(id: string): Promise<JobRecord>
+  /** One job of the open project, including ones older than the jobs listed; null if unknown. */
+  getJob(id: string): Promise<JobRecord | null>
+  /** Chats and jobs of the open project that contain every word of `query`, newest first. */
+  searchHistory(query: string, limit?: number): Promise<SearchHit[]>
   /** Asks Claude for its real usage now; at most once every two minutes. */
   refreshUsage(): Promise<{ ok: boolean; error?: string }>
   /**
@@ -347,5 +352,7 @@ export type {
   ProviderId,
   Requirement,
   Routine,
+  SearchField,
+  SearchHit,
   TerminalInfo
 }

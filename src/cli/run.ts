@@ -5,6 +5,7 @@ import { assertWorktreeIdle } from '../core/worktree-guard'
 import type { JobRecord, JobStep, WorkerInfo } from '../core/router/orchestrator'
 import type { Routine } from '../core/routines'
 import type { WorktreeNameRow } from '../core/router/store'
+import type { SearchHit } from '../core/search'
 import {
   accessOf,
   isJobAccess,
@@ -29,6 +30,7 @@ import {
   oneSentence,
   planLine,
   proposalText,
+  searchLines,
   stepLine,
   table
 } from './format'
@@ -88,6 +90,7 @@ export interface CliContext {
   }
   store: {
     jobsNewest: (project: string, limit: number) => { createdAt: number; job: JobRecord }[]
+    search: (project: string, query: string, limit?: number) => SearchHit[]
     worktreeNames: (project: string) => WorktreeNameRow[]
     setWorktreeName: (row: WorktreeNameRow) => void
     deleteWorktreeName: (id: string) => void
@@ -178,6 +181,7 @@ async function dispatch(parsed: Parsed, ctx: CliContext): Promise<number> {
   if (command === 'job') return submitJob(parsed, ctx)
   if (command === 'jobs') return listJobs(parsed, ctx)
   if (command === 'show') return showJob(parsed, ctx)
+  if (command === 'search') return search(parsed, ctx)
   if (command === 'changes') {
     if (unexpected(parsed.args, 'changes', ctx)) return 2
     return printChanges(ctx)
@@ -286,6 +290,30 @@ async function listJobs(parsed: Parsed, ctx: CliContext): Promise<number> {
       )
     )}\n`
   )
+  return 0
+}
+
+function search(parsed: Parsed, ctx: CliContext): number {
+  const query = parsed.args.join(' ').trim()
+  if (query === '') {
+    ctx.stderr(`Missing search text.\n${usageFor('search')}\n`)
+    return 2
+  }
+  const limit = parseLimit(parsed.flags.limit)
+  if (limit === null) {
+    ctx.stderr(`Limit must be a positive whole number.\n${usageFor('search')}\n`)
+    return 2
+  }
+  const hits = ctx.store.search(ctx.project, query, limit)
+  if (parsed.flags.json) {
+    ctx.stdout(`${JSON.stringify(hits, null, 2)}\n`)
+    return 0
+  }
+  if (hits.length === 0) {
+    ctx.stderr(`No chats or jobs here match "${query}".\n`)
+    return 0
+  }
+  ctx.stdout(`${searchLines(hits, ctx.now(), ctx.color).join('\n')}\n`)
   return 0
 }
 
