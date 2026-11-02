@@ -27,7 +27,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 ![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
 
-**Status:** 0.1 preview, Windows. The first version anyone outside the project gets to try. Unit-tested throughout (596 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 0.1 preview, Windows. The first version anyone outside the project gets to try. Unit-tested throughout (647 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
 
 ## The chain of command
 
@@ -42,7 +42,7 @@ It is a desktop app (Electron + TypeScript) with a terminal UI and a command lin
 
 ## How it works
 
-- **The window is a workspace.** The sidebar has **New task** (`Ctrl+N`), Goals, Automations, and every project as a tree with its worktrees under it; click any worktree, in any project, to open it. Finished agents you are not looking at sleep to save memory and resume when shown. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance (Claude's is read live) and what is running.
+- **The window is a workspace.** The sidebar has **New task** (`Ctrl+N`), **Search** (`Ctrl+Shift+F`, every word you type across saved chats and jobs), Goals, Automations, and every project as a tree with its worktrees under it; click any worktree, in any project, to open it. Finished agents you are not looking at sleep to save memory and resume when shown. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance (Claude's is read live) and what is running.
 - **The lead.** You talk to one lead. It reads the code your request is about, then proposes jobs as cards you can edit; press **Run** and each agent opens as a live tab beside your terminals. **Take over** turns any of them into a real terminal on the same session. The lead reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
 - **Workers and access.** Grok is a third worker running Cursor on a Grok model on your Cursor plan, and coding work goes to Grok first. You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
 - **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
@@ -101,6 +101,8 @@ legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate]
                       [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet]
 legate jobs [--limit N]      recent jobs
 legate show <job-id>         one job with every step
+legate search "<text>" [--limit N] [--json]
+                             chats and jobs here that contain every word
 legate changes               worktrees and their changes
 legate diff <change-id>
 legate merge <change-id>

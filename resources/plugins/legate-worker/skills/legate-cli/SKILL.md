@@ -2,8 +2,9 @@
 name: legate-cli
 description: >-
   Read Legate's state from a terminal with the `legate` command: running and finished jobs, a job's
-  steps and result, open changes and their diffs, worktrees. Use when you are an agent inside Legate
-  and need to know what other workers did or are doing, or which change a worktree belongs to.
+  steps and result, past chats and jobs by keyword, open changes and their diffs, worktrees. Use
+  when you are an agent inside Legate and need to know what other workers did or are doing, what
+  was decided before, or which change a worktree belongs to.
 ---
 
 # Reading Legate with `legate`
@@ -16,6 +17,7 @@ change nothing. Starting jobs, merging and discarding are for the person and the
 | `legate status` | Each plan (Claude, Cursor): ready, busy, or resting, and what is queued |
 | `legate jobs --limit 10` | Recent jobs with id, worker, state, and the start of the prompt |
 | `legate show <job-id>` | One job: prompt, every step it took, and its result |
+| `legate search "<words>"` | Past chats and jobs that contain every word, newest first, with where they matched |
 | `legate changes` | Open changes (one per worktree) with their files |
 | `legate diff <change-id>` | The full diff of one change |
 | `legate worktree list` | Worktrees with name, branch and folder |
