@@ -29,9 +29,9 @@ import UsageMeter from './UsageMeter'
 import HistoryPanel from './HistoryPanel'
 import GoalsPanel from './GoalsPanel'
 import NewTaskDialog from './NewTaskDialog'
+import Workers from './Workers'
 import LegItConfirm from './LegItConfirm'
 import { legItPress } from './leg-it'
-import Workers from './Workers'
 import { observeFlow, type FlowEvent, type FlowSnapshot } from './flow-events'
 import {
   DEFAULT_SIZES,
@@ -564,13 +564,13 @@ function App(): React.JSX.Element {
   // that it is in place. After that it opens only when something is missing.
   const [setupOpen, setSetupOpen] = useState(() => !setupSeen())
   const [newTaskOpen, setNewTaskOpen] = useState(false)
-  const [legItAsking, setLegItAsking] = useState(false)
-  /** LEG IT! was confirmed once in this window, so pressing it again does not ask. */
-  const legItConfirmed = useRef(false)
   /** Goals waiting for the person: a proposed round or a question. */
   const [goalsWaiting, setGoalsWaiting] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsNonce, setSettingsNonce] = useState(0)
+  const [legItAsking, setLegItAsking] = useState(false)
+  /** LEG IT! was confirmed once in this window, so pressing it again does not ask. */
+  const legItConfirmed = useRef(false)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
