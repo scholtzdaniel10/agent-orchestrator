@@ -81,3 +81,11 @@ test('applyTheme removes data-theme for system and still saves', () => {
   expect(storage.data['orch.theme']).toBe('system')
   expect(n).toBe(1)
 })
+
+test('xp round-trips through applyTheme and loadTheme', () => {
+  const storage = fakeStorage()
+  const root = fakeRoot()
+  applyTheme('xp', storage, root, new EventTarget())
+  expect(root.attrs['data-theme']).toBe('xp')
+  expect(loadTheme(storage)).toBe('xp')
+})

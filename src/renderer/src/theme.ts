@@ -5,7 +5,8 @@ export const THEMES = [
   { id: 'ultramarine', name: 'Ultramarine' },
   { id: 'phosphor', name: 'Phosphor' },
   { id: 'graphite', name: 'Graphite' },
-  { id: 'dusk', name: 'Dusk' }
+  { id: 'dusk', name: 'Dusk' },
+  { id: 'xp', name: 'Windows XP (experimental)' }
 ] as const
 
 export type ThemeId = (typeof THEMES)[number]['id']

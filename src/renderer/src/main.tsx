@@ -1,4 +1,5 @@
 import './assets/main.css'
+import.meta.glob('./assets/xp/*.css', { eager: true })
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
