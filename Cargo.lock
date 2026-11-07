@@ -1659,6 +1659,25 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 [[package]]
 name = "legate-bridge"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "getrandom 0.2.17",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "legate-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "subtle",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "legate-cli"
@@ -1689,16 +1708,33 @@ dependencies = [
 [[package]]
 name = "legate-lead"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "legate-core",
+ "legate-providers",
+ "legate-router",
+ "legate-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "legate-providers"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "futures-core",
  "legate-core",
  "libc",
+ "liteagent",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
