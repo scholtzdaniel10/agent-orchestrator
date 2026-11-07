@@ -6,4 +6,4 @@ out
 *.log*
 .orchestrator/
 *.sqlite
-/target
+target/

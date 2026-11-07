@@ -55,6 +55,16 @@ apps/ui                    Dioxus UI port of src/renderer
 - The orchestrator queue is event-driven on tokio channels, with no polling timers.
 - `local` is a provider with its own plan and unlimited allowance. Rules decide which job types may fall back to it.
 
+Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `seven_day` at 0.45) on each plan. Medians:
+
+| Path | Providers scored | Median |
+| --- | --- | --- |
+| TypeScript `pickWithReason` | 3 (claude, cursor, grok; that router has no `local`) | 1.271 µs |
+| Rust pure path | 4, including `local` | 2.439 µs |
+| Rust `RouterState` | 4, including `local` | 73.0 ns |
+
+`RouterState` is 17.4× the TypeScript baseline (1270.8 ns / 73.0 ns). The pure path rebuilds window snapshots on every call, so a warm TypeScript function beats it. Rust medians are criterion's median point estimates (50 samples, 1s warmup, 2s measurement). The TypeScript median is sample 50 of 101 samples of 2,000 calls after 200 warmup calls, timed with `performance.now()` through vitest.
+
 ## Phases
 
 | Phase | Work | Agents | Status |
@@ -75,8 +85,11 @@ apps/ui                    Dioxus UI port of src/renderer
 
 ## Log
 
+- Integration note: the orchestrator's ports use `Rc` and non-`Send` futures. The desktop app and CLI run it on one dedicated thread with a tokio `LocalSet`, and talk to it through channels.
+
 - Branches created: Legate `rust-rewrite` from `origin/main` (93612d5); liteagent `rust`.
 - Phase 0 storage: the default backend is rusqlite 0.37 with the `bundled` feature. Turso 0.8.3 cannot share one database file between two OS processes on Windows, which the desktop app and the CLI both need (`PRAGMA busy_timeout = 5000` in `store.ts`). A throwaway program kept one connection open and spawned a second process against the same path. Exact failures:
   - Default `Builder::new_local(path).build()` in the child: `Locking error: Failed locking file. File is locked by another process`.
   - Parent open with `.experimental_multiprocess_wal(true)`: `experimental multiprocess WAL is not supported by the active IO backend for 'C:\Users\schol\AppData\Local\Temp\turso-mp-27912.db'`.
   - `Store::open` therefore uses rusqlite. The `turso` feature on `legate-store` still compiles `open_local` / `open_multiprocess` and is not the default. `crates/legate-store` test `multi_process_interleaved_writes` passed on rusqlite: two processes, both connections open, 40 inserts each, then 40 `parent` rows, 40 `child` rows, `resting_until("parent") == 2`, `resting_until("child") == 1`.
+- Phase 1 router: `crates/legate-router` ports `router.ts` and `orchestrator.ts`. Router tests 17 (all 16 from `router.test.ts`, plus unlimited headroom when allowance is missing). Orchestrator tests 72/72. `RouterState` pick median 73.0 ns against the TypeScript median 1.271 µs (17.4×) on 10,000 runs and 2 windows.
