@@ -70,9 +70,10 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 | Phase | Work | Agents | Status |
 | --- | --- | --- | --- |
 | 0 | Workspace, legate-core, legate-store, bacon.toml, CI, Turso check | 1 | done (core 33 tests, store 19; rusqlite default) |
-| 1 | router, providers, liteagent, pty, git | 5 in parallel | pending |
-| 2 | lead, bridge, cli | 3 in parallel | pending |
-| 3 | Tauri app; Dioxus UI (3 slices) | 4 | pending |
+| 1 | router, providers, liteagent, pty, git | 5 in parallel | done (334 workspace tests) |
+| 2 | lead, bridge, local provider adapter | 3 in parallel | pending |
+| 2b | legate-app: the main-process service (OrchestratorApi in Rust) wiring every crate | 1 | pending |
+| 3 | Tauri app; Dioxus UI (3 slices); CLI | 5 | pending |
 | 4 | Integration, remove TypeScript, installer, README, PR, liteagent branch | 1-2 | pending |
 
 ## Rules for every agent
