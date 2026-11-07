@@ -8,3 +8,10 @@ publish.workspace = true
 [[bin]]
 name = "legate"
 path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+legate-app = { path = "../legate-app" }
+legate-core = { path = "../legate-core" }
+legate-router = { path = "../legate-router" }
+tokio = { workspace = true }

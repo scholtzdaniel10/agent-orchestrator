@@ -1657,6 +1657,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
+name = "legate-app"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "legate-bridge",
+ "legate-core",
+ "legate-git",
+ "legate-lead",
+ "legate-providers",
+ "legate-pty",
+ "legate-router",
+ "legate-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "legate-bridge"
 version = "0.1.0"
 dependencies = [
@@ -1682,6 +1704,13 @@ dependencies = [
 [[package]]
 name = "legate-cli"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "legate-app",
+ "legate-core",
+ "legate-router",
+ "tokio",
+]
 
 [[package]]
 name = "legate-core"

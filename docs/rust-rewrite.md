@@ -72,7 +72,7 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 | 0 | Workspace, legate-core, legate-store, bacon.toml, CI, Turso check | 1 | done (core 33 tests, store 19; rusqlite default) |
 | 1 | router, providers, liteagent, pty, git | 5 in parallel | done (334 workspace tests) |
 | 2 | lead, bridge, local provider adapter | 3 in parallel | done (468 workspace tests) |
-| 2b | legate-app: the main-process service (OrchestratorApi in Rust) wiring every crate | 1 | pending |
+| 2b | legate-app: the main-process service (OrchestratorApi in Rust) wiring every crate | 1 | done (493 workspace tests, end-to-end local edit job) |
 | 3 | Tauri app; Dioxus UI (3 slices); CLI | 5 | pending |
 | 4 | Integration, remove TypeScript, installer, README, PR, liteagent branch | 1-2 | pending |
 
@@ -83,6 +83,15 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 - Port the TypeScript tests for your module to Rust tests. Same inputs, same expected outputs.
 - No `unwrap()` outside tests; errors via `thiserror` in libraries and `anyhow` in binaries.
 - Report: files changed, test counts, any behavior you could not port and why.
+
+## Follow-ups for phase 4
+
+- A `maxParallel` change in Settings does not retune the running router; it needs a rules setter on the orchestrator.
+- `JobRecord` has no created-at, so `legate jobs` prints `-` for age.
+- `legate plans` shows "CLI version unknown" for local; show the Ollama or llama-server version.
+- `claim_terminal` / `resize_terminal` use window id 1 until Tauri passes real window ids; `sleep_terminal` must skip popped-out terminals.
+- `Workspaces::remove` / `changes` are stubs (the orchestrator does not call them today).
+- Notifications, UI zoom, single-instance lock, updater: Tauri plugins.
 
 ## Log
 

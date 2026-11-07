@@ -10,6 +10,7 @@ members = [
     "crates/legate-git",
     "crates/legate-lead",
     "crates/legate-bridge",
+    "crates/legate-app",
     "crates/legate-cli",
 ]
 
