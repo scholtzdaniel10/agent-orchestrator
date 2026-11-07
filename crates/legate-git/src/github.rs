@@ -24,7 +24,7 @@ struct AvailCache {
     value: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OpenedPr {
     pub url: String,
     pub branch: String,

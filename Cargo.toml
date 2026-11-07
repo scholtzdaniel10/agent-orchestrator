@@ -12,6 +12,8 @@ members = [
     "crates/legate-bridge",
     "crates/legate-app",
     "crates/legate-cli",
+    "apps/ui",
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

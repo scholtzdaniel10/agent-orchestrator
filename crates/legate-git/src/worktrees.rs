@@ -35,7 +35,7 @@ pub struct ApplyOutcome {
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MergeOutcome {
     pub ok: bool,
     pub message: String,

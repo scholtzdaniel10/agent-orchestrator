@@ -347,7 +347,7 @@ async fn shell_terminal_echoes_on_subscribe() {
                 echoed.push_str(&data);
                 // ConPTY asks for the cursor position before the command's output.
                 if data.contains("[6n") {
-                    let _ = app.write_terminal(&info.id, "\u{1b}[1;1R").await;
+                    let _ = app.write_terminal(&info.id, "\u{1b}[1;1R", 1).await;
                 }
                 if echoed.contains("legate-shell-ok") {
                     break;

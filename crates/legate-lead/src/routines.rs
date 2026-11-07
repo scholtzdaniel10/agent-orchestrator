@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 use legate_core::{JobAccess, JobRecord, JobStatus, JobType, ProviderId};
 use legate_store::RoutineRow;
+use serde::de::{self, Deserializer};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::LeadError;
@@ -23,6 +25,30 @@ pub enum RoutineWorker {
     Plan(ProviderId),
 }
 
+impl Serialize for RoutineWorker {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for RoutineWorker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        if value == "auto" {
+            return Ok(Self::Auto);
+        }
+        ProviderId::parse(&value)
+            .map(Self::Plan)
+            .ok_or_else(|| de::Error::custom("unknown worker"))
+    }
+}
+
 impl RoutineWorker {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -32,19 +58,23 @@ impl RoutineWorker {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoutineAfter {
     pub job_type: JobType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Routine {
     pub id: String,
     pub name: String,
     pub prompt: String,
+    #[serde(rename = "type")]
     pub job_type: JobType,
     pub worker: RoutineWorker,
     pub access: JobAccess,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<RoutineAfter>,
 }
 

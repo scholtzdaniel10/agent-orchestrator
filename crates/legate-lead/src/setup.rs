@@ -6,12 +6,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use legate_providers::ProviderAdapter;
+use serde::{Deserialize, Serialize};
 
 use crate::ports::CommandRun;
 
 const CHECK_MS: u64 = 15_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RequirementId {
     Git,
     Claude,
@@ -30,7 +32,8 @@ impl RequirementId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RequirementNeed {
     Required,
     Plan,
@@ -47,7 +50,8 @@ impl RequirementNeed {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum RequirementState {
     Ready,
     Missing,
@@ -81,13 +85,14 @@ impl Platform {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Install {
     pub command: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Requirement {
     pub id: RequirementId,
     pub label: String,

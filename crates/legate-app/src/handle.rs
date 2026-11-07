@@ -325,6 +325,23 @@ impl AppHandle {
             .await
     }
 
+    /// Absolute path the opener should hand to the OS for `openFile`.
+    pub async fn resolve_file(
+        &self,
+        where_id: Option<String>,
+        path: impl Into<String>,
+    ) -> Result<String, AppError> {
+        let path = path.into();
+        self.invoke(move |world| world.resolve_file(where_id, path))
+            .await
+    }
+
+    /// Directory the opener should show for `revealFolder`.
+    pub async fn resolve_folder(&self, where_id: Option<String>) -> Result<String, AppError> {
+        self.invoke(move |world| world.resolve_folder(where_id))
+            .await
+    }
+
     pub async fn list_goals(&self) -> Result<Vec<Goal>, AppError> {
         self.invoke(|world| world.list_goals()).await
     }
@@ -577,16 +594,22 @@ impl AppHandle {
         &self,
         id: impl Into<String>,
         data: impl Into<String>,
+        window_id: u64,
     ) -> Result<(), AppError> {
         let id = id.into();
         let data = data.into();
-        self.invoke(move |world| world.write_terminal(id, data))
+        self.invoke(move |world| world.write_terminal(id, data, window_id))
             .await
     }
 
-    pub async fn claim_terminal(&self, id: impl Into<String>) -> Result<(), AppError> {
+    pub async fn claim_terminal(
+        &self,
+        id: impl Into<String>,
+        window_id: u64,
+    ) -> Result<(), AppError> {
         let id = id.into();
-        self.invoke(move |world| world.claim_terminal(id)).await
+        self.invoke(move |world| world.claim_terminal(id, window_id))
+            .await
     }
 
     pub async fn resize_terminal(
@@ -594,9 +617,16 @@ impl AppHandle {
         id: impl Into<String>,
         cols: f64,
         rows: f64,
+        window_id: u64,
     ) -> Result<(), AppError> {
         let id = id.into();
-        self.invoke(move |world| world.resize_terminal(id, cols, rows))
+        self.invoke(move |world| world.resize_terminal(id, cols, rows, window_id))
+            .await
+    }
+
+    /// Forget that `window_id` owns any terminal's size.
+    pub async fn release_window(&self, window_id: u64) -> Result<(), AppError> {
+        self.invoke(move |world| world.release_window(window_id))
             .await
     }
 

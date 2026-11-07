@@ -1,0 +1,5 @@
+[application]
+name = "legate-ui"
+
+[web.app]
+title = "Legate"

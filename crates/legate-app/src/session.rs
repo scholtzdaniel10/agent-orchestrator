@@ -387,8 +387,12 @@ async fn boot(
     events: broadcast::Sender<AppEvent>,
     tx: mpsc::UnboundedSender<Command>,
 ) -> Result<World, AppError> {
+    let default_dir = app_data_dir(None);
     let data_dir = app_data_dir(options.data_dir.as_deref());
-    bring_old_data(&data_dir, options.data_dir.is_none())?;
+    // A temp directory passed in tests must not inherit the person's database.
+    // The desktop shell passes the real data directory explicitly, and that still copies.
+    let allow_legacy_copy = options.data_dir.is_none() || data_dir == default_dir;
+    bring_old_data(&data_dir, allow_legacy_copy)?;
     std::fs::create_dir_all(&data_dir).map_err(|err| AppError::message(err.to_string()))?;
     std::fs::create_dir_all(lead_dir(&data_dir))
         .map_err(|err| AppError::message(err.to_string()))?;

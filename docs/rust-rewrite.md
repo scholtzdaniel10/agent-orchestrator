@@ -73,7 +73,7 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 | 1 | router, providers, liteagent, pty, git | 5 in parallel | done (334 workspace tests) |
 | 2 | lead, bridge, local provider adapter | 3 in parallel | done (468 workspace tests) |
 | 2b | legate-app: the main-process service (OrchestratorApi in Rust) wiring every crate | 1 | done (493 workspace tests, end-to-end local edit job) |
-| 3 | Tauri app; Dioxus UI (3 slices); CLI | 5 | pending |
+| 3 | Tauri app; Dioxus UI (3 slices); CLI | 5 | 3a in (shell, setup, projects, terminals). CLI and the other UI slices are still open |
 | 4 | Integration, remove TypeScript, installer, README, PR, liteagent branch | 1-2 | pending |
 
 ## Rules for every agent
@@ -89,9 +89,8 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 - A `maxParallel` change in Settings does not retune the running router; it needs a rules setter on the orchestrator.
 - `JobRecord` has no created-at, so `legate jobs` prints `-` for age.
 - `legate plans` shows "CLI version unknown" for local; show the Ollama or llama-server version.
-- `claim_terminal` / `resize_terminal` use window id 1 until Tauri passes real window ids; `sleep_terminal` must skip popped-out terminals.
 - `Workspaces::remove` / `changes` are stubs (the orchestrator does not call them today).
-- Notifications, UI zoom, single-instance lock, updater: Tauri plugins.
+- The updater is compiled into the shell but left off (`UPDATER_ENABLED` is false, and `bundle.createUpdaterArtifacts` is false). Turn it on when a release endpoint and pubkey exist. Notifications, UI zoom, and the single-instance lock are already wired.
 
 ## Log
 
@@ -103,3 +102,4 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
   - Parent open with `.experimental_multiprocess_wal(true)`: `experimental multiprocess WAL is not supported by the active IO backend for 'C:\Users\schol\AppData\Local\Temp\turso-mp-27912.db'`.
   - `Store::open` therefore uses rusqlite. The `turso` feature on `legate-store` still compiles `open_local` / `open_multiprocess` and is not the default. `crates/legate-store` test `multi_process_interleaved_writes` passed on rusqlite: two processes, both connections open, 40 inserts each, then 40 `parent` rows, 40 `child` rows, `resting_until("parent") == 2`, `resting_until("child") == 1`.
 - Phase 1 router: `crates/legate-router` ports `router.ts` and `orchestrator.ts`. Router tests 17 (all 16 from `router.test.ts`, plus unlimited headroom when allowance is missing). Orchestrator tests 72/72. `RouterState` pick median 73.0 ns against the TypeScript median 1.271 µs (17.4×) on 10,000 runs and 2 windows.
+- Phase 3a shell: Tauri 2 (`apps/desktop/src-tauri`, product Legate, identifier `dev.legate.app`) loads the Dioxus 0.7.10 WASM UI. 100 commands (every `AppHandle` method, plus the window commands `new_window`, `pop_out_terminal`, `popped_out`, `pop_out_panel`, `close_panel`, `popped_panels`, `open_file`, `reveal_project`, `reveal_folder`, `open_data_dir`). 11 events, named like the Electron channels: `jobs:update`, `plans:update`, `changes:update`, `goals:update`, `triggers:update`, `prefs:update`, `lead:update`, `terminals:data`, `terminals:update`, `terminals:popped`, `panels:popped`. `write_terminal`, `claim_terminal`, and `resize_terminal` take the calling window's stable id. `sleep_terminal` returns false for a popped-out terminal. Desktop notifications fire when a job ends and no window is focused, and only when `Prefs.notify` is set. UI zoom follows `Prefs.uiScale`. The updater plugin is not initialized: `UPDATER_ENABLED` is false in the shell and `bundle.createUpdaterArtifacts` is false, so the build does not check for updates. NSIS installer is per-user with the WebView2 download bootstrapper. Fully ported screens: Setup, ProjectBar (projects, GitHub clone, plan cards, UsageMeter), TerminalPane, TerminalTabs, and the pop-out TerminalWindow. The other renderer screens are placeholders with the TypeScript prop signatures. `apps/ui/src/wire.rs` repeats Goal, Trigger, Routine, Commit, and the requirement types as JSON because `legate-lead` and `legate-git` do not build for wasm32. `dx` 0.7.10 asks `cargo +nightly` for a unit-graph progress estimate and continues on stable when that fails; this machine's nightly toolchain has no rustc, and a half-installed nightly makes that probe hang, so the verified build skipped the probe and compiled the UI with stable 1.99. Workspace tests after 3a: 541 passed, 1 ignored. Phase 3 is not finished: the CLI and the remaining UI slices are still open.

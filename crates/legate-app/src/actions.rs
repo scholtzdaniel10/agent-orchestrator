@@ -31,7 +31,6 @@ use crate::session::{
 };
 use crate::usage::UsageTrigger;
 
-const WINDOW_ID: u64 = 1;
 const GONE: &str = "That worktree folder is gone. It may have been merged or discarded.";
 const NOT_A_REPO: &str = "This folder is not a git repository, so it cannot have worktrees.";
 
@@ -736,6 +735,32 @@ impl World {
         Box::pin(async move { files.read(Path::new(&root), &path).await.map_err(git_err) })
     }
 
+    /// Absolute path of a project or worktree file, after the same checks as opening it.
+    pub fn resolve_file(&self, where_id: Option<String>, path: String) -> Task<String> {
+        if !valid_file_path(&path) {
+            return fail("invalid path");
+        }
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        let files = clone_files();
+        match files.resolve(Path::new(&root), &path) {
+            Ok(abs) if abs.is_file() => ready(Ok(abs.to_string_lossy().into_owned())),
+            Ok(abs) if !abs.exists() => fail("That file is missing."),
+            Ok(_) => fail("That is not a file."),
+            Err(err) => ready(Err(git_err(err))),
+        }
+    }
+
+    /// Folder of the active project (`where_id` none) or a worktree.
+    pub fn resolve_folder(&self, where_id: Option<String>) -> Task<String> {
+        match self.files_root(where_id) {
+            Ok(root) => ready(Ok(root)),
+            Err(err) => ready(Err(err)),
+        }
+    }
+
     pub fn file_diff(&self, where_id: Option<String>, path: String) -> Task<String> {
         if !valid_file_path(&path) {
             return fail("invalid path");
@@ -1327,25 +1352,31 @@ impl World {
         })
     }
 
-    pub fn write_terminal(&self, id: String, data: String) -> Task<()> {
-        self.terms.claim_terminal(&id, WINDOW_ID);
+    pub fn write_terminal(&self, id: String, data: String, window_id: u64) -> Task<()> {
+        self.terms.claim_terminal(&id, window_id);
         self.terms.write(&id, &data);
         ready(Ok(()))
     }
 
-    pub fn claim_terminal(&self, id: String) -> Task<()> {
+    pub fn claim_terminal(&self, id: String, window_id: u64) -> Task<()> {
         if id.is_empty() || id.len() > 64 {
             return ready(Ok(()));
         }
-        self.terms.claim_terminal(&id, WINDOW_ID);
+        self.terms.claim_terminal(&id, window_id);
         ready(Ok(()))
     }
 
-    pub fn resize_terminal(&self, id: String, cols: f64, rows: f64) -> Task<()> {
+    pub fn resize_terminal(&self, id: String, cols: f64, rows: f64, window_id: u64) -> Task<()> {
         if !cols.is_finite() || !rows.is_finite() {
             return ready(Ok(()));
         }
-        let _ = self.terms.resize_claimed(&id, WINDOW_ID, cols, rows);
+        let _ = self.terms.resize_claimed(&id, window_id, cols, rows);
+        ready(Ok(()))
+    }
+
+    /// Drop resize ownership for every terminal this window had claimed.
+    pub fn release_window(&self, window_id: u64) -> Task<()> {
+        self.terms.release_window(window_id);
         ready(Ok(()))
     }
 

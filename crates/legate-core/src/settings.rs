@@ -300,13 +300,13 @@ impl Settings {
     fn persist(&self) -> Result<(), SettingsError> {
         #[cfg(target_arch = "wasm32")]
         {
-            return Err(SettingsError::Io(io::Error::new(
+            Err(SettingsError::Io(io::Error::new(
                 io::ErrorKind::Unsupported,
                 format!(
                     "settings files are not available on wasm ({})",
                     self.path.display()
                 ),
-            )));
+            )))
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -328,7 +328,7 @@ fn read_settings(path: &Path) -> Map<String, Value> {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = path;
-        return Map::new();
+        Map::new()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

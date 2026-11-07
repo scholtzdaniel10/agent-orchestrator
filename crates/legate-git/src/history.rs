@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cmd::{CmdOut, CmdRun};
 use crate::error::GitError;
 use crate::gitpath::{cap_show_diff, nonempty_line};
@@ -11,7 +13,7 @@ pub const PAGE: i64 = 100;
 const FIELD: char = '\u{1f}';
 const RECORD: char = '\u{1e}';
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Commit {
     pub hash: String,
     pub short: String,
@@ -24,7 +26,7 @@ pub struct Commit {
     pub refs: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitFile {
     pub path: String,
     /// `None` for a binary file.
@@ -32,7 +34,7 @@ pub struct CommitFile {
     pub removed: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitDetail {
     pub hash: String,
     pub author: String,
@@ -42,7 +44,7 @@ pub struct CommitDetail {
     pub files: Vec<CommitFile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitPage {
     pub commits: Vec<Commit>,
     pub more: bool,

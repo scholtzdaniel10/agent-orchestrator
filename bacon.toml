@@ -11,3 +11,7 @@ need_stdout = false
 [jobs.test]
 command = ["cargo", "test", "--workspace"]
 need_stdout = true
+
+[jobs.ui]
+command = ["cargo", "check", "--manifest-path", "apps/ui/Cargo.toml", "--target", "wasm32-unknown-unknown"]
+need_stdout = false
