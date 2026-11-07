@@ -4,3 +4,28 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+description = "Local LLM agent runtime: prefix cache, tool grammar, cascade, and loop guard"
+readme = "README.md"
+
+# serde, tokio, thiserror, and anyhow come from the Legate workspace.
+# Everything else is pinned here so this crate can be copied out later.
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+futures-core = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+tempfile = "3"
+tokio = { workspace = true, features = ["net"] }
+
+[[bin]]
+name = "liteagent-bench"
+path = "src/bin/liteagent-bench.rs"
