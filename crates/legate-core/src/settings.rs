@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
-use crate::types::{CursorModels, JobAccess, Prefs, ProviderId, UsageShows};
+use crate::types::{
+    CursorModels, DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL, JobAccess,
+    LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, Prefs, ProviderId, UsageShows,
+};
 use crate::util::json_i64;
 
 const MODEL_MAX: usize = 200;
@@ -20,6 +23,10 @@ const PREF_KEYS: &[&str] = &[
     "usageShows",
     "cursorModels",
     "usageCheck",
+    "localUrl",
+    "localModel",
+    "localSmallModel",
+    "localNumCtx",
 ];
 
 /// Window sizes the person can pick, in percent.
@@ -222,6 +229,10 @@ impl Settings {
                 CursorModels::Own
             },
             usage_check: flag_on(get("usageCheck")),
+            local_url: local_url(get("localUrl")),
+            local_model: required_model(get("localModel"), DEFAULT_LOCAL_MODEL),
+            local_small_model: optional_model(get("localSmallModel")),
+            local_num_ctx: local_num_ctx(get("localNumCtx")),
         }
     }
 
@@ -356,6 +367,72 @@ fn whole_in(value: Option<&Value>, min: i64, max: i64) -> Option<i64> {
 /// `notify` and `usageCheck` are on unless the stored value is boolean false.
 fn flag_on(value: Option<&Value>) -> bool {
     !matches!(value, Some(Value::Bool(false)))
+}
+
+fn local_url(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_str)
+        .and_then(normalize_local_url)
+        .unwrap_or_else(|| DEFAULT_LOCAL_URL.to_string())
+}
+
+/// `http://` or `https://` with a host. A trailing slash is removed.
+fn normalize_local_url(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let (scheme, rest) = if let Some(rest) = strip_prefix_ignore_ascii_case(trimmed, "https://") {
+        ("https", rest)
+    } else {
+        let rest = strip_prefix_ignore_ascii_case(trimmed, "http://")?;
+        ("http", rest)
+    };
+    let rest = rest.trim_end_matches('/');
+    if rest.is_empty() {
+        return None;
+    }
+    Some(format!("{scheme}://{rest}"))
+}
+
+fn strip_prefix_ignore_ascii_case<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    if !value.is_char_boundary(prefix.len()) {
+        return None;
+    }
+    let (head, tail) = value.split_at(prefix.len());
+    head.eq_ignore_ascii_case(prefix).then_some(tail)
+}
+
+fn required_model(value: Option<&Value>, default: &str) -> String {
+    match value.and_then(Value::as_str) {
+        Some(text) if is_valid_model(text.trim()) => text.trim().to_string(),
+        _ => default.to_string(),
+    }
+}
+
+fn optional_model(value: Option<&Value>) -> Option<String> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(text)) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() || !is_valid_model(trimmed) {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Some(_) => None,
+    }
+}
+
+fn local_num_ctx(value: Option<&Value>) -> i64 {
+    let Some(value) = value else {
+        return DEFAULT_LOCAL_NUM_CTX;
+    };
+    let Some(number) = json_i64(value) else {
+        return DEFAULT_LOCAL_NUM_CTX;
+    };
+    number.clamp(LOCAL_NUM_CTX_MIN, LOCAL_NUM_CTX_MAX)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -771,13 +848,19 @@ mod tests {
                 usage_shows: UsageShows::Left,
                 cursor_models: CursorModels::Own,
                 usage_check: true,
+                local_url: DEFAULT_LOCAL_URL.to_string(),
+                local_model: DEFAULT_LOCAL_MODEL.to_string(),
+                local_small_model: None,
+                local_num_ctx: DEFAULT_LOCAL_NUM_CTX,
             }
         );
         assert_eq!(
             serde_json::to_string(&defaults).unwrap(),
             concat!(
                 r#"{"maxParallel":null,"terminalFontSize":13,"notify":true,"cloneDir":null,"#,
-                r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true}"#
+                r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true,"#,
+                r#""localUrl":"http://127.0.0.1:11434","localModel":"coder-agent","#,
+                r#""localSmallModel":null,"localNumCtx":65536}"#
             )
         );
         settings
@@ -848,6 +931,93 @@ mod tests {
                 .to_string(),
             "invalid settings"
         );
+    }
+
+    #[test]
+    fn local_model_prefs_default_clamp_and_fall_back() {
+        let old = concat!(
+            r#"{"maxParallel":null,"terminalFontSize":13,"notify":true,"cloneDir":null,"#,
+            r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true}"#
+        );
+        let parsed: Prefs = serde_json::from_str(old).unwrap();
+        assert_eq!(parsed.local_url, DEFAULT_LOCAL_URL);
+        assert_eq!(parsed.local_model, DEFAULT_LOCAL_MODEL);
+        assert_eq!(parsed.local_small_model, None);
+        assert_eq!(parsed.local_num_ctx, DEFAULT_LOCAL_NUM_CTX);
+
+        let temp = Temp::new();
+        let path = temp.file();
+        fs::write(
+            &path,
+            serde_json::json!({"prefs": serde_json::from_str::<Value>(old).unwrap()}).to_string(),
+        )
+        .unwrap();
+        let mut settings = Settings::open(&path);
+        let loaded = settings.prefs();
+        assert_eq!(loaded.local_url, DEFAULT_LOCAL_URL);
+        assert_eq!(loaded.local_model, DEFAULT_LOCAL_MODEL);
+        assert_eq!(loaded.local_small_model, None);
+        assert_eq!(loaded.local_num_ctx, DEFAULT_LOCAL_NUM_CTX);
+        assert_eq!(loaded.terminal_font_size, 13);
+
+        let custom = settings
+            .set_prefs(&serde_json::json!({
+                "localUrl": " HTTP://127.0.0.1:8080/ ",
+                "localModel": " coder-agent:latest ",
+                "localSmallModel": "tiny-coder",
+                "localNumCtx": 8192
+            }))
+            .unwrap();
+        assert_eq!(custom.local_url, "http://127.0.0.1:8080");
+        assert_eq!(custom.local_model, "coder-agent:latest");
+        assert_eq!(custom.local_small_model.as_deref(), Some("tiny-coder"));
+        assert_eq!(custom.local_num_ctx, 8192);
+        assert_eq!(custom.terminal_font_size, 13);
+
+        assert_eq!(
+            settings
+                .set_prefs(&serde_json::json!({"localNumCtx": 10}))
+                .unwrap()
+                .local_num_ctx,
+            LOCAL_NUM_CTX_MIN
+        );
+        assert_eq!(
+            settings
+                .set_prefs(&serde_json::json!({"localNumCtx": 9_999_999}))
+                .unwrap()
+                .local_num_ctx,
+            LOCAL_NUM_CTX_MAX
+        );
+        assert_eq!(
+            settings
+                .set_prefs(&serde_json::json!({"localNumCtx": "nope"}))
+                .unwrap()
+                .local_num_ctx,
+            DEFAULT_LOCAL_NUM_CTX
+        );
+        let fallback = settings
+            .set_prefs(&serde_json::json!({
+                "localUrl": "ftp://files",
+                "localModel": "--force",
+                "localSmallModel": "bad model"
+            }))
+            .unwrap();
+        assert_eq!(fallback.local_url, DEFAULT_LOCAL_URL);
+        assert_eq!(fallback.local_model, DEFAULT_LOCAL_MODEL);
+        assert_eq!(fallback.local_small_model, None);
+        assert_eq!(
+            settings
+                .set_prefs(&serde_json::json!({"localSmallModel": null}))
+                .unwrap()
+                .local_small_model,
+            None
+        );
+        let again = Settings::open(&path).prefs();
+        assert_eq!(again.local_url, DEFAULT_LOCAL_URL);
+        assert_eq!(again.local_model, DEFAULT_LOCAL_MODEL);
+        assert_eq!(again.local_small_model, None);
+        assert_eq!(again.local_num_ctx, DEFAULT_LOCAL_NUM_CTX);
+        assert!(again.notify);
     }
 
     #[test]

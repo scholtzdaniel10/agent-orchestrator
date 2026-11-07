@@ -547,6 +547,29 @@ pub enum CursorModels {
     All,
 }
 
+/// Default base URL for a local llama-server or Ollama.
+pub const DEFAULT_LOCAL_URL: &str = "http://127.0.0.1:11434";
+/// Default model name on that server.
+pub const DEFAULT_LOCAL_MODEL: &str = "coder-agent";
+/// Default Ollama `num_ctx` for local jobs.
+pub const DEFAULT_LOCAL_NUM_CTX: i64 = 65_536;
+/// Lowest context length a local job may request.
+pub const LOCAL_NUM_CTX_MIN: i64 = 4_096;
+/// Highest context length a local job may request.
+pub const LOCAL_NUM_CTX_MAX: i64 = 262_144;
+
+fn default_local_url() -> String {
+    DEFAULT_LOCAL_URL.to_string()
+}
+
+fn default_local_model() -> String {
+    DEFAULT_LOCAL_MODEL.to_string()
+}
+
+fn default_local_num_ctx() -> i64 {
+    DEFAULT_LOCAL_NUM_CTX
+}
+
 /// Preferences set on the Settings page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -565,6 +588,18 @@ pub struct Prefs {
     pub cursor_models: CursorModels,
     /// Read Claude's usage with a tiny turn every 10 minutes while a window is open.
     pub usage_check: bool,
+    /// llama.cpp or Ollama base URL.
+    #[serde(default = "default_local_url")]
+    pub local_url: String,
+    /// Model name on that server.
+    #[serde(default = "default_local_model")]
+    pub local_model: String,
+    /// Smaller model for the liteagent cascade. Null runs only `local_model`.
+    #[serde(default)]
+    pub local_small_model: Option<String>,
+    /// Context length for Ollama (`num_ctx`), clamped to 4096..=262144.
+    #[serde(default = "default_local_num_ctx")]
+    pub local_num_ctx: i64,
 }
 
 /// Read-only facts for the Settings page.

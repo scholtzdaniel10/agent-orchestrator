@@ -6,6 +6,8 @@ mod cursor;
 mod edit_size;
 #[path = "port/kill_tree.rs"]
 mod kill_tree;
+#[path = "port/local.rs"]
+mod local;
 #[path = "port/support.rs"]
 mod support;
 #[path = "port/versions.rs"]

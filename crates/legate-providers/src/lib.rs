@@ -1,4 +1,4 @@
-//! Headless Claude, Cursor, and Grok CLI adapters.
+//! Headless Claude, Cursor, Grok, and local model adapters.
 
 mod adapter;
 mod claude;
@@ -6,6 +6,7 @@ mod cursor;
 mod edit_size;
 mod error;
 mod lenient;
+mod local;
 mod note;
 mod plugins;
 mod process;
@@ -32,6 +33,7 @@ pub use legate_core::{
     AgentEvent, BridgeInfo, FileEdit, GROK_DEFAULT_MODEL, JobAccess, ModelOption, ProviderId,
     RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus,
 };
+pub use local::{LocalAdapter, LocalConfig};
 pub use note::{LEGATE_NOTE, with_legate_note};
 pub use plugins::{AgentPlugins, plugin_args};
 pub use versions::{
