@@ -13,31 +13,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Fail if tag does not match package.json version
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # electron-builder uploads its files side by side. With no release yet, two uploads can each
-      # make a draft of their own (1.0.0 came out as two). Making the draft first gives them one.
-      - name: Make the draft release
-        shell: bash
-        run: |
-          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --title "${GITHUB_REF_NAME#v}" --notes ""
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # No code signing. Windows SmartScreen will warn on the installer.
-      - run: pnpm exec electron-builder --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --locked
+      - name: Build UI
+        working-directory: apps/ui
+        run: dx build --release --platform web
+      - name: Build installer
+        working-directory: apps/desktop/src-tauri
+        run: cargo tauri build
+      - name: Upload NSIS installer
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: target/release/bundle/nsis/*.exe

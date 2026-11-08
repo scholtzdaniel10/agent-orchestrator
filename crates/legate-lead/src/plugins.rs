@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn finds_legates_plugins_and_splits_them_by_role() {
-        let here = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/core");
+        let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let found = bundled_plugins(&here);
         assert_eq!(
             found
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn every_bundled_skill_has_a_name_and_a_description() {
-        let here = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/core");
+        let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let found = bundled_plugins(&here);
         let mut dirs = found.lead.clone();
         for dir in found.worker {

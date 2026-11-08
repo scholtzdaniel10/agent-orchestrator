@@ -74,7 +74,7 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 | 2 | lead, bridge, local provider adapter | 3 in parallel | done (468 workspace tests) |
 | 2b | legate-app: the main-process service (OrchestratorApi in Rust) wiring every crate | 1 | done (493 workspace tests, end-to-end local edit job) |
 | 3 | Tauri app; Dioxus UI (3 slices); CLI | 5 | done (663 workspace tests; shell matches Electron layout; full CLI) |
-| 4 | Integration, remove TypeScript, installer, README, PR, liteagent branch | 1-2 | pending |
+| 4 | Integration, remove TypeScript, installer, README, PR, liteagent branch | 1-2 | README rewritten; TypeScript removed; liteagent rust pushed; draft PR next |
 
 ## Rules for every agent
 

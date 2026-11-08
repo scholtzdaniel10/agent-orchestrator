@@ -1,4 +1,0 @@
-{"wire":"agent-v3","frame":"delta"}
-not stream-json
-{"payload":{"seq":1,"blob":"xxxx"}}
-{"type":"session_tick","n":1}
