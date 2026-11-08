@@ -152,15 +152,7 @@ pub fn TerminalTabs(
                         span { class: "tab-label", "{review.label}" }
                     }
                 }
-                button {
-                    class: "btn btn-quiet tab-new",
-                    disabled: opening,
-                    aria_label: "New Shell terminal",
-                    onclick: move |_| on_open.call(("shell".into(), worktree_pick(new_worktree()))),
-                    span { class: "tab-new-plus", "+" }
-                    span { class: "tab-new-label", "Shell" }
-                }
-                for id in [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok, ProviderId::Local] {
+                for id in [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok] {
                     button {
                         class: "btn btn-quiet tab-new",
                         disabled: opening,
@@ -178,9 +170,14 @@ pub fn TerminalTabs(
                     onclick: move |_| new_worktree.set(!new_worktree()),
                     "Worktree"
                 }
-                label { class: "pane-layout-picker",
-                    span { class: "pane-layout-label", "Panes" }
+                div { class: "pane-layout-picker",
+                    label { r#for: "pane-layout",
+                        span { class: "visually-hidden", "Panes" }
+                        span { class: "pane-layout-label", aria_hidden: "true", "Panes" }
+                    }
                     select {
+                        id: "pane-layout",
+                        class: "select",
                         onchange: move |event| on_pane_layout.call(event.value()),
                         for layout in PaneLayoutId::ALL {
                             option { value: "{layout.as_str()}", selected: layout.as_str() == pane_layout, "{layout.label()}" }

@@ -5,12 +5,14 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 use legate_core::{
     ChangeSet, CursorModels, DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL,
-    JobRecord, LeadChat, PlanStatus, Prefs, ProjectEntry, ProjectInfo, TerminalInfo, UsageShows,
+    JobRecord, LeadChat, LeadMessage, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProviderId,
+    TerminalInfo, UsageShows,
 };
 use wasm_bindgen_futures::spawn_local;
 
 use crate::api::{self, LeadUpdate, TerminalData, TerminalUpdate};
 use crate::logic::terminal_bus::{TerminalBus, create_terminal_bus};
+use crate::wire::{Goal, GoalStatus};
 
 #[derive(Clone, Copy)]
 pub struct Store {
@@ -37,7 +39,17 @@ pub struct Store {
     pub drawer_open: Signal<bool>,
     pub sidebar_shown: Signal<bool>,
     pub sidebar_width: Signal<i64>,
+    pub drawer_width: Signal<i64>,
     pub bus: Signal<TerminalBus>,
+    pub messages: Signal<Vec<LeadMessage>>,
+    pub lead_mode: Signal<Option<ProviderId>>,
+    pub goals_waiting: Signal<Vec<String>>,
+    pub primary: Signal<Option<String>>,
+    pub selected_job: Signal<Option<String>>,
+    pub show_job: Signal<Option<(String, i64)>>,
+    pub selected_change: Signal<Option<String>>,
+    pub settings_nonce: Signal<i64>,
+    pub booted: Signal<bool>,
 }
 
 pub fn provide_store() -> Store {
@@ -65,7 +77,17 @@ pub fn provide_store() -> Store {
         drawer_open: use_signal(|| true),
         sidebar_shown: use_signal(|| true),
         sidebar_width: use_signal(|| 240),
+        drawer_width: use_signal(|| 420),
         bus: use_signal(make_bus),
+        messages: use_signal(Vec::new),
+        lead_mode: use_signal(|| None),
+        goals_waiting: use_signal(Vec::new),
+        primary: use_signal(|| None),
+        selected_job: use_signal(|| None),
+        show_job: use_signal(|| None),
+        selected_change: use_signal(|| None),
+        settings_nonce: use_signal(|| 0),
+        booted: use_signal(|| false),
     };
     use_context_provider(|| store)
 }
@@ -128,6 +150,16 @@ async fn load(mut store: Store) {
     if let Ok(list) = api::popped_panels().await {
         store.popped_panels.set(list);
     }
+    if let Ok(list) = api::list_lead_messages().await {
+        store.messages.set(list);
+    }
+    if let Ok(mode) = api::get_lead_mode().await {
+        store.lead_mode.set(mode);
+    }
+    if let Ok(list) = api::list_goals().await {
+        store.goals_waiting.set(waiting_ids(&list));
+    }
+    store.booted.set(true);
 }
 
 async fn listen(store: Store) {
@@ -174,9 +206,41 @@ async fn listen(store: Store) {
     let _ = api::on_popped_out(move |list| popped.set(list)).await;
     let mut panels = store.popped_panels;
     let _ = api::on_popped_panels(move |list| panels.set(list)).await;
-    let _ = api::on_lead(move |LeadUpdate { .. }| {}).await;
-    let _ = api::on_goals(move |_| {}).await;
+    let mut messages = store.messages;
+    let chats = store.chats;
+    let _ = api::on_lead(move |LeadUpdate { message, .. }| {
+        messages.with_mut(|list| upsert(list, message, |item| &item.id));
+        let chats = chats;
+        spawn_local(async move {
+            if let Ok(list) = api::list_lead_chats().await {
+                let mut chats = chats;
+                chats.set(list);
+            }
+        });
+    })
+    .await;
+    let mut waiting = store.goals_waiting;
+    let _ = api::on_goals(move |goal: Goal| {
+        waiting.with_mut(|ids| {
+            let here = goal.status == GoalStatus::Waiting;
+            let has = ids.iter().any(|id| id == &goal.id);
+            if here && !has {
+                ids.push(goal.id);
+            } else if !here {
+                ids.retain(|id| id != &goal.id);
+            }
+        });
+    })
+    .await;
     let _ = api::on_triggers(move |_| {}).await;
+}
+
+fn waiting_ids(goals: &[Goal]) -> Vec<String> {
+    goals
+        .iter()
+        .filter(|goal| goal.status == GoalStatus::Waiting)
+        .map(|goal| goal.id.clone())
+        .collect()
 }
 
 fn upsert<T>(list: &mut Vec<T>, next: T, id: impl Fn(&T) -> &str) {

@@ -255,18 +255,18 @@ impl ProviderAdapter for LocalAdapter {
 
     async fn version(&self) -> Option<String> {
         let config = self.config();
+        // Ollama's version is `GET /api/version`, not a CLI. Ask for it before the
+        // model cache: a cache miss used to hide a server that was already up.
+        if let Some(version) = ollama_version(&config.url).await {
+            return Some(version);
+        }
         let backend = self
             .inner
             .cached(&config.url, &config.model, config.num_ctx)
             .await
             .ok()?;
         match backend.kind() {
-            ServerKind::Ollama => {
-                let body = get_json(backend.url(), "/api/version").await?;
-                body.get("version")
-                    .and_then(Value::as_str)
-                    .and_then(nonempty)
-            }
+            ServerKind::Ollama => ollama_version(backend.url()).await,
             ServerKind::LlamaServer => {
                 let body = get_json(backend.url(), "/props").await?;
                 llama_build(&body)
@@ -1218,6 +1218,13 @@ fn http_client() -> Result<&'static reqwest::Client, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+async fn ollama_version(url: &str) -> Option<String> {
+    let body = get_json(url, "/api/version").await?;
+    body.get("version")
+        .and_then(Value::as_str)
+        .and_then(nonempty)
 }
 
 async fn get_json(url: &str, path: &str) -> Option<Value> {

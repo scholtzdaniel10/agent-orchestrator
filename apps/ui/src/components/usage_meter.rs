@@ -24,7 +24,6 @@ pub fn UsageMeter(
     #[props(default = UsageShows::Left)] shows: UsageShows,
 ) -> Element {
     let mut checking = use_signal(|| false);
-    let mut refreshing = use_signal(|| false);
     let mut refresh_error = use_signal(|| None::<String>);
     use_effect(move || {
         spawn_local(async move {
@@ -38,23 +37,16 @@ pub fn UsageMeter(
     let notice = refresh_error.read().clone();
     rsx! {
         div { class: "usage",
-            div { class: "usage-heading",
-                h2 { "Plans" }
-                button { class: "btn btn-quiet btn-compact", onclick: move |_| on_open_setup.call(()), "Setup" }
+            div { class: "panel-head",
+                div { class: "panel-title",
+                    crate::components::star::Star { size: 12.0 }
+                    h2 { id: "usage-heading", "Usage" }
+                }
                 button {
                     class: "btn btn-quiet btn-compact",
-                    disabled: refreshing(),
-                    onclick: move |_| {
-                        refreshing.set(true);
-                        spawn_local(async move {
-                            match api::refresh_usage().await {
-                                Ok(result) => refresh_error.set(if result.ok { None } else { result.error }),
-                                Err(text) => refresh_error.set(Some(text)),
-                            }
-                            refreshing.set(false);
-                        });
-                    },
-                    if refreshing() { "Refreshing…" } else { "Refresh" }
+                    r#type: "button",
+                    onclick: move |_| on_open_setup.call(()),
+                    "Setup"
                 }
             }
             if let Some(notice) = notice {
