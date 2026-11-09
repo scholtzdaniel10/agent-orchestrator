@@ -78,7 +78,7 @@ legate goal "<what should be true>" [--check "<command>"] [--rounds N] [--yes]
 legate goals
 ```
 
-From a checkout: `cargo run -p legate-cli -- status`. After an install, put the app’s binary folder on `PATH`.
+From a checkout: `cargo run -p legate-cli -- status`. For the standalone release asset, run `legate-cli-windows-x86_64.exe status`; optionally rename it to `legate-cli.exe` and put its folder on `PATH`. The desktop executable and CLI are separate programs.
 
 ## Develop
 

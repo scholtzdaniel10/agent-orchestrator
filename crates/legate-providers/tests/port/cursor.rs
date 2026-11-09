@@ -79,11 +79,13 @@ fn make_version(versions: &Path, name: &str, files: &[&str]) -> PathBuf {
     dir
 }
 
+#[cfg(windows)]
 struct EnvVar {
     key: &'static str,
     prev: Option<String>,
 }
 
+#[cfg(windows)]
 impl EnvVar {
     fn set(key: &'static str, value: &str) -> Self {
         let prev = std::env::var(key).ok();
@@ -92,6 +94,7 @@ impl EnvVar {
     }
 }
 
+#[cfg(windows)]
 impl Drop for EnvVar {
     fn drop(&mut self) {
         unsafe {
