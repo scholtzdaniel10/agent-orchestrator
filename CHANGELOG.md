@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0-rc.1 — Rust Windows preview
+## 0.2.0-rc.2 — Rust Windows preview
 
 - Replaces the Electron desktop shell with Tauri 2 and a Dioxus UI, backed by the Rust workspace.
 - Includes a separate Windows CLI download and local-model support through liteagent.

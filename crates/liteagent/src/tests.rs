@@ -129,6 +129,7 @@ fn files_stay_in_the_work_folder() {
         read.call(&json!({"path": "../outside.txt"}))
             .starts_with("error:")
     );
+    #[cfg(windows)]
     assert!(
         write
             .call(&json!({"path": "..\\outside.txt", "text": "no"}))

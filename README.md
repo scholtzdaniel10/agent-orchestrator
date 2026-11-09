@@ -27,7 +27,7 @@ It is a **Rust** desktop app (Tauri 2 + Dioxus) with a `legate` command line bes
 
 ![The window: projects and worktrees on the left, agents in the centre, files on the right](docs/screenshot.png)
 
-**Status:** 0.2.0-rc.1 Rust preview for Windows x86_64. This is a prerelease of the Tauri 2 + Dioxus app. Automatic updates are disabled; install subsequent previews manually. See [docs/rust-rewrite.md](docs/rust-rewrite.md) and [docs/windows.md](docs/windows.md).
+**Status:** 0.2.0-rc.2 Rust preview for Windows x86_64. This is a prerelease of the Tauri 2 + Dioxus app. Automatic updates are disabled; install subsequent previews manually. See [docs/rust-rewrite.md](docs/rust-rewrite.md) and [docs/windows.md](docs/windows.md).
 
 ## Stack
 
