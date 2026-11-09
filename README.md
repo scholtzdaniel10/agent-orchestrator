@@ -27,7 +27,7 @@ It is a **Rust** desktop app (Tauri 2 + Dioxus) with a `legate` command line bes
 
 ![The window: projects and worktrees on the left, agents in the centre, files on the right](docs/screenshot.png)
 
-**Status:** 0.1 preview on the `rust-rewrite` branch, Windows. Built as a Cargo workspace with Tauri 2. Unit-tested throughout. See [docs/rust-rewrite.md](docs/rust-rewrite.md) and [docs/windows.md](docs/windows.md).
+**Status:** 0.2.0-rc.1 Rust preview for Windows x86_64. This is a prerelease of the Tauri 2 + Dioxus app. Automatic updates are disabled; install subsequent previews manually. See [docs/rust-rewrite.md](docs/rust-rewrite.md) and [docs/windows.md](docs/windows.md).
 
 ## Stack
 
@@ -41,7 +41,7 @@ It is a **Rust** desktop app (Tauri 2 + Dioxus) with a `legate` command line bes
 
 ## Install
 
-1. **Build or install Legate.** From this checkout:
+1. **Install the Windows preview.** Download the setup executable from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). The separate `legate-cli-windows-x86_64.exe` asset is the command-line app; it is not bundled into the desktop installer. To build the desktop app from this checkout:
    ```
    cargo tauri build
    ```

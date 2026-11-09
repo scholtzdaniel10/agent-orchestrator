@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-rc.1 — Rust Windows preview
+
+- Replaces the Electron desktop shell with Tauri 2 and a Dioxus UI, backed by the Rust workspace.
+- Includes a separate Windows CLI download and local-model support through liteagent.
+- Goal jobs respect a read-only access ceiling. Failed or conflicting worker worktrees are retained for recovery.
+- Goals verify explicit checks before accepting a planner completion; failed rounds pause for attention.
+- CI builds frontend assets before checking the desktop shell. Release tooling versions are pinned.
+- Windows x86_64 preview: unsigned installer, manual updates, no clean-machine or macOS/Linux desktop certification yet.
+
+
 ## 0.1.0 â€” first public preview
 
 Legate is a desktop app that hands your coding work to Claude Code, Cursor and Grok, on the plans you already pay for. This is the first version anyone outside the project gets to try. Please report what breaks.

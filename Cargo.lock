@@ -3832,7 +3832,7 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "legate-app"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -3854,7 +3854,7 @@ dependencies = [
 
 [[package]]
 name = "legate-bridge"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -3877,7 +3877,7 @@ dependencies = [
 
 [[package]]
 name = "legate-cli"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "clap",
  "crossterm",
@@ -3895,7 +3895,7 @@ dependencies = [
 
 [[package]]
 name = "legate-core"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3904,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "legate-desktop"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "legate-app",
@@ -3925,7 +3925,7 @@ dependencies = [
 
 [[package]]
 name = "legate-git"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "futures",
  "legate-core",
@@ -3939,7 +3939,7 @@ dependencies = [
 
 [[package]]
 name = "legate-lead"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3957,7 +3957,7 @@ dependencies = [
 
 [[package]]
 name = "legate-providers"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -3976,7 +3976,7 @@ dependencies = [
 
 [[package]]
 name = "legate-pty"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "legate-core",
  "legate-store",
@@ -3989,7 +3989,7 @@ dependencies = [
 
 [[package]]
 name = "legate-router"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -4004,7 +4004,7 @@ dependencies = [
 
 [[package]]
 name = "legate-store"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "legate-core",
  "rusqlite",
@@ -4017,7 +4017,7 @@ dependencies = [
 
 [[package]]
 name = "legate-ui"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "dioxus",
  "gloo-timers",
@@ -4167,7 +4167,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "liteagent"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 dependencies = [
  "anyhow",
  "axum",

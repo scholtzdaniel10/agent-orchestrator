@@ -17,13 +17,28 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-      - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --locked
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2.12.4,dioxus-cli@0.7.10
+      - name: Check tag matches release version
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw "Tag must match Tauri version $version" }
+      - name: Format
+        run: cargo fmt --all --check
       - name: Build UI
         working-directory: apps/ui
         run: dx build --release --platform web
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Build standalone CLI
+        run: |
+          cargo build -p legate-cli --release --locked --target-dir target/cli-release
+          Copy-Item target/cli-release/release/legate.exe target/legate-cli-windows-x86_64.exe
       - name: Build installer
         working-directory: apps/desktop/src-tauri
         run: cargo tauri build
@@ -31,4 +46,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: target/release/bundle/nsis/*.exe
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            target/release/bundle/nsis/*.exe
+            target/legate-cli-windows-x86_64.exe

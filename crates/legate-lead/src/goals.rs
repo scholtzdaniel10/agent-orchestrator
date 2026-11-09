@@ -531,6 +531,30 @@ impl Goals {
                 ));
             }
             Some(ParsedPlan::Done { summary }) => {
+                if let Some(command) = fresh.check.clone() {
+                    fresh.status = GoalStatus::Checking;
+                    if self.save(&mut fresh).is_err() {
+                        return;
+                    }
+                    let checked = self.checks.run(&command, &folder).await;
+                    let Ok(current) = self.require(id) else {
+                        return;
+                    };
+                    if current.status != GoalStatus::Checking {
+                        return;
+                    }
+                    fresh = current;
+                    let (code, output) = checked.unwrap_or_else(|err| (None, err));
+                    if code != Some(0) {
+                        fresh.status = GoalStatus::Waiting;
+                        fresh.question = Some(format!(
+                            "The lead judged the goal complete, but verification failed: {}. Review the failure and try again.",
+                            ellipsis_tail(&output, OUTPUT_TAIL)
+                        ));
+                        let _ = self.save(&mut fresh);
+                        return;
+                    }
+                }
                 fresh.status = GoalStatus::Done;
                 fresh.outcome = Some(if summary.is_empty() {
                     "The lead judges the goal met. Review it in Changes.".to_string()
@@ -571,6 +595,7 @@ impl Goals {
         let folder = self.worktrees.folder(&goal.worktree);
         let base = self.worktrees.branch_of(&goal.worktree);
         round.problems.clear();
+        let mut integrated = Vec::new();
         for job_id in round.job_ids.clone() {
             let job = (self.job)(&job_id);
             let label = first_line(
@@ -603,20 +628,27 @@ impl Goals {
                         round.problems.push(format!("{label}: {}", result.message))
                     }
                     Err(err) => round.problems.push(format!("{label}: {err}")),
-                    Ok(_) => {}
+                    Ok(_) => integrated.push(change.clone()),
                 }
             }
-            if let Some(change) = &job.change {
-                let _ = self.worktrees.discard(&goal.project, change).await;
-            }
         }
-        let _ = self
+        let committed = self
             .worktrees
             .commit_all(
                 &folder,
                 &format!("Goal round {}: {}", round.n, round.summary),
             )
             .await;
+        match committed {
+            Ok(_) => {
+                for change in integrated {
+                    let _ = self.worktrees.discard(&goal.project, &change).await;
+                }
+            }
+            Err(err) => round
+                .problems
+                .push(format!("Could not save the integrated changes: {err}")),
+        }
         if goal.check.is_some() {
             goal.status = GoalStatus::Checking;
             if let Some(stored) = goal.rounds.last_mut() {
@@ -664,6 +696,14 @@ impl Goals {
 }
 
 fn decide(goal: &mut Goal, round: &GoalRound) -> bool {
+    if !round.problems.is_empty() {
+        goal.status = GoalStatus::Waiting;
+        goal.question = Some(format!(
+            "This round needs attention. Unintegrated worker worktrees were preserved in Changes. {}",
+            round.problems.join("; ")
+        ));
+        return false;
+    }
     if round
         .check
         .as_ref()
@@ -716,15 +756,10 @@ fn cap_access(access: JobAccess, ceiling: JobAccess) -> JobAccess {
         JobAccess::Edit => 1,
         JobAccess::Full => 2,
     };
-    let capped = if rank(access) > rank(ceiling) {
+    if rank(access) > rank(ceiling) {
         ceiling
     } else {
         access
-    };
-    if capped == JobAccess::Read {
-        JobAccess::Edit
-    } else {
-        capped
     }
 }
 
@@ -1044,6 +1079,8 @@ mod tests {
         applied: RefCell<Vec<String>>,
         commits: RefCell<Vec<String>>,
         discarded: RefCell<Vec<String>>,
+        apply_fails: std::cell::Cell<bool>,
+        commit_fails: std::cell::Cell<bool>,
     }
 
     #[async_trait(?Send)]
@@ -1071,6 +1108,13 @@ mod tests {
             _base: &str,
         ) -> Result<ApplyResult, String> {
             self.applied.borrow_mut().push(from_id.to_string());
+            if self.apply_fails.get() {
+                return Ok(ApplyResult {
+                    ok: false,
+                    empty: false,
+                    message: "conflict".into(),
+                });
+            }
             Ok(ApplyResult {
                 ok: true,
                 empty: false,
@@ -1080,6 +1124,9 @@ mod tests {
 
         async fn commit_all(&self, _dir: &str, message: &str) -> Result<bool, String> {
             self.commits.borrow_mut().push(message.to_string());
+            if self.commit_fails.get() {
+                return Err("disk full".into());
+            }
             Ok(true)
         }
 
@@ -1193,6 +1240,8 @@ mod tests {
             applied: RefCell::new(Vec::new()),
             commits: RefCell::new(Vec::new()),
             discarded: RefCell::new(Vec::new()),
+            apply_fails: std::cell::Cell::new(false),
+            commit_fails: std::cell::Cell::new(false),
         });
         let planner = Rc::new(Planner {
             replies: RefCell::new(replies),
@@ -1324,6 +1373,120 @@ mod tests {
             jobs.iter()
                 .all(|job| job.job_type == JobType::Refactor && job.access == JobAccess::Edit)
         );
+    }
+
+    #[test]
+    fn goal_access_never_exceeds_read_ceiling() {
+        for requested in [JobAccess::Read, JobAccess::Edit, JobAccess::Full] {
+            assert_eq!(
+                super::cap_access(requested, JobAccess::Read),
+                JobAccess::Read
+            );
+        }
+    }
+
+    fn quick_input() -> NewGoal {
+        NewGoal {
+            project: "/p".into(),
+            text: "Fix the bug".into(),
+            check: None,
+            max_rounds: None,
+            quick: Some(QuickJob {
+                job_type: JobType::Debugging,
+                access: JobAccess::Edit,
+            }),
+            source: None,
+        }
+    }
+
+    #[test]
+    fn failed_quick_job_preserves_its_work_and_does_not_report_done() {
+        drive(async {
+            let h = harness(Vec::new(), Vec::new(), JobAccess::Full);
+            let goal = h.goals.create(quick_input()).await.unwrap();
+            finish(&h, "job-1", JobStatus::Failed, Some("partial-work"));
+            flush().await;
+            assert!(h.trees.discarded.borrow().is_empty());
+            assert_ne!(
+                h.goals.get(&goal.id).unwrap().unwrap().status,
+                GoalStatus::Done
+            );
+        });
+    }
+
+    #[test]
+    fn conflicting_worker_worktree_is_preserved_for_recovery() {
+        drive(async {
+            let h = harness(Vec::new(), Vec::new(), JobAccess::Full);
+            h.trees.apply_fails.set(true);
+            let goal = h.goals.create(quick_input()).await.unwrap();
+            finish(&h, "job-1", JobStatus::Done, Some("conflicting-work"));
+            flush().await;
+            assert!(h.trees.discarded.borrow().is_empty());
+            assert_ne!(
+                h.goals.get(&goal.id).unwrap().unwrap().status,
+                GoalStatus::Done
+            );
+        });
+    }
+
+    #[test]
+    fn planner_cannot_declare_done_when_explicit_check_fails() {
+        drive(async {
+            let h = harness(
+                vec![r#"{"decision":"done","summary":"looks fixed"}"#.into()],
+                vec![(Some(1), "test is still failing".into())],
+                JobAccess::Full,
+            );
+            let mut input = quick_input();
+            input.quick = None;
+            input.check = Some("cargo test".into());
+            let goal = h.goals.create(input).await.unwrap();
+            flush().await;
+            let fresh = h.goals.get(&goal.id).unwrap().unwrap();
+            assert_ne!(fresh.status, GoalStatus::Done);
+            assert!(
+                fresh
+                    .question
+                    .unwrap_or_default()
+                    .contains("test is still failing")
+            );
+        });
+    }
+
+    #[test]
+    fn failed_integration_commit_preserves_worker_worktree() {
+        drive(async {
+            let h = harness(Vec::new(), Vec::new(), JobAccess::Full);
+            h.trees.commit_fails.set(true);
+            let goal = h.goals.create(quick_input()).await.unwrap();
+            finish(&h, "job-1", JobStatus::Done, Some("valuable-work"));
+            flush().await;
+            assert!(h.trees.discarded.borrow().is_empty());
+            let fresh = h.goals.get(&goal.id).unwrap().unwrap();
+            assert_eq!(fresh.status, GoalStatus::Waiting);
+            assert!(fresh.question.unwrap().contains("disk full"));
+        });
+    }
+
+    #[test]
+    fn planner_completion_can_succeed_after_explicit_check_passes() {
+        drive(async {
+            let h = harness(
+                vec![r#"{"decision":"done","summary":"verified"}"#.into()],
+                vec![(Some(0), "all tests pass".into())],
+                JobAccess::Full,
+            );
+            let mut input = quick_input();
+            input.quick = None;
+            input.check = Some("cargo test".into());
+            let goal = h.goals.create(input).await.unwrap();
+            flush().await;
+            assert_eq!(
+                h.goals.get(&goal.id).unwrap().unwrap().status,
+                GoalStatus::Done
+            );
+        });
     }
 
     #[test]
@@ -1581,7 +1744,7 @@ mod tests {
     }
 
     #[test]
-    fn jobs_are_capped_at_the_ceiling_and_read_becomes_edit() {
+    fn jobs_are_capped_at_the_edit_ceiling() {
         drive(async {
             let h = harness(
                 vec![jobs_json("run the tests", "full")],
