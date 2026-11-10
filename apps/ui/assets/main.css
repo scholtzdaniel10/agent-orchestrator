@@ -7954,3 +7954,189 @@ input, textarea {
     scroll-behavior: auto !important;
   }
 }
+
+/* Roman command workspace. Standalone panels retain their existing layouts. */
+.roman-workspace {
+  --standard: #c9b17f;
+  grid-template-rows: 56px minmax(0, 1fr) 28px;
+}
+.roman-workspace .app-header {
+  height: 56px;
+  padding: 0 20px 0 22px;
+  background: var(--bg);
+}
+.roman-workspace .app-brand { gap: 14px; }
+.roman-workspace .roman-standard {
+  width: 30px;
+  height: 30px;
+  color: var(--standard);
+}
+.roman-workspace .app-name {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: .13em;
+}
+.roman-workspace .app-context {
+  margin-left: 14px;
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+  gap: 12px;
+}
+.roman-workspace .app-context-project { color: var(--text); font-weight: 500; }
+.roman-workspace .app-context-branch {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.roman-workspace .app-header-tools { gap: 12px; }
+.command-status { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.command-new-task { min-width: 104px; height: 32px; }
+.command-rail {
+  display: flex;
+  flex: 0 0 76px;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 10px 7px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+.command-rail-scroll { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; }
+.command-destination {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 49px;
+  width: 100%;
+  padding: 7px 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.command-destination .tab-icon { width: 18px; height: 18px; }
+.command-destination:hover { background: var(--inset); color: var(--text); }
+.command-destination.is-active {
+  color: var(--standard);
+  background: var(--raised);
+  border-color: var(--border);
+}
+.command-destination:focus-visible { outline-offset: -2px; }
+.command-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--brand);
+  color: var(--on-accent);
+  font-size: 9px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.command-settings { margin-top: 8px; }
+.roman-workspace .sidebar-slot { background: var(--inset); }
+.roman-workspace .project-bar { padding: 16px 0 0; border-right: none; }
+.roman-workspace .sidebar-top { display: none; }
+.roman-workspace .project-search-row { padding: 0 12px 12px; }
+.roman-workspace .project-search {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.roman-workspace .project-row {
+  margin: 3px 8px;
+  padding: 10px;
+  border: 1px solid transparent;
+}
+.roman-workspace .project-row.is-selected {
+  border-color: var(--border);
+  background: var(--raised);
+}
+.roman-workspace .project-row.is-selected .project-folder { color: var(--standard); }
+.roman-workspace .project-name { font-weight: 600; }
+.roman-workspace .worktree-group-label { color: var(--muted); font-size: 11px; }
+.roman-workspace .project-foot { padding: 12px; border-top: 1px solid var(--border); }
+.roman-workspace .workspace {
+  margin: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.roman-workspace .workspace .tab-bar { border-radius: 10px 10px 0 0; min-height: 44px; }
+.roman-workspace .drawer {
+  margin: 10px 10px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--inset);
+}
+.inspector-heading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.inspector-title .tab-icon { color: var(--standard); }
+.inspector-title h2 { font-size: 13px; font-weight: 600; }
+.roman-workspace .drawer-page { padding: 16px; }
+.roman-workspace .workspace-empty { gap: 14px; padding: 32px; }
+.campaign-seal {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 76px;
+  margin-bottom: 8px;
+  border: 1px solid var(--standard);
+  border-radius: 4px 4px 24px 24px;
+  color: var(--standard);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 38px;
+}
+.campaign-title { font-family: Georgia, 'Times New Roman', serif; font-size: 26px; font-weight: 400; }
+.roman-workspace .workspace-empty-copy { max-width: 34ch; line-height: 1.6; }
+.roman-workspace .status-bar { padding-left: 88px; background: var(--bg); font-size: 11px; }
+:root[data-theme='paper'] .roman-workspace { --standard: #806128; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .roman-workspace { --standard: #806128; }
+}
+@media (max-width: 1000px) {
+  .roman-workspace .app-context { margin-left: 0; padding-left: 12px; }
+  .roman-workspace .app-context-branch, .command-status { display: none; }
+  .roman-workspace .app-header { padding: 0 12px; }
+  .roman-workspace .workspace { margin: 6px; }
+  .roman-workspace .app-header-tools { gap: 6px; }
+}
+
+.command-busy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.roman-workspace .btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}

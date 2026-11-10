@@ -245,7 +245,9 @@ pub fn Workers(
                 class: if reviewing_on || agent_view.is_some() { "workers-stage is-hidden" } else { "workers-stage" },
                 if visible.is_empty() {
                     div { class: "workspace-empty",
-                        p { class: "workspace-empty-copy", "Open an agent here, or ask the lead in the panel." }
+                        div { class: "campaign-seal", aria_hidden: "true", "L" }
+                        h2 { class: "campaign-title", "Assemble your agents." }
+                        p { class: "workspace-empty-copy", "Choose an agent to begin, or open Lead to plan your next task." }
                         div { class: "workspace-empty-actions",
                             for id in AGENTS {
                                 button {

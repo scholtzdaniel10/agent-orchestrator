@@ -16,8 +16,8 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api;
 use crate::components::{
     ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
-    NewTaskDialog, ProjectBar, RayBurst, Routines, SettingsPage, SetupScreen, Star, TabIcon,
-    TerminalWindow, UsageMeter, Workers,
+    NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, Star, TabIcon, TerminalWindow,
+    UsageMeter, Workers,
 };
 use crate::logic::agent_tabs::agent_jobs;
 use crate::logic::flow_events::FlowEvent;
@@ -105,6 +105,7 @@ pub fn App() -> Element {
     let displayed = layout::clamp_sizes(frame.sizes, view, flags);
     let overlay = layout::drawer_overlays(displayed, view, flags);
     let docks = docks_of(&frame);
+    let inspector_tab = active_in(&frame, &docks, DockId::Right).unwrap_or(frame.drawer_tab);
     let folder = project
         .as_ref()
         .map(|item| folder_name(&item.path))
@@ -175,11 +176,15 @@ pub fn App() -> Element {
     let drawer_max = layout::max_size(SizeKey::Drawer, displayed, view, flags);
 
     rsx! {
-        div { class: "{app_class}", style: "{app_style}",
+        div { class: "{app_class} roman-workspace", style: "{app_style}",
             header { class: "app-header",
                 div { class: "app-brand",
-                    RayBurst {}
-                    span { class: "app-mark", aria_hidden: "true", Star { size: 16.0 } }
+                    span { class: "app-mark roman-standard", aria_hidden: "true",
+                        svg { view_box: "0 0 32 32", width: "30", height: "30", fill: "none", stroke: "currentColor", stroke_width: "1.4",
+                            path { d: "M13 26C5 22 4 12 10 6M19 26C27 22 28 12 22 6M8 18L3 15M7 13L4 9M9 9L8 4M24 18L29 15M25 13L28 9M23 9L24 4" }
+                            path { d: "M12 10H19M14 10V22H20" }
+                        }
+                    }
                     div { class: "app-name", "Legate" }
                     if !folder.is_empty() {
                         p { class: "app-context",
@@ -192,44 +197,70 @@ pub fn App() -> Element {
                 }
                 if !setup_open {
                     div { class: "app-header-tools",
+                        span { class: "command-status", "{running} active" }
                         button {
                             class: "btn btn-quiet btn-compact",
                             r#type: "button",
+                            title: "New window",
                             onclick: move |_| spawn_local(async move { let _ = api::new_window().await; }),
-                            "Window"
-                        }
-                        label { class: "theme-picker",
-                            span { class: "theme-picker-label", "Theme" }
-                            select {
-                                class: "select",
-                                aria_label: "Theme",
-                                onchange: move |event| {
-                                    if let Some(next) = ThemeId::parse(&event.value()) {
-                                        theme.set(next);
-                                        theme::apply_theme(next, &mut WebStore, &mut WebRoot, &mut WebTarget);
-                                    }
-                                },
-                                for (id, name) in theme::THEMES {
-                                    option { value: "{id}", selected: theme().as_str() == *id, "{name}" }
-                                }
-                            }
+                            "New window"
                         }
                         button {
-                            class: "btn btn-quiet btn-compact",
+                            class: "btn btn-primary command-new-task",
                             r#type: "button",
-                            aria_pressed: if frame.drawer_open { "true" } else { "false" },
-                            title: "Panel (Ctrl+B)",
-                            onclick: move |_| {
-                                let mut next = layout.read().clone();
-                                next.drawer_open = !next.drawer_open;
-                                write_layout(layout, store, next);
-                            },
-                            "Panel"
+                            onclick: move |_| task_open.set(true),
+                            "New task"
                         }
                     }
                 }
             }
             div { class: "app-body",
+                nav { class: "command-rail", aria_label: "Workspace tools",
+                    div { class: "command-rail-scroll",
+                        for tab in DrawerTab::ALL {
+                            {
+                                let dock = layout::dock_of(&docks, tab);
+                                let visible = match dock {
+                                    DockId::Right => frame.drawer_open,
+                                    DockId::Left => frame.sidebar_shown,
+                                    DockId::Top | DockId::Bottom => true,
+                                };
+                                let selected = visible && active_in(&frame, &docks, dock) == Some(tab);
+                                rsx! {
+                                    button {
+                                        class: if selected { "command-destination is-active" } else { "command-destination" },
+                                        r#type: "button",
+                                        aria_pressed: "{selected}",
+                                        title: "{tab.label()}",
+                                        onclick: move |_| open_tab(layout, store, tab),
+                                        TabIcon { tab: tab }
+                                        span { "{tab.label()}" }
+                                        if tab == DrawerTab::Jobs && running + queued > 0 {
+                                            span { class: "command-count", "{running + queued}" }
+                                        }
+                                        if tab == DrawerTab::Goals && !store.goals_waiting.read().is_empty() {
+                                            span { class: "command-count", "{store.goals_waiting.read().len()}" }
+                                        }
+                                        if tab == DrawerTab::Lead && lead_busy {
+                                            span { class: "command-busy", aria_label: "Lead is working" }
+                                        }
+                                        if tab == DrawerTab::Changes && !changes.is_empty() {
+                                            span { class: "command-count", "{changes.len()}" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    button {
+                        class: "command-destination command-settings",
+                        r#type: "button",
+                        title: "Settings (Ctrl+,)",
+                        onclick: move |_| settings_open.set(true),
+                        Star { size: 18.0 }
+                        span { "Settings" }
+                    }
+                }
                 if frame.sidebar_shown {
                     div { class: "sidebar-slot",
                         ErrorBoundary { class_name: Some("sidebar-main".into()),
@@ -355,7 +386,23 @@ pub fn App() -> Element {
                         on_drag: Callback::new(move |value: Option<String>| dragging.set(value)),
                     }
                     aside { class: "drawer", aria_label: "Panel",
-                        TabBar { dock: DockId::Right, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)) }
+                        div { class: "inspector-heading",
+                            div { class: "inspector-title",
+                                TabIcon { tab: inspector_tab }
+                                h2 { "{inspector_tab.label()}" }
+                            }
+                            button {
+                                class: "btn btn-quiet btn-compact",
+                                r#type: "button",
+                                aria_label: "Close inspector",
+                                onclick: move |_| {
+                                    let mut next = layout.read().clone();
+                                    next.drawer_open = false;
+                                    write_layout(layout, store, next);
+                                },
+                                "Close"
+                            }
+                        }
                         Pages { dock: DockId::Right, frame: frame.clone(), docks: docks.clone() }
                     }
                 }
@@ -1070,8 +1117,8 @@ fn reset_dock(layout: Signal<LayoutState>, store: Store, dock: DockId) {
 fn viewport() -> Viewport {
     let Some(window) = web_sys::window() else {
         return Viewport {
-            width: 1280.0,
-            height: 800.0,
+            width: 1174.0,
+            height: 764.0,
         };
     };
     Viewport {
@@ -1079,12 +1126,14 @@ fn viewport() -> Viewport {
             .inner_width()
             .ok()
             .and_then(|value| value.as_f64())
-            .unwrap_or(1280.0),
+            .unwrap_or(1280.0)
+            - 106.0,
         height: window
             .inner_height()
             .ok()
             .and_then(|value| value.as_f64())
-            .unwrap_or(800.0),
+            .unwrap_or(800.0)
+            - 36.0,
     }
 }
 
