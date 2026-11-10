@@ -955,6 +955,17 @@ pub async fn list_terminals(
 }
 
 #[tauri::command]
+pub async fn list_project_terminals(
+    shell: State<'_, Shell>,
+) -> Result<Vec<legate_core::TerminalInfo>, String> {
+    shell
+        .backend()?
+        .list_project_terminals()
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn restore_terminals(
     shell: State<'_, Shell>,
     cols: f64,

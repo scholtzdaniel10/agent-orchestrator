@@ -494,6 +494,24 @@ impl PtyHost {
         out
     }
 
+    /// List a project's live/sleeping terminals without stopping other projects.
+    pub fn list_project(&self, project: &str) -> Vec<TerminalInfo> {
+        let state = lock(&self.inner.state);
+        state
+            .sessions
+            .iter()
+            .filter(|session| !session.removed && session.project == project)
+            .map(|session| session.info.clone())
+            .chain(
+                state
+                    .asleep
+                    .iter()
+                    .filter(|entry| entry.project == project)
+                    .map(|entry| entry.info.clone()),
+            )
+            .collect()
+    }
+
     /// Stop a resumable agent and keep its row. Shells, missing rows, and rows without a
     /// session id stay running. Returns whether the session went to sleep.
     pub fn sleep(&self, id: &str) -> bool {

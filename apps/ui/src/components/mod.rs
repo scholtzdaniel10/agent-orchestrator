@@ -55,3 +55,5 @@ pub use terminal_tabs::{AgentTab, AgentTabs, ReviewTab, TerminalTabs};
 pub use terminal_window::TerminalWindow;
 pub use usage_meter::UsageMeter;
 pub use workers::Workers;
+
+mod workflow_setup;

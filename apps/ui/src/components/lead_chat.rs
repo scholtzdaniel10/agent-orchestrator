@@ -15,7 +15,7 @@ use super::lead_plan::LeadPlan;
 use super::rich_text::RichText;
 use super::sidebar_menu::{MenuEntry, SidebarMenu};
 use super::star::{RayBurst, Star};
-use crate::api::{self, LeadUpdate};
+use crate::api;
 use crate::logic::job_steps::{edited_files_summary, latest_step_title};
 use crate::state::{self, use_store};
 
@@ -32,8 +32,17 @@ pub fn LeadChat(
     settings_nonce: i64,
 ) -> Element {
     let store = use_store();
-    let mut draft = use_signal(String::new);
-    let send_error = use_signal(|| None::<String>);
+    let project = store
+        .project
+        .read()
+        .as_ref()
+        .map(|p| p.path.clone())
+        .unwrap_or_default();
+    let mut draft = use_signal(|| {
+        crate::logic::project_workspace::read::<String>(&project, "draft").unwrap_or_default()
+    });
+    let mut draft_project = use_signal(|| project.clone());
+    let mut send_error = use_signal(|| None::<String>);
     let mut choice = use_signal(|| "auto".to_string());
     let mut plan_error = use_signal(|| None::<String>);
     let mut worker_access = use_signal(|| JobAccess::Read);
@@ -48,10 +57,25 @@ pub fn LeadChat(
     let choice_ref = use_hook(|| Rc::new(RefCell::new("auto".to_string())));
     let picked = use_hook(|| Rc::new(Cell::new(false)));
     let sending = use_hook(|| Rc::new(Cell::new(false)));
+    let send_ticket = use_hook(|| Rc::new(Cell::new(0u64)));
+    let dispose_ticket = send_ticket.clone();
+    use_drop(move || dispose_ticket.set(dispose_ticket.get().wrapping_add(1)));
     let resetting = use_hook(|| Rc::new(Cell::new(false)));
     let load_ticket = use_hook(|| Rc::new(Cell::new(0u64)));
 
-    if messages != seen_props() && !messages.is_empty() {
+    if draft_project() != project {
+        draft_project.set(project.clone());
+        draft.set(
+            crate::logic::project_workspace::read::<String>(&project, "draft").unwrap_or_default(),
+        );
+        sending.set(false);
+        send_ticket.set(send_ticket.get().wrapping_add(1));
+        send_error.set(None);
+        live.set(messages.clone());
+        seen_props.set(messages.clone());
+        mode_live.set(mode);
+    }
+    if messages != seen_props() {
         seen_props.set(messages.clone());
         live.set(messages.clone());
     }
@@ -147,23 +171,6 @@ pub fn LeadChat(
             });
         });
     }
-
-    use_effect(move || {
-        spawn_local(async move {
-            if let Ok(list) = api::list_lead_messages().await {
-                live.with_mut(|current| *current = merge_messages(list, current));
-            }
-            if let Ok(direct) = api::get_lead_mode().await {
-                mode_live.set(direct);
-            }
-        });
-        spawn_local(async move {
-            let _ = api::on_lead(move |LeadUpdate { message, .. }| {
-                live.with_mut(|list| upsert_message(list, message));
-            })
-            .await;
-        });
-    });
 
     let shown = live.read().clone();
     let mut stamp_sig = use_signal(String::new);
@@ -389,9 +396,10 @@ pub fn LeadChat(
                 class: "composer",
                 onsubmit: {
                     let sending = sending.clone();
+                    let send_ticket = send_ticket.clone();
                     move |event| {
                         event.prevent_default();
-                        launch_send(draft, send_error, live, sending.clone(), lead_streaming);
+                        launch_send(store, draft, send_error, live, sending.clone(), send_ticket.clone(), lead_streaming);
                     }
                 },
                 label { r#for: "lead-input",
@@ -403,13 +411,20 @@ pub fn LeadChat(
                         rows: "3",
                         value: "{draft}",
                         aria_describedby: if send_error.read().is_some() { "lead-error" } else { "" },
-                        oninput: move |event| draft.set(event.value()),
+                        oninput: move |event| {
+                            let text = event.value();
+                            if let Some(project) = store.project.read().as_ref() {
+                                crate::logic::project_workspace::write(&project.path, "draft", &text);
+                            }
+                            draft.set(text);
+                        },
                         onkeydown: {
                             let sending = sending.clone();
+                            let send_ticket = send_ticket.clone();
                             move |event| {
                                 if event.key() == Key::Enter && event.modifiers().contains(Modifiers::CONTROL) {
                                     event.prevent_default();
-                                    launch_send(draft, send_error, live, sending.clone(), lead_streaming);
+                                    launch_send(store, draft, send_error, live, sending.clone(), send_ticket.clone(), lead_streaming);
                                 }
                             }
                         },
@@ -446,28 +461,56 @@ impl Clone for LeadModels {
 }
 
 fn launch_send(
+    store: state::Store,
     mut draft: Signal<String>,
     mut send_error: Signal<Option<String>>,
     mut live: Signal<Vec<LeadMessage>>,
     sending: Rc<Cell<bool>>,
+    send_ticket: Rc<Cell<u64>>,
     streaming: bool,
 ) {
     let text = draft();
-    if text.trim().is_empty() || streaming || sending.get() {
+    let generation = *store.project_request.read();
+    let project = store
+        .project
+        .read()
+        .as_ref()
+        .map(|p| p.path.clone())
+        .unwrap_or_default();
+    if *store.project_switching.read() || text.trim().is_empty() || streaming || sending.get() {
         return;
     }
     sending.set(true);
+    let ticket = send_ticket.get().wrapping_add(1);
+    send_ticket.set(ticket);
     draft.set(String::new());
+    crate::logic::project_workspace::write(&project, "draft", &String::new());
     send_error.set(None);
     spawn_local(async move {
-        match api::send_lead(&text).await {
+        let result = api::send_lead(&text).await;
+        if result.is_err() {
+            let current = crate::logic::project_workspace::read::<String>(&project, "draft")
+                .unwrap_or_default();
+            let restored = crate::logic::project_workspace::restore_failed_draft(&current, &text);
+            crate::logic::project_workspace::write(&project, "draft", &restored);
+        }
+        if send_ticket.get() != ticket {
+            return;
+        }
+        // Canceling a folder chooser changes the request generation, but not this send.
+        sending.set(false);
+        if *store.project_request.read() != generation {
+            return;
+        }
+        match result {
             Ok(message) => live.with_mut(|list| upsert_message(list, message)),
             Err(err) => {
-                draft.set(text);
+                let restored =
+                    crate::logic::project_workspace::restore_failed_draft(&draft(), &text);
+                draft.set(restored);
                 send_error.set(Some(error_text(&err)));
             }
         }
-        sending.set(false);
     });
 }
 
@@ -903,23 +946,6 @@ fn upsert_message(list: &mut Vec<LeadMessage>, message: LeadMessage) {
     } else {
         list.push(message);
     }
-}
-
-fn merge_messages(fetched: Vec<LeadMessage>, current: &[LeadMessage]) -> Vec<LeadMessage> {
-    let mut out = Vec::with_capacity(fetched.len() + current.len());
-    for message in fetched {
-        if let Some(newer) = current.iter().find(|item| item.id == message.id) {
-            out.push(newer.clone());
-        } else {
-            out.push(message);
-        }
-    }
-    for message in current {
-        if !out.iter().any(|item| item.id == message.id) {
-            out.push(message.clone());
-        }
-    }
-    out
 }
 
 fn message_stamp(messages: &[LeadMessage]) -> String {

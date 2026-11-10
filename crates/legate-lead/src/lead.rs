@@ -135,6 +135,27 @@ impl Lead {
         })
     }
 
+    /// Independent session sharing provider configuration, never a mutable project pointer.
+    pub fn for_project(
+        &self,
+        project: String,
+        bridge: std::sync::Arc<dyn BridgeSource>,
+    ) -> Rc<Self> {
+        let child = Self::new(LeadOpts {
+            adapters: self.adapters.clone(),
+            store: self.store.clone(),
+            rules: self.rules.clone(),
+            bridge,
+            dir: self.dir.clone(),
+            project: Rc::new(move || project.clone()),
+            prefer: self.prefer.clone(),
+            now: Some(self.now.clone()),
+            model_for: self.model_for.clone(),
+        });
+        child.state.borrow_mut().available = self.state.borrow().available.clone();
+        child
+    }
+
     pub async fn init(&self) -> Result<(), LeadError> {
         self.recheck().await
     }

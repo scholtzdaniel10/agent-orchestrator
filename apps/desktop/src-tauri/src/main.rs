@@ -138,6 +138,7 @@ fn main() -> anyhow::Result<()> {
             commands::sleep_terminal,
             commands::wake_terminal,
             commands::list_terminals,
+            commands::list_project_terminals,
             commands::restore_terminals,
             commands::terminal_snapshot,
             commands::note_window_focus,

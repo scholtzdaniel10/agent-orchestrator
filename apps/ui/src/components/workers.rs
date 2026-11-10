@@ -45,8 +45,14 @@ pub fn Workers(
     focus_agent: Option<(String, i64)>,
     on_close_agent: Option<Callback<String>>,
 ) -> Element {
-    let mut slots = use_signal(Vec::<Option<String>>::new);
-    let mut focused = use_signal(|| 0i64);
+    let mut slots = use_signal(|| {
+        crate::logic::project_workspace::read::<Vec<Option<String>>>(&project, "panes")
+            .unwrap_or_default()
+    });
+    let mut focused = use_signal(|| {
+        crate::logic::project_workspace::read::<i64>(&project, "focused-pane").unwrap_or(0)
+    });
+    let mut seats_project = use_signal(|| project.clone());
     let opening = use_signal(|| false);
     let mut open_error = use_signal(|| None::<String>);
     let mut focus_id = use_signal(|| None::<String>);
@@ -55,7 +61,32 @@ pub fn Workers(
     let mut reviewing = use_signal(|| None::<String>);
     let mut viewing = use_signal(|| None::<String>);
     let mut seen_agent = use_signal(|| None::<i64>);
-    let mut seen_selection = use_signal(String::new);
+    let current_selection_key = selected_worktrees
+        .iter()
+        .map(|id| id.clone().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\u{1}");
+    let mut seen_selection = use_signal(|| current_selection_key.clone());
+    if seats_project() != project {
+        crate::logic::project_workspace::write(&seats_project(), "panes", &slots());
+        crate::logic::project_workspace::write(&seats_project(), "focused-pane", &focused());
+        seats_project.set(project.clone());
+        slots.set(
+            crate::logic::project_workspace::read::<Vec<Option<String>>>(&project, "panes")
+                .unwrap_or_default(),
+        );
+        focused.set(
+            crate::logic::project_workspace::read::<i64>(&project, "focused-pane").unwrap_or(0),
+        );
+        seen_selection.set(current_selection_key);
+        viewing.set(None);
+        reviewing.set(None);
+    }
+    let pane_project = project.clone();
+    use_effect(move || {
+        crate::logic::project_workspace::write(&pane_project, "panes", &slots());
+        crate::logic::project_workspace::write(&pane_project, "focused-pane", &focused());
+    });
     if let Some((id, nonce)) = focus_agent.clone()
         && seen_agent() != Some(nonce)
     {

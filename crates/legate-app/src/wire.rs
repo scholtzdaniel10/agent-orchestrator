@@ -203,11 +203,21 @@ fn created(loc: WorktreeLoc) -> WorktreeCreated {
 
 pub struct OrchJobs {
     orch: Rc<legate_router::Orchestrator>,
+    project: Option<String>,
 }
 
 impl OrchJobs {
     pub fn new(orch: Rc<legate_router::Orchestrator>) -> Self {
-        Self { orch }
+        Self {
+            orch,
+            project: None,
+        }
+    }
+    pub fn for_project(orch: Rc<legate_router::Orchestrator>, project: String) -> Self {
+        Self {
+            orch,
+            project: Some(project),
+        }
     }
 }
 
@@ -226,20 +236,33 @@ impl JobSink for OrchJobs {
                 goal: request.goal,
                 base: request.base,
                 title: request.title,
-                project: request.project,
+                project: self.project.clone().or(request.project),
             },
         ))
     }
 
     fn list(&self) -> Vec<JobRecord> {
-        self.orch.list()
+        match &self.project {
+            Some(project) => self.orch.list_project(project),
+            None => self.orch.list(),
+        }
     }
 
     fn get(&self, id: &str) -> Option<JobRecord> {
-        self.orch.get(id)
+        match &self.project {
+            Some(project) => self.orch.project_job(project, id),
+            None => self.orch.get(id),
+        }
     }
 
     fn cancel(&self, id: &str) -> Result<(), LeadError> {
+        if self
+            .project
+            .as_ref()
+            .is_some_and(|project| self.orch.project_of(id).as_ref() != Some(project))
+        {
+            return Err(LeadError::message("job belongs to another project"));
+        }
         self.orch
             .cancel(id)
             .map(|_| ())
@@ -247,7 +270,16 @@ impl JobSink for OrchJobs {
     }
 
     fn on_update(&self, callback: Rc<dyn Fn(JobRecord)>) -> Box<dyn FnOnce()> {
-        let sub = self.orch.on_update(callback);
+        let orch = self.orch.clone();
+        let project = self.project.clone();
+        let sub = self.orch.on_update(Rc::new(move |job| {
+            if project
+                .as_ref()
+                .is_none_or(|owner| orch.project_of(&job.id).as_ref() == Some(owner))
+            {
+                callback(job);
+            }
+        }));
         Box::new(move || drop(sub))
     }
 }
@@ -350,11 +382,12 @@ impl legate_lead::GoalWorktrees for GitGoals {
 /// Hop from the bridge's thread onto the orchestrator's `LocalSet`.
 pub struct AppBackend {
     tx: mpsc::UnboundedSender<Command>,
+    project: String,
 }
 
 impl AppBackend {
-    pub fn new(tx: mpsc::UnboundedSender<Command>) -> Self {
-        Self { tx }
+    pub fn new(tx: mpsc::UnboundedSender<Command>, project: String) -> Self {
+        Self { tx, project }
     }
 
     fn ask<T, F>(&self, f: F) -> Pin<Box<dyn Future<Output = Result<T, BackendError>> + Send>>
@@ -386,7 +419,7 @@ use std::future::Future;
 #[async_trait]
 impl BridgeBackend for AppBackend {
     async fn max_access(&self) -> JobAccess {
-        self.ask(|world| {
+        self.ask(move |world| {
             let access = world.settings.borrow().lead_access();
             Box::pin(async move { Ok(access) })
         })
@@ -395,8 +428,13 @@ impl BridgeBackend for AppBackend {
     }
 
     async fn lead_turn(&self) -> Option<String> {
-        self.ask(|world| {
-            let turn = world.lead.current_turn();
+        let project = self.project.clone();
+        self.ask(move |world| {
+            let turn = world
+                .lead_sessions
+                .borrow()
+                .get(&project)
+                .and_then(|lead| lead.current_turn());
             Box::pin(async move { Ok(turn) })
         })
         .await
@@ -405,7 +443,7 @@ impl BridgeBackend for AppBackend {
     }
 
     async fn workers(&self) -> Result<Vec<WorkerSnapshot>, BackendError> {
-        self.ask(|world| {
+        self.ask(move |world| {
             let workers = world
                 .orch
                 .workers()
@@ -418,6 +456,7 @@ impl BridgeBackend for AppBackend {
     }
 
     async fn send_job(&self, job: NewJob) -> Result<JobRecord, BackendError> {
+        let project = self.project.clone();
         self.ask(move |world| {
             let record = world.orch.submit(
                 job.job_type,
@@ -426,6 +465,7 @@ impl BridgeBackend for AppBackend {
                 Some(SubmitAccess::Level(job.access)),
                 SubmitExtra {
                     lead_message: job.lead_message,
+                    project: Some(project),
                     ..SubmitExtra::default()
                 },
             );
@@ -435,8 +475,9 @@ impl BridgeBackend for AppBackend {
     }
 
     async fn list_jobs(&self) -> Result<Vec<JobRecord>, BackendError> {
-        self.ask(|world| {
-            let jobs = world.orch.list();
+        let project = self.project.clone();
+        self.ask(move |world| {
+            let jobs = world.orch.list_project(&project);
             Box::pin(async move { Ok(jobs) })
         })
         .await
@@ -444,8 +485,9 @@ impl BridgeBackend for AppBackend {
 
     async fn get_job(&self, id: &str) -> Result<Option<JobRecord>, BackendError> {
         let id = id.to_string();
+        let project = self.project.clone();
         self.ask(move |world| {
-            let job = world.orch.get(&id);
+            let job = world.orch.project_job(&project, &id);
             Box::pin(async move { Ok(job) })
         })
         .await
@@ -457,9 +499,21 @@ impl BridgeBackend for AppBackend {
         wait: std::time::Duration,
     ) -> Result<Option<JobRecord>, BackendError> {
         let id = id.to_string();
+        let project = self.project.clone();
         self.ask(move |world| {
             let orch = Rc::clone(&world.orch);
-            Box::pin(async move { Ok(wait_job(&orch, &id, wait).await) })
+            Box::pin(async move {
+                let Some(job) = orch.project_job(&project, &id) else {
+                    return Ok(None);
+                };
+                if matches!(
+                    job.status,
+                    legate_core::JobStatus::Done | legate_core::JobStatus::Failed
+                ) {
+                    return Ok(Some(job));
+                }
+                Ok(wait_job(&orch, &id, wait).await)
+            })
         })
         .await
     }
@@ -469,11 +523,15 @@ impl BridgeBackend for AppBackend {
         turn: String,
         proposal: legate_core::LeadProposal,
     ) -> Result<(), BackendError> {
+        let project = self.project.clone();
         self.ask(move |world| {
-            let result = world
-                .lead
-                .attach_proposal(&turn, proposal)
-                .map_err(|err| BackendError::new(err.to_string()));
+            let lead = world.lead_sessions.borrow().get(&project).cloned();
+            let result = lead
+                .ok_or_else(|| BackendError::new("project session is unavailable"))
+                .and_then(|lead| {
+                    lead.attach_proposal(&turn, proposal)
+                        .map_err(|err| BackendError::new(err.to_string()))
+                });
             Box::pin(async move { result })
         })
         .await

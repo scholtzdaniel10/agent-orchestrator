@@ -8167,3 +8167,20 @@ input, textarea {
 .cursor-percent-input span { color: var(--muted); }
 .cursor-reading-body > .btn { align-self: flex-start; min-height: 32px; }
 .usage .model-picker { gap: 6px; }
+
+.project-transition { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: var(--bg); color: var(--muted); border-radius: 10px; }
+.roman-workspace .workspace { position: relative; }
+.workflow-setup { display: flex; flex-direction: column; gap: 12px; padding: 20px 0; border-top: 1px solid var(--border); }
+.workflow-setup h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.workflow-setup textarea { border: 1px solid var(--border); background: var(--bg); resize: vertical; }
+.workflow-setup > .btn { align-self: flex-start; }
+.workflow-setup summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 6px 0; }
+.workflow-setup .workflow-prompt { margin-top: 8px; min-height: 200px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+
+.workspace-layout-menu { position: relative; }
+.workspace-layout-menu > summary { cursor: pointer; color: var(--muted); padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+.workspace-layout-menu > summary:hover { color: var(--text); background: var(--raised); }
+.workspace-layout-controls { position: absolute; top: calc(100% + 12px); right: 0; z-index: 60; display: flex; flex-direction: column; gap: 12px; width: 240px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--inset); box-shadow: 0 12px 30px #0005; }
+.workspace-layout-controls label { display: flex; flex-direction: column; gap: 6px; }
+.workspace-layout-controls .select { width: 100%; }
+.workspace-layout-controls .hint { font-size: 12px; }

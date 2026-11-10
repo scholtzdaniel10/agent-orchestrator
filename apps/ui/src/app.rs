@@ -44,6 +44,8 @@ pub fn App() -> Element {
     let mut applied = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
     let mut task_open = use_signal(|| false);
+    let mut layout_target = use_signal(|| DrawerTab::Lead);
+    let mut layout_destination = use_signal(|| DockId::Right);
     let mut dragging = use_signal(|| None::<String>);
     let mut initial_ids = use_signal(|| None::<Vec<String>>);
     let mut closed_agents = use_signal(Vec::<String>::new);
@@ -75,6 +77,23 @@ pub fn App() -> Element {
         install_keys(store, layout, settings_open, task_open);
     });
 
+    let owns_workspace = query("terminal").is_none() && query("panel").is_none();
+    use_effect(move || {
+        if !owns_workspace || !*store.booted.read() || *store.project_switching.read() {
+            return;
+        }
+        let project = store.project.read().clone();
+        if let Some(project) = project {
+            let saved = crate::logic::project_workspace::ProjectWorkspace {
+                layout: layout.read().clone(),
+                selected: store.selected.read().clone(),
+                primary: store.primary.read().clone(),
+                terminal: store.active_terminal.read().clone(),
+            };
+            crate::logic::project_workspace::write(&project.path, "workspace", &saved);
+        }
+    });
+
     let terminal = query("terminal");
     let panel = query("panel").filter(|value| layout::is_drawer_tab(value));
     if *store.booted.read() && initial_ids.read().is_none() {
@@ -85,6 +104,17 @@ pub fn App() -> Element {
             .map(|item| item.id.clone())
             .collect();
         initial_ids.set(Some(ids));
+        let project = store.project.read().clone();
+        if let Some(project) = project.filter(|_| owns_workspace)
+            && let Some(saved) = crate::logic::project_workspace::read::<
+                crate::logic::project_workspace::ProjectWorkspace,
+            >(&project.path, "workspace")
+        {
+            write_layout(layout, store, saved.layout);
+            store.selected.set(saved.selected);
+            store.primary.set(saved.primary);
+            store.active_terminal.set(saved.terminal);
+        }
     }
     prune_selection(store);
 
@@ -128,6 +158,7 @@ pub fn App() -> Element {
     let shows = store.prefs.read().usage_shows;
     let now = *store.now.read();
     let setup_open = *store.setup_open.read();
+    let switching_project = *store.project_switching.read();
     let agents = agent_jobs(&jobs, &[], &closed_agents.read());
     let visible_terminals: Vec<TerminalInfo> = terminals
         .iter()
@@ -198,6 +229,33 @@ pub fn App() -> Element {
                 if !setup_open {
                     div { class: "app-header-tools",
                         span { class: "command-status", "{running} active" }
+                        details { class: "workspace-layout-menu",
+                            summary { "Layout" }
+                            div { class: "workspace-layout-controls",
+                                label { "Panel"
+                                    select { class: "select", value: "{layout_target().as_str()}",
+                                        onchange: move |event| { if let Some(tab) = DrawerTab::parse(&event.value()) { layout_target.set(tab); } },
+                                        for tab in DrawerTab::ALL { option { value: "{tab.as_str()}", "{tab.label()}" } }
+                                    }
+                                }
+                                label { "Position"
+                                    select { class: "select", value: "{dock_name(layout_destination())}",
+                                        onchange: move |event| {
+                                            layout_destination.set(match event.value().as_str() { "top" => DockId::Top, "bottom" => DockId::Bottom, "left" => DockId::Left, _ => DockId::Right });
+                                        },
+                                        option { value: "right", "Right inspector" }
+                                        option { value: "left", "Under projects" }
+                                        option { value: "top", "Above terminals" }
+                                        option { value: "bottom", "Below terminals" }
+                                    }
+                                }
+                                button { class: "btn", r#type: "button",
+                                    onclick: move |_| move_panel(layout, store, layout_target(), layout_destination()),
+                                    "Move panel"
+                                }
+                                p { class: "hint", "This project remembers your layout." }
+                            }
+                        }
                         button {
                             class: "btn btn-quiet btn-compact",
                             r#type: "button",
@@ -281,9 +339,9 @@ pub fn App() -> Element {
                                 cursor_available: cursor,
                                 activity: store.activity.read().clone(),
                                 goals_needing_you: store.goals_waiting.read().len() as i64,
-                                on_add: Callback::new(move |_| choose_project(store)),
-                                on_github_clone: Callback::new(move |_| refresh_projects(store)),
-                                on_switch: Callback::new(move |(path, worktree): (String, Option<String>)| switch_project(store, path, worktree)),
+                                on_add: Callback::new(move |_| choose_project(store, layout)),
+                                on_github_clone: Callback::new(move |_| refresh_projects(store, layout)),
+                                on_switch: Callback::new(move |(path, worktree): (String, Option<String>)| switch_project(store, layout, path, worktree)),
                                 on_remove: Callback::new(move |path: String| remove_project(store, path)),
                                 on_open_chat: Callback::new(move |id: String| open_chat(store, layout, id)),
                                 on_new_chat: Callback::new(move |_| reset_chat(store, layout)),
@@ -339,7 +397,10 @@ pub fn App() -> Element {
                         on_drag: Callback::new(move |value: Option<String>| dragging.set(value)),
                     }
                 }
-                section { class: "workspace", aria_label: "Workspace",
+                section { class: "workspace", aria_label: "Workspace", aria_busy: "{switching_project}",
+                    if switching_project {
+                        div { class: "project-transition", role: "status", "Switching project..." }
+                    }
                     SideDock { dock: DockId::Top, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Top, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Top)), on_drag: Callback::new(move |value: Option<String>| dragging.set(value)) }
                     ErrorBoundary { class_name: Some("workspace-slot".into()),
                         Workers {
@@ -1316,25 +1377,64 @@ fn remember_terminal(mut store: Store, info: TerminalInfo) {
     store.error.set(None);
 }
 
-fn choose_project(mut store: Store) {
+fn begin_project_switch(mut store: Store, layout: Signal<LayoutState>) -> u64 {
+    if let Some(project) = store.project.read().as_ref() {
+        let saved = crate::logic::project_workspace::ProjectWorkspace {
+            layout: layout.read().clone(),
+            selected: store.selected.read().clone(),
+            primary: store.primary.read().clone(),
+            terminal: store.active_terminal.read().clone(),
+        };
+        crate::logic::project_workspace::write(&project.path, "workspace", &saved);
+    }
+    let generation = (store.project_request)().wrapping_add(1);
+    store.project_request.set(generation);
+    store.project_switching.set(true);
+    generation
+}
+
+fn choose_project(mut store: Store, layout: Signal<LayoutState>) {
+    let generation = begin_project_switch(store, layout);
     spawn_local(async move {
-        match api::choose_project().await {
-            Ok(Some(info)) => adopt(store, info).await,
-            Ok(None) => {}
-            Err(text) => store.error.set(Some(text)),
+        let result = api::choose_project().await;
+        if (store.project_request)() != generation {
+            return;
+        }
+        match result {
+            Ok(Some(info)) => adopt(store, layout, info).await,
+            Ok(None) => store.project_switching.set(false),
+            Err(text) => {
+                store.error.set(Some(text));
+                store.project_switching.set(false);
+            }
         }
     });
 }
 
-fn switch_project(mut store: Store, path: String, worktree: Option<String>) {
+fn switch_project(
+    mut store: Store,
+    layout: Signal<LayoutState>,
+    path: String,
+    worktree: Option<String>,
+) {
+    let generation = begin_project_switch(store, layout);
     spawn_local(async move {
-        match api::switch_project(&path).await {
+        let result = api::switch_project(&path).await;
+        if (store.project_request)() != generation {
+            return;
+        }
+        match result {
             Ok(info) => {
-                adopt(store, info).await;
-                store.primary.set(worktree.clone());
-                store.selected.set(vec![worktree]);
+                adopt(store, layout, info).await;
+                if (store.project_request)() == generation && worktree.is_some() {
+                    store.primary.set(worktree.clone());
+                    store.selected.set(vec![worktree]);
+                }
             }
-            Err(text) => store.error.set(Some(text)),
+            Err(text) => {
+                store.error.set(Some(text));
+                store.project_switching.set(false);
+            }
         }
     });
 }
@@ -1351,26 +1451,86 @@ fn remove_project(mut store: Store, path: String) {
     });
 }
 
-async fn adopt(mut store: Store, info: ProjectInfo) {
+async fn adopt(mut store: Store, layout: Signal<LayoutState>, info: ProjectInfo) {
+    let generation = (store.project_request)();
+    let projects = api::list_projects().await;
+    let changes = api::list_changes().await;
+    let chats = api::list_lead_chats().await;
+    let jobs = api::list_jobs().await;
+    let terminals = api::list_project_terminals().await;
+    let messages = api::list_lead_messages().await;
+    let mode = api::get_lead_mode().await;
+    if (store.project_request)() != generation {
+        return;
+    }
+    let saved = crate::logic::project_workspace::read::<
+        crate::logic::project_workspace::ProjectWorkspace,
+    >(&info.path, "workspace");
     store.project.set(Some(info));
     store.error.set(None);
-    store.primary.set(None);
-    store.selected.set(vec![None]);
-    if let Ok(list) = api::list_projects().await {
-        store.projects.set(list);
+    store.projects.set(projects.unwrap_or_default());
+    store.changes.set(changes.unwrap_or_default());
+    store.chats.set(chats.unwrap_or_default());
+    store.jobs.set(jobs.unwrap_or_default());
+    store.terminals.set(terminals.unwrap_or_default());
+    store.messages.set(messages.unwrap_or_default());
+    store.lead_mode.set(mode.unwrap_or(None));
+    store.selected_job.set(None);
+    store.selected_change.set(None);
+    if let Some(saved) = saved {
+        write_layout(layout, store, saved.layout);
+        let valid = |id: &Option<String>| {
+            id.as_ref()
+                .is_none_or(|id| store.changes.read().iter().any(|change| &change.id == id))
+        };
+        let selected = saved.selected.into_iter().filter(valid).collect::<Vec<_>>();
+        store.selected.set(if selected.is_empty() {
+            vec![None]
+        } else {
+            selected
+        });
+        store.primary.set(
+            saved
+                .primary
+                .filter(|id| store.changes.read().iter().any(|change| &change.id == id)),
+        );
+        store.active_terminal.set(saved.terminal);
+    } else {
+        store.primary.set(None);
+        store.selected.set(vec![None]);
+        store.active_terminal.set(String::new());
     }
-    if let Ok(list) = api::list_changes().await {
-        store.changes.set(list);
+    if !store
+        .terminals
+        .read()
+        .iter()
+        .any(|term| term.id == *store.active_terminal.read())
+    {
+        let first = store
+            .terminals
+            .read()
+            .first()
+            .map(|term| term.id.clone())
+            .unwrap_or_default();
+        store.active_terminal.set(first);
     }
-    if let Ok(list) = api::list_lead_chats().await {
-        store.chats.set(list);
+    store.project_switching.set(false);
+    store.settings_nonce.set((store.settings_nonce)() + 1);
+    // Catch a final streaming update that arrived while the project snapshot was loading.
+    if let Ok(messages) = api::list_lead_messages().await
+        && (store.project_request)() == generation
+    {
+        store.messages.set(messages);
     }
 }
 
-fn refresh_projects(store: Store) {
+fn refresh_projects(store: Store, layout: Signal<LayoutState>) {
+    let generation = begin_project_switch(store, layout);
     spawn_local(async move {
-        if let Ok(info) = api::get_project().await {
-            adopt(store, info).await;
+        if let Ok(info) = api::get_project().await
+            && (store.project_request)() == generation
+        {
+            adopt(store, layout, info).await;
         }
     });
 }
@@ -1389,24 +1549,55 @@ fn open_terminal(
 }
 
 fn open_chat(mut store: Store, layout: Signal<LayoutState>, id: String) {
+    if *store.project_switching.read() {
+        return;
+    }
+    let generation = *store.project_request.read();
     spawn_local(async move {
-        if let Ok(messages) = api::open_lead_chat(&id).await {
-            store.messages.set(messages);
-            if let Ok(chats) = api::list_lead_chats().await {
-                store.chats.set(chats);
+        let result = api::open_lead_chat(&id).await;
+        if *store.project_request.read() != generation {
+            return;
+        }
+        match result {
+            Ok(messages) => {
+                let chats = api::list_lead_chats().await;
+                if *store.project_request.read() != generation {
+                    return;
+                }
+                store.messages.set(messages);
+                if let Ok(chats) = chats {
+                    store.chats.set(chats);
+                }
+                open_tab(layout, store, DrawerTab::Lead);
             }
-            open_tab(layout, store, DrawerTab::Lead);
+            Err(error) => store.error.set(Some(error)),
         }
     });
 }
 
 fn reset_chat(mut store: Store, layout: Signal<LayoutState>) {
+    if *store.project_switching.read() {
+        return;
+    }
+    let generation = *store.project_request.read();
     spawn_local(async move {
-        let _ = api::reset_lead(None).await;
-        if let Ok(chats) = api::list_lead_chats().await {
+        let result = api::reset_lead(None).await;
+        if *store.project_request.read() != generation {
+            return;
+        }
+        if let Err(error) = result {
+            store.error.set(Some(error));
+            return;
+        }
+        let chats = api::list_lead_chats().await;
+        let messages = api::list_lead_messages().await;
+        if *store.project_request.read() != generation {
+            return;
+        }
+        if let Ok(chats) = chats {
             store.chats.set(chats);
         }
-        if let Ok(messages) = api::list_lead_messages().await {
+        if let Ok(messages) = messages {
             store.messages.set(messages);
         }
         open_tab(layout, store, DrawerTab::Lead);
@@ -1673,4 +1864,31 @@ impl ThemeTarget for WebTarget {
             let _ = window.dispatch_event(&event);
         }
     }
+}
+
+fn move_panel(layout: Signal<LayoutState>, store: Store, tab: DrawerTab, dock: DockId) {
+    let mut next = layout.read().clone();
+    let moved = layout::move_tab_to(&docks_of(&next), tab, dock, f64::MAX);
+    next.tab_order = moved.right;
+    next.dock_tabs = layout::SideDocks {
+        top: moved.top,
+        bottom: moved.bottom,
+        left: moved.left,
+    };
+    match dock {
+        DockId::Right => {
+            next.drawer_tab = tab;
+            next.drawer_open = true;
+        }
+        DockId::Left => {
+            next.dock_active.left = Some(tab);
+            next.sidebar_shown = true;
+        }
+        DockId::Top => next.dock_active.top = Some(tab),
+        DockId::Bottom => next.dock_active.bottom = Some(tab),
+    }
+    if next.tab_order.is_empty() {
+        next.drawer_open = false;
+    }
+    write_layout(layout, store, next);
 }

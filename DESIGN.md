@@ -156,3 +156,11 @@ Rail destinations use 7px corners, search and buttons 6px, branch/count chips 4p
 Provider sections use 24px avatars, 14px names, 26px observed percentages and 12px supporting text. Keep a 12px internal rhythm and 18px separation between providers. Never show a subscription percentage for Local, or a percentage without an observed reading. Display unknown usage explicitly. Model/version controls belong in Agent settings disclosure; the optional Cursor dashboard form uses two labeled columns, 34px themed fields, validation, saving state and server error feedback. Keep the percentage as raw input text while typing.
 
 This Usage layout is source-reviewed; the rejected screenshot is reference evidence only. A new rendered visual check remains pending.
+
+## Project workspaces and workflow setup
+
+Panel placement, split selection, worktree selection and terminal focus belong to the project, not to a fixed Roman layout. The header Layout disclosure moves any tool among right, left, top and bottom docks. Workspace snapshots use `legate.project.v1:workspace:<project>`; pane seats, pane focus and unsent drafts use separate keys under the same project prefix. Only the main workspace owns layout snapshots; terminal/panel pop-outs do not rewrite them.
+
+Switching uses a short busy state and a request generation so older asynchronous responses cannot replace the selected project's content. Lead replies run in independent backend sessions with project-bound tools. Settings > Projects provides an editable workflow goal and a previewable, copyable agent setup prompt. Copying generates guidance; it does not execute setup automatically.
+
+These changes have source review and automated checks; final rendered interaction review remains pending.

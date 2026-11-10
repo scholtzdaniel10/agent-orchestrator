@@ -45,13 +45,12 @@ pub fn NewTaskDialog(
     };
     if !was_open() {
         was_open.set(true);
-        if !new_task::provider_ready(who(), ctx) {
-            if let Some(ready) = WHO_OPTIONS
+        if !new_task::provider_ready(who(), ctx)
+            && let Some(ready) = WHO_OPTIONS
                 .iter()
                 .find(|choice| new_task::provider_ready(choice.id, ctx))
-            {
-                who.set(ready.id);
-            }
+        {
+            who.set(ready.id);
         }
     }
     let chosen = new_task::active_how(how(), is_repo);

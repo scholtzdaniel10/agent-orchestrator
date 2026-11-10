@@ -270,7 +270,7 @@ async fn edit_job_runs_on_local_merges_and_drops_the_worktree() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn switch_project_is_refused_while_a_job_runs() {
+async fn switching_projects_keeps_a_running_job_in_its_original_project() {
     let server = serve(true).await;
     let fixture = Fixture::new();
     fixture.write_settings(&server.url);
@@ -286,11 +286,15 @@ async fn switch_project_is_refused_while_a_job_runs() {
         )
         .await
         .expect("submit");
-    let refused = app
+    let switched = app
         .switch_project(fixture.other.to_string_lossy().as_ref())
         .await
-        .expect_err("switch should be refused");
-    assert_eq!(refused.to_string(), "Refused while work is running");
+        .expect("switch while a worker runs");
+    assert_eq!(switched.path, fixture.other.to_string_lossy());
+    assert!(app.list_jobs().await.expect("other jobs").is_empty());
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("return");
     server.gate.notify_one();
     let finished = wait_done(&mut rx, &job.id).await;
     assert_eq!(finished.status, JobStatus::Done, "{:?}", finished.error);
@@ -367,6 +371,104 @@ async fn shell_terminal_echoes_on_subscribe() {
         echoed.contains("legate-shell-ok"),
         "terminal {} output was {echoed:?}; snapshot {snapshot:?}; terminals {listed:?}",
         info.id
+    );
+    app.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lead_reply_survives_project_switch_and_does_not_mix_histories() {
+    let server = serve(true).await;
+    let fixture = Fixture::new();
+    fixture.write_settings(&server.url);
+    let app = AppHandle::start(fixture.options()).await.expect("start");
+    app.reset_lead(Some(ProviderId::Local))
+        .await
+        .expect("direct A");
+    let mut events = app.subscribe();
+    let sender = app.clone();
+    let first = tokio::spawn(async move { sender.send_lead("Message from project A").await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(AppEvent::Lead { message, .. }) = events.recv().await
+                && message.status == legate_core::LeadStatus::Streaming
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("A is streaming");
+    app.switch_project(fixture.other.to_string_lossy().as_ref())
+        .await
+        .expect("switch to B while A streams");
+    assert!(
+        app.list_lead_messages()
+            .await
+            .expect("B history")
+            .is_empty()
+    );
+    app.reset_lead(Some(ProviderId::Local))
+        .await
+        .expect("direct B");
+    app.send_lead("Message from project B")
+        .await
+        .expect("B can chat independently");
+    assert!(
+        !first.is_finished(),
+        "A is still waiting on its original response"
+    );
+    server.gate.notify_one();
+    first
+        .await
+        .expect("join A")
+        .expect("A finishes in background");
+    let second = app.list_lead_messages().await.expect("B stays visible");
+    assert!(second.iter().any(|m| m.text == "Message from project B"));
+    assert!(!second.iter().any(|m| m.text == "Message from project A"));
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("back to A");
+    let first = app.list_lead_messages().await.expect("A restored");
+    assert!(first.iter().any(|m| m.text == "Message from project A"));
+    assert!(!first.iter().any(|m| m.text == "Message from project B"));
+    assert!(
+        !first
+            .iter()
+            .any(|m| m.status == legate_core::LeadStatus::Streaming)
+    );
+    app.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn project_terminal_listing_keeps_other_project_sessions_available_to_popouts() {
+    let server = serve(false).await;
+    let fixture = Fixture::new();
+    fixture.write_settings(&server.url);
+    let app = AppHandle::start(fixture.options()).await.expect("start");
+    let terminal = app
+        .open_terminal(TerminalKind::Shell, 80.0, 24.0, None, None)
+        .await
+        .expect("A shell");
+    app.switch_project(fixture.other.to_string_lossy().as_ref())
+        .await
+        .expect("B");
+    assert!(app.list_project_terminals().await.unwrap().is_empty());
+    assert!(
+        app.list_terminals()
+            .await
+            .unwrap()
+            .iter()
+            .any(|term| term.id == terminal.id)
+    );
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("A");
+    assert!(
+        app.list_project_terminals()
+            .await
+            .unwrap()
+            .iter()
+            .any(|term| term.id == terminal.id)
     );
     app.shutdown().await;
 }

@@ -655,6 +655,10 @@ impl AppHandle {
         self.invoke(|world| world.list_terminals()).await
     }
 
+    pub async fn list_project_terminals(&self) -> Result<Vec<TerminalInfo>, AppError> {
+        self.invoke(|world| world.list_project_terminals()).await
+    }
+
     pub async fn restore_terminals(
         &self,
         cols: i64,
