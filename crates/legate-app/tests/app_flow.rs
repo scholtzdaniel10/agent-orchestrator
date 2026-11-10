@@ -20,14 +20,17 @@ use tokio::sync::Notify;
 struct Server {
     url: String,
     gate: Arc<Notify>,
+    held_request: Arc<Notify>,
 }
 
 async fn serve(hold_first: bool) -> Server {
     let gate = Arc::new(Notify::new());
+    let held_request = Arc::new(Notify::new());
     let state = Arc::new(ChatState {
         hold_first,
         held: AtomicBool::new(false),
         gate: Arc::clone(&gate),
+        held_request: held_request.clone(),
     });
     let app = Router::new()
         .route(
@@ -48,6 +51,7 @@ async fn serve(hold_first: bool) -> Server {
     Server {
         url: format!("http://127.0.0.1:{port}"),
         gate,
+        held_request,
     }
 }
 
@@ -55,12 +59,14 @@ struct ChatState {
     hold_first: bool,
     held: AtomicBool,
     gate: Arc<Notify>,
+    held_request: Arc<Notify>,
 }
 
 async fn chat(State(state): State<Arc<ChatState>>, body: Bytes) -> Json<Value> {
     let text = String::from_utf8_lossy(&body);
     let writing = text.contains("write_file") && !text.contains("Tool result:");
     if state.hold_first && !state.held.swap(true, Ordering::SeqCst) {
+        state.held_request.notify_one();
         state.gate.notified().await;
     }
     let content = if writing {
@@ -398,6 +404,9 @@ async fn lead_reply_survives_project_switch_and_does_not_mix_histories() {
     })
     .await
     .expect("A is streaming");
+    tokio::time::timeout(Duration::from_secs(5), server.held_request.notified())
+        .await
+        .expect("A request is held before B starts");
     app.switch_project(fixture.other.to_string_lossy().as_ref())
         .await
         .expect("switch to B while A streams");
