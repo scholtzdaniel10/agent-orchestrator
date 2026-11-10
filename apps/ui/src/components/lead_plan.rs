@@ -6,6 +6,7 @@ use super::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption}
 fn worker_name(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Grok => "Grok",
         ProviderId::Cursor => "Cursor",
         ProviderId::Local => "local",

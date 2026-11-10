@@ -10,9 +10,10 @@ pub const MAX_ORDER: usize = 8;
 pub const fn provider_index(id: ProviderId) -> usize {
     match id {
         ProviderId::Claude => 0,
-        ProviderId::Cursor => 1,
-        ProviderId::Grok => 2,
-        ProviderId::Local => 3,
+        ProviderId::Codex => 1,
+        ProviderId::Cursor => 2,
+        ProviderId::Grok => 3,
+        ProviderId::Local => 4,
     }
 }
 
@@ -20,9 +21,10 @@ pub const fn provider_index(id: ProviderId) -> usize {
 pub const fn provider_from_index(index: usize) -> Option<ProviderId> {
     match index {
         0 => Some(ProviderId::Claude),
-        1 => Some(ProviderId::Cursor),
-        2 => Some(ProviderId::Grok),
-        3 => Some(ProviderId::Local),
+        1 => Some(ProviderId::Codex),
+        2 => Some(ProviderId::Cursor),
+        3 => Some(ProviderId::Grok),
+        4 => Some(ProviderId::Local),
         _ => None,
     }
 }

@@ -24,8 +24,8 @@ use legate_lead::{
     bundled_plugins, bundled_skills, run_goal_check, with_plugins,
 };
 use legate_providers::{
-    AgentPlugins as ProviderPlugins, ClaudeAdapter, CursorAdapter, InteractiveCommand,
-    InteractiveOptions, LocalAdapter, ProviderAdapter,
+    AgentPlugins as ProviderPlugins, ClaudeAdapter, CodexAdapter, CursorAdapter,
+    InteractiveCommand, InteractiveOptions, LocalAdapter, ProviderAdapter,
 };
 use legate_pty::{Launch, LaunchOpts, PtyHost, PtyHostOptions, chat_fn};
 use legate_router::{
@@ -298,6 +298,7 @@ pub(crate) struct World {
     pub setup_tracker: Rc<RefCell<SetupTracker>>,
     pub terms: PtyHost,
     pub claude: Arc<ClaudeAdapter>,
+    pub codex: Arc<CodexAdapter>,
     pub cursor: Arc<CursorAdapter>,
     pub grok: Arc<CursorAdapter>,
     pub local: Arc<LocalAdapter>,
@@ -422,6 +423,9 @@ async fn boot(
     let claude = options
         .claude
         .unwrap_or_else(|| Arc::new(ClaudeAdapter::new(None)));
+    let codex = options
+        .codex
+        .unwrap_or_else(|| Arc::new(CodexAdapter::new(None)));
     let cursor = options
         .cursor
         .unwrap_or_else(|| Arc::new(CursorAdapter::new(None)));
@@ -471,11 +475,13 @@ async fn boot(
     let lead_rules = rules.clone();
 
     let claude_run: Arc<dyn ProviderAdapter> = claude.clone();
+    let codex_run: Arc<dyn ProviderAdapter> = codex.clone();
     let cursor_run: Arc<dyn ProviderAdapter> = cursor.clone();
     let grok_run: Arc<dyn ProviderAdapter> = grok.clone();
     let local_run: Arc<dyn ProviderAdapter> = local.clone();
     let runners: Vec<Rc<dyn legate_router::Runner>> = vec![
         Rc::new(AdapterRunner::new(claude_run)),
+        Rc::new(AdapterRunner::new(codex_run)),
         Rc::new(AdapterRunner::new(cursor_run)),
         Rc::new(AdapterRunner::new(grok_run)),
         Rc::new(AdapterRunner::new(local_run)),
@@ -530,6 +536,7 @@ async fn boot(
     let lead = Lead::new(LeadOpts {
         adapters: vec![
             adapt_provider(claude.clone()),
+            adapt_provider(codex.clone()),
             adapt_provider(cursor.clone()),
             adapt_provider(grok.clone()),
             adapt_provider(local.clone()),
@@ -554,12 +561,14 @@ async fn boot(
     lead.attach_jobs(Rc::clone(&jobs));
 
     let claude_plan: Arc<dyn ProviderAdapter> = claude.clone();
+    let codex_plan: Arc<dyn ProviderAdapter> = codex.clone();
     let cursor_plan: Arc<dyn ProviderAdapter> = cursor.clone();
     let grok_plan: Arc<dyn ProviderAdapter> = grok.clone();
     let local_plan: Arc<dyn ProviderAdapter> = local.clone();
     let adapter = Arc::new(move |id: ProviderId| -> Arc<dyn ProviderAdapter> {
         match id {
             ProviderId::Claude => Arc::clone(&claude_plan),
+            ProviderId::Codex => Arc::clone(&codex_plan),
             ProviderId::Grok => Arc::clone(&grok_plan),
             ProviderId::Local => Arc::clone(&local_plan),
             ProviderId::Cursor => Arc::clone(&cursor_plan),
@@ -690,6 +699,7 @@ async fn boot(
     reload_project(&lead, &orch, &goals, &project.borrow(), &missed);
 
     let claude_launch = Arc::clone(&claude);
+    let codex_launch = Arc::clone(&codex);
     let cursor_launch = Arc::clone(&cursor);
     let grok_launch = Arc::clone(&grok);
     let launch = Arc::new(move |provider, opts: &LaunchOpts| {
@@ -701,6 +711,7 @@ async fn boot(
         };
         let spec = match provider {
             ProviderId::Claude => claude_launch.interactive(&interactive),
+            ProviderId::Codex => codex_launch.interactive(&interactive),
             ProviderId::Grok => grok_launch.interactive(&interactive),
             ProviderId::Local => InteractiveCommand {
                 command: "legate-local-has-no-cli".to_string(),
@@ -866,6 +877,7 @@ async fn boot(
         routines,
         setup_tracker,
         terms,
+        codex,
         claude,
         cursor,
         grok,
@@ -1239,6 +1251,7 @@ impl TerminalWatch {
         let provider = match info.provider {
             legate_core::TerminalProvider::Shell => "shell",
             legate_core::TerminalProvider::Claude => "claude",
+            legate_core::TerminalProvider::Codex => "codex",
             legate_core::TerminalProvider::Cursor => "cursor",
             legate_core::TerminalProvider::Grok => "grok",
             legate_core::TerminalProvider::Local => "local",

@@ -132,6 +132,7 @@ async fn open_ui<D: Drive>(parsed: Parsed, drive: &D) -> Result<i32, CliError> {
 fn tested_of(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => TESTED_VERSIONS.claude,
+        ProviderId::Codex => TESTED_VERSIONS.codex,
         ProviderId::Cursor => TESTED_VERSIONS.cursor,
         ProviderId::Grok => TESTED_VERSIONS.grok,
         ProviderId::Local => "",
@@ -175,7 +176,7 @@ async fn submit_job<D: Drive>(parsed: Parsed, drive: &D) -> Result<i32, CliError
     };
     let Some(worker) = parse_worker(parsed.flags.worker.as_deref()) else {
         drive.stderr(&format!(
-            "Worker must be auto, claude, cursor, or grok.\n{}\n",
+            "Worker must be auto, claude, codex, cursor, grok, or local.\n{}\n",
             usage_for(Some("job"))
         ));
         return Ok(2);
@@ -656,10 +657,7 @@ async fn read_prompt<D: Drive>(drive: &D, arg: Option<&str>) -> Option<String> {
 fn parse_worker(value: Option<&str>) -> Option<Option<ProviderId>> {
     match value {
         None | Some("auto") => Some(None),
-        Some("claude") => Some(Some(ProviderId::Claude)),
-        Some("cursor") => Some(Some(ProviderId::Cursor)),
-        Some("grok") => Some(Some(ProviderId::Grok)),
-        Some(_) => None,
+        Some(worker) => ProviderId::parse(worker).map(Some),
     }
 }
 

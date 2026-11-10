@@ -139,6 +139,9 @@ impl Fixture {
             project: Some(self.repo.clone()),
             worktrees_dir: Some(self.worktrees.clone()),
             claude: Some(Arc::new(ClaudeAdapter::new(Some(missing.clone())))),
+            codex: Some(Arc::new(legate_providers::CodexAdapter::new(Some(
+                missing.clone(),
+            )))),
             cursor: Some(Arc::new(CursorAdapter::new(Some(missing.clone())))),
             grok: Some(Arc::new(CursorAdapter::new(Some(missing)))),
             local: None,

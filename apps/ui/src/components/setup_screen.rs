@@ -233,8 +233,10 @@ fn can_work(list: &[Requirement]) -> bool {
         .iter()
         .any(|row| row.id == RequirementId::Git && row.state == RequirementState::Ready);
     let plan = list.iter().any(|row| {
-        matches!(row.id, RequirementId::Claude | RequirementId::Cursor)
-            && row.state == RequirementState::Ready
+        matches!(
+            row.id,
+            RequirementId::Claude | RequirementId::Codex | RequirementId::Cursor
+        ) && row.state == RequirementState::Ready
     });
     git && plan
 }
@@ -244,8 +246,10 @@ fn missing_line(list: &[Requirement]) -> &'static str {
         .iter()
         .any(|row| row.id == RequirementId::Git && row.state == RequirementState::Ready);
     let plan = list.iter().any(|row| {
-        matches!(row.id, RequirementId::Claude | RequirementId::Cursor)
-            && row.state == RequirementState::Ready
+        matches!(
+            row.id,
+            RequirementId::Claude | RequirementId::Codex | RequirementId::Cursor
+        ) && row.state == RequirementState::Ready
     });
     if !git && !plan {
         "Git and at least one plan are needed."
@@ -275,6 +279,7 @@ fn state_class(state: RequirementState) -> &'static str {
 fn sign_in_name(id: RequirementId) -> Option<&'static str> {
     match id {
         RequirementId::Claude => Some("claude"),
+        RequirementId::Codex => Some("codex"),
         RequirementId::Cursor => Some("cursor"),
         RequirementId::Gh => Some("gh"),
         RequirementId::Git => None,

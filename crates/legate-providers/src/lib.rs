@@ -2,6 +2,7 @@
 
 mod adapter;
 mod claude;
+mod codex;
 mod cursor;
 mod edit_size;
 mod error;
@@ -20,6 +21,7 @@ pub use adapter::{
     ProviderAdapter, RunHandle,
 };
 pub use claude::ClaudeAdapter;
+pub use codex::CodexAdapter;
 pub use cursor::{
     CursorAdapter, ModelSource, cursor_env, cursor_version_dirs, node_platform,
     parse_cursor_models, resolve_cursor_bin,

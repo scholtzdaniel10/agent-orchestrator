@@ -10,6 +10,7 @@ const CURSOR_TESTED: &str = "2026.10.01-e373342";
 pub fn tested_version(provider: ProviderId) -> Option<&'static str> {
     match provider {
         ProviderId::Claude => Some(CLAUDE_TESTED),
+        ProviderId::Codex => Some("0.167.0-alpha.3.2"),
         ProviderId::Cursor | ProviderId::Grok => Some(CURSOR_TESTED),
         ProviderId::Local => None,
     }
@@ -22,6 +23,13 @@ pub fn compare_to_tested(provider: ProviderId, version: Option<&str>) -> Version
     let Some(tested) = tested_version(provider) else {
         return VersionStatus::Unknown;
     };
+    if provider == ProviderId::Codex {
+        return if version == tested {
+            VersionStatus::Tested
+        } else {
+            VersionStatus::Unknown
+        };
+    }
     if provider == ProviderId::Claude {
         compare_claude(version, tested)
     } else {
@@ -30,7 +38,9 @@ pub fn compare_to_tested(provider: ProviderId, version: Option<&str>) -> Version
 }
 
 pub fn unknown_format_message(provider: ProviderId, version: Option<&str>) -> String {
-    let name = if provider == ProviderId::Claude {
+    let name = if provider == ProviderId::Codex {
+        "Codex"
+    } else if provider == ProviderId::Claude {
         "claude"
     } else {
         "Cursor"

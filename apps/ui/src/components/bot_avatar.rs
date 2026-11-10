@@ -66,6 +66,9 @@ fn headgear(bot: BotName) -> Element {
         BotName::Plan(ProviderId::Claude) => rsx! {
             path { class: "bot-line", d: "{sun_rays()}" }
         },
+        BotName::Plan(ProviderId::Codex) => rsx! {
+            path { class: "bot-line", d: "M5 3L2 6L5 9M19 3L22 6L19 9M9 2L15 2" }
+        },
         BotName::Plan(ProviderId::Cursor) => rsx! {
             path { class: "bot-solid", d: "M4.6 10.5C4.6 1.4 19.4 1.4 19.4 10.5H17.6C17.6 4.2 6.4 4.2 6.4 10.5Z" }
             path { class: "bot-line bot-line-thin", d: "M7 9.6H17" }

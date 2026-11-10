@@ -17,6 +17,7 @@ const CHECK_MS: u64 = 15_000;
 pub enum RequirementId {
     Git,
     Claude,
+    Codex,
     Cursor,
     Gh,
 }
@@ -26,6 +27,7 @@ impl RequirementId {
         match self {
             Self::Git => "git",
             Self::Claude => "claude",
+            Self::Codex => "codex",
             Self::Cursor => "cursor",
             Self::Gh => "gh",
         }
@@ -132,6 +134,7 @@ impl SetupAdapter for ProviderSetup {
 
 pub struct Setup {
     run: Arc<dyn CommandRun>,
+    codex: Option<Arc<dyn SetupAdapter>>,
     claude: Arc<dyn SetupAdapter>,
     cursor: Arc<dyn SetupAdapter>,
     platform: Platform,
@@ -147,11 +150,17 @@ impl Setup {
     ) -> Self {
         Self {
             run,
+            codex: None,
             claude,
             cursor,
             platform,
             check: Duration::from_millis(CHECK_MS),
         }
+    }
+
+    pub fn with_codex(mut self, adapter: Arc<dyn SetupAdapter>) -> Self {
+        self.codex = Some(adapter);
+        self
     }
 
     pub fn with_check_timeout(mut self, check: Duration) -> Self {
@@ -172,14 +181,23 @@ impl Setup {
             ),
             self.limit(RequirementId::Gh, self.check_gh()),
         );
-        vec![git, claude, cursor, gh]
+        let mut rows = vec![git, claude, cursor, gh];
+        if self.codex.is_some() {
+            rows.insert(
+                2,
+                self.limit(RequirementId::Codex, self.check_plan(RequirementId::Codex))
+                    .await,
+            );
+        }
+        rows
     }
 
     pub fn can_work(&self, list: &[Requirement]) -> bool {
         let state = |id: RequirementId| list.iter().find(|row| row.id == id).map(|row| row.state);
         state(RequirementId::Git) == Some(RequirementState::Ready)
             && (state(RequirementId::Claude) == Some(RequirementState::Ready)
-                || state(RequirementId::Cursor) == Some(RequirementState::Ready))
+                || state(RequirementId::Cursor) == Some(RequirementState::Ready)
+                || state(RequirementId::Codex) == Some(RequirementState::Ready))
     }
 
     async fn limit<F>(&self, id: RequirementId, check: F) -> Requirement
@@ -208,10 +226,10 @@ impl Setup {
     }
 
     async fn check_plan(&self, id: RequirementId) -> Result<Requirement, String> {
-        let adapter: &dyn SetupAdapter = if id == RequirementId::Claude {
-            self.claude.as_ref()
-        } else {
-            self.cursor.as_ref()
+        let adapter: &dyn SetupAdapter = match id {
+            RequirementId::Claude => self.claude.as_ref(),
+            RequirementId::Codex => self.codex.as_deref().ok_or("Codex adapter unavailable")?,
+            _ => self.cursor.as_ref(),
         };
         if !adapter.is_installed().await? {
             return Ok(self.row(id, RequirementState::Missing, None));
@@ -267,6 +285,7 @@ fn label(id: RequirementId) -> &'static str {
     match id {
         RequirementId::Git => "Git",
         RequirementId::Claude => "Claude Code CLI",
+        RequirementId::Codex => "Codex CLI",
         RequirementId::Cursor => "Cursor CLI",
         RequirementId::Gh => "GitHub CLI",
     }
@@ -276,13 +295,16 @@ fn need(id: RequirementId) -> RequirementNeed {
     match id {
         RequirementId::Git => RequirementNeed::Required,
         RequirementId::Gh => RequirementNeed::Optional,
-        RequirementId::Claude | RequirementId::Cursor => RequirementNeed::Plan,
+        RequirementId::Claude | RequirementId::Codex | RequirementId::Cursor => {
+            RequirementNeed::Plan
+        }
     }
 }
 
 fn url(id: RequirementId) -> &'static str {
     match id {
         RequirementId::Git => "https://git-scm.com/downloads",
+        RequirementId::Codex => "https://developers.openai.com/codex/cli",
         RequirementId::Claude => "https://claude.com/claude-code",
         RequirementId::Cursor => "https://cursor.com/cli",
         RequirementId::Gh => "https://cli.github.com",
@@ -293,6 +315,7 @@ fn sign_in(id: RequirementId) -> Option<&'static str> {
     match id {
         RequirementId::Git => None,
         RequirementId::Claude => Some("claude auth login"),
+        RequirementId::Codex => Some("codex login"),
         RequirementId::Cursor => Some("agent login"),
         RequirementId::Gh => Some("gh auth login"),
     }
@@ -300,6 +323,7 @@ fn sign_in(id: RequirementId) -> Option<&'static str> {
 
 fn install_command(id: RequirementId, platform: Platform) -> &'static str {
     match (id, platform) {
+        (RequirementId::Codex, _) => "npm install -g @openai/codex",
         (RequirementId::Git, Platform::Win32) => "winget install --id Git.Git -e",
         (RequirementId::Git, Platform::Darwin) => "xcode-select --install",
         (RequirementId::Git, Platform::Linux) => "sudo apt install git",
@@ -325,6 +349,9 @@ fn note_for(id: RequirementId, state: RequirementState) -> &'static str {
     }
     match id {
         RequirementId::Git => "Needed for worktrees.",
+        RequirementId::Codex => {
+            "Install Codex CLI, then run codex login with your ChatGPT account. API-key-only sign-ins are not used."
+        }
         RequirementId::Claude => {
             if state == RequirementState::SignedOut {
                 "Installed. Sign in to use your Claude plan."
@@ -528,6 +555,7 @@ mod tests {
             match row.id {
                 RequirementId::Git => git = Some(row),
                 RequirementId::Claude => claude = Some(row),
+                RequirementId::Codex => {}
                 RequirementId::Cursor => cursor = Some(row),
                 RequirementId::Gh => gh = Some(row),
             }
@@ -936,5 +964,21 @@ mod tests {
         assert_eq!(rows.git.state, RequirementState::Missing);
         assert_eq!(rows.cursor.state, RequirementState::Missing);
         assert_eq!(rows.claude.state, RequirementState::Ready);
+    }
+    #[tokio::test]
+    async fn codex_alone_satisfies_the_cloud_plan_requirement() {
+        let setup = Setup::new(
+            ok_run(),
+            adapter(false, false, None),
+            adapter(false, false, None),
+            Platform::Win32,
+        )
+        .with_codex(adapter(true, true, Some("0.167.0")));
+        let rows = setup.status().await;
+        assert!(
+            rows.iter()
+                .any(|row| row.id == RequirementId::Codex && row.state == RequirementState::Ready)
+        );
+        assert!(setup.can_work(&rows));
     }
 }

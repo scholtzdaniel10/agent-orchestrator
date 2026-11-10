@@ -20,7 +20,12 @@ use crate::logic::worktree_label::{
     NamedChange, terminal_display_title, terminals_in_sidebar_order,
 };
 
-const AGENTS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok];
+const AGENTS: [ProviderId; 4] = [
+    ProviderId::Claude,
+    ProviderId::Codex,
+    ProviderId::Cursor,
+    ProviderId::Grok,
+];
 
 #[component]
 pub fn Workers(
@@ -439,6 +444,7 @@ fn open_provider(
 fn worker_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Grok => "Grok",
         ProviderId::Cursor | ProviderId::Local => "Cursor",
     }

@@ -1,11 +1,11 @@
 use dioxus::prelude::*;
-use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, VersionStatus, plan_of};
+use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, VersionStatus};
 use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
 use crate::components::model_picker::ModelPicker;
-use crate::logic::usage_format::{reset_choices, usage_figure};
+use crate::logic::usage_format::{reset_choices, usage_figure, visible_usage_plans};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PlanWord {
@@ -35,6 +35,7 @@ pub fn UsageMeter(
         });
     });
     let notice = refresh_error.read().clone();
+    let plans = plans.map(|list| visible_usage_plans(&list));
     rsx! {
         div { class: "usage",
             div { class: "panel-head",
@@ -54,10 +55,10 @@ pub fn UsageMeter(
             }
             if let Some(plans) = plans {
                 if plans.is_empty() {
-                    p { class: "hint", "No plans found. Sign in to the claude or agent CLI." }
+                    p { class: "hint", "No connected agents. Open Setup to sign in." }
                 } else {
                     div { class: "usage-list",
-                        for plan in meter_plans(&plans) {
+                        for plan in plans {
                             {
                                 let word = plan_word(&plan, now);
                                 let figure = usage_figure(plan.used, shows);
@@ -94,12 +95,16 @@ pub fn UsageMeter(
                                                 }
                                             } else {
                                                 div { class: "usage-readout",
+                                                    if plan.id == ProviderId::Codex && plan.windows.is_empty() {
+                                                        p { class: "hint", "Subscription usage is not reported by the Codex CLI." }
+                                                    } else {
                                                     div { class: "usage-figure",
                                                         span { class: "usage-percent", "{figure}%" }
                                                         span { class: "usage-left-word", "{shows_word(shows)}" }
                                                     }
                                                     div { class: "meter", role: "meter", aria_valuemin: "0", aria_valuemax: "100", aria_valuenow: "{figure}",
                                                         div { class: "{fill_class(plan.id, left)}", style: "width: {figure}%;" }
+                                                    }
                                                     }
                                                     for (index, slot) in plan.windows.iter().cloned().enumerate() {
                                                         {
@@ -184,23 +189,6 @@ fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
             }
         }
     }
-}
-
-fn meter_plans(plans: &[PlanStatus]) -> Vec<PlanStatus> {
-    let mut folded = plans.to_vec();
-    for plan in plans {
-        let spent = plan_of(plan.id);
-        if spent == plan.id {
-            continue;
-        }
-        if let Some(slot) = folded.iter_mut().find(|item| item.id == spent) {
-            slot.running += plan.running;
-            slot.queued += plan.queued;
-            slot.busy = slot.busy || plan.busy;
-        }
-    }
-    folded.retain(|plan| plan_of(plan.id) == plan.id);
-    folded
 }
 
 fn plan_word(plan: &PlanStatus, now: i64) -> PlanWord {

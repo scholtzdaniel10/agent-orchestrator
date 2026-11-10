@@ -168,6 +168,7 @@ fn load_rules_parses_the_bundled_file() {
         rules.rules.planning,
         vec![
             ProviderId::Claude,
+            ProviderId::Codex,
             ProviderId::Cursor,
             ProviderId::Grok,
             ProviderId::Local
@@ -179,6 +180,7 @@ fn load_rules_parses_the_bundled_file() {
         vec![
             ProviderId::Grok,
             ProviderId::Cursor,
+            ProviderId::Codex,
             ProviderId::Claude,
             ProviderId::Local
         ]
@@ -239,6 +241,7 @@ fn load_rules_path_loads_an_edited_copy() {
         vec![
             ProviderId::Grok,
             ProviderId::Cursor,
+            ProviderId::Codex,
             ProviderId::Claude,
             ProviderId::Local
         ]

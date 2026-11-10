@@ -490,6 +490,7 @@ impl Drive for AppDrive {
         let opts = InteractiveOptions::default();
         match provider {
             ProviderId::Claude => ClaudeAdapter::new(None).interactive(&opts),
+            ProviderId::Codex => legate_providers::CodexAdapter::new(None).interactive(&opts),
             ProviderId::Cursor | ProviderId::Grok => CursorAdapter::new(None).interactive(&opts),
             ProviderId::Local => InteractiveCommand {
                 command: "ollama".to_string(),

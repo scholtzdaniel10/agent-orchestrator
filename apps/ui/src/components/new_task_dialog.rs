@@ -18,6 +18,7 @@ pub fn NewTaskDialog(
     on_close: Callback,
     is_repo: bool,
     claude_available: bool,
+    codex_available: bool,
     cursor_available: bool,
     on_start_terminal: Callback<(String, ProviderId, i64)>,
     on_created: Callback<String>,
@@ -31,14 +32,28 @@ pub fn NewTaskDialog(
     let mut rounds = use_signal(|| new_task::DEFAULT_ROUNDS as f64);
     let mut error = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
+    let mut was_open = use_signal(|| false);
     if !open {
+        was_open.set(false);
         return rsx! {};
     }
     let ctx = NewTaskContext {
         is_repo,
         claude_available,
+        codex_available,
         cursor_available,
     };
+    if !was_open() {
+        was_open.set(true);
+        if !new_task::provider_ready(who(), ctx) {
+            if let Some(ready) = WHO_OPTIONS
+                .iter()
+                .find(|choice| new_task::provider_ready(choice.id, ctx))
+            {
+                who.set(ready.id);
+            }
+        }
+    }
     let chosen = new_task::active_how(how(), is_repo);
     let outside = new_task::repo_hint(is_repo);
     let notice = error.read().clone();
@@ -278,6 +293,9 @@ pub fn NewTaskDialog(
                 }
                 div { class: "new-task-foot",
                     p { class: "hint", "{new_task::landing_line(is_repo)}" }
+                    if who() == ProviderId::Codex && chosen != How::Terminal {
+                        p { class: "hint", "Codex uses its native sandbox. Workspace access allows commands inside the worktree; read-only prevents file changes." }
+                    }
                     div { class: "new-task-actions",
                         button {
                             r#type: "button",

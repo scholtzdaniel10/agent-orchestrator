@@ -112,6 +112,7 @@ pub fn App() -> Element {
     let branch = project.as_ref().and_then(|item| item.branch.clone());
     let claude = plan_ready(&plans, ProviderId::Claude);
     let cursor = plan_ready(&plans, ProviderId::Cursor);
+    let codex = plan_ready(&plans, ProviderId::Codex);
     let running = jobs
         .iter()
         .filter(|job| job.status == JobStatus::Running)
@@ -245,6 +246,7 @@ pub fn App() -> Element {
                                 terminals: terminals.clone(),
                                 selected_worktrees: store.selected.read().clone(),
                                 claude_available: claude,
+                                codex_available: codex,
                                 cursor_available: cursor,
                                 activity: store.activity.read().clone(),
                                 goals_needing_you: store.goals_waiting.read().len() as i64,
@@ -362,6 +364,7 @@ pub fn App() -> Element {
                 open: task_open(),
                 is_repo: project.as_ref().is_some_and(|item| item.is_repo),
                 claude_available: claude,
+                                codex_available: codex,
                 cursor_available: cursor,
                 on_close: Callback::new(move |_| task_open.set(false)),
                 on_start_terminal: Callback::new(move |(text, provider, count): (String, ProviderId, i64)| {
@@ -623,6 +626,7 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
     };
     let claude = plan_ready(&plans, ProviderId::Claude);
     let cursor = plan_ready(&plans, ProviderId::Cursor);
+    let codex = plan_ready(&plans, ProviderId::Codex);
     let done = jobs
         .iter()
         .filter(|job| job.status == JobStatus::Done)
@@ -685,6 +689,7 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
             jobs: jobs,
             selected_id: store.selected_change.read().clone().or(primary),
             claude_available: claude,
+                                codex_available: codex,
             cursor_available: cursor,
             opening: *store.opening.read(),
             on_select: Callback::new(move |id: Option<String>| store.selected_change.set(id)),

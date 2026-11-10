@@ -707,6 +707,9 @@ impl PtyHost {
         if provider == ProviderId::Claude {
             return Some(Uuid::new_v4().to_string());
         }
+        if provider == ProviderId::Codex || provider == ProviderId::Local {
+            return None;
+        }
         let create = self.inner.create_chat.clone()?;
         match tokio::time::timeout(CREATE_CHAT, create()).await {
             Ok(Ok(raw)) => parse_session_id(&raw),
@@ -1594,6 +1597,7 @@ fn nonempty(value: Option<String>) -> Option<String> {
 fn provider_name(provider: TerminalProvider) -> &'static str {
     match provider {
         TerminalProvider::Claude => "claude",
+        TerminalProvider::Codex => "codex",
         TerminalProvider::Cursor => "cursor",
         TerminalProvider::Grok => "grok",
         TerminalProvider::Local => "local",
@@ -1604,6 +1608,7 @@ fn provider_name(provider: TerminalProvider) -> &'static str {
 fn terminal_provider(provider: ProviderId) -> TerminalProvider {
     match provider {
         ProviderId::Claude => TerminalProvider::Claude,
+        ProviderId::Codex => TerminalProvider::Codex,
         ProviderId::Cursor => TerminalProvider::Cursor,
         ProviderId::Grok => TerminalProvider::Grok,
         ProviderId::Local => TerminalProvider::Local,
@@ -1613,6 +1618,7 @@ fn terminal_provider(provider: ProviderId) -> TerminalProvider {
 fn agent_id(provider: TerminalProvider) -> Option<ProviderId> {
     match provider {
         TerminalProvider::Claude => Some(ProviderId::Claude),
+        TerminalProvider::Codex => Some(ProviderId::Codex),
         TerminalProvider::Cursor => Some(ProviderId::Cursor),
         TerminalProvider::Grok => Some(ProviderId::Grok),
         TerminalProvider::Local => Some(ProviderId::Local),
@@ -1623,6 +1629,7 @@ fn agent_id(provider: TerminalProvider) -> Option<ProviderId> {
 fn as_provider(value: &str) -> Option<ProviderId> {
     match value {
         "claude" => Some(ProviderId::Claude),
+        "codex" => Some(ProviderId::Codex),
         "cursor" => Some(ProviderId::Cursor),
         "grok" => Some(ProviderId::Grok),
         _ => None,

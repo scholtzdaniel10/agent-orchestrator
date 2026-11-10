@@ -248,12 +248,14 @@ impl World {
 
     pub fn list_models(&self, provider: ProviderId) -> Task<Vec<ModelOption>> {
         let claude = Rc::new(self.claude.clone());
+        let codex = self.codex.clone();
         let cursor = self.cursor.clone();
         let grok = self.grok.clone();
         let local = self.local.clone();
         Box::pin(async move {
             let models = match provider {
                 ProviderId::Claude => claude.list_models().await,
+                ProviderId::Codex => codex.list_models().await,
                 ProviderId::Grok => grok.list_models().await,
                 ProviderId::Local => local.list_models().await,
                 ProviderId::Cursor => cursor.list_models().await,
@@ -465,6 +467,7 @@ impl World {
 
     pub fn setup_status(&self) -> Task<Vec<legate_lead::Requirement>> {
         let setup = SetupHold {
+            codex: self.codex.clone(),
             claude: self.claude.clone(),
             cursor: self.cursor.clone(),
         };
@@ -474,11 +477,12 @@ impl World {
     pub fn setup_sign_in(&self, id: String) -> Task<TerminalInfo> {
         let label = match id.as_str() {
             "claude" => "Claude Code CLI",
+            "codex" => "Codex CLI",
             "cursor" => "Cursor CLI",
             "gh" => "GitHub CLI",
             _ => return fail("unknown setup tool"),
         };
-        let line = sign_in_line(&id, &self.claude, &self.cursor);
+        let line = sign_in_line(&id, &self.claude, &self.cursor, &self.codex);
         let terms = self.terms.clone();
         let sign_in = Rc::clone(&self.sign_in);
         let home = home_dir();
@@ -1476,7 +1480,14 @@ fn sign_in_line(
     id: &str,
     claude: &legate_providers::ClaudeAdapter,
     cursor: &legate_providers::CursorAdapter,
+    codex: &legate_providers::CodexAdapter,
 ) -> String {
+    if id == "codex" {
+        let spec = codex.interactive(&legate_providers::InteractiveOptions::default());
+        let mut args = spec.args;
+        args.push("login".into());
+        return shell_line(&spec.command, &args);
+    }
     if id == "gh" {
         return shell_line("gh", &["auth".to_string(), "login".to_string()]);
     }
@@ -1586,6 +1597,7 @@ fn clone_history() -> legate_git::History<legate_git::ProcessRun> {
 }
 
 struct SetupHold {
+    codex: std::sync::Arc<legate_providers::CodexAdapter>,
     claude: std::sync::Arc<legate_providers::ClaudeAdapter>,
     cursor: std::sync::Arc<legate_providers::CursorAdapter>,
 }
@@ -1613,7 +1625,10 @@ impl SetupHold {
             std::sync::Arc::new(legate_lead::ProviderSetup(self.cursor)),
             legate_lead::Platform::current(),
         );
-        setup.status().await
+        setup
+            .with_codex(std::sync::Arc::new(legate_lead::ProviderSetup(self.codex)))
+            .status()
+            .await
     }
 }
 

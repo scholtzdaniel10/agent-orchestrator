@@ -205,23 +205,23 @@ mod tests {
         assert_eq!(keys, vec!["claude", "cursor"]);
         assert_eq!(
             rules.rules.planning,
-            providers(&["claude", "cursor", "grok", "local"])
+            providers(&["claude", "codex", "cursor", "grok", "local"])
         );
         assert_eq!(
             rules.rules.review,
-            providers(&["claude", "cursor", "grok", "local"])
+            providers(&["claude", "codex", "cursor", "grok", "local"])
         );
         assert_eq!(
             rules.rules.debugging,
-            providers(&["grok", "cursor", "claude", "local"])
+            providers(&["grok", "cursor", "codex", "claude", "local"])
         );
         assert_eq!(
             rules.rules.refactor,
-            providers(&["grok", "cursor", "claude", "local"])
+            providers(&["grok", "cursor", "codex", "claude", "local"])
         );
         assert_eq!(
             rules.rules.boilerplate,
-            providers(&["grok", "cursor", "claude", "local"])
+            providers(&["grok", "cursor", "codex", "claude", "local"])
         );
         assert_eq!(rules.pace, Some(DEFAULT_PACE));
         for job in JobType::ALL {
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(rules.rules.boilerplate, providers(&["claude", "cursor"]));
         assert_eq!(
             load_rules(None).unwrap().rules.boilerplate,
-            providers(&["grok", "cursor", "claude", "local"])
+            providers(&["grok", "cursor", "codex", "claude", "local"])
         );
     }
 
