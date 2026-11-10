@@ -5,7 +5,9 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
 use crate::components::model_picker::ModelPicker;
-use crate::logic::usage_format::{reset_choices, usage_figure, visible_usage_plans};
+use crate::logic::usage_format::{
+    has_usage_reading, reset_choices, usage_figure, visible_usage_plans,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PlanWord {
@@ -63,13 +65,19 @@ pub fn UsageMeter(
                                 let word = plan_word(&plan, now);
                                 let figure = usage_figure(plan.used, shows);
                                 let left = headroom(plan.used);
-                                let name = plan.id.as_str().to_string();
+                                let name = match plan.id {
+                                    ProviderId::Claude => "Claude",
+                                    ProviderId::Codex => "Codex",
+                                    ProviderId::Cursor => "Cursor",
+                                    ProviderId::Local => "Local",
+                                    ProviderId::Grok => "Grok",
+                                };
                                 let plan_id = plan.id;
                                 rsx! {
                                     div { class: "usage-card-wrap", key: "{name}",
                                         div { class: "usage-card",
                                             div { class: "usage-head",
-                                                BotAvatar { bot: BotName::Plan(plan.id), state: avatar(word), size: 32.0, title: None }
+                                                BotAvatar { bot: BotName::Plan(plan.id), state: avatar(word), size: 24.0, title: None }
                                                 span { class: "usage-name", "{name}" }
                                                 span { class: "{status_class(word, plan.running)}",
                                                     span { class: "status-dot", aria_hidden: "true" }
@@ -95,8 +103,12 @@ pub fn UsageMeter(
                                                 }
                                             } else {
                                                 div { class: "usage-readout",
-                                                    if plan.id == ProviderId::Codex && plan.windows.is_empty() {
-                                                        p { class: "hint", "Subscription usage is not reported by the Codex CLI." }
+                                                    if plan.id == ProviderId::Local {
+                                                        p { class: "usage-unreported", "Runs on your machine" }
+                                                        p { class: "hint", "No subscription quota." }
+                                                    } else if !has_usage_reading(&plan) {
+                                                        p { class: "usage-unreported", "Usage unknown" }
+                                                        p { class: "hint", "No quota reading has been reported." }
                                                     } else {
                                                     div { class: "usage-figure",
                                                         span { class: "usage-percent", "{figure}%" }
@@ -123,9 +135,14 @@ pub fn UsageMeter(
                                                             }
                                                         }
                                                     }
-                                                    p { class: "hint", "{version_line(&plan)}" }
-                                                    ModelPicker { plan: plan.clone(), disabled: plan_unusable(word), label_title: None }
-                                                    if plan.id == ProviderId::Cursor && plan.windows.is_empty() && plan.usage_at.is_none() {
+                                                    details { class: "usage-agent-settings",
+                                                        summary { "Agent settings" }
+                                                        div { class: "usage-agent-settings-body",
+                                                            ModelPicker { plan: plan.clone(), disabled: plan_unusable(word), label_title: None }
+                                                            p { class: "hint usage-version", "{version_line(&plan)}" }
+                                                        }
+                                                    }
+                                                    if plan.id == ProviderId::Cursor {
                                                         CursorReading { plan_id: plan_id, now: now }
                                                     }
                                                 }
@@ -147,7 +164,9 @@ pub fn UsageMeter(
 #[component]
 fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
     let choices = reset_choices(now, 32);
-    let mut used = use_signal(|| 0.0_f64);
+    let mut used = use_signal(String::new);
+    let mut saving = use_signal(|| false);
+    let mut message = use_signal(|| None::<String>);
     let mut reset = use_signal(|| {
         choices
             .first()
@@ -155,37 +174,65 @@ fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
             .unwrap_or_default()
     });
     let _ = plan_id;
+    let valid = used()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && (0.0..=100.0).contains(value));
     rsx! {
-        div { class: "cursor-reading",
-            p { class: "hint", "Cursor does not report a number. Enter what the dashboard shows." }
-            label {
-                "Used %"
-                input {
-                    r#type: "number",
-                    min: "0",
-                    max: "100",
-                    value: "{used()}",
-                    oninput: move |event| {
-                        used.set(event.value().parse().unwrap_or(0.0));
+        details { class: "cursor-reading",
+            summary { "Update dashboard reading" }
+            div { class: "cursor-reading-body",
+                p { class: "hint", "Copy the used percentage from your Cursor dashboard." }
+                div { class: "cursor-reading-fields",
+                    label {
+                        span { "Used" }
+                        div { class: "cursor-percent-input",
+                            input {
+                                r#type: "number", min: "0", max: "100", step: "0.1",
+                                placeholder: "0", value: "{used()}",
+                                oninput: move |event| {
+                                    used.set(event.value());
+                                    message.set(None);
+                                },
+                            }
+                            span { aria_hidden: "true", "%" }
+                        }
+                    }
+                    label {
+                        span { "Resets" }
+                        select { class: "select",
+                            value: "{reset()}",
+                            onchange: move |event| reset.set(event.value()),
+                            for choice in choices {
+                                option { value: "{choice.value}", "{choice.label}" }
+                            }
+                        }
+                    }
+                }
+                button {
+                    class: "btn btn-primary", r#type: "button",
+                    disabled: saving() || valid.is_none(),
+                    onclick: move |_| {
+                        let Some(percent) = valid else { return; };
+                        if saving() { return; }
+                        saving.set(true);
+                        message.set(None);
+                        let when = crate::logic::usage_format::date_from_value(&reset()).unwrap_or(now);
+                        spawn_local(async move {
+                            let result = api::set_cursor_reading(percent, when as f64).await;
+                            message.set(Some(match result {
+                                Ok(result) if result.ok => "Reading saved.".into(),
+                                Ok(result) => result.error.unwrap_or_else(|| "Could not save this reading.".into()),
+                                Err(error) => format!("Could not save: {error}"),
+                            }));
+                            saving.set(false);
+                        });
                     },
+                    if saving() { "Saving..." } else { "Save reading" }
                 }
-            }
-            select {
-                onchange: move |event| reset.set(event.value()),
-                for choice in choices {
-                    option { value: "{choice.value}", "{choice.label}" }
+                if let Some(text) = message() {
+                    p { class: "hint", role: "status", "{text}" }
                 }
-            }
-            button {
-                class: "btn btn-quiet btn-compact",
-                onclick: move |_| {
-                    let percent = used();
-                    let when = crate::logic::usage_format::date_from_value(&reset()).unwrap_or(now);
-                    spawn_local(async move {
-                        let _ = api::set_cursor_reading(percent, when as f64).await;
-                    });
-                },
-                "Save reading"
             }
         }
     }

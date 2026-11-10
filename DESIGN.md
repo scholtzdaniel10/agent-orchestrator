@@ -150,3 +150,9 @@ Rail destinations use 7px corners, search and buttons 6px, branch/count chips 4p
 - **Don't** replace operational UI copy with decorative Roman vocabulary that obscures its purpose.
 - **Don't** claim rendered visual approval from this source-derived document.
 
+
+## Usage inspector
+
+Provider sections use 24px avatars, 14px names, 26px observed percentages and 12px supporting text. Keep a 12px internal rhythm and 18px separation between providers. Never show a subscription percentage for Local, or a percentage without an observed reading. Display unknown usage explicitly. Model/version controls belong in Agent settings disclosure; the optional Cursor dashboard form uses two labeled columns, 34px themed fields, validation, saving state and server error feedback. Keep the percentage as raw input text while typing.
+
+This Usage layout is source-reviewed; the rejected screenshot is reference evidence only. A new rendered visual check remains pending.

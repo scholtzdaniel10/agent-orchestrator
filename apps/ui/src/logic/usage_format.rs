@@ -345,3 +345,31 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod reading_tests {
+    #[test]
+    fn usage_requires_an_observed_reading_and_local_has_no_quota() {
+        let make = |id: &str| -> legate_core::PlanStatus {
+            serde_json::from_value(serde_json::json!({
+                "id":id,"available":true,"used":0.1,"atRisk":false,
+                "busy":false,"running":0,"queued":0,"windows":[],
+                "versionStatus":"unknown","testedVersion":"unknown"
+            }))
+            .unwrap()
+        };
+        let mut cursor = make("cursor");
+        assert!(!super::has_usage_reading(&cursor));
+        cursor.usage_at = Some(123);
+        assert!(super::has_usage_reading(&cursor));
+        let mut local = make("local");
+        local.usage_at = Some(123);
+        assert!(!super::has_usage_reading(&local));
+        assert!(!super::has_usage_reading(&make("codex")));
+    }
+}
+
+pub fn has_usage_reading(plan: &legate_core::PlanStatus) -> bool {
+    plan.id != legate_core::ProviderId::Local
+        && (plan.usage_at.is_some() || !plan.windows.is_empty())
+}

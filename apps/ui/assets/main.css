@@ -8140,3 +8140,30 @@ input, textarea {
   background: var(--accent);
   color: var(--on-accent);
 }
+
+/* Usage is an inspector, with optional forms disclosed on demand. */
+.usage { gap: 16px; }
+.usage-card-wrap { padding: 18px 0; }
+.usage-card { gap: 12px; }
+.usage-head { gap: 10px; }
+.usage-name { font-size: 14px; font-weight: 600; }
+.usage-readout { gap: 10px; }
+.usage-percent { font-size: 26px; line-height: 1.2; }
+.usage-left-word { font-size: 12px; }
+.usage .meter { height: 4px; margin: 0 0 4px; }
+.usage-unreported { margin: 0; font-size: 14px; font-weight: 500; color: var(--text); }
+.usage .hint { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.usage-agent-settings, .cursor-reading { border-top: 1px solid var(--border); padding-top: 10px; }
+.usage summary { color: var(--muted); font-size: 12px; cursor: pointer; padding: 4px 0; }
+.usage summary:hover { color: var(--text); }
+.usage-agent-settings-body, .cursor-reading-body { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+.usage-version { opacity: .85; font-size: 11px; }
+.cursor-reading-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 12px; }
+.cursor-reading-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; }
+.cursor-reading .select { width: 100%; min-width: 0; height: 34px; background: var(--bg); }
+.cursor-percent-input { display: flex; align-items: center; gap: 4px; padding: 0 8px; height: 34px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.cursor-percent-input:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
+.cursor-percent-input input { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; color: var(--text); outline: none; }
+.cursor-percent-input span { color: var(--muted); }
+.cursor-reading-body > .btn { align-self: flex-start; min-height: 32px; }
+.usage .model-picker { gap: 6px; }
