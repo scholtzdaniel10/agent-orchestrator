@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --bg: rgb(4, 4, 8);
+  --bg: rgb(17, 18, 21);
   --brand: rgb(214, 38, 46);
   --text: rgb(242, 242, 242);
   --ray: rgb(255, 150, 150);
@@ -12,16 +12,16 @@
   --bot-claude: rgb(255, 160, 90);
   --bot-cursor: rgb(80, 230, 170);
   --bot-grok: rgb(185, 150, 255);
-  --tint: color-mix(in srgb, var(--brand) 7%, var(--bg));
+  --tint: color-mix(in srgb, var(--brand) 2%, var(--bg));
   --inset: color-mix(in srgb, var(--text) 3%, var(--tint));
   --deep: color-mix(in srgb, var(--text) 5%, var(--tint));
   --raised: color-mix(in srgb, var(--text) 8%, var(--tint));
-  --selected: color-mix(in srgb, var(--brand) 15%, var(--inset));
+  --selected: color-mix(in srgb, var(--brand) 7%, var(--inset));
   --panel: var(--bg);
   --muted: color-mix(in srgb, var(--text) 64%, var(--bg));
-  --faint: color-mix(in srgb, var(--text) 42%, var(--bg));
+  --faint: color-mix(in srgb, var(--text) 56%, var(--bg));
   --border: color-mix(in srgb, var(--text) 11%, var(--tint));
-  --border-strong: color-mix(in srgb, var(--brand) 70%, var(--bg));
+  --border-strong: color-mix(in srgb, var(--text) 28%, var(--bg));
   --frame: var(--border);
   --accent: var(--brand);
   --ok: var(--muted);
@@ -71,7 +71,7 @@
     --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
     --selected: color-mix(in srgb, var(--brand) 14%, var(--bg));
     --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
-    --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
+    --faint: color-mix(in srgb, var(--text) 62%, var(--bg));
     --border: color-mix(in srgb, var(--text) 28%, var(--bg));
     --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
     --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
@@ -80,7 +80,7 @@
 
 :root[data-theme='ember'] {
   color-scheme: dark;
-  --bg: rgb(4, 4, 8);
+  --bg: rgb(17, 18, 21);
   --brand: rgb(214, 38, 46);
   --text: rgb(242, 242, 242);
   --ray: rgb(255, 150, 150);
@@ -113,7 +113,7 @@
   --raised: color-mix(in srgb, var(--brand) 8%, var(--bg));
   --selected: color-mix(in srgb, var(--brand) 14%, var(--bg));
   --muted: color-mix(in srgb, var(--text) 72%, var(--bg));
-  --faint: color-mix(in srgb, var(--text) 52%, var(--bg));
+  --faint: color-mix(in srgb, var(--text) 62%, var(--bg));
   --border: color-mix(in srgb, var(--text) 28%, var(--bg));
   --border-strong: color-mix(in srgb, var(--text) 55%, var(--bg));
   --frame: color-mix(in srgb, var(--text) 45%, var(--bg));
@@ -296,6 +296,7 @@ textarea {
   min-width: 0;
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
+  background: var(--inset);
 }
 
 .app-brand {
@@ -311,6 +312,7 @@ textarea {
   width: 48px;
   height: 48px;
   opacity: 0.14;
+  display: none;
 }
 
 .app-mark {
@@ -387,11 +389,11 @@ textarea {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -463,7 +465,7 @@ textarea {
   overflow: hidden;
   padding: 10px 0;
   border-right: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--inset);
 }
 
 .project-bar .panel-head {
@@ -471,7 +473,8 @@ textarea {
 }
 
 .project-bar .panel-title h2 {
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .project-add-glyph,
@@ -497,8 +500,8 @@ textarea {
   flex-direction: column;
   align-items: stretch;
   min-width: 0;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 2px;
+  border-bottom: none;
 }
 
 .project-row {
@@ -546,13 +549,14 @@ textarea {
 .project-name {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--font-display);
-  font-stretch: 75%;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-stretch: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: 13px;
 }
 
 .project-row-meta {
@@ -576,11 +580,11 @@ textarea {
 
 .project-note {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -592,11 +596,11 @@ textarea {
   flex: none;
   align-self: center;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .project-remove {
@@ -657,12 +661,12 @@ textarea {
 
 .project-chats-label {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .project-chat-list {
@@ -1182,36 +1186,36 @@ textarea {
 
 .head-actions label,
 .lead-options label {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
 h2 {
   margin: 0;
   color: var(--text);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-stretch: 75%;
-  font-weight: 500;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-stretch: normal;
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 0.95;
-  text-transform: uppercase;
+  line-height: 1.3;
+  text-transform: none;
 }
 
 label {
   display: block;
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-stretch: 75%;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-stretch: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .hint,
@@ -1273,15 +1277,15 @@ label {
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--raised);
+  border-radius: 6px;
+  background: var(--deep);
   color: var(--text);
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-stretch: 75%;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-stretch: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -1316,7 +1320,7 @@ label {
 .btn-compact {
   height: 28px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .btn.is-danger-label {
@@ -1466,25 +1470,27 @@ input:not([type='checkbox']):not([type='radio']) {
   flex: none;
   flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-6);
   min-width: 0;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
   padding: 0 8px;
+  min-height: 40px;
+  background: var(--inset);
 }
 
 .tab-scroll {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 0;
+  gap: var(--space-4);
   min-width: 0;
-  height: 32px;
+  height: 40px;
   overflow-x: auto;
   overflow-y: hidden;
   flex-wrap: nowrap;
   scrollbar-width: thin;
-  background: var(--inset);
+  background: transparent;
 }
 
 .tab,
@@ -1494,9 +1500,9 @@ input:not([type='checkbox']):not([type='radio']) {
   align-items: center;
   min-width: 72px;
   max-width: 220px;
-  height: 32px;
-  border: none;
-  border-radius: var(--radius-sm);
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
 }
 
@@ -1505,14 +1511,15 @@ input:not([type='checkbox']):not([type='radio']) {
   min-width: 0;
   padding: 0 12px;
   overflow: hidden;
-  border-bottom: 2px solid transparent;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  border-bottom: 1px solid transparent;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   cursor: pointer;
+  color: var(--muted);
 }
 
 .tab-item .tab,
@@ -1521,7 +1528,7 @@ input:not([type='checkbox']):not([type='radio']) {
 .tab-item.is-selected:hover .tab {
   height: 100%;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: none;
   background: transparent;
 }
 
@@ -1532,13 +1539,15 @@ input:not([type='checkbox']):not([type='radio']) {
 
 .tab.is-selected,
 .tab-item.is-selected {
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--border);
+  background: var(--raised);
+  color: var(--text);
 }
 
 .tab.is-selected,
 .tab-item.is-selected .tab {
-  border-bottom-color: var(--text);
+  border-bottom-color: transparent;
+  color: var(--text);
 }
 
 .tab.is-selected:hover,
@@ -1766,12 +1775,12 @@ input:not([type='checkbox']):not([type='radio']) {
   display: block;
   margin: 0 0 4px;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .lead-body {
@@ -1944,12 +1953,12 @@ input:not([type='checkbox']):not([type='radio']) {
   min-width: 0;
   padding-left: 28px;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
+  font-stretch: normal;
+  letter-spacing: 0;
   line-height: 1.4;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .job-meta .meta-sep {
@@ -1973,12 +1982,12 @@ input:not([type='checkbox']):not([type='radio']) {
 .lead-delegated-title {
   margin: 0 0 6px;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .lead-delegated-list {
@@ -2034,11 +2043,11 @@ input:not([type='checkbox']):not([type='radio']) {
   gap: 0;
   min-width: 0;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .lead-job-reason {
@@ -2087,12 +2096,12 @@ input:not([type='checkbox']):not([type='radio']) {
   align-items: center;
   gap: var(--space-4);
   color: var(--text);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
+  font-stretch: normal;
+  letter-spacing: 0;
   line-height: 1.5;
-  text-transform: uppercase;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -2160,10 +2169,10 @@ input:not([type='checkbox']):not([type='radio']) {
 
 .failover-label {
   color: var(--signal);
-  font-family: var(--font-display);
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .failover-hop {
@@ -2205,13 +2214,13 @@ input:not([type='checkbox']):not([type='radio']) {
 .empty-state-title {
   margin: 0;
   color: var(--text);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 20px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 0.95;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .empty-state-guidance {
@@ -2364,11 +2373,11 @@ input:not([type='checkbox']):not([type='radio']) {
 
 .change-origin {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .change-detail {
@@ -2605,12 +2614,12 @@ input:not([type='checkbox']):not([type='radio']) {
   flex: 1;
   min-width: 0;
   color: var(--text);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 14px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .usage-readout,
@@ -2628,9 +2637,9 @@ input:not([type='checkbox']):not([type='radio']) {
 }
 
 .usage-percent {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 40px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -2640,11 +2649,11 @@ input:not([type='checkbox']):not([type='radio']) {
 .usage-left-word,
 .usage-detail {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .usage-detail {
@@ -2714,10 +2723,10 @@ input:not([type='checkbox']):not([type='radio']) {
 .usage-window-label {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--font-display);
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -2995,13 +3004,13 @@ textarea.field {
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--text);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   line-height: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .flow-live-dot {
@@ -3054,12 +3063,12 @@ textarea.field {
 .flow-log-head {
   flex: none;
   color: var(--text);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .flow-log-body {
@@ -3081,12 +3090,12 @@ textarea.field {
   margin: 0;
   color: var(--muted);
   text-align: center;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 14px;
-  font-stretch: 75%;
+  font-stretch: normal;
   letter-spacing: 0;
   line-height: 1.2;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .flow-log-body:has(.flow-empty)::before {
@@ -3133,10 +3142,10 @@ textarea.field {
 .flow-actor-cursor,
 .flow-actor-grok {
   color: var(--text);
-  font-family: var(--font-display);
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .flow-text {
@@ -3262,11 +3271,11 @@ textarea.field {
 .flow-router-label {
   flex: none;
   color: var(--text);
-  font-family: var(--font-display);
-  font-stretch: 75%;
+  font-family: var(--font-ui);
+  font-stretch: normal;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .flow-keep {
@@ -3368,11 +3377,11 @@ textarea.field {
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -3466,13 +3475,13 @@ textarea.field {
 .changes-empty .hint {
   position: relative;
   z-index: 1;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 16px;
-  font-stretch: 75%;
+  font-stretch: normal;
   letter-spacing: 0;
   line-height: 1.2;
   text-align: center;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 /* The sidebar header is narrow: its two buttons are always glyphs, named by title and aria-label. */
@@ -3603,12 +3612,12 @@ textarea.field {
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
+  font-stretch: normal;
+  letter-spacing: 0;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -3657,12 +3666,12 @@ button.job-step {
   flex: none;
   width: 4.2em;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -3788,12 +3797,12 @@ button.job-step {
 
 .pane-layout-label {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -3951,11 +3960,11 @@ button.job-step {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -4193,11 +4202,11 @@ button.job-step {
 .terminal-window-title {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -4205,11 +4214,11 @@ button.job-step {
 .terminal-window-state {
   flex: none;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .terminal-window .terminal-pane {
@@ -4265,12 +4274,12 @@ button.job-step {
 .routines-heading {
   margin: 0;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .routines-setup {
@@ -4433,10 +4442,11 @@ button.job-step {
   flex: none;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0;
+  gap: 2px;
   min-width: 0;
   border-bottom: 1px solid var(--border);
   background: var(--inset);
+  padding: 4px;
 }
 
 .drawer-tabs .tab {
@@ -4454,6 +4464,7 @@ button.job-step {
   height: 6px;
   margin-left: 6px;
   background: var(--signal);
+  border-radius: 50%;
 }
 
 .drawer-body {
@@ -4530,7 +4541,7 @@ button.job-step {
   padding: 0 10px;
   overflow: hidden;
   border-top: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--inset);
 }
 
 .status-bar-item {
@@ -4637,12 +4648,12 @@ button.job-step {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4878,7 +4889,7 @@ button.job-step {
   flex: 1 1 auto;
   justify-content: center;
   padding: 0 6px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-align: center;
 }
 
@@ -4982,12 +4993,13 @@ button.job-step {
 .setup-screen h1 {
   margin: 0;
   color: var(--text);
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-stretch: 75%;
-  font-weight: 400;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 26px;
+  font-stretch: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.25;
 }
 
 .setup-screen p {
@@ -5013,10 +5025,11 @@ button.job-step {
 .setup-row {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: 12px;
+  gap: var(--space-8);
+  padding: 16px;
   border: 1px solid var(--border);
   background: var(--inset);
+  border-radius: var(--radius-lg);
 }
 
 .setup-row-top {
@@ -5037,11 +5050,12 @@ button.job-step {
 
 .setup-label {
   color: var(--text);
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
 }
 
 .setup-tag {
@@ -5091,6 +5105,7 @@ button.job-step {
   box-sizing: border-box;
   background: var(--deep);
   font-family: var(--font-mono);
+  border-radius: var(--radius);
 }
 
 .setup-command code {
@@ -5220,11 +5235,11 @@ button.job-step {
   gap: var(--space-6);
   padding: 6px 10px 2px 20px;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .worktree-group-count {
@@ -5383,11 +5398,11 @@ button.job-step {
 .side-menu-heading {
   padding: 4px 12px 2px;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .side-menu-item {
@@ -5445,11 +5460,11 @@ button.job-step {
   border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -5554,12 +5569,12 @@ button.job-step {
 
 .settings-section-title {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 20px;
-  font-stretch: 75%;
+  font-stretch: normal;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .settings-section-blurb {
@@ -5586,11 +5601,11 @@ button.job-step {
 }
 
 .settings-row-label {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 12px;
-  font-stretch: 75%;
+  font-stretch: normal;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .settings-row-help,
@@ -5733,11 +5748,11 @@ button.job-step {
 
 .settings-tag {
   color: var(--signal);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .settings-kbd {
@@ -5880,6 +5895,8 @@ label,
 .btn {
   font-size: 12px;
   font-weight: 500;
+  border-radius: 6px;
+  background: var(--deep);
 }
 
 .tab,
@@ -5933,7 +5950,7 @@ label,
 .flow-log-head,
 .setup-label {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 14px;
   font-stretch: normal;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -6171,6 +6188,8 @@ label,
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
+  padding: 4px;
+  gap: 2px;
 }
 
 .history-row.is-selected {
@@ -7027,12 +7046,12 @@ label,
   border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 12px;
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
+  font-stretch: normal;
+  letter-spacing: 0;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -7118,17 +7137,19 @@ label,
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.08em;
+  font-stretch: normal;
+  letter-spacing: 0;
   line-height: 1.4;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 /* Icons on the panel tabs (Orca-style rail) */
 .drawer-tabs {
   container-type: inline-size;
+  padding: 4px;
+  gap: 2px;
 }
 
 .drawer-tabs .tab {
@@ -7341,11 +7362,11 @@ label,
 
 .lead-plan-type {
   color: var(--muted);
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 11px;
-  font-stretch: 75%;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-stretch: normal;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .lead-plan-prompt {
@@ -7906,5 +7927,30 @@ label,
 @media (prefers-reduced-motion: reduce) {
   .select-chevron {
     transition: none;
+  }
+}
+
+/* Workspace selection, caret and scrollbars follow the active theme. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, var(--bg));
+  color: var(--text);
+}
+input, textarea {
+  caret-color: var(--text);
+}
+* {
+  scrollbar-color: var(--raised) transparent;
+  scrollbar-width: thin;
+}
+.status-bar-item:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
