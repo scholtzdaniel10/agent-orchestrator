@@ -1,0 +1,59 @@
+{
+  "rules": {
+    "planning": [
+      "claude",
+      "codex",
+      "cursor",
+      "grok",
+      "local"
+    ],
+    "debugging": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ],
+    "review": [
+      "claude",
+      "codex",
+      "cursor",
+      "grok",
+      "local"
+    ],
+    "refactor": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ],
+    "boilerplate": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ]
+  },
+  "fallbackFit": 0.5,
+  "allowance": {
+    "claude": {
+      "windowHours": 5,
+      "units": 15
+    },
+    "cursor": {
+      "windowHours": 720,
+      "units": 20000000
+    }
+  },
+  "defaultRestHours": 5,
+  "maxParallel": 3,
+  "pace": {
+    "weight": 1.5,
+    "min": 0.5,
+    "max": 2,
+    "atRiskSlack": 0.25,
+    "atRiskLeft": 0.15
+  }
+}

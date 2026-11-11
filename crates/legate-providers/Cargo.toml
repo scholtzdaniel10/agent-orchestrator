@@ -1,0 +1,40 @@
+﻿[package]
+name = "legate-providers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless Claude, Cursor, Grok, and local model adapters"
+
+[dependencies]
+async-trait = "0.1"
+futures-core = "0.3"
+legate-core = { path = "../legate-core" }
+liteagent = { path = "../liteagent" }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
+
+[[bin]]
+name = "fake-cli"
+path = "tests/fixtures/fake_cli.rs"

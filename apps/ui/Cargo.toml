@@ -1,0 +1,47 @@
+[package]
+name = "legate-ui"
+description = "Legate desktop UI, compiled to WASM for the Tauri shell"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "legate-ui"
+path = "src/main.rs"
+
+[dependencies]
+legate-core = { path = "../../crates/legate-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true, features = ["local-offset"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+dioxus = { version = "0.7", features = ["web"] }
+manganis = "0.7"
+gloo-timers = { version = "0.3", features = ["futures"] }
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Clipboard",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlElement",
+    "HtmlInputElement",
+    "KeyboardEvent",
+    "Navigator",
+    "Location",
+    "Node",
+    "NodeList",
+    "Storage",
+    "Window",
+] }

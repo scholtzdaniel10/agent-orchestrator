@@ -1,0 +1,27 @@
+﻿[package]
+name = "legate-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Job router and orchestrator. Decisions match the TypeScript router; picks read an in-memory plan cache."
+
+[dependencies]
+legate-core = { path = "../legate-core" }
+legate-store = { path = "../legate-store" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+criterion = { workspace = true }
+legate-core = { path = "../legate-core" }
+legate-store = { path = "../legate-store" }
+
+[[bench]]
+name = "pick"
+harness = false

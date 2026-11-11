@@ -1,0 +1,19 @@
+[package]
+name = "legate-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "SQLite store for Legate. rusqlite is the default; the turso feature keeps that backend available."
+
+[features]
+turso = ["dep:turso", "dep:tokio"]
+
+[dependencies]
+legate-core = { path = "../legate-core" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+turso = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }

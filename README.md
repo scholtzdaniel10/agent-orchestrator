@@ -6,180 +6,141 @@ In the Roman army a **legate** was the officer a general sent to act in his name
 
 Legate does that for your coding work. You give one order. It hands the work to agents running on the AI plans you already pay for, keeps each of them in its own camp so they do not trample each other, and reports back with every step in the open.
 
-It is a desktop app (Electron + TypeScript) with a terminal UI and a command line beside it. It runs the official `claude` and Cursor `agent` tools, signed in by you, with your own plans.
+It is a **Rust** desktop app (Tauri 2 + Dioxus) with a `legate` command line beside it. It runs the official `claude`, `codex` and Cursor `agent` tools, signed in by you, with your own plans — and can also run jobs on a **local** model through Ollama or llama.cpp.
 
 ## Why Legate
 
-- **No API bill.** Legate drives the Claude Code and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Grok first (on your Cursor plan); planning and review to Claude.
-- **Nothing is a black box.** Every file an agent reads, every edit and every command appears as it happens, in the app, the terminal UI and the command line.
-- **Agentic, with you in charge.** Give a goal and, if you like, a check such as `pnpm test`. Legate plans a round, runs agents in parallel worktrees, folds their work together and runs the check, asking you before every round. Triggers start goals on a schedule, or when CI fails, an issue is opened, or your default branch breaks.
+- **No API bill for cloud plans.** Legate drives the Claude Code, Codex and Cursor CLIs on the plans you already pay for, and spreads the work across them by how much allowance each has left. Coding goes to Grok first (on your Cursor plan); planning and review to Claude. Local jobs use your own GPU or CPU.
+- **Nothing is a black box.** Every file an agent reads, every edit and every command appears as it happens, in the app and on the command line.
+- **Agentic, with you in charge.** Give a goal and, if you like, a check such as `cargo test`. Legate plans a round, runs agents in parallel worktrees, folds their work together and runs the check, asking you before every round. Triggers start goals on a schedule, or when CI fails, an issue is opened, or your default branch breaks.
 
 |                                 | One agent CLI on its own   | With Legate                                     |
 | ------------------------------- | -------------------------- | ----------------------------------------------- |
-| Plans used                      | One                        | Claude and Cursor together, routed by allowance |
+| Plans used                      | One                        | Claude, Codex, Cursor, Grok, and local, routed by allowance |
 | Several agents at once          | One terminal each, by hand | Each in its own worktree, side by side          |
 | Seeing what agents do           | Scroll each terminal       | Every step of every agent in one place          |
 | Keep going until the tests pass | You re-prompt              | Goals: rounds you approve, a check after each   |
 | Work that starts itself         | No                         | Triggers: schedules, CI failures, new issues    |
 | Review and merge                | Git by hand                | Diffs per worktree, merge with one click        |
 
-![A goal, round by round: you give a goal and a check, the lead plans, you approve, agents work in worktrees, the check runs; a failure starts the next round, a pass ends it](docs/goal-loop.png)
+![A goal, round by round](docs/goal-loop.png)
 
-![The window: projects and worktrees on the left, an agent at work in a terminal in the centre, the worktree's files on the right](docs/screenshot.png)
+![The window: projects and worktrees on the left, agents in the centre, files on the right](docs/screenshot.png)
 
-**Status:** 0.1 preview, Windows. The first version anyone outside the project gets to try. Unit-tested throughout (596 tests) and checked against the real tools: jobs at all three access levels on both plans, the lead handing out work, goals end to end (also from `legate goal`), triggers, worktrees, terminals restored after a restart, the command line and the app sharing jobs, the terminal UI, and auto-update. Not yet checked: the installer on a clean machine, macOS and Linux. See [BACKLOG.md](BACKLOG.md).
+**Status:** 0.2.0-rc.3 Rust preview for Windows x86_64. This is a prerelease of the Tauri 2 + Dioxus app. Automatic updates are disabled; install subsequent previews manually. See [docs/rust-rewrite.md](docs/rust-rewrite.md) and [docs/windows.md](docs/windows.md).
 
-## The chain of command
+## Stack
 
-| In Rome         | In Legate   | What it is                                                             |
-| --------------- | ----------- | ---------------------------------------------------------------------- |
-| The general     | You         | Gives the order, reviews the result, decides what is kept              |
-| The legate      | The lead    | One agent you talk to. It splits your order into jobs and reports back |
-| The cohorts     | The workers | Agents on your Claude and Cursor plans that do the jobs                |
-| The camp        | A worktree  | A separate copy of the project for one task, so work never collides    |
-| The dispatch    | The steps   | Every file read, every edit, every command, listed as it happens       |
-| Standing orders | Routines    | Saved jobs, and commands that prepare each new camp                    |
-
-## How it works
-
-- **The window is a workspace.** The sidebar has **New task** (`Ctrl+N`), Goals, Automations, and every project as a tree with its worktrees under it; click any worktree, in any project, to open it. Finished agents you are not looking at sleep to save memory and resume when shown. Agent terminals fill the centre, and a panel on the right opens on the files of the worktree you are in. The same panel holds the lead, jobs, changes, routines, usage, activity, the commit history with its branch graph, and goals (`Ctrl+1` to `Ctrl+9`; `Ctrl+B` hides it). Drag any tab above or below the terminals, under the projects, or out into a window of its own. A status bar shows each plan's allowance (Claude's is read live) and what is running.
-- **The lead.** You talk to one lead. It reads the code your request is about, then proposes jobs as cards you can edit; press **Run** and each agent opens as a live tab beside your terminals. **Take over** turns any of them into a real terminal on the same session. The lead reports back when they finish; you can keep talking while they run. The lead is an ordinary CLI session that can only call the app's own four tools. You set the most it may hand out: read only, edit files, or full access.
-- **Workers and access.** Grok is a third worker running Cursor on a Grok model on your Cursor plan, and coding work goes to Grok first. You can also hand a job straight to a worker and pick its type and its access. _Read only_ reads files and answers. _Edit files_ edits inside its own worktree. _Full access_ also runs commands without asking, still inside its own worktree. Each plan runs up to three jobs at once, and a job can be stopped.
-- **Steps.** Nothing is a black box. Every file a worker reads or edits and every command it runs is listed live under its job, with an "Edited N files" summary whose rows open to that file's diff.
-- **Worktrees.** Any job or terminal that may change files works in its own git worktree. Create one from the sidebar with a name and a **task**, and the agent in it starts working at once; ask for several and you get several agents on the same task. Select one or many to see their terminals together.
-- **Terminals.** A terminal is a full Claude or Cursor session you talk to directly, shown in a grid of up to six panes. A terminal can move into a window of its own, and open terminals come back after a restart with their conversation.
-- **Files.** The panel shows the files of the selected project or worktree, marks what changed, and previews a file or its diff. It reads and opens files; it never writes them.
-- **Changes.** Pick a worktree and open **Review** beside its terminals, or use the Changes tab. You read its diff, then merge it as staged changes, discard it, or open a pull request through `gh`. A worktree cannot be merged or discarded while a job is still running in it.
-- **Routines and setup.** A routine is a saved job you run with one click, or after every job of a kind you choose. Setup commands (for example `pnpm install`) run in each worktree you create by hand, in a terminal you can watch.
-- **Goals.** Say what should be true, and optionally a check such as `pnpm test`. The lead proposes each round of jobs and waits for your OK; changes collect in one worktree, the check runs after every round, and it stops when the check passes, at the round limit, or when the same failure repeats. A job with a check is a small goal: it fixes until the check passes. Triggers start goals on a schedule, or when CI fails on your pull request, an issue is opened, or the default branch breaks.
-- **Skills.** Every agent Legate starts gets Legate's own skills: worktree rules and a read-only `legate` CLI for workers, how to delegate for the lead, and how to review a change for both. Add your own skill folders in Settings → Skills. They load only into Legate's agents, never into your other Claude or Cursor sessions.
-- **The router.** A rule table and how much allowance each plan has left decide who gets a job. Coding work goes to Grok first; planning and review go to Claude. If a plan reports its limit, it rests and its queued jobs move to the other plan.
-- **Compare.** Send the same prompt to both plans, read the results side by side, keep one.
-- **Windows and looks.** Open up to six windows of the same app. Seven looks are chosen in Settings → General.
-
-Everything runs locally, per person. There is no server and no account.
-
-![The Files panel beside a terminal](docs/files.png)
+| Layer | Choice |
+| --- | --- |
+| Desktop shell | Tauri 2 |
+| UI | Dioxus (WASM) in the webview; terminals use xterm.js |
+| Storage | SQLite via rusqlite (same schema / `%APPDATA%\Legate` as the old Electron app). Turso is behind a cargo feature; multi-process writes on Windows need rusqlite |
+| Local models | `liteagent` crate + Ollama or llama-server |
+| Dev loop | `bacon` |
 
 ## Install
 
-1. **Install Legate.** Download `legate-<version>-setup.exe` from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases) and run it. Windows warns because the installer is not signed: choose **More info**, then **Run anyway**. Updates download in the background and install when you quit.
+1. **Install the Windows preview.** Download the setup executable from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). The separate `legate-cli-windows-x86_64.exe` asset is the command-line app; it is not bundled into the desktop installer. To build the desktop app from this checkout (after the development prerequisites below):
+   ```
+   cd apps/desktop/src-tauri
+   cargo tauri build
+   ```
+   The NSIS installer lands under `target/release/bundle/nsis/`. Windows warns because it is not signed: **More info** → **Run anyway**. Details: [docs/windows.md](docs/windows.md).
 2. **Install Git**, which the worktrees need:
    ```
    winget install --id Git.Git -e
    ```
-3. **Install and sign in to at least one plan.** Either is enough; both is better.
-   - Claude Code (needs a Claude Pro or Max plan):
-     ```
-     winget install --id Anthropic.ClaudeCode -e
-     claude auth login
-     ```
-   - Cursor CLI (needs a Cursor plan), in PowerShell:
-     ```
-     irm 'https://cursor.com/install?win32=true' | iex
-     agent login
-     ```
-4. **Optional: the GitHub CLI**, to clone your repositories and open pull requests:
-   ```
-   winget install --id GitHub.cli -e
-   gh auth login
-   ```
-5. **Open Legate.** On first start it opens **Setup**, which lists these tools, shows what each still needs, gives the install command, and runs each tool's own sign-in in a terminal on the screen. So steps 2 to 4 can also be done from there. Then add a project folder.
+3. **Install and sign in to at least one plan** (or use local only):
+   - Claude Code: `winget install --id Anthropic.ClaudeCode -e` then `claude auth login`
+   - Codex: `npm install -g @openai/codex` then `codex login` with your ChatGPT account
+   - Cursor CLI: `irm 'https://cursor.com/install?win32=true' | iex` then `agent login`
+   - Local: run [Ollama](https://ollama.com) with a model (default prefs: `http://127.0.0.1:11434`, model `coder-agent`, 64K context)
+4. **Optional:** GitHub CLI for clone and PRs: `winget install --id GitHub.cli -e` then `gh auth login`
+5. **Open Legate.** Setup lists these tools. Data lives in `%APPDATA%\Legate` (override with `LEGATE_DATA`). An existing Electron install’s database and settings are reused.
 
-You sign in to each tool yourself, in that tool's own sign-in. Legate never sees a password or a token.
+You sign in to each cloud tool yourself. Legate never sees a password or token.
+
+## Codex preview notes
+
+Codex uses the official CLI's saved ChatGPT login. API-key-only authentication is not treated as a subscription provider. Usage shows only installed, signed-in providers; Codex does not expose subscription quota through this CLI, so Legate shows no invented percentage.
+
+Background Codex jobs use native `read-only`, `workspace-write` or explicit full access. Workspace access also permits shell commands inside the sandbox. On Windows this preview selects the legacy unelevated sandbox backend because ignoring user config otherwise produced read-only jobs on the tested CLI; its network isolation is weaker than MXC. Lead jobs stay read-only and use the Legate bridge.
+
+New interactive Codex terminals work, but automatic session restoration after restarting Legate is not yet supported. Use Codex's own resume picker when needed. Background jobs and worker takeover retain the session ID from Codex events.
 
 ## Command line
 
-`legate` drives the same jobs, changes and routines from a terminal. The app and the command share one database, and each sees the other's jobs within a few seconds.
-
-With no arguments, `legate` opens a terminal UI: worktrees and jobs on the left, the selected job's live steps or a worktree's diff on the right, and a prompt line to hand out a job. `?` lists the keys.
+`legate` shares the same database as the desktop app.
 
 ```
 legate                       open the terminal UI (also: legate ui)
 legate status                each plan, and what is running here
-legate job "<prompt>" [--type planning|debugging|review|refactor|boilerplate]
-                      [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet]
-legate jobs [--limit N]      recent jobs
-legate show <job-id>         one job with every step
-legate changes               worktrees and their changes
-legate diff <change-id>
-legate merge <change-id>
-legate discard <change-id>
+legate plans                 same as status
+legate job "<prompt>" [--type …] [--worker auto|claude|codex|cursor|grok|local] [--access read|edit|full]
+legate jobs [--limit N]
+legate show <job-id>
+legate changes | diff | merge | discard …
 legate pr "<title>" [--body "<text>"]
-legate worktree create [name] | list | path <change-id-or-name>
+legate worktree create [name] | list | path <id>
 legate routine list | run "<name>"
 legate goal "<what should be true>" [--check "<command>"] [--rounds N] [--yes]
-legate goals                 goals in this project
+legate goals
 ```
 
-In a checkout, run `pnpm cli -- status`. In an installed copy, add the app's `resources\bin` folder to PATH.
-
-## Subscription use
-
-- Legate runs the unmodified official CLIs, each signed in by you with your own plan.
-- It never reads, stores or forwards login tokens or session credentials.
-- It does not use any Agent SDK and makes no pay-per-token API calls.
-- Jobs are started by a person. A routine runs only after something you did, never on a timer.
-
-You are responsible for staying within each provider's terms.
-
-## Security
-
-- Everyone uses their own plans. The app has no accounts, no server and no way to reach anyone else's login.
-- Every window is made by one function with the same sandbox: it cannot navigate away from the app, cannot open other pages, is refused every permission, and reaches the main process only through a fixed list of functions.
-- A worker's limits are set when it starts, whatever your own CLI settings allow:
-  - Claude workers get no shell and no edit tools when reading, no shell when editing, and never your own MCP servers, not even with full access.
-  - Cursor workers are started without `--force` unless the job has full access, and an editing job gets a permission file that denies the shell. Rules in your own Cursor CLI config, or a `.cursor/cli.json` in the project, still apply.
-- Full access runs commands on your computer without asking. Use it only in folders you trust.
-- The lead reaches the app through a small local server with four tools (`list_workers`, `send_job`, `get_status`, `get_result`). It listens on loopback only, requires a random token that changes every start, and refuses requests that carry a browser `Origin`.
-- The Files panel can only read inside the project or worktree folder; a path that leads outside it is refused.
-- Only add or clone folders you trust. A project can carry its own Claude Code or Cursor settings, including hooks that run commands when an agent works there.
-- The terminals are full CLI sessions; what they may do is whatever you approve inside them.
+From a checkout: `cargo run -p legate-cli -- status`. For the standalone release asset, run `legate-cli-windows-x86_64.exe status`; optionally rename it to `legate-cli.exe` and put its folder on `PATH`. The desktop executable and CLI are separate programs.
 
 ## Develop
 
-Requires Node 22.5 or newer and pnpm.
+Requires a recent stable Rust (MSVC on Windows), [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/), and for UI builds: `cargo install tauri-cli --version "^2"` and `cargo install dioxus-cli`, plus `rustup target add wasm32-unknown-unknown`.
 
 ```bash
-pnpm install
-pnpm dev              # run the app
-pnpm test             # unit tests, no real CLIs
-pnpm build            # typecheck + build (also builds the legate command)
-pnpm shots            # screenshots of the UI with fake data, in .orchestrator/shots/
-pnpm cli -- status    # the legate command from this checkout
-pnpm build:win        # the Windows installer, in dist/
-pnpm gate router      # acceptance: 10 real jobs + one forced failover
-pnpm gate lead        # acceptance: the lead splits a two-part request across both plans
-pnpm gate worktrees   # acceptance: an editing job merges cleanly (GATE_WORKERS=cursor for one plan)
+bacon                         # check on save (see bacon.toml)
+cargo test --workspace --exclude legate-desktop --locked
+cargo clippy --workspace --exclude legate-desktop --all-targets --locked -- -D warnings
+cargo fmt --all --check
+
+# desktop (in apps/desktop/src-tauri)
+cargo tauri dev
+cargo tauri build             # NSIS installer
+
+# UI only
+dx serve                      # in apps/ui
+dx build --release --platform web
+
+# desktop checks (from the repository root, after building UI assets above)
+cargo clippy -p legate-desktop --all-targets --locked -- -D warnings
+cargo test -p legate-desktop --locked
 ```
 
-The `gate` commands use your real plans and spend real allowance.
+| Variable         | Effect |
+| ---------------- | ------ |
+| `LEGATE_DATA`    | App data folder (default `%APPDATA%\Legate`) |
+| `ORCH_WORKTREES` | Worktree root (default `~/.orchestrator/wt`) |
+| `ORCH_CWD`       | Folder jobs run in |
+| `ORCH_LEAD`      | Force lead plan: `claude`, `cursor`, … |
 
-| Variable         | Effect                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `ORCH_CWD`       | Folder the jobs run in (default: where the app was started)                          |
-| `ORCH_RULES`     | Path to your own edited copy of `src/core/router/rules.json`                         |
-| `ORCH_LEAD`      | `claude` or `cursor` to choose the lead's plan (default: the one with more headroom) |
-| `ORCH_WORKTREES` | Folder the worktrees are made in (default: `~/.orchestrator/wt`)                     |
-| `ORCH_NO_UPDATE` | `1` stops an installed build from checking GitHub Releases for updates               |
-| `LEGATE_DATA`    | Data folder for the `legate` command (default: the app's own)                        |
+## Local models
 
-Everything in `src/core` runs without Electron; the app, the command and the terminal UI are three ways into the same core. Data is stored locally with Node's built-in `node:sqlite`, so there is no native database module to rebuild.
+Settings (or prefs JSON) include:
 
-### Release
+- `localUrl` — default `http://127.0.0.1:11434`
+- `localModel` — default `coder-agent`
+- `localSmallModel` — optional cascade draft model
+- `localNumCtx` — default `65536`
 
-Bump `"version"` in `package.json`, tag `vX.Y.Z`, and push the tag. That builds a draft GitHub Release with the Windows installer; publish the draft when you are ready.
+The `local` plan is last in the router rules and has unlimited headroom. Jobs map through the `liteagent` runtime (prefix cache on llama-server, grammar tool calls, optional small→big cascade). Standalone crate: [scholtzdaniel10/liteagent](https://github.com/scholtzdaniel10/liteagent) branch `rust`.
 
-## Tested with
+## Security (short)
 
-- Claude Code `2.1.292`
-- Cursor CLI `2026.10.01-e373342`
-
-Newer CLI versions usually work. Each plan shows its CLI version against the tested one, and a job fails with a readable message when a CLI sends output the app does not understand.
+- Cloud workers are the official CLIs you signed in; Legate does not hold their tokens.
+- Full access runs shell commands in a job’s worktree without asking — only in folders you trust.
+- The lead’s MCP bridge listens on loopback only, with a fresh bearer token each start.
+- The Files panel cannot leave the project or worktree folder.
 
 ## Why the name
 
-A legate carried someone else's authority and answered for how he used it. That is the deal here: the agents act for you, inside limits you set, and the record of what they did is yours to read. The repository keeps its first name, `agent-orchestrator`.
+A legate carried someone else's authority and answered for how he used it. The repository keeps its first name, `agent-orchestrator`.
 
 ## License
 
