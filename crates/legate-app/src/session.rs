@@ -24,8 +24,8 @@ use legate_lead::{
     bundled_plugins, bundled_skills, run_goal_check, with_plugins,
 };
 use legate_providers::{
-    AgentPlugins as ProviderPlugins, ClaudeAdapter, CursorAdapter, InteractiveCommand,
-    InteractiveOptions, LocalAdapter, ProviderAdapter,
+    AgentPlugins as ProviderPlugins, ClaudeAdapter, CodexAdapter, CursorAdapter,
+    InteractiveCommand, InteractiveOptions, LocalAdapter, ProviderAdapter,
 };
 use legate_pty::{Launch, LaunchOpts, PtyHost, PtyHostOptions, chat_fn};
 use legate_router::{
@@ -291,13 +291,19 @@ pub(crate) struct World {
     pub models: Arc<RwLock<HashMap<ProviderId, Option<String>>>>,
     pub store: Rc<Store>,
     pub orch: Rc<Orchestrator>,
-    pub lead: Rc<Lead>,
+    pub lead_sessions: Rc<RefCell<HashMap<String, Rc<Lead>>>>,
+    pub session_bridges: RefCell<Vec<legate_bridge::Bridge>>,
+    pub session_subscriptions: RefCell<Vec<Box<dyn FnOnce()>>>,
+    pub command_tx: mpsc::UnboundedSender<Command>,
+    pub this: RefCell<std::rc::Weak<World>>,
+    pub switch_generation: Cell<u64>,
     pub goals: Rc<Goals>,
     pub triggers: Rc<TriggerService>,
     pub routines: Rc<Routines>,
     pub setup_tracker: Rc<RefCell<SetupTracker>>,
     pub terms: PtyHost,
     pub claude: Arc<ClaudeAdapter>,
+    pub codex: Arc<CodexAdapter>,
     pub cursor: Arc<CursorAdapter>,
     pub grok: Arc<CursorAdapter>,
     pub local: Arc<LocalAdapter>,
@@ -361,6 +367,7 @@ pub(crate) fn spawn_service(
 
 async fn run_loop(world: World, mut rx: mpsc::UnboundedReceiver<Command>) {
     let world = Rc::new(world);
+    *world.this.borrow_mut() = Rc::downgrade(&world);
     loop {
         let Some(command) = rx.recv().await else {
             break;
@@ -379,6 +386,10 @@ async fn run_loop(world: World, mut rx: mpsc::UnboundedReceiver<Command>) {
     world.triggers.stop();
     world.changes.clear();
     world.terms.close_all();
+    let extra_bridges = std::mem::take(&mut *world.session_bridges.borrow_mut());
+    for bridge in extra_bridges {
+        let _ = bridge.close().await;
+    }
     let _ = world.bridge.close().await;
 }
 
@@ -422,6 +433,9 @@ async fn boot(
     let claude = options
         .claude
         .unwrap_or_else(|| Arc::new(ClaudeAdapter::new(None)));
+    let codex = options
+        .codex
+        .unwrap_or_else(|| Arc::new(CodexAdapter::new(None)));
     let cursor = options
         .cursor
         .unwrap_or_else(|| Arc::new(CursorAdapter::new(None)));
@@ -471,11 +485,13 @@ async fn boot(
     let lead_rules = rules.clone();
 
     let claude_run: Arc<dyn ProviderAdapter> = claude.clone();
+    let codex_run: Arc<dyn ProviderAdapter> = codex.clone();
     let cursor_run: Arc<dyn ProviderAdapter> = cursor.clone();
     let grok_run: Arc<dyn ProviderAdapter> = grok.clone();
     let local_run: Arc<dyn ProviderAdapter> = local.clone();
     let runners: Vec<Rc<dyn legate_router::Runner>> = vec![
         Rc::new(AdapterRunner::new(claude_run)),
+        Rc::new(AdapterRunner::new(codex_run)),
         Rc::new(AdapterRunner::new(cursor_run)),
         Rc::new(AdapterRunner::new(grok_run)),
         Rc::new(AdapterRunner::new(local_run)),
@@ -515,7 +531,7 @@ async fn boot(
         None,
     ));
 
-    let backend = Arc::new(AppBackend::new(tx.clone()));
+    let backend = Arc::new(AppBackend::new(tx.clone(), project.borrow().clone()));
     let bridge = start_bridge(orchestrator_tools(backend, ToolConfig { propose: true }))
         .await
         .map_err(|err| AppError::message(err.to_string()))?;
@@ -526,10 +542,11 @@ async fn boot(
         .and_then(ProviderId::parse);
     let prefer_settings = Rc::clone(&settings);
     let lead_model_settings = Rc::clone(&settings);
-    let lead_project = Rc::clone(&project);
+    let lead_project = project.borrow().clone();
     let lead = Lead::new(LeadOpts {
         adapters: vec![
             adapt_provider(claude.clone()),
+            adapt_provider(codex.clone()),
             adapt_provider(cursor.clone()),
             adapt_provider(grok.clone()),
             adapt_provider(local.clone()),
@@ -538,7 +555,7 @@ async fn boot(
         rules: lead_rules,
         bridge: bridge_info,
         dir: lead_dir(&data_dir).to_string_lossy().into_owned(),
-        project: Rc::new(move || lead_project.borrow().clone()),
+        project: Rc::new(move || lead_project.clone()),
         prefer: Some(Rc::new(move || {
             prefer_settings.borrow().lead_plan().or(env_prefer)
         })),
@@ -551,15 +568,20 @@ async fn boot(
     lead.init()
         .await
         .map_err(|err| AppError::message(err.to_string()))?;
-    lead.attach_jobs(Rc::clone(&jobs));
+    lead.attach_jobs(Rc::new(OrchJobs::for_project(
+        orch.clone(),
+        project.borrow().clone(),
+    )));
 
     let claude_plan: Arc<dyn ProviderAdapter> = claude.clone();
+    let codex_plan: Arc<dyn ProviderAdapter> = codex.clone();
     let cursor_plan: Arc<dyn ProviderAdapter> = cursor.clone();
     let grok_plan: Arc<dyn ProviderAdapter> = grok.clone();
     let local_plan: Arc<dyn ProviderAdapter> = local.clone();
     let adapter = Arc::new(move |id: ProviderId| -> Arc<dyn ProviderAdapter> {
         match id {
             ProviderId::Claude => Arc::clone(&claude_plan),
+            ProviderId::Codex => Arc::clone(&codex_plan),
             ProviderId::Grok => Arc::clone(&grok_plan),
             ProviderId::Local => Arc::clone(&local_plan),
             ProviderId::Cursor => Arc::clone(&cursor_plan),
@@ -679,9 +701,13 @@ async fn boot(
     let lead_orch = Rc::clone(&orch);
     let lead_settings = Rc::clone(&settings);
     let lead_store = Rc::clone(&store);
+    let lead_event_project = project.borrow().clone();
+    let lead_visible_project = project.clone();
     let lead_unsub = lead.on_update(Rc::new(move |message, chat_id| {
         let streaming = message.status == legate_core::LeadStatus::Streaming;
-        let _ = lead_events.send(AppEvent::Lead { message, chat_id });
+        if *lead_visible_project.borrow() == lead_event_project {
+            let _ = lead_events.send(AppEvent::Lead { message, chat_id });
+        }
         if !streaming {
             let plans = plan_list(&lead_orch, &lead_settings.borrow(), &lead_store);
             let _ = lead_events.send(AppEvent::Plans(plans));
@@ -690,6 +716,7 @@ async fn boot(
     reload_project(&lead, &orch, &goals, &project.borrow(), &missed);
 
     let claude_launch = Arc::clone(&claude);
+    let codex_launch = Arc::clone(&codex);
     let cursor_launch = Arc::clone(&cursor);
     let grok_launch = Arc::clone(&grok);
     let launch = Arc::new(move |provider, opts: &LaunchOpts| {
@@ -701,6 +728,7 @@ async fn boot(
         };
         let spec = match provider {
             ProviderId::Claude => claude_launch.interactive(&interactive),
+            ProviderId::Codex => codex_launch.interactive(&interactive),
             ProviderId::Grok => grok_launch.interactive(&interactive),
             ProviderId::Local => InteractiveCommand {
                 command: "legate-local-has-no-cli".to_string(),
@@ -853,6 +881,10 @@ async fn boot(
         }
     });
 
+    let lead_sessions = Rc::new(RefCell::new(HashMap::from([(
+        project.borrow().clone(),
+        lead.clone(),
+    )])));
     Ok(World {
         settings,
         project,
@@ -860,12 +892,18 @@ async fn boot(
         models,
         store,
         orch,
-        lead,
+        lead_sessions,
+        session_bridges: RefCell::new(Vec::new()),
+        session_subscriptions: RefCell::new(Vec::new()),
+        command_tx: tx,
+        this: RefCell::new(std::rc::Weak::new()),
+        switch_generation: Cell::new(0),
         goals,
         triggers,
         routines,
         setup_tracker,
         terms,
+        codex,
         claude,
         cursor,
         grok,
@@ -989,7 +1027,9 @@ pub(crate) fn reload_project(
     project: &str,
     missed: &RefCell<HashMap<String, JobRecord>>,
 ) {
-    let _ = lead.open_latest();
+    if lead.view_chat().is_none() {
+        let _ = lead.open_latest();
+    }
     orch.restore(project);
     lead.note_restored_jobs(&orch.list());
     let here = orch
@@ -1215,7 +1255,7 @@ struct TerminalWatch {
     push: ChangePush,
     sign_in: Rc<RefCell<std::collections::HashSet<String>>>,
     orch: Rc<Orchestrator>,
-    lead: Rc<Lead>,
+    leads: Rc<RefCell<HashMap<String, Rc<Lead>>>>,
     events: broadcast::Sender<AppEvent>,
     store: Rc<Store>,
     settings: Rc<RefCell<legate_core::Settings>>,
@@ -1228,7 +1268,7 @@ impl TerminalWatch {
             push: world.change_push.clone(),
             sign_in: Rc::clone(&world.sign_in),
             orch: Rc::clone(&world.orch),
-            lead: Rc::clone(&world.lead),
+            leads: world.lead_sessions.clone(),
             events: world.events.clone(),
             store: Rc::clone(&world.store),
             settings: Rc::clone(&world.settings),
@@ -1239,6 +1279,7 @@ impl TerminalWatch {
         let provider = match info.provider {
             legate_core::TerminalProvider::Shell => "shell",
             legate_core::TerminalProvider::Claude => "claude",
+            legate_core::TerminalProvider::Codex => "codex",
             legate_core::TerminalProvider::Cursor => "cursor",
             legate_core::TerminalProvider::Grok => "grok",
             legate_core::TerminalProvider::Local => "local",
@@ -1269,7 +1310,10 @@ impl TerminalWatch {
         if signing_in && (removed || info.status == legate_core::TerminalStatus::Exited) {
             self.sign_in.borrow_mut().remove(&info.id);
             self.orch.recheck().await;
-            let _ = self.lead.recheck().await;
+            let leads = self.leads.borrow().values().cloned().collect::<Vec<_>>();
+            for lead in leads {
+                let _ = lead.recheck().await;
+            }
             let plans = plan_list(&self.orch, &self.settings.borrow(), &self.store);
             let _ = self.events.send(AppEvent::Plans(plans));
         }
@@ -1288,7 +1332,7 @@ impl World {
 
     pub fn reload(&self) {
         reload_project(
-            &self.lead,
+            &self.current_lead(),
             &self.orch,
             &self.goals,
             &self.project.borrow(),
@@ -1303,4 +1347,65 @@ pub(crate) fn mirror_project(world: &World, path: &str) {
         .project_mirror
         .write()
         .unwrap_or_else(|err| err.into_inner()) = path.to_string();
+}
+
+impl World {
+    pub fn current_lead(&self) -> Rc<Lead> {
+        self.lead_sessions
+            .borrow()
+            .get(&*self.project.borrow())
+            .cloned()
+            .expect("active project has a prepared lead session")
+    }
+
+    pub async fn prepare_lead(&self, project: &str) -> Result<Rc<Lead>, AppError> {
+        if let Some(lead) = self.lead_sessions.borrow().get(project).cloned() {
+            return Ok(lead);
+        }
+        let backend = Arc::new(AppBackend::new(
+            self.command_tx.clone(),
+            project.to_string(),
+        ));
+        let bridge = start_bridge(orchestrator_tools(backend, ToolConfig { propose: true }))
+            .await
+            .map_err(|err| AppError::message(err.to_string()))?;
+        // Another switch may have prepared this project while the socket was starting.
+        let existing = self.lead_sessions.borrow().get(project).cloned();
+        if let Some(existing) = existing {
+            let _ = bridge.close().await;
+            return Ok(existing);
+        }
+        let lead = self
+            .current_lead()
+            .for_project(project.to_string(), Arc::new(bridge.info().clone()));
+        lead.attach_jobs(Rc::new(OrchJobs::for_project(
+            self.orch.clone(),
+            project.to_string(),
+        )));
+        let visible = self.project.clone();
+        let owner = project.to_string();
+        let events = self.events.clone();
+        let orch = self.orch.clone();
+        let settings = self.settings.clone();
+        let store = self.store.clone();
+        let unsub = lead.on_update(Rc::new(move |message, chat_id| {
+            let streaming = message.status == legate_core::LeadStatus::Streaming;
+            if *visible.borrow() == owner {
+                let _ = events.send(AppEvent::Lead { message, chat_id });
+            }
+            if !streaming {
+                let _ = events.send(AppEvent::Plans(plan_list(
+                    &orch,
+                    &settings.borrow(),
+                    &store,
+                )));
+            }
+        }));
+        self.session_subscriptions.borrow_mut().push(unsub);
+        self.session_bridges.borrow_mut().push(bridge);
+        self.lead_sessions
+            .borrow_mut()
+            .insert(project.to_string(), lead.clone());
+        Ok(lead)
+    }
 }

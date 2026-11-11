@@ -77,7 +77,12 @@ impl RouterState {
         };
         state.pull_control(store)?;
         let mut since = now.saturating_sub(state.rules.max_lookback_ms());
-        for plan in [ProviderId::Claude, ProviderId::Cursor, ProviderId::Local] {
+        for plan in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Local,
+        ] {
             for window in &state.plans[plan_index(plan)].stored {
                 if window.name == DASHBOARD_WINDOW {
                     since = since.min(window.observed_at);
@@ -93,7 +98,12 @@ impl RouterState {
 
     /// Rest and reported windows only. Run history stays in the deque.
     pub fn pull_control(&mut self, store: &Store) -> Result<(), RouterError> {
-        for plan in [ProviderId::Claude, ProviderId::Cursor, ProviderId::Local] {
+        for plan in [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Local,
+        ] {
             let until = store.resting_until(plan.as_str())?;
             let windows = store.windows(plan.as_str())?;
             let slot = &mut self.plans[plan_index(plan)];

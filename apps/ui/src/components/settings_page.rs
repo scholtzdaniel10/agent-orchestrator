@@ -453,6 +453,7 @@ pub fn SettingsPage(
                                 }
                             }
                             if id == "projects" {
+                                super::workflow_setup::WorkflowSetup {}
                                 if let Some(facts) = facts.clone() {
                                     Row { label: "Worktrees folder".to_string(), help: "Where job worktrees are created.".to_string(),
                                         span { class: "settings-path", "{facts.worktrees_dir}" }

@@ -20,14 +20,17 @@ use tokio::sync::Notify;
 struct Server {
     url: String,
     gate: Arc<Notify>,
+    held_request: Arc<Notify>,
 }
 
 async fn serve(hold_first: bool) -> Server {
     let gate = Arc::new(Notify::new());
+    let held_request = Arc::new(Notify::new());
     let state = Arc::new(ChatState {
         hold_first,
         held: AtomicBool::new(false),
         gate: Arc::clone(&gate),
+        held_request: held_request.clone(),
     });
     let app = Router::new()
         .route(
@@ -48,6 +51,7 @@ async fn serve(hold_first: bool) -> Server {
     Server {
         url: format!("http://127.0.0.1:{port}"),
         gate,
+        held_request,
     }
 }
 
@@ -55,12 +59,14 @@ struct ChatState {
     hold_first: bool,
     held: AtomicBool,
     gate: Arc<Notify>,
+    held_request: Arc<Notify>,
 }
 
 async fn chat(State(state): State<Arc<ChatState>>, body: Bytes) -> Json<Value> {
     let text = String::from_utf8_lossy(&body);
     let writing = text.contains("write_file") && !text.contains("Tool result:");
     if state.hold_first && !state.held.swap(true, Ordering::SeqCst) {
+        state.held_request.notify_one();
         state.gate.notified().await;
     }
     let content = if writing {
@@ -139,6 +145,9 @@ impl Fixture {
             project: Some(self.repo.clone()),
             worktrees_dir: Some(self.worktrees.clone()),
             claude: Some(Arc::new(ClaudeAdapter::new(Some(missing.clone())))),
+            codex: Some(Arc::new(legate_providers::CodexAdapter::new(Some(
+                missing.clone(),
+            )))),
             cursor: Some(Arc::new(CursorAdapter::new(Some(missing.clone())))),
             grok: Some(Arc::new(CursorAdapter::new(Some(missing)))),
             local: None,
@@ -267,7 +276,7 @@ async fn edit_job_runs_on_local_merges_and_drops_the_worktree() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn switch_project_is_refused_while_a_job_runs() {
+async fn switching_projects_keeps_a_running_job_in_its_original_project() {
     let server = serve(true).await;
     let fixture = Fixture::new();
     fixture.write_settings(&server.url);
@@ -283,11 +292,15 @@ async fn switch_project_is_refused_while_a_job_runs() {
         )
         .await
         .expect("submit");
-    let refused = app
+    let switched = app
         .switch_project(fixture.other.to_string_lossy().as_ref())
         .await
-        .expect_err("switch should be refused");
-    assert_eq!(refused.to_string(), "Refused while work is running");
+        .expect("switch while a worker runs");
+    assert_eq!(switched.path, fixture.other.to_string_lossy());
+    assert!(app.list_jobs().await.expect("other jobs").is_empty());
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("return");
     server.gate.notify_one();
     let finished = wait_done(&mut rx, &job.id).await;
     assert_eq!(finished.status, JobStatus::Done, "{:?}", finished.error);
@@ -340,14 +353,18 @@ async fn shell_terminal_echoes_on_subscribe() {
         .await
         .expect("open shell");
     let mut echoed = String::new();
+    let mut answered_cursor = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
     while tokio::time::Instant::now() < deadline {
         match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
             Ok(Ok(AppEvent::TerminalData { id, data })) if id == info.id => {
                 echoed.push_str(&data);
-                // ConPTY asks for the cursor position before the command's output.
-                if data.contains("[6n") {
-                    let _ = app.write_terminal(&info.id, "\u{1b}[1;1R", 1).await;
+                // ConPTY's startup query can span output chunks; answer it once.
+                if !answered_cursor && echoed.contains("\u{1b}[6n") {
+                    app.write_terminal(&info.id, "\u{1b}[1;1R", 1)
+                        .await
+                        .expect("answer cursor query");
+                    answered_cursor = true;
                 }
                 if echoed.contains("legate-shell-ok") {
                     break;
@@ -364,6 +381,107 @@ async fn shell_terminal_echoes_on_subscribe() {
         echoed.contains("legate-shell-ok"),
         "terminal {} output was {echoed:?}; snapshot {snapshot:?}; terminals {listed:?}",
         info.id
+    );
+    app.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lead_reply_survives_project_switch_and_does_not_mix_histories() {
+    let server = serve(true).await;
+    let fixture = Fixture::new();
+    fixture.write_settings(&server.url);
+    let app = AppHandle::start(fixture.options()).await.expect("start");
+    app.reset_lead(Some(ProviderId::Local))
+        .await
+        .expect("direct A");
+    let mut events = app.subscribe();
+    let sender = app.clone();
+    let first = tokio::spawn(async move { sender.send_lead("Message from project A").await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(AppEvent::Lead { message, .. }) = events.recv().await
+                && message.status == legate_core::LeadStatus::Streaming
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("A is streaming");
+    tokio::time::timeout(Duration::from_secs(5), server.held_request.notified())
+        .await
+        .expect("A request is held before B starts");
+    app.switch_project(fixture.other.to_string_lossy().as_ref())
+        .await
+        .expect("switch to B while A streams");
+    assert!(
+        app.list_lead_messages()
+            .await
+            .expect("B history")
+            .is_empty()
+    );
+    app.reset_lead(Some(ProviderId::Local))
+        .await
+        .expect("direct B");
+    app.send_lead("Message from project B")
+        .await
+        .expect("B can chat independently");
+    assert!(
+        !first.is_finished(),
+        "A is still waiting on its original response"
+    );
+    server.gate.notify_one();
+    first
+        .await
+        .expect("join A")
+        .expect("A finishes in background");
+    let second = app.list_lead_messages().await.expect("B stays visible");
+    assert!(second.iter().any(|m| m.text == "Message from project B"));
+    assert!(!second.iter().any(|m| m.text == "Message from project A"));
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("back to A");
+    let first = app.list_lead_messages().await.expect("A restored");
+    assert!(first.iter().any(|m| m.text == "Message from project A"));
+    assert!(!first.iter().any(|m| m.text == "Message from project B"));
+    assert!(
+        !first
+            .iter()
+            .any(|m| m.status == legate_core::LeadStatus::Streaming)
+    );
+    app.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn project_terminal_listing_keeps_other_project_sessions_available_to_popouts() {
+    let server = serve(false).await;
+    let fixture = Fixture::new();
+    fixture.write_settings(&server.url);
+    let app = AppHandle::start(fixture.options()).await.expect("start");
+    let terminal = app
+        .open_terminal(TerminalKind::Shell, 80.0, 24.0, None, None)
+        .await
+        .expect("A shell");
+    app.switch_project(fixture.other.to_string_lossy().as_ref())
+        .await
+        .expect("B");
+    assert!(app.list_project_terminals().await.unwrap().is_empty());
+    assert!(
+        app.list_terminals()
+            .await
+            .unwrap()
+            .iter()
+            .any(|term| term.id == terminal.id)
+    );
+    app.switch_project(fixture.repo.to_string_lossy().as_ref())
+        .await
+        .expect("A");
+    assert!(
+        app.list_project_terminals()
+            .await
+            .unwrap()
+            .iter()
+            .any(|term| term.id == terminal.id)
     );
     app.shutdown().await;
 }

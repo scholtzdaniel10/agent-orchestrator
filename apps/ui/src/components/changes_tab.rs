@@ -14,7 +14,12 @@ use crate::api;
 use crate::components::star::RayBurst;
 use crate::logic::worktree_label::{NamedChange, worktree_label};
 
-const WORKERS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok];
+const WORKERS: [ProviderId; 4] = [
+    ProviderId::Claude,
+    ProviderId::Codex,
+    ProviderId::Cursor,
+    ProviderId::Grok,
+];
 
 #[derive(Clone, PartialEq, Eq)]
 struct Notice {
@@ -26,6 +31,7 @@ struct Notice {
 fn worker_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Grok => "Grok",
         ProviderId::Cursor | ProviderId::Local => "Cursor",
     }
@@ -70,7 +76,15 @@ fn utf16_prefix(text: &str, max: usize) -> String {
     String::from_utf16_lossy(&text.encode_utf16().take(max).collect::<Vec<_>>())
 }
 
-fn worker_shown(id: ProviderId, claude_available: bool, cursor_available: bool) -> bool {
+fn worker_shown(
+    id: ProviderId,
+    claude_available: bool,
+    codex_available: bool,
+    cursor_available: bool,
+) -> bool {
+    if id == ProviderId::Codex {
+        return codex_available;
+    }
     if plan_of(id) == ProviderId::Claude {
         claude_available
     } else {
@@ -92,6 +106,7 @@ pub fn ChangesTab(
     selected_id: Option<String>,
     on_select: Callback<Option<String>>,
     claude_available: bool,
+    codex_available: bool,
     cursor_available: bool,
     opening: bool,
     on_open_here: Callback<(ProviderId, String)>,
@@ -226,7 +241,7 @@ pub fn ChangesTab(
     let discard_flag = busy_flag.clone();
     let workers: Vec<ProviderId> = WORKERS
         .into_iter()
-        .filter(|id| worker_shown(*id, claude_available, cursor_available))
+        .filter(|id| worker_shown(*id, claude_available, codex_available, cursor_available))
         .collect();
 
     rsx! {

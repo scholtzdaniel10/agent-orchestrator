@@ -5,6 +5,30 @@
 use legate_core::UsageShows;
 use time::{Date, Duration, Month, OffsetDateTime, UtcOffset};
 
+pub fn visible_usage_plans(plans: &[legate_core::PlanStatus]) -> Vec<legate_core::PlanStatus> {
+    let mut shown: Vec<_> = plans
+        .iter()
+        .filter(|plan| {
+            plan.available && plan.problem.is_none() && legate_core::plan_of(plan.id) == plan.id
+        })
+        .cloned()
+        .collect();
+    for worker in plans
+        .iter()
+        .filter(|plan| plan.available && legate_core::plan_of(plan.id) != plan.id)
+    {
+        if let Some(plan) = shown
+            .iter_mut()
+            .find(|plan| plan.id == legate_core::plan_of(worker.id))
+        {
+            plan.running += worker.running;
+            plan.queued += worker.queued;
+            plan.busy |= worker.busy;
+        }
+    }
+    shown
+}
+
 pub const RESET_DAYS_AHEAD: i64 = 32;
 
 const MONTHS: [&str; 12] = [
@@ -299,4 +323,53 @@ mod tests {
         assert_eq!(usage_figure(-0.1, UsageShows::Used), 0);
         assert_eq!(usage_figure(f64::NAN, UsageShows::Left), 0);
     }
+    #[test]
+    fn usage_hides_missing_and_signed_out_plans() {
+        let plan = |id: &str, available: bool| -> legate_core::PlanStatus {
+            serde_json::from_value(serde_json::json!({
+                "id":id,"available":available,"used":0.1,"atRisk":false,
+                "busy":false,"running":0,"queued":0,"windows":[],
+                "versionStatus":"unknown","testedVersion":"unknown"
+            }))
+            .unwrap()
+        };
+        let shown = super::visible_usage_plans(&[
+            plan("claude", true),
+            plan("cursor", false),
+            plan("codex", true),
+            plan("local", false),
+        ]);
+        assert_eq!(
+            shown.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["claude", "codex"]
+        );
+    }
+}
+
+#[cfg(test)]
+mod reading_tests {
+    #[test]
+    fn usage_requires_an_observed_reading_and_local_has_no_quota() {
+        let make = |id: &str| -> legate_core::PlanStatus {
+            serde_json::from_value(serde_json::json!({
+                "id":id,"available":true,"used":0.1,"atRisk":false,
+                "busy":false,"running":0,"queued":0,"windows":[],
+                "versionStatus":"unknown","testedVersion":"unknown"
+            }))
+            .unwrap()
+        };
+        let mut cursor = make("cursor");
+        assert!(!super::has_usage_reading(&cursor));
+        cursor.usage_at = Some(123);
+        assert!(super::has_usage_reading(&cursor));
+        let mut local = make("local");
+        local.usage_at = Some(123);
+        assert!(!super::has_usage_reading(&local));
+        assert!(!super::has_usage_reading(&make("codex")));
+    }
+}
+
+pub fn has_usage_reading(plan: &legate_core::PlanStatus) -> bool {
+    plan.id != legate_core::ProviderId::Local
+        && (plan.usage_at.is_some() || !plan.windows.is_empty())
 }

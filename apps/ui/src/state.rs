@@ -50,6 +50,8 @@ pub struct Store {
     pub selected_change: Signal<Option<String>>,
     pub settings_nonce: Signal<i64>,
     pub booted: Signal<bool>,
+    pub project_request: Signal<u64>,
+    pub project_switching: Signal<bool>,
 }
 
 pub fn provide_store() -> Store {
@@ -88,6 +90,8 @@ pub fn provide_store() -> Store {
         selected_change: use_signal(|| None),
         settings_nonce: use_signal(|| 0),
         booted: use_signal(|| false),
+        project_request: use_signal(|| 0),
+        project_switching: use_signal(|| false),
     };
     use_context_provider(|| store)
 }
@@ -124,7 +128,7 @@ async fn load(mut store: Store) {
     if let Ok(prefs) = api::get_prefs().await {
         store.prefs.set(prefs);
     }
-    if let Ok(list) = api::list_terminals().await {
+    if let Ok(list) = api::list_project_terminals().await {
         if store.active_terminal.read().is_empty()
             && let Some(first) = list.first()
         {
@@ -189,7 +193,18 @@ async fn listen(store: Store) {
             }
             return;
         }
-        terminals.with_mut(|list| upsert(list, info, |item| &item.id));
+        if terminals.read().iter().any(|item| item.id == info.id) {
+            terminals.with_mut(|list| upsert(list, info, |item| &item.id));
+        } else {
+            let generation = *store.project_request.read();
+            spawn_local(async move {
+                if let Ok(list) = api::list_project_terminals().await
+                    && *store.project_request.read() == generation
+                {
+                    terminals.set(list);
+                }
+            });
+        }
     })
     .await;
     let mut activity = store.activity;
@@ -209,12 +224,18 @@ async fn listen(store: Store) {
     let mut messages = store.messages;
     let chats = store.chats;
     let _ = api::on_lead(move |LeadUpdate { message, .. }| {
+        if *store.project_switching.read() {
+            return;
+        }
         messages.with_mut(|list| upsert(list, message, |item| &item.id));
         let chats = chats;
+        let generation = *store.project_request.read();
         spawn_local(async move {
             if let Ok(list) = api::list_lead_chats().await {
                 let mut chats = chats;
-                chats.set(list);
+                if *store.project_request.read() == generation {
+                    chats.set(list);
+                }
             }
         });
     })

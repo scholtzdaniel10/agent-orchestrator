@@ -27,6 +27,7 @@ impl FlowActor {
             Self::Lead => "lead",
             Self::Router => "router",
             Self::Plan(ProviderId::Claude) => "claude",
+            Self::Plan(ProviderId::Codex) => "codex",
             Self::Plan(ProviderId::Cursor) => "cursor",
             Self::Plan(ProviderId::Grok) => "grok",
             Self::Plan(ProviderId::Local) => "local",
@@ -469,6 +470,7 @@ fn terminal_actor(provider: TerminalProvider) -> FlowActor {
     match provider {
         TerminalProvider::Shell => FlowActor::Router,
         TerminalProvider::Claude => FlowActor::Plan(ProviderId::Claude),
+        TerminalProvider::Codex => FlowActor::Plan(ProviderId::Codex),
         TerminalProvider::Cursor => FlowActor::Plan(ProviderId::Cursor),
         TerminalProvider::Grok => FlowActor::Plan(ProviderId::Grok),
         TerminalProvider::Local => FlowActor::Plan(ProviderId::Local),

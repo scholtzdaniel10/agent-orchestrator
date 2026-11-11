@@ -494,6 +494,24 @@ impl PtyHost {
         out
     }
 
+    /// List a project's live/sleeping terminals without stopping other projects.
+    pub fn list_project(&self, project: &str) -> Vec<TerminalInfo> {
+        let state = lock(&self.inner.state);
+        state
+            .sessions
+            .iter()
+            .filter(|session| !session.removed && session.project == project)
+            .map(|session| session.info.clone())
+            .chain(
+                state
+                    .asleep
+                    .iter()
+                    .filter(|entry| entry.project == project)
+                    .map(|entry| entry.info.clone()),
+            )
+            .collect()
+    }
+
     /// Stop a resumable agent and keep its row. Shells, missing rows, and rows without a
     /// session id stay running. Returns whether the session went to sleep.
     pub fn sleep(&self, id: &str) -> bool {
@@ -706,6 +724,9 @@ impl PtyHost {
     async fn fresh_session_id(&self, provider: ProviderId) -> Option<String> {
         if provider == ProviderId::Claude {
             return Some(Uuid::new_v4().to_string());
+        }
+        if provider == ProviderId::Codex || provider == ProviderId::Local {
+            return None;
         }
         let create = self.inner.create_chat.clone()?;
         match tokio::time::timeout(CREATE_CHAT, create()).await {
@@ -1594,6 +1615,7 @@ fn nonempty(value: Option<String>) -> Option<String> {
 fn provider_name(provider: TerminalProvider) -> &'static str {
     match provider {
         TerminalProvider::Claude => "claude",
+        TerminalProvider::Codex => "codex",
         TerminalProvider::Cursor => "cursor",
         TerminalProvider::Grok => "grok",
         TerminalProvider::Local => "local",
@@ -1604,6 +1626,7 @@ fn provider_name(provider: TerminalProvider) -> &'static str {
 fn terminal_provider(provider: ProviderId) -> TerminalProvider {
     match provider {
         ProviderId::Claude => TerminalProvider::Claude,
+        ProviderId::Codex => TerminalProvider::Codex,
         ProviderId::Cursor => TerminalProvider::Cursor,
         ProviderId::Grok => TerminalProvider::Grok,
         ProviderId::Local => TerminalProvider::Local,
@@ -1613,6 +1636,7 @@ fn terminal_provider(provider: ProviderId) -> TerminalProvider {
 fn agent_id(provider: TerminalProvider) -> Option<ProviderId> {
     match provider {
         TerminalProvider::Claude => Some(ProviderId::Claude),
+        TerminalProvider::Codex => Some(ProviderId::Codex),
         TerminalProvider::Cursor => Some(ProviderId::Cursor),
         TerminalProvider::Grok => Some(ProviderId::Grok),
         TerminalProvider::Local => Some(ProviderId::Local),
@@ -1623,6 +1647,7 @@ fn agent_id(provider: TerminalProvider) -> Option<ProviderId> {
 fn as_provider(value: &str) -> Option<ProviderId> {
     match value {
         "claude" => Some(ProviderId::Claude),
+        "codex" => Some(ProviderId::Codex),
         "cursor" => Some(ProviderId::Cursor),
         "grok" => Some(ProviderId::Grok),
         _ => None,

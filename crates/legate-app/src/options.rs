@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use legate_core::{JobAccess, JobType, ProviderId};
-use legate_providers::{ClaudeAdapter, CursorAdapter, LocalAdapter};
+use legate_providers::{ClaudeAdapter, CodexAdapter, CursorAdapter, LocalAdapter};
 use serde::{Deserialize, Serialize};
 
 /// Overrides for one process. Unset fields use the Electron app's locations.
@@ -19,6 +19,7 @@ pub struct AppOptions {
     pub worktrees_dir: Option<PathBuf>,
     /// Replaces the Claude CLI adapter. Tests point this at a missing executable.
     pub claude: Option<Arc<ClaudeAdapter>>,
+    pub codex: Option<Arc<CodexAdapter>>,
     /// Replaces the Cursor CLI adapter.
     pub cursor: Option<Arc<CursorAdapter>>,
     /// Replaces the Grok adapter (the Cursor CLI with a Grok model).

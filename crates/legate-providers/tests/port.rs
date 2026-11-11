@@ -1,5 +1,7 @@
 #[path = "port/claude.rs"]
 mod claude;
+#[path = "port/codex.rs"]
+mod codex;
 #[path = "port/cursor.rs"]
 mod cursor;
 #[path = "port/edit_size.rs"]

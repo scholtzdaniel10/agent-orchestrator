@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T00:00:00+02:00",
+  "title": "Design System: Legate Roman Command Workspace",
+  "extensions": {
+    "colorMeta": {
+      "brand": { "role": "primary", "displayName": "Command Red" },
+      "standard": { "role": "secondary", "displayName": "Antique Gold Standard" },
+      "bg": { "role": "neutral", "displayName": "Charcoal Stone" },
+      "standard-paper": { "role": "secondary", "displayName": "Paper Gold Standard" }
+    },
+    "typographyMeta": {
+      "wordmark": { "displayName": "Roman Wordmark", "purpose": "Application identity beside the laurel standard." },
+      "display": { "displayName": "Campaign Heading", "purpose": "Empty terminal stage heading." }
+    },
+    "motion": [
+      { "name": "reduced-motion", "value": "animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important", "purpose": "Global prefers-reduced-motion: reduce accommodation; select-chevron additionally sets transition:none." },
+      { "name": "dragging", "value": "transition: none", "purpose": "Disable transitions throughout the app while resizing." }
+    ],
+    "breakpoints": [ { "name": "command-compact", "value": "1000px" } ],
+    "verification": {
+      "method": "Source-derived from apps/ui/src/app.rs, apps/ui/assets/main.css and .impeccable/surfaces/workspace.md",
+      "renderedVisualVerification": "pending",
+      "screenshot": null
+    },
+    "layout": {
+      "rows": "56px minmax(0, 1fr) 28px",
+      "rail": "76px",
+      "workspaceMargin": "10px; 6px at max-width:1000px",
+      "inspectorMargin": "10px 10px 10px 0",
+      "workingViewportInsets": "106px horizontal; 36px vertical",
+      "compactBehavior": "Hide branch chip and active count; reduce header padding/context spacing. Existing layout state controls drawer overlay and resizable sidebar.",
+      "navigationState": "Rail active state follows active tab and visibility in its assigned dock."
+    }
+  },
+  "components": [
+    {
+      "name": "New Task",
+      "kind": "button",
+      "refersTo": "new-task",
+      "description": "Primary command in the workspace header.",
+      "html": "<button class=\"ds-new-task\">New task</button>",
+      "css": ".ds-new-task{display:inline-flex;align-items:center;justify-content:center;min-width:104px;height:32px;padding:0 12px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:var(--on-accent);font-family:var(--font-ui);font-size:12px;font-weight:500;cursor:pointer}.ds-new-task:hover:not(:disabled){opacity:.92}.ds-new-task:focus-visible{outline:2px solid var(--signal);outline-offset:2px}.ds-new-task:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Active Tool Destination",
+      "kind": "nav",
+      "refersTo": "command-destination-active",
+      "description": "Labeled rail destination; icon simplified to inline SVG for this isolated preview.",
+      "html": "<button class=\"ds-destination\" aria-pressed=\"true\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 18 18\" fill=\"none\" stroke=\"currentColor\"><rect x=\"3\" y=\"3\" width=\"12\" height=\"12\" rx=\"2\"/></svg><span>Jobs</span></button>",
+      "css": ".ds-destination{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:62px;min-height:49px;padding:7px 2px;border:1px solid var(--border);border-radius:7px;background:var(--raised);color:var(--standard,#c9b17f);font-family:var(--font-ui);font-size:10px;line-height:1.2;cursor:pointer}.ds-destination:hover{background:var(--inset);color:var(--text)}.ds-destination:focus-visible{outline:2px solid var(--signal);outline-offset:-2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Roman command station",
+    "overview": "A terminal-first workstation with permanent tool navigation, resizable projects, an inset terminal stage and a focused inspector. Roman identity is carried by the laurel standard, serif wordmark, campaign seal and antique gold details. Documentation is source-derived; no screenshot exists and rendered visual verification is pending.",
+    "keyCharacteristics": ["Terminal-first hierarchy", "Permanent labeled rail", "Flat recessed panels", "Gold identity and red default-theme actions"],
+    "rules": [
+      { "name": "Separate identity and action", "body": "Gold marks Roman identity and selected tool details; the default brand red marks primary commands and count badges. Signal remains a separate feedback/focus role.", "section": "colors" },
+      { "name": "Tonal workspace depth", "body": "Use bg, inset, raised and one-pixel borders for workspace separation.", "section": "elevation" }
+    ],
+    "dos": ["Do preserve terminal space and labeled tool navigation.", "Do preserve theme variables, keyboard focus and reduced motion."],
+    "donts": ["Don't obscure operational labels with decorative Roman vocabulary.", "Don't claim visual approval without rendered verification."]
+  }
+}

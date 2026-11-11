@@ -248,6 +248,12 @@ pub fn version_phrase(plan: &PlanView, tested: &str) -> String {
 
 fn problem_sentence(id: ProviderId, problem: PlanProblem) -> Option<&'static str> {
     match (id, problem) {
+        (ProviderId::Codex, PlanProblem::NotInstalled) => {
+            Some("Codex CLI is not installed. Install it, then run `codex login`.")
+        }
+        (ProviderId::Codex, PlanProblem::SignedOut) => {
+            Some("Codex needs a ChatGPT login. Run `codex login` and sign in with ChatGPT.")
+        }
         (ProviderId::Claude, PlanProblem::NotInstalled) => Some(
             "Claude Code is not installed. Install it, then run `claude` once in a terminal to sign in.",
         ),
@@ -288,7 +294,11 @@ pub fn plan_line(plan: &PlanView, tested: &str, now: i64, color: bool) -> String
             parts.push(sentence.to_string());
         }
     } else {
-        parts.push(format!("{}% left", allowance_percent(plan.headroom)));
+        if plan.id == ProviderId::Codex {
+            parts.push("usage not reported".into());
+        } else {
+            parts.push(format!("{}% left", allowance_percent(plan.headroom)));
+        }
         if plan.at_risk {
             parts.push("Unused allowance expires soon".to_string());
         }
@@ -301,6 +311,9 @@ pub fn plan_short(plan: &PlanView, now: i64) -> String {
     let word = plan_word(plan, now);
     if word != "ready" {
         return format!("{} {word}", plan.id.as_str());
+    }
+    if plan.id == ProviderId::Codex {
+        return "codex ready - usage not reported".into();
     }
     format!(
         "{} ready {}% left",
@@ -813,5 +826,11 @@ mod tests {
             change_footer("abcd1234", 1, 1, 0),
             "change abcd1234 · 1 file +1 −0 · legate diff abcd1234"
         );
+    }
+    #[test]
+    fn codex_does_not_claim_an_unreported_quota() {
+        let p = plan(ProviderId::Codex);
+        assert!(!plan_line(&p, "", 0, false).contains("% left"));
+        assert!(!super::plan_short(&p, 0).contains("% left"));
     }
 }

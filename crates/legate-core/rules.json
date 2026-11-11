@@ -1,15 +1,51 @@
 {
   "rules": {
-    "planning": ["claude", "cursor", "grok", "local"],
-    "debugging": ["grok", "cursor", "claude", "local"],
-    "review": ["claude", "cursor", "grok", "local"],
-    "refactor": ["grok", "cursor", "claude", "local"],
-    "boilerplate": ["grok", "cursor", "claude", "local"]
+    "planning": [
+      "claude",
+      "codex",
+      "cursor",
+      "grok",
+      "local"
+    ],
+    "debugging": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ],
+    "review": [
+      "claude",
+      "codex",
+      "cursor",
+      "grok",
+      "local"
+    ],
+    "refactor": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ],
+    "boilerplate": [
+      "grok",
+      "cursor",
+      "codex",
+      "claude",
+      "local"
+    ]
   },
   "fallbackFit": 0.5,
   "allowance": {
-    "claude": { "windowHours": 5, "units": 15 },
-    "cursor": { "windowHours": 720, "units": 20000000 }
+    "claude": {
+      "windowHours": 5,
+      "units": 15
+    },
+    "cursor": {
+      "windowHours": 720,
+      "units": 20000000
+    }
   },
   "defaultRestHours": 5,
   "maxParallel": 3,

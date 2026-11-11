@@ -17,3 +17,7 @@ pub mod terminal_sleep;
 pub mod theme;
 pub mod usage_format;
 pub mod worktree_label;
+
+pub mod project_workspace;
+
+pub mod workflow_setup;

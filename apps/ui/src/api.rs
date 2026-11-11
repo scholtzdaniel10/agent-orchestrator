@@ -393,6 +393,9 @@ pub async fn wake_terminal(id: &str, cols: f64, rows: f64) -> Result<Option<Term
 pub async fn list_terminals() -> Result<Vec<TerminalInfo>, String> {
     call("list_terminals", &json!({})).await
 }
+pub async fn list_project_terminals() -> Result<Vec<TerminalInfo>, String> {
+    call("list_project_terminals", &json!({})).await
+}
 pub async fn restore_terminals(cols: f64, rows: f64) -> Result<Vec<TerminalInfo>, String> {
     call("restore_terminals", &json!({ "cols": cols, "rows": rows })).await
 }

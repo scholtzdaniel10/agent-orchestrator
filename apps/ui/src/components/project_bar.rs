@@ -24,7 +24,12 @@ use crate::logic::worktree_label::{self, NamedChange};
 
 type WorktreeCreate = Callback<(Option<String>, i64, Option<ProviderId>, Option<String>)>;
 
-const AGENTS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok];
+const AGENTS: [ProviderId; 4] = [
+    ProviderId::Claude,
+    ProviderId::Codex,
+    ProviderId::Cursor,
+    ProviderId::Grok,
+];
 
 #[component]
 pub fn ProjectBar(
@@ -40,6 +45,7 @@ pub fn ProjectBar(
     terminals: Vec<TerminalInfo>,
     selected_worktrees: Vec<Option<String>>,
     claude_available: bool,
+    codex_available: bool,
     cursor_available: bool,
     on_add: Callback,
     on_github_clone: Callback<String>,
@@ -337,6 +343,7 @@ pub fn ProjectBar(
                                             filter: needle.clone(),
                                             selected_worktrees: selected_worktrees.clone(),
                                             claude_available,
+        codex_available,
                                             cursor_available,
                                             now,
                                             on_select: on_select_worktree,
@@ -546,6 +553,7 @@ fn WorktreesSection(
     filter: String,
     selected_worktrees: Vec<Option<String>>,
     claude_available: bool,
+    codex_available: bool,
     cursor_available: bool,
     now: i64,
     on_select: Callback<(Option<String>, String)>,
@@ -693,7 +701,7 @@ fn WorktreesSection(
                             onchange: move |event| start.set(event.value()),
                             option { value: "", "nothing" }
                             for id in AGENTS {
-                                if plan_ready(id, claude_available, cursor_available) {
+                                if plan_ready(id, claude_available, codex_available, cursor_available) {
                                     option { value: "{id.as_str()}", "{worker_label(id)}" }
                                 }
                             }
@@ -754,6 +762,7 @@ fn WorktreesSection(
                         &cards,
                         &stored,
                         claude_available,
+        codex_available,
                         cursor_available,
                         on_select,
                         on_open,
@@ -1332,12 +1341,16 @@ fn status_text(status: CardStatus) -> &'static str {
 fn worker_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Grok => "Grok",
         ProviderId::Cursor | ProviderId::Local => "Cursor",
     }
 }
 
-fn plan_ready(id: ProviderId, claude: bool, cursor: bool) -> bool {
+fn plan_ready(id: ProviderId, claude: bool, codex: bool, cursor: bool) -> bool {
+    if id == ProviderId::Codex {
+        return codex;
+    }
     if plan_of(id) == ProviderId::Claude {
         claude
     } else {
@@ -1348,6 +1361,7 @@ fn plan_ready(id: ProviderId, claude: bool, cursor: bool) -> bool {
 fn provider_of(provider: TerminalProvider) -> Option<ProviderId> {
     Some(match provider {
         TerminalProvider::Claude => ProviderId::Claude,
+        TerminalProvider::Codex => ProviderId::Codex,
         TerminalProvider::Cursor => ProviderId::Cursor,
         TerminalProvider::Grok => ProviderId::Grok,
         TerminalProvider::Local => ProviderId::Local,
@@ -1669,6 +1683,7 @@ fn worktree_menu(
     cards: &[Card],
     marks: &Marks,
     claude: bool,
+    codex: bool,
     cursor: bool,
     on_select: Callback<(Option<String>, String)>,
     on_open: Callback<(ProviderId, Option<String>)>,
@@ -1698,7 +1713,7 @@ fn worktree_menu(
     let blocked = key.is_some() && job_running(jobs, key.as_deref());
     let mut entries = Vec::new();
     for id in AGENTS {
-        let ready = plan_ready(id, claude, cursor);
+        let ready = plan_ready(id, claude, codex, cursor);
         let open_key = key.clone();
         let mut row = MenuEntry::item(
             format!("Open {} here", worker_label(id)),

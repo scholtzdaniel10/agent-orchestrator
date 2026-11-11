@@ -196,6 +196,7 @@ fn worktree_pick(on: bool) -> Option<String> {
 fn worker_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Cursor => "Cursor",
         ProviderId::Grok => "Grok",
         ProviderId::Local => "Local",
@@ -205,6 +206,7 @@ fn worker_label(id: ProviderId) -> &'static str {
 fn bot_of(provider: TerminalProvider) -> BotName {
     match provider {
         TerminalProvider::Claude => BotName::Plan(ProviderId::Claude),
+        TerminalProvider::Codex => BotName::Plan(ProviderId::Codex),
         TerminalProvider::Cursor => BotName::Plan(ProviderId::Cursor),
         TerminalProvider::Grok => BotName::Plan(ProviderId::Grok),
         TerminalProvider::Local => BotName::Plan(ProviderId::Local),

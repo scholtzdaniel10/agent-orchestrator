@@ -6,7 +6,7 @@ const FULL: &str = "\
 legate [--project <path>] <command>
 legate ui
 legate status
-legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet] [--verbose]
+legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|codex|cursor|grok|local] [--access read|edit|full] [--json] [--quiet] [--verbose]
 legate jobs [--limit N]
 legate show <job-id>
 legate changes
@@ -30,7 +30,7 @@ pub fn usage_for(key: Option<&str>) -> &'static str {
         Some("status") => "legate status",
         Some("plans") => "legate plans",
         Some("job") => {
-            "legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|cursor|grok] [--access read|edit|full] [--json] [--quiet] [--verbose]"
+            "legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|codex|cursor|grok|local] [--access read|edit|full] [--json] [--quiet] [--verbose]"
         }
         Some("jobs") => "legate jobs [--limit N]",
         Some("show") => "legate show <job-id>",

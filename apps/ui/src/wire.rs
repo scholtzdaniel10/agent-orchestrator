@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub enum RequirementId {
     Git,
     Claude,
+    Codex,
     Cursor,
     Gh,
 }

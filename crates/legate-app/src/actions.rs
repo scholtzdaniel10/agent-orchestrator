@@ -61,18 +61,6 @@ fn guard_of(job: &JobRecord) -> GuardJob {
 }
 
 impl World {
-    fn refuse_switch(&self) -> Result<(), AppError> {
-        if self.lead.is_busy() {
-            return Err(AppError::message(
-                "Wait for the lead to finish its reply before changing project.",
-            ));
-        }
-        if self.orch.busy() {
-            return Err(AppError::message("Refused while work is running"));
-        }
-        Ok(())
-    }
-
     fn refuse_pr(&self) -> Result<(), AppError> {
         let busy = self
             .orch
@@ -233,7 +221,7 @@ impl World {
 
     pub fn recheck_plans(&self) -> Task<Vec<PlanStatus>> {
         let orch = Rc::clone(&self.orch);
-        let lead = Rc::clone(&self.lead);
+        let lead = self.current_lead();
         let settings = Rc::clone(&self.settings);
         let store = Rc::clone(&self.store);
         let events = self.events.clone();
@@ -248,12 +236,14 @@ impl World {
 
     pub fn list_models(&self, provider: ProviderId) -> Task<Vec<ModelOption>> {
         let claude = Rc::new(self.claude.clone());
+        let codex = self.codex.clone();
         let cursor = self.cursor.clone();
         let grok = self.grok.clone();
         let local = self.local.clone();
         Box::pin(async move {
             let models = match provider {
                 ProviderId::Claude => claude.list_models().await,
+                ProviderId::Codex => codex.list_models().await,
                 ProviderId::Grok => grok.list_models().await,
                 ProviderId::Local => local.list_models().await,
                 ProviderId::Cursor => cursor.list_models().await,
@@ -317,9 +307,6 @@ impl World {
     }
 
     pub fn choose_project(&self, path: String) -> Task<ProjectInfo> {
-        if let Err(err) = self.refuse_switch() {
-            return ready(Err(err));
-        }
         if !is_folder(Path::new(&path)) {
             return fail("unknown project");
         }
@@ -337,31 +324,42 @@ impl World {
         {
             return fail("unknown project");
         }
-        if let Err(err) = self.refuse_switch() {
-            return ready(Err(err));
-        }
         self.finish_activate(path)
     }
 
     pub fn finish_activate(&self, path: String) -> Task<ProjectInfo> {
-        if let Err(err) = self.settings.borrow_mut().set_project(&path) {
-            return ready(Err(AppError::message(err.to_string())));
-        }
-        mirror_project(self, &path);
-        self.reload();
-        self.change_push.spawn();
-        for job in self.orch.list() {
-            let _ = self.events.send(AppEvent::Job(job));
-        }
-        for message in self.lead.messages() {
-            let _ = self.events.send(AppEvent::Lead {
-                message,
-                chat_id: self.lead.view_chat(),
-            });
-        }
-        publish_plans(self);
-        let trees = Worktrees::new(&self.worktrees_dir);
-        Box::pin(async move { Ok(trees.info(Path::new(&path)).await) })
+        let world = self.this.borrow().upgrade().expect("service owns world");
+        let generation = self.switch_generation.get().wrapping_add(1);
+        self.switch_generation.set(generation);
+        Box::pin(async move {
+            let lead = world.prepare_lead(&path).await?;
+            if world.switch_generation.get() != generation {
+                return Err(AppError::message(
+                    "Project switch superseded by a newer request",
+                ));
+            }
+            world
+                .settings
+                .borrow_mut()
+                .set_project(&path)
+                .map_err(|err| AppError::message(err.to_string()))?;
+            mirror_project(&world, &path);
+            world.reload();
+            world.change_push.spawn();
+            for job in world.orch.list() {
+                let _ = world.events.send(AppEvent::Job(job));
+            }
+            for message in lead.messages() {
+                let _ = world.events.send(AppEvent::Lead {
+                    message,
+                    chat_id: lead.view_chat(),
+                });
+            }
+            publish_plans(&world);
+            Ok(Worktrees::new(&world.worktrees_dir)
+                .info(Path::new(&path))
+                .await)
+        })
     }
 
     pub fn remove_project(&self, path: String) -> Task<()> {
@@ -388,51 +386,19 @@ impl World {
         if !valid_repo(&name) {
             return fail("invalid repository name");
         }
-        if let Err(err) = self.refuse_switch() {
-            return ready(Err(err));
-        }
         if !is_folder(Path::new(&parent)) {
             return fail("unknown project");
         }
         let client = clone_github();
-        let parent_buf = parent.clone();
-        let settings = Rc::clone(&self.settings);
-        let project_cell = Rc::clone(&self.project);
-        let mirror = std::sync::Arc::clone(&self.project_mirror);
-        let lead = Rc::clone(&self.lead);
-        let orch = Rc::clone(&self.orch);
-        let goals = Rc::clone(&self.goals);
-        let missed = Rc::clone(&self.missed);
-        let events = self.events.clone();
-        let push = self.change_push.clone();
-        let store = Rc::clone(&self.store);
-        let trees = Worktrees::new(&self.worktrees_dir);
+        let world = self.this.borrow().upgrade().expect("service owns world");
         Box::pin(async move {
             let cloned = client
-                .clone(&name, Path::new(&parent_buf))
+                .clone(&name, Path::new(&parent))
                 .await
                 .map_err(git_err)?;
-            let path = cloned.to_string_lossy().into_owned();
-            settings
-                .borrow_mut()
-                .set_project(&path)
-                .map_err(|err| AppError::message(err.to_string()))?;
-            *project_cell.borrow_mut() = path.clone();
-            *mirror.write().unwrap_or_else(|err| err.into_inner()) = path.clone();
-            crate::session::reload_project(&lead, &orch, &goals, &path, &missed);
-            push.spawn();
-            for job in orch.list() {
-                let _ = events.send(AppEvent::Job(job));
-            }
-            for message in lead.messages() {
-                let _ = events.send(AppEvent::Lead {
-                    message,
-                    chat_id: lead.view_chat(),
-                });
-            }
-            let plans = crate::session::plan_list(&orch, &settings.borrow(), &store);
-            let _ = events.send(AppEvent::Plans(plans));
-            Ok(trees.info(Path::new(&path)).await)
+            world
+                .finish_activate(cloned.to_string_lossy().into_owned())
+                .await
         })
     }
 
@@ -465,6 +431,7 @@ impl World {
 
     pub fn setup_status(&self) -> Task<Vec<legate_lead::Requirement>> {
         let setup = SetupHold {
+            codex: self.codex.clone(),
             claude: self.claude.clone(),
             cursor: self.cursor.clone(),
         };
@@ -474,11 +441,12 @@ impl World {
     pub fn setup_sign_in(&self, id: String) -> Task<TerminalInfo> {
         let label = match id.as_str() {
             "claude" => "Claude Code CLI",
+            "codex" => "Codex CLI",
             "cursor" => "Cursor CLI",
             "gh" => "GitHub CLI",
             _ => return fail("unknown setup tool"),
         };
-        let line = sign_in_line(&id, &self.claude, &self.cursor);
+        let line = sign_in_line(&id, &self.claude, &self.cursor, &self.codex);
         let terms = self.terms.clone();
         let sign_in = Rc::clone(&self.sign_in);
         let home = home_dir();
@@ -1152,7 +1120,7 @@ impl World {
         if text.is_empty() {
             return fail("empty message");
         }
-        let lead = Rc::clone(&self.lead);
+        let lead = self.current_lead();
         Box::pin(async move { lead.send(&text).await.map_err(lead_err) })
     }
 
@@ -1164,7 +1132,7 @@ impl World {
         if message_id.is_empty() || message_id.len() > 64 {
             return fail("invalid message id");
         }
-        match self.lead.run_proposal(&message_id, jobs) {
+        match self.current_lead().run_proposal(&message_id, jobs) {
             Ok(jobs) => ready(Ok(jobs)),
             Err(err) => ready(Err(lead_err(err))),
         }
@@ -1174,18 +1142,18 @@ impl World {
         if message_id.is_empty() || message_id.len() > 64 {
             return fail("invalid message id");
         }
-        match self.lead.dismiss_proposal(&message_id) {
+        match self.current_lead().dismiss_proposal(&message_id) {
             Ok(()) => ready(Ok(())),
             Err(err) => ready(Err(lead_err(err))),
         }
     }
 
     pub fn list_lead_messages(&self) -> Task<Vec<LeadMessage>> {
-        ready(Ok(self.lead.messages()))
+        ready(Ok(self.current_lead().messages()))
     }
 
     pub fn list_lead_chats(&self) -> Task<Vec<LeadChat>> {
-        match self.lead.chats() {
+        match self.current_lead().chats() {
             Ok(chats) => ready(Ok(chats)),
             Err(err) => ready(Err(lead_err(err))),
         }
@@ -1195,21 +1163,21 @@ impl World {
         if id.is_empty() || id.len() > 64 {
             return fail("invalid chat id");
         }
-        if let Err(err) = self.lead.open(&id) {
+        if let Err(err) = self.current_lead().open(&id) {
             return ready(Err(lead_err(err)));
         }
-        ready(Ok(self.lead.messages()))
+        ready(Ok(self.current_lead().messages()))
     }
 
     pub fn reset_lead(&self, direct: Option<ProviderId>) -> Task<()> {
-        match self.lead.reset(direct) {
+        match self.current_lead().reset(direct) {
             Ok(()) => ready(Ok(())),
             Err(err) => ready(Err(lead_err(err))),
         }
     }
 
     pub fn get_lead_mode(&self) -> Task<Option<ProviderId>> {
-        ready(Ok(self.lead.mode()))
+        ready(Ok(self.current_lead().mode()))
     }
 
     pub fn rename_lead_chat(&self, id: String, title: String) -> Task<()> {
@@ -1219,7 +1187,7 @@ impl World {
         if title.len() > 80 {
             return fail("invalid title");
         }
-        match self.lead.rename(&id, &title) {
+        match self.current_lead().rename(&id, &title) {
             Ok(()) => ready(Ok(())),
             Err(err) => ready(Err(lead_err(err))),
         }
@@ -1229,7 +1197,7 @@ impl World {
         if id.is_empty() || id.len() > 64 {
             return fail("invalid chat id");
         }
-        match self.lead.remove(&id) {
+        match self.current_lead().remove(&id) {
             Ok(()) => ready(Ok(())),
             Err(err) => ready(Err(lead_err(err))),
         }
@@ -1406,6 +1374,10 @@ impl World {
         ready(Ok(self.terms.list()))
     }
 
+    pub fn list_project_terminals(&self) -> Task<Vec<TerminalInfo>> {
+        ready(Ok(self.terms.list_project(&self.project.borrow())))
+    }
+
     pub fn restore_terminals(&self, cols: i64, rows: i64) -> Task<Vec<TerminalInfo>> {
         if !(2..=1000).contains(&cols) {
             return fail("invalid cols");
@@ -1476,7 +1448,14 @@ fn sign_in_line(
     id: &str,
     claude: &legate_providers::ClaudeAdapter,
     cursor: &legate_providers::CursorAdapter,
+    codex: &legate_providers::CodexAdapter,
 ) -> String {
+    if id == "codex" {
+        let spec = codex.interactive(&legate_providers::InteractiveOptions::default());
+        let mut args = spec.args;
+        args.push("login".into());
+        return shell_line(&spec.command, &args);
+    }
     if id == "gh" {
         return shell_line("gh", &["auth".to_string(), "login".to_string()]);
     }
@@ -1586,6 +1565,7 @@ fn clone_history() -> legate_git::History<legate_git::ProcessRun> {
 }
 
 struct SetupHold {
+    codex: std::sync::Arc<legate_providers::CodexAdapter>,
     claude: std::sync::Arc<legate_providers::ClaudeAdapter>,
     cursor: std::sync::Arc<legate_providers::CursorAdapter>,
 }
@@ -1613,7 +1593,10 @@ impl SetupHold {
             std::sync::Arc::new(legate_lead::ProviderSetup(self.cursor)),
             legate_lead::Platform::current(),
         );
-        setup.status().await
+        setup
+            .with_codex(std::sync::Arc::new(legate_lead::ProviderSetup(self.codex)))
+            .status()
+            .await
     }
 }
 

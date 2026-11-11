@@ -15,6 +15,7 @@ use serde_json::Value;
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
     Claude,
+    Codex,
     Cursor,
     Grok,
     Local,
@@ -24,6 +25,7 @@ impl ProviderId {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
+            Self::Codex => "codex",
             Self::Cursor => "cursor",
             Self::Grok => "grok",
             Self::Local => "local",
@@ -33,6 +35,7 @@ impl ProviderId {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "claude" => Some(Self::Claude),
+            "codex" => Some(Self::Codex),
             "cursor" => Some(Self::Cursor),
             "grok" => Some(Self::Grok),
             "local" => Some(Self::Local),
@@ -42,8 +45,9 @@ impl ProviderId {
 }
 
 /// Every worker, in display order.
-pub const PROVIDERS: [ProviderId; 4] = [
+pub const PROVIDERS: [ProviderId; 5] = [
     ProviderId::Claude,
+    ProviderId::Codex,
     ProviderId::Cursor,
     ProviderId::Grok,
     ProviderId::Local,
@@ -70,6 +74,7 @@ pub fn is_provider_id(value: &str) -> bool {
 #[serde(rename_all = "lowercase")]
 pub enum TerminalProvider {
     Claude,
+    Codex,
     Cursor,
     Grok,
     Local,
@@ -669,13 +674,13 @@ mod tests {
     fn providers_keep_display_order_and_local_spends_itself() {
         assert_eq!(
             PROVIDERS.map(ProviderId::as_str),
-            ["claude", "cursor", "grok", "local"]
+            ["claude", "codex", "cursor", "grok", "local"]
         );
         assert_eq!(plan_of(ProviderId::Grok), ProviderId::Cursor);
         assert_eq!(plan_of(ProviderId::Local), ProviderId::Local);
         assert_eq!(plan_of(ProviderId::Claude), ProviderId::Claude);
         assert!(is_provider_id("local"));
-        assert!(!is_provider_id("codex"));
+        assert!(is_provider_id("codex"));
     }
 
     #[test]

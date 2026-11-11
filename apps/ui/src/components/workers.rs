@@ -20,7 +20,12 @@ use crate::logic::worktree_label::{
     NamedChange, terminal_display_title, terminals_in_sidebar_order,
 };
 
-const AGENTS: [ProviderId; 3] = [ProviderId::Claude, ProviderId::Cursor, ProviderId::Grok];
+const AGENTS: [ProviderId; 4] = [
+    ProviderId::Claude,
+    ProviderId::Codex,
+    ProviderId::Cursor,
+    ProviderId::Grok,
+];
 
 #[component]
 pub fn Workers(
@@ -40,8 +45,14 @@ pub fn Workers(
     focus_agent: Option<(String, i64)>,
     on_close_agent: Option<Callback<String>>,
 ) -> Element {
-    let mut slots = use_signal(Vec::<Option<String>>::new);
-    let mut focused = use_signal(|| 0i64);
+    let mut slots = use_signal(|| {
+        crate::logic::project_workspace::read::<Vec<Option<String>>>(&project, "panes")
+            .unwrap_or_default()
+    });
+    let mut focused = use_signal(|| {
+        crate::logic::project_workspace::read::<i64>(&project, "focused-pane").unwrap_or(0)
+    });
+    let mut seats_project = use_signal(|| project.clone());
     let opening = use_signal(|| false);
     let mut open_error = use_signal(|| None::<String>);
     let mut focus_id = use_signal(|| None::<String>);
@@ -50,7 +61,32 @@ pub fn Workers(
     let mut reviewing = use_signal(|| None::<String>);
     let mut viewing = use_signal(|| None::<String>);
     let mut seen_agent = use_signal(|| None::<i64>);
-    let mut seen_selection = use_signal(String::new);
+    let current_selection_key = selected_worktrees
+        .iter()
+        .map(|id| id.clone().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\u{1}");
+    let mut seen_selection = use_signal(|| current_selection_key.clone());
+    if seats_project() != project {
+        crate::logic::project_workspace::write(&seats_project(), "panes", &slots());
+        crate::logic::project_workspace::write(&seats_project(), "focused-pane", &focused());
+        seats_project.set(project.clone());
+        slots.set(
+            crate::logic::project_workspace::read::<Vec<Option<String>>>(&project, "panes")
+                .unwrap_or_default(),
+        );
+        focused.set(
+            crate::logic::project_workspace::read::<i64>(&project, "focused-pane").unwrap_or(0),
+        );
+        seen_selection.set(current_selection_key);
+        viewing.set(None);
+        reviewing.set(None);
+    }
+    let pane_project = project.clone();
+    use_effect(move || {
+        crate::logic::project_workspace::write(&pane_project, "panes", &slots());
+        crate::logic::project_workspace::write(&pane_project, "focused-pane", &focused());
+    });
     if let Some((id, nonce)) = focus_agent.clone()
         && seen_agent() != Some(nonce)
     {
@@ -240,7 +276,9 @@ pub fn Workers(
                 class: if reviewing_on || agent_view.is_some() { "workers-stage is-hidden" } else { "workers-stage" },
                 if visible.is_empty() {
                     div { class: "workspace-empty",
-                        p { class: "workspace-empty-copy", "Open an agent here, or ask the lead in the panel." }
+                        div { class: "campaign-seal", aria_hidden: "true", "L" }
+                        h2 { class: "campaign-title", "Assemble your agents." }
+                        p { class: "workspace-empty-copy", "Choose an agent to begin, or open Lead to plan your next task." }
                         div { class: "workspace-empty-actions",
                             for id in AGENTS {
                                 button {
@@ -439,6 +477,7 @@ fn open_provider(
 fn worker_label(id: ProviderId) -> &'static str {
     match id {
         ProviderId::Claude => "Claude",
+        ProviderId::Codex => "Codex",
         ProviderId::Grok => "Grok",
         ProviderId::Cursor | ProviderId::Local => "Cursor",
     }

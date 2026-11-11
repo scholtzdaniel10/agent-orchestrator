@@ -3,12 +3,14 @@ use legate_core::{ProviderId, VersionStatus};
 /// CLI builds this app was tested against. Grok is the Cursor CLI.
 pub struct TestedVersions {
     pub claude: &'static str,
+    pub codex: &'static str,
     pub cursor: &'static str,
     pub grok: &'static str,
 }
 
 pub const TESTED_VERSIONS: TestedVersions = TestedVersions {
     claude: "2.1.292",
+    codex: "0.167.0-alpha.3.2",
     cursor: "2026.10.01-e373342",
     grok: "2026.10.01-e373342",
 };
@@ -29,6 +31,13 @@ pub fn compare_to_tested(provider: ProviderId, version: Option<&str>) -> Version
     };
     match provider {
         ProviderId::Claude => compare_claude(version, TESTED_VERSIONS.claude),
+        ProviderId::Codex => {
+            if version == TESTED_VERSIONS.codex {
+                VersionStatus::Tested
+            } else {
+                VersionStatus::Unknown
+            }
+        }
         ProviderId::Cursor => compare_cursor(version, TESTED_VERSIONS.cursor),
         ProviderId::Grok => compare_cursor(version, TESTED_VERSIONS.grok),
         // No tested build: the on-device provider is not a CLI version.
@@ -39,6 +48,7 @@ pub fn compare_to_tested(provider: ProviderId, version: Option<&str>) -> Version
 pub fn unknown_format_message(provider: ProviderId, version: Option<&str>) -> String {
     let (name, tested) = match provider {
         ProviderId::Claude => ("claude", TESTED_VERSIONS.claude),
+        ProviderId::Codex => ("Codex", TESTED_VERSIONS.codex),
         ProviderId::Cursor => ("Cursor", TESTED_VERSIONS.cursor),
         ProviderId::Grok => ("Cursor", TESTED_VERSIONS.grok),
         ProviderId::Local => ("local", "unknown"),

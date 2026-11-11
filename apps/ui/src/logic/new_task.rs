@@ -36,7 +36,12 @@ pub struct WhoOption {
     pub note: Option<&'static str>,
 }
 
-pub const WHO_OPTIONS: [WhoOption; 3] = [
+pub const WHO_OPTIONS: [WhoOption; 4] = [
+    WhoOption {
+        id: ProviderId::Codex,
+        label: "Codex",
+        note: Some("ChatGPT plan"),
+    },
     WhoOption {
         id: ProviderId::Cursor,
         label: "Cursor",
@@ -103,6 +108,7 @@ pub struct NewTaskDraft {
 pub struct NewTaskContext {
     pub is_repo: bool,
     pub claude_available: bool,
+    pub codex_available: bool,
     pub cursor_available: bool,
 }
 
@@ -138,6 +144,9 @@ pub enum NewTaskPlan {
 }
 
 pub fn provider_ready(who: ProviderId, ctx: NewTaskContext) -> bool {
+    if who == ProviderId::Codex {
+        return ctx.codex_available;
+    }
     if plan_of(who) == ProviderId::Claude {
         ctx.claude_available
     } else {
@@ -211,6 +220,7 @@ fn provider_name(who: ProviderId) -> &'static str {
         ProviderId::Cursor => "Cursor",
         ProviderId::Grok => "Grok",
         ProviderId::Claude | ProviderId::Local => "Claude",
+        ProviderId::Codex => "Codex",
     }
 }
 
@@ -304,6 +314,7 @@ mod tests {
         NewTaskContext {
             is_repo: true,
             claude_available: true,
+            codex_available: true,
             cursor_available: true,
         }
     }
@@ -324,6 +335,7 @@ mod tests {
         assert_eq!(
             listed,
             vec![
+                ("codex", "Codex", Some("ChatGPT plan")),
                 ("cursor", "Cursor", None),
                 ("claude", "Claude", None),
                 ("grok", "Grok", Some("Cursor plan")),
@@ -639,5 +651,17 @@ mod tests {
             plan_new_task(&item, ctx),
             NewTaskPlan::Invalid { .. }
         ));
+    }
+    #[test]
+    fn codex_can_run_without_a_cursor_installation() {
+        let ctx = NewTaskContext {
+            is_repo: true,
+            claude_available: false,
+            cursor_available: false,
+            codex_available: true,
+        };
+        assert!(provider_ready(ProviderId::Codex, ctx));
+        assert!(!provider_ready(ProviderId::Cursor, ctx));
+        assert!(!provider_ready(ProviderId::Claude, ctx));
     }
 }

@@ -481,6 +481,35 @@ impl Orchestrator {
             .collect()
     }
 
+    /// Background project tools must still see completed jobs evicted from the active view.
+    pub fn list_project(&self, project: &str) -> Vec<JobRecord> {
+        let mut records = self
+            .store
+            .jobs(project, KEPT_JOBS as i64)
+            .unwrap_or_default();
+        let inner = self.inner.borrow();
+        for job in inner
+            .order
+            .iter()
+            .filter_map(|id| inner.jobs.get(id))
+            .filter(|job| job.project == project)
+        {
+            let record = to_record(job);
+            if let Some(saved) = records.iter_mut().find(|saved| saved.id == record.id) {
+                *saved = record;
+            } else {
+                records.push(record);
+            }
+        }
+        records
+    }
+
+    pub fn project_job(&self, project: &str, id: &str) -> Option<JobRecord> {
+        self.list_project(project)
+            .into_iter()
+            .find(|job| job.id == id)
+    }
+
     pub fn active_in(&self, project: &str) -> usize {
         let inner = self.inner.borrow();
         inner
