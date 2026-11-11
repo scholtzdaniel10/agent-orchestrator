@@ -1,6 +1,6 @@
 # Contributing
 
-This branch is a **Rust** Cargo workspace. The Electron / TypeScript app is gone from `rust-rewrite`.
+Legate is a **Rust** Cargo workspace. The Electron / TypeScript app has been replaced.
 
 ## Setup
 
@@ -14,11 +14,19 @@ This branch is a **Rust** Cargo workspace. The Electron / TypeScript app is gone
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --exclude legate-desktop --all-targets --locked -- -D warnings
+cargo test --workspace --exclude legate-desktop --locked
 ```
 
-CI runs those on Windows and Ubuntu (`.github/workflows/rust.yml`).
+CI runs those on Windows and Ubuntu (`.github/workflows/rust.yml`). On Windows, also build the frontend and check the desktop shell:
+
+```bash
+cd apps/ui
+dx build --release --platform web
+cd ../..
+cargo clippy -p legate-desktop --all-targets --locked -- -D warnings
+cargo test -p legate-desktop --locked
+```
 
 ## Layout
 

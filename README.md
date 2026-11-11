@@ -41,8 +41,9 @@ It is a **Rust** desktop app (Tauri 2 + Dioxus) with a `legate` command line bes
 
 ## Install
 
-1. **Install the Windows preview.** Download the setup executable from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). The separate `legate-cli-windows-x86_64.exe` asset is the command-line app; it is not bundled into the desktop installer. To build the desktop app from this checkout:
+1. **Install the Windows preview.** Download the setup executable from [GitHub Releases](https://github.com/scholtzdaniel10/agent-orchestrator/releases). The separate `legate-cli-windows-x86_64.exe` asset is the command-line app; it is not bundled into the desktop installer. To build the desktop app from this checkout (after the development prerequisites below):
    ```
+   cd apps/desktop/src-tauri
    cargo tauri build
    ```
    The NSIS installer lands under `target/release/bundle/nsis/`. Windows warns because it is not signed: **More info** → **Run anyway**. Details: [docs/windows.md](docs/windows.md).
@@ -95,17 +96,21 @@ Requires a recent stable Rust (MSVC on Windows), [WebView2](https://developer.mi
 
 ```bash
 bacon                         # check on save (see bacon.toml)
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --exclude legate-desktop --locked
+cargo clippy --workspace --exclude legate-desktop --all-targets --locked -- -D warnings
 cargo fmt --all --check
 
-# desktop
-cargo tauri dev               # from apps/desktop/src-tauri, or via workspace scripts
+# desktop (in apps/desktop/src-tauri)
+cargo tauri dev
 cargo tauri build             # NSIS installer
 
 # UI only
 dx serve                      # in apps/ui
 dx build --release --platform web
+
+# desktop checks (from the repository root, after building UI assets above)
+cargo clippy -p legate-desktop --all-targets --locked -- -D warnings
+cargo test -p legate-desktop --locked
 ```
 
 | Variable         | Effect |

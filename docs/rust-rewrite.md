@@ -1,7 +1,7 @@
 # Legate in Rust: rewrite plan and tracker
 
-Branch `rust-rewrite` (worktree `C:\Users\schol\Desktop\Projects\legate-rust`).
-Reference implementation: the TypeScript app at `origin/main` (`git show origin/main:<path>`),
+Historical tracker for the completed `rust-rewrite` migration.
+Reference implementation: the TypeScript app at commit `93612d5` (`git show 93612d5:<path>`),
 plus the Live usage switch from commit `6f5ca70` on `launch-docs`.
 liteagent reference: `C:\Users\schol\Desktop\Projects\liteagent` (Python), Rust port goes to its `rust` branch too.
 
