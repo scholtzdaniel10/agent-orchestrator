@@ -353,14 +353,18 @@ async fn shell_terminal_echoes_on_subscribe() {
         .await
         .expect("open shell");
     let mut echoed = String::new();
+    let mut answered_cursor = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
     while tokio::time::Instant::now() < deadline {
         match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
             Ok(Ok(AppEvent::TerminalData { id, data })) if id == info.id => {
                 echoed.push_str(&data);
-                // ConPTY asks for the cursor position before the command's output.
-                if data.contains("[6n") {
-                    let _ = app.write_terminal(&info.id, "\u{1b}[1;1R", 1).await;
+                // ConPTY's startup query can span output chunks; answer it once.
+                if !answered_cursor && echoed.contains("\u{1b}[6n") {
+                    app.write_terminal(&info.id, "\u{1b}[1;1R", 1)
+                        .await
+                        .expect("answer cursor query");
+                    answered_cursor = true;
                 }
                 if echoed.contains("legate-shell-ok") {
                     break;
