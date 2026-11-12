@@ -286,15 +286,10 @@ fn sign_in_name(id: RequirementId) -> Option<&'static str> {
     }
 }
 
+/// Local `HH:MM`. `time::UtcOffset::current_local_offset` reads the system clock, which panics
+/// in the browser build, so this goes through the same `js_sys::Date` path as the activity log.
 fn clock(ms: i64) -> String {
-    let Ok(offset) = time::UtcOffset::current_local_offset() else {
-        return String::new();
-    };
-    let Ok(moment) = time::OffsetDateTime::from_unix_timestamp(ms / 1000) else {
-        return String::new();
-    };
-    let local = moment.to_offset(offset);
-    format!("{:02}:{:02}", local.hour(), local.minute())
+    crate::logic::flow_events::format_hours_minutes(ms)
 }
 
 async fn copy_text(text: &str) -> bool {
