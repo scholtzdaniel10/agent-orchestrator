@@ -8,7 +8,7 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api::{self, TerminalUpdate};
 use crate::components::terminal_pane::{PanePlacement, TerminalPane};
 use crate::logic::terminal_bus::TerminalBus;
-use crate::state::now_ms;
+use crate::state::{now_ms, use_subscriptions};
 use crate::wire::{Requirement, RequirementId, RequirementState};
 
 #[component]
@@ -19,13 +19,15 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
     let mut copied = use_signal(|| None::<RequirementId>);
     let mut sign_ins = use_signal(Vec::<(String, legate_core::TerminalInfo)>::new);
     let mut error = use_signal(|| None::<String>);
+    let subscriptions = use_subscriptions();
 
     use_effect(move || {
         spawn_local(async move {
             load(rows, checked_at, checking, error).await;
         });
+        let subscriptions = subscriptions.clone();
         spawn_local(async move {
-            let _ = api::on_terminal_update(move |TerminalUpdate { info, removed }| {
+            let watched = api::watch_terminal_update(move |TerminalUpdate { info, removed }| {
                 let found = sign_ins.read().iter().any(|(_, term)| term.id == info.id);
                 if !found {
                     return;
@@ -50,6 +52,9 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                 }
             })
             .await;
+            if let Ok(subscription) = watched {
+                subscriptions.hold(subscription);
+            }
         });
     });
 
