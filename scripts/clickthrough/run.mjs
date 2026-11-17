@@ -263,6 +263,15 @@ async function key(key, code = key, modifiers = 0, client = main) {
   await delay(120);
 }
 
+// At narrow widths the inspector overlays the terminal; close it first, as a person would,
+// and let the terminal refit and ConPTY repaint before typing.
+async function uncoverTerminal() {
+  if (!await main.evaluate(`!!${find('[aria-label="Close inspector"]')}`)) return;
+  await click('[aria-label="Close inspector"]');
+  await waitFor(`!${find('.drawer')}`, 'closed inspector');
+  await delay(800);
+}
+
 async function shellCommand(command, client = main) {
   // ConPTY hard-wraps both the prompt and long command echoes.
   const output = `window.ctOutput?.join('').replace(/\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)/g, '').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\\r\\n]/g, '')`;
@@ -605,6 +614,7 @@ async function pass(prefix, compact) {
   });
   await step(`${prefix}-shell-echo`, async () => {
     await waitFor(`window.ctOutput?.join('').includes('clickthrough-shell-ready') && ${find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea')}`, 'interactive setup shell', main, 30_000);
+    await uncoverTerminal();
     await shellCommand('echo clickthrough-ok');
     await waitFor(`/[\\r\\n]clickthrough-ok[\\r\\n]/.test(ctOutput.join('').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, ''))`, 'shell command output');
     return 'Input.insertText + Enter; actual PTY output contains a standalone clickthrough-ok line.';
@@ -622,6 +632,7 @@ async function pass(prefix, compact) {
   });
   await step(`${prefix}-worktree-edit`, async () => {
     await value('#pane-layout', 'auto');
+    await uncoverTerminal();
     await shellCommand("Add-Content README.md 'clickthrough worktree edit'");
     await waitFor(find('.tab-review'), 'worktree change to review', main, 30_000);
     await panel('changes');
