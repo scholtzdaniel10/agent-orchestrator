@@ -97,11 +97,9 @@ pub fn TerminalPane(
             if xterm::open(&term_id, &element, font).await.is_err() || Cell::get(&ticket) != next {
                 return;
             }
-            let replaying = Rc::new(Cell::new(false));
-            let flag = replaying.clone();
             let write_id = term_id.clone();
             xterm::on_data(&term_id, move |data| {
-                if Cell::get(&flag) || data.is_empty() {
+                if data.is_empty() {
                     return;
                 }
                 let write_id = write_id.clone();
@@ -112,10 +110,8 @@ pub fn TerminalPane(
                 });
             });
             if restore && let Ok(snapshot) = api::terminal_snapshot(&term_id).await {
-                replaying.set(true);
-                let _ = xterm::write(&term_id, &snapshot);
-                replaying.set(false);
                 bus.forget(&term_id);
+                let _ = xterm::replay(&term_id, &snapshot).await;
             }
             if Cell::get(&ticket) != next {
                 return;

@@ -23,6 +23,9 @@ extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = write, catch)]
     fn write_js(id: &str, data: &str) -> Result<(), JsValue>;
 
+    #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = replay, catch)]
+    async fn replay_js(id: &str, data: &str) -> Result<JsValue, JsValue>;
+
     #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = onData, catch)]
     fn on_data_js(id: &str, callback: &js_sys::Function) -> Result<(), JsValue>;
 
@@ -91,6 +94,10 @@ pub async fn open(id: &str, element: &Element, font_size: f64) -> Result<Cells, 
 
 pub fn write(id: &str, data: &str) -> Result<(), String> {
     write_js(id, data).map_err(js_error)
+}
+
+pub async fn replay(id: &str, data: &str) -> Result<(), String> {
+    replay_js(id, data).await.map(|_| ()).map_err(js_error)
 }
 
 pub fn on_data(id: &str, callback: impl FnMut(String) + 'static) {

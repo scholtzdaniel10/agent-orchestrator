@@ -62,16 +62,28 @@ window.legateXterm = {
       webgl = null
     }
     fit.fit()
-    sessions.set(String(id), { term, fit, webgl, data: null })
+    sessions.set(String(id), { term, fit, webgl, data: null, replaying: false })
     return { cols: term.cols, rows: term.rows }
   },
   write(id, data) {
     session(id).term.write(data)
   },
+  replay(id, data) {
+    const current = session(id)
+    current.replaying = true
+    return new Promise((resolve) => {
+      current.term.write(data, () => {
+        current.replaying = false
+        resolve()
+      })
+    })
+  },
   onData(id, callback) {
     const current = session(id)
     if (current.data !== null) current.data.dispose()
-    current.data = current.term.onData((data) => callback(data))
+    current.data = current.term.onData((data) => {
+      if (!current.replaying) callback(data)
+    })
   },
   fit(id) {
     const current = session(id)
