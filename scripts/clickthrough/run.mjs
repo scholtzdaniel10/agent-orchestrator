@@ -112,6 +112,37 @@ const observer = `(() => {
   new MutationObserver(() => ct.scan()).observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
 })()`;
 
+// Installed by the click-through only, before a setup shell registers its input callback.
+const terminalProbe = `(() => {
+  window.ctOutput = [];
+  if (window.ctWrites) return;
+  window.ctWrites = [];
+  window.ctInput = [];
+  const xterm = window.legateXterm;
+  const write = xterm.write;
+  xterm.write = function(id, data) {
+    window.ctOutput.push(String(data));
+    if (window.ctOutput.length > 2000) window.ctOutput.shift();
+    return write.call(this, id, data);
+  };
+  const onData = xterm.onData;
+  xterm.onData = function(id, callback) {
+    return onData.call(this, id, function(data) {
+      window.ctInput.push({ id, data });
+      return callback.call(this, data);
+    });
+  };
+  const core = window.__TAURI__.core;
+  // Tauri freezes the exported core module; its parent property is writable.
+  window.__TAURI__.core = { ...core, invoke(command, args, ...rest) {
+    if (command === 'write_terminal') {
+      const { id, data } = args instanceof Map ? Object.fromEntries(args) : args;
+      window.ctWrites.push({ id, data });
+    }
+    return core.invoke(command, args, ...rest);
+  } };
+})()`;
+
 class CDP {
   constructor(target) {
     this.id = target.id;
@@ -318,6 +349,16 @@ async function step(name, action, client = main) {
   }
   const result = errors.length === before ? 'PASS' : 'FAIL';
   if (result === 'FAIL') notes += ` Errors: ${errors.slice(before).map((error) => error.source).join(', ')}.`;
+  if (result === 'FAIL' && client && /-shell-|-worktree-edit$/.test(name)) {
+    try {
+      const probe = await client.evaluate(`({
+        writes: window.ctWrites ?? [], input: window.ctInput ?? [], output: window.ctOutput ?? [],
+        focus: { document: document.hasFocus(), tag: document.activeElement?.tagName,
+          terminal: document.activeElement?.closest('[id^="term-host-"]')?.id }
+      })`);
+      notes += ` Terminal input probe: ${JSON.stringify({ target: client.id, ...probe })}`;
+    } catch (error) { notes += ` Terminal input probe unavailable: ${error.message}`; }
+  }
   steps.push({ name, result, notes });
   console.log(`${result} ${name}`);
   report();
@@ -594,16 +635,7 @@ async function pass(prefix, compact) {
     await value('#setup-commands', 'powershell.exe -NoLogo -NoProfile -NoExit -Command "Write-Output clickthrough-shell-ready"');
     await click('.routines-setup button', 'Save');
     await waitFor(find('.routines-setup button', 'Save'), 'saved setup command');
-    await main.evaluate(`(() => {
-      if (window.ctOutput) { window.ctOutput.length = 0; return; }
-      window.ctOutput = [];
-      const original = window.legateXterm.write;
-      window.legateXterm.write = function(id, data) {
-        ctOutput.push(String(data));
-        if (ctOutput.length > 2000) ctOutput.shift();
-        return original.call(this, id, data);
-      };
-    })()`);
+    await main.evaluate(terminalProbe);
   });
   const worktree = `clickthrough-${prefix}`;
   await step(`${prefix}-worktree-cancel`, async () => {

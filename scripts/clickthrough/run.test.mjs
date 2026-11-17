@@ -169,6 +169,96 @@ test('wrapped PowerShell prompts and command echoes still reach Enter', async (t
   `);
 });
 
+test('terminal probe records callback IDs and exact UI writes without changing the calls', async (t) => {
+  const app = runner(t);
+  await app.run(`
+    globalThis.window = globalThis;
+    const callbacks = new Map();
+    const calls = [];
+    const result = Promise.resolve('written');
+    const core = Object.freeze({
+      invoke(command, args) {
+        assert.equal(this, core);
+        calls.push([command, args]);
+        return result;
+      },
+    });
+    const xterm = {
+      write(id, data) { assert.equal(this, xterm); return 'output'; },
+      onData(id, callback) { assert.equal(this, xterm); callbacks.set(id, callback); },
+    };
+    window.__TAURI__ = { core };
+    window.legateXterm = xterm;
+    eval(terminalProbe);
+    const invoke = (...args) => window.__TAURI__.core.invoke(...args);
+    xterm.onData('old', data => invoke('write_terminal', { id: 'old', data }));
+    assert.equal(callbacks.get('old')('x'), result);
+    // Reinstalling for the compact pass must not wrap callbacks twice or lose the old IDs.
+    assert.equal(xterm.write('old', 'prompt'), 'output');
+    eval(terminalProbe);
+    assert.equal(ctOutput.length, 0);
+    xterm.onData('new', data => invoke('write_terminal', new Map([['id', 'new'], ['data', data]])));
+    assert.equal(callbacks.get('new')('e'), result);
+    const args = { id: 'new', data: 'cho \\u001b[1;1R\\r雪' };
+    assert.equal(invoke('write_terminal', args), result);
+    assert.equal(invoke('list_terminals', {}), result);
+    assert.equal(calls[2][1], args);
+    assert.equal(JSON.stringify(ctWrites), JSON.stringify([
+      { id: 'old', data: 'x' }, { id: 'new', data: 'e' }, { id: 'new', data: args.data },
+    ]));
+    assert.equal(JSON.stringify(ctInput), JSON.stringify([
+      { id: 'old', data: 'x' }, { id: 'new', data: 'e' },
+    ]));
+    assert.equal(xterm.write('new', 'new prompt'), 'output');
+    assert.deepEqual(ctOutput, ['new prompt']);
+  `);
+});
+
+test('failed shell steps report the first UI write even when the PTY echo loses it', async (t) => {
+  const app = runner(t);
+  await app.run(`
+    globalThis.window = globalThis;
+    globalThis.document = { hasFocus: () => true, activeElement: { closest: () => ({ id: 'term-host-new' }) } };
+    let clock = 0;
+    let typed = 0;
+    let entered = false;
+    let input;
+    Date = { now: () => clock += 1000 };
+    window.__TAURI__ = { core: { invoke(command, args) {
+      if (typed++ > 0) window.legateXterm.write(args.id, args.data);
+      return Promise.resolve();
+    } } };
+    window.legateXterm = { write() {}, onData(id, callback) { input = callback; } };
+    eval(terminalProbe);
+    legateXterm.onData('new', data => __TAURI__.core.invoke('write_terminal', { id: 'new', data }));
+    legateXterm.write('new', 'clickthrough-shell-ready\\r\\nPS fixture> ');
+    globalThis.ct = { find: () => ({ focus() {} }) };
+    inspect = async () => {};
+    main = {
+      id: 'main-window',
+      evaluate: async expression => eval(expression),
+      call: async (method, params) => {
+        if (method === 'Page.captureScreenshot') return { data: '' };
+        assert.equal(method, 'Input.dispatchKeyEvent');
+        if (params.key === 'Enter') entered = true;
+        else if (params.type === 'keyDown') input(params.text);
+      },
+    };
+    await step('900x700-shell-echo', () => shellCommand('echo clickthrough-ok'));
+    assert.equal(entered, false);
+    await step('after-shell', async () => {});
+  `);
+  const report = app.report();
+  assert.match(report, /\| 900x700-shell-echo \| FAIL \|/);
+  assert.match(report, /Timed out waiting for complete shell command echo/);
+  assert.match(report, /Terminal input probe:/);
+  assert.match(report, /"writes":\[\{"id":"new","data":"e"\}/);
+  assert.match(report, /"input":\[\{"id":"new","data":"e"\}/);
+  assert.match(report, /term-host-new/);
+  assert.match(report, /main-window/);
+  assert.match(report, /\| after-shell \| PASS \|/);
+});
+
 test('terminal imports finishing after unmount do not create a detached terminal', async () => {
   const bridgeSource = readFileSync(new URL('../../apps/ui/assets/vendor/legate-xterm.js', import.meta.url), 'utf8');
   const modules = 'data:text/javascript,' + encodeURIComponent(`
