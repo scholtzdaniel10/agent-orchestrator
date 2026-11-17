@@ -265,12 +265,14 @@ async function key(key, code = key, modifiers = 0, client = main) {
 
 async function shellCommand(command, client = main) {
   // ConPTY hard-wraps both the prompt and long command echoes.
-  const output = `window.ctOutput?.join('').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\\r\\n]/g, '')`;
+  const output = `window.ctOutput?.join('').replace(/\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)/g, '').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\\r\\n]/g, '')`;
   const input = find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea');
-  await waitFor(`${output}?.match(/PS .*> $/) && ${input}`, 'interactive PowerShell prompt', client, 30_000);
+  // A ConPTY repaint (after any resize) drops trailing spaces, so the prompt may end in ">" alone.
+  await waitFor(`${output}?.match(/PS [^>]*>\\s*$/) && ${input}`, 'interactive PowerShell prompt', client, 30_000);
   await client.evaluate(`${input}.focus()`);
   await client.call('Input.insertText', { text: command });
-  await waitFor(`${output}?.includes(${JSON.stringify(command)})`, 'complete shell command echo', client);
+  // Repaints and hard wraps can also move spaces around in the echo; compare without whitespace.
+  await waitFor(`${output}?.replace(/\\s/g, '').includes(${JSON.stringify(command.replace(/\s/g, ''))})`, 'complete shell command echo', client);
   await key('Enter', 'Enter', 0, client);
 }
 
