@@ -62,29 +62,42 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Fixture commit failed' }
           # session::resolve_project uses ORCH_CWD when fresh settings have no project.
           $env:ORCH_CWD = $fixture
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+          # Port 0: WebView2 picks a free port and writes it to DevToolsActivePort in its user data folder.
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=0'
+          $webviewData = Join-Path $env:LOCALAPPDATA 'dev.legate.app'
           $app = $null
           try {
             $out = Join-Path $env:GITHUB_WORKSPACE 'clickthrough-out'
             $app = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE 'target/release/legate.exe') -WorkingDirectory $fixture -PassThru `
               -RedirectStandardOutput (Join-Path $out 'app-stdout.txt') -RedirectStandardError (Join-Path $out 'app-stderr.txt')
-            $deadline = [DateTime]::UtcNow.AddSeconds(90)
+            $deadline = [DateTime]::UtcNow.AddSeconds(120)
             $ready = $false
+            $cdp = $null
             while ([DateTime]::UtcNow -lt $deadline) {
               if ($app.HasExited) { throw "Legate exited before CDP was ready: $($app.ExitCode)" }
-              try {
-                $targets = Invoke-RestMethod 'http://127.0.0.1:9222/json' -TimeoutSec 2
-                $ready = @($targets | Where-Object {
-                  $_.type -eq 'page' -and $_.webSocketDebuggerUrl -and
-                  ($_.title -eq 'Legate' -or $_.url -match '^https?://tauri\.localhost|^tauri://localhost')
-                }).Count -gt 0
-              } catch { $ready = $false }
+              if (-not $cdp) {
+                $portFile = Get-ChildItem $webviewData -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($portFile) { $cdp = "http://127.0.0.1:$((Get-Content $portFile.FullName -TotalCount 1).Trim())" }
+              }
+              if ($cdp) {
+                $raw = curl.exe -s --noproxy '*' --max-time 5 "$cdp/json/list"
+                if ($LASTEXITCODE -eq 0 -and $raw) {
+                  $ready = @(($raw | ConvertFrom-Json) | Where-Object {
+                    $_.type -eq 'page' -and $_.webSocketDebuggerUrl -and
+                    ($_.title -eq 'Legate' -or $_.url -match '^https?://tauri\.localhost|^tauri://localhost')
+                  }).Count -gt 0
+                }
+              }
               if ($ready) { break }
               Start-Sleep -Milliseconds 500
             }
+            if ($ready) { $env:LEGATE_CDP = $cdp }
             if (-not $ready) {
-              try { (Invoke-WebRequest 'http://127.0.0.1:9222/json' -TimeoutSec 2).Content | Set-Content (Join-Path $out 'cdp-targets.json') }
-              catch { "CDP endpoint not reachable: $_" | Set-Content (Join-Path $out 'cdp-targets.json') }
+              "cdp=$cdp" | Set-Content (Join-Path $out 'cdp-targets.json')
+              if ($cdp) { curl.exe -s -v --noproxy '*' --max-time 5 "$cdp/json/list" 2>&1 | Add-Content (Join-Path $out 'cdp-targets.json') }
+              Get-ChildItem $webviewData -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName |
+                Set-Content (Join-Path $out 'webview-data.txt')
+              netstat -ano | Select-String 'LISTENING' | Out-String | Set-Content (Join-Path $out 'listening.txt')
               Get-Process | Where-Object { $_.ProcessName -match 'legate|webview' } |
                 Format-Table Id, ProcessName, MainWindowTitle -AutoSize | Out-String | Set-Content (Join-Path $out 'processes.txt')
               Add-Type -AssemblyName System.Windows.Forms, System.Drawing

@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const out = join(root, 'clickthrough-out');
-const endpoint = 'http://127.0.0.1:9222';
+const endpoint = process.env.LEGATE_CDP ?? 'http://127.0.0.1:9222';
 const errors = [];
 const steps = [];
 const clients = new Map();
