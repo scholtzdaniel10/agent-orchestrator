@@ -292,6 +292,45 @@ pub fn now_ms() -> i64 {
     js_sys::Date::now() as i64
 }
 
+/// A component's event subscriptions, ended when the component unmounts. One that resolves
+/// after the unmount is ended at once.
+#[derive(Clone, Default)]
+pub struct Subscriptions(std::rc::Rc<std::cell::RefCell<SubscriptionSlot>>);
+
+#[derive(Default)]
+struct SubscriptionSlot {
+    closed: bool,
+    held: Vec<api::Subscription>,
+}
+
+impl Subscriptions {
+    pub fn hold(&self, subscription: api::Subscription) {
+        let mut slot = self.0.borrow_mut();
+        if slot.closed {
+            drop(slot);
+            drop(subscription);
+        } else {
+            slot.held.push(subscription);
+        }
+    }
+
+    fn close(&self) {
+        let held = {
+            let mut slot = self.0.borrow_mut();
+            slot.closed = true;
+            std::mem::take(&mut slot.held)
+        };
+        drop(held);
+    }
+}
+
+pub fn use_subscriptions() -> Subscriptions {
+    let subscriptions = use_hook(Subscriptions::default);
+    let closing = subscriptions.clone();
+    use_drop(move || closing.close());
+    subscriptions
+}
+
 pub fn default_prefs() -> Prefs {
     Prefs {
         max_parallel: None,

@@ -19,7 +19,7 @@ use crate::api::{self, LeadUpdate};
 use crate::logic::flow_events::{
     FlowEvent, FlowSnapshot, format_hours_minutes, format_log_time, observe_flow,
 };
-use crate::state;
+use crate::state::{self, use_subscriptions};
 
 #[wasm_bindgen]
 extern "C" {
@@ -58,6 +58,7 @@ pub fn FlowView(
     let prev_jobs = use_hook(|| Rc::new(RefCell::new(Vec::<JobRecord>::new())));
     let watch = use_hook(|| Rc::new(Cell::new(false)));
     let clock = use_hook(|| Rc::new(Cell::new(0u64)));
+    let subscriptions = use_subscriptions();
 
     use_effect(move || {
         spawn_local(async move {
@@ -66,11 +67,15 @@ pub fn FlowView(
             }
             lead_ready.set(true);
         });
+        let subscriptions = subscriptions.clone();
         spawn_local(async move {
-            let _ = api::on_lead(move |LeadUpdate { message, .. }| {
+            let watched = api::watch_lead(move |LeadUpdate { message, .. }| {
                 lead_local.with_mut(|list| upsert_message(list, message));
             })
             .await;
+            if let Ok(subscription) = watched {
+                subscriptions.hold(subscription);
+            }
         });
     });
 

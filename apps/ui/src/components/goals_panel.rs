@@ -8,6 +8,7 @@ use wasm_bindgen_futures::spawn_local;
 use super::bot_avatar::{FieldSelect, SelectOption, error_text};
 use super::star::Star;
 use crate::api;
+use crate::state::use_subscriptions;
 use crate::wire::{
     Goal, GoalInput, GoalRound, GoalStatus, PlannedJob, Trigger, TriggerInput, TriggerKind,
 };
@@ -29,6 +30,7 @@ pub fn GoalsPanel(
     let busy = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let busy_cell = use_hook(|| Rc::new(Cell::new(false)));
+    let subscriptions = use_subscriptions();
 
     use_effect(move || {
         spawn_local(async move {
@@ -37,14 +39,18 @@ pub fn GoalsPanel(
                 Err(err) => error.set(Some(error_text(&err))),
             }
         });
+        let subscriptions = subscriptions.clone();
         spawn_local(async move {
-            let _ = api::on_goals(move |goal| {
+            let watched = api::watch_goals(move |goal| {
                 goals.with_mut(|slot| {
                     let current = slot.clone().unwrap_or_default();
                     *slot = Some(upsert_goal(current, goal));
                 });
             })
             .await;
+            if let Ok(subscription) = watched {
+                subscriptions.hold(subscription);
+            }
         });
     });
 
@@ -566,6 +572,7 @@ fn TriggersSection() -> Element {
     let busy = use_signal(|| false);
     let error = use_signal(|| None::<String>);
     let busy_cell = use_hook(|| Rc::new(Cell::new(false)));
+    let subscriptions = use_subscriptions();
 
     use_effect(move || {
         spawn_local(async move {
@@ -573,8 +580,11 @@ fn TriggersSection() -> Element {
                 triggers.set(list);
             }
         });
+        let subscriptions = subscriptions.clone();
         spawn_local(async move {
-            let _ = api::on_triggers(move |list| triggers.set(list)).await;
+            if let Ok(subscription) = api::watch_triggers(move |list| triggers.set(list)).await {
+                subscriptions.hold(subscription);
+            }
         });
     });
 

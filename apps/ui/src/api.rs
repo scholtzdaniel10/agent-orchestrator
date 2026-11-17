@@ -61,12 +61,26 @@ async fn call<T: DeserializeOwned>(cmd: &str, args: &impl Serialize) -> Result<T
     serde_wasm_bindgen::from_value(value).map_err(|err| err.to_string())
 }
 
-pub async fn listen<T, F>(name: &str, mut on_event: F) -> Result<(), String>
+/// A Tauri event subscription. Dropping it stops the events and frees the callback, so a
+/// component's callback never touches its signals after the component is gone.
+#[must_use = "dropping a Subscription ends it at once"]
+pub struct Subscription {
+    unlisten: js_sys::Function,
+    _callback: Closure<dyn FnMut(JsValue)>,
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        let _ = self.unlisten.call0(&JsValue::NULL);
+    }
+}
+
+async fn subscribe<T, F>(name: &str, mut on_event: F) -> Result<Subscription, String>
 where
     T: DeserializeOwned + 'static,
     F: FnMut(T) + 'static,
 {
-    let closure = Closure::wrap(Box::new(move |event: JsValue| {
+    let callback = Closure::wrap(Box::new(move |event: JsValue| {
         let Ok(payload) = js_sys::Reflect::get(&event, &JsValue::from_str("payload")) else {
             return;
         };
@@ -74,9 +88,25 @@ where
             on_event(value);
         }
     }) as Box<dyn FnMut(JsValue)>);
-    let function: &js_sys::Function = closure.as_ref().unchecked_ref();
-    tauri_listen(name, function).await.map_err(js_error)?;
-    closure.forget();
+    let function: &js_sys::Function = callback.as_ref().unchecked_ref();
+    let unlisten = tauri_listen(name, function).await.map_err(js_error)?;
+    let unlisten = unlisten
+        .dyn_into::<js_sys::Function>()
+        .map_err(|_| "The desktop bridge gave no way to stop listening.".to_string())?;
+    Ok(Subscription {
+        unlisten,
+        _callback: callback,
+    })
+}
+
+/// Listens for the life of the window. Only for callbacks that write app-wide state; a
+/// component uses a `watch_*` call held in `use_subscriptions` instead.
+pub async fn listen<T, F>(name: &str, on_event: F) -> Result<(), String>
+where
+    T: DeserializeOwned + 'static,
+    F: FnMut(T) + 'static,
+{
+    std::mem::forget(subscribe(name, on_event).await?);
     Ok(())
 }
 
@@ -477,4 +507,25 @@ pub async fn on_popped_out(on_event: impl FnMut(Vec<String>) + 'static) -> Resul
 }
 pub async fn on_popped_panels(on_event: impl FnMut(Vec<String>) + 'static) -> Result<(), String> {
     listen("panels:popped", on_event).await
+}
+
+// Component-scoped versions of the events above: they end when the Subscription is dropped.
+
+pub async fn watch_goals(on_event: impl FnMut(Goal) + 'static) -> Result<Subscription, String> {
+    subscribe("goals:update", on_event).await
+}
+pub async fn watch_triggers(
+    on_event: impl FnMut(Vec<Trigger>) + 'static,
+) -> Result<Subscription, String> {
+    subscribe("triggers:update", on_event).await
+}
+pub async fn watch_lead(
+    on_event: impl FnMut(LeadUpdate) + 'static,
+) -> Result<Subscription, String> {
+    subscribe("lead:update", on_event).await
+}
+pub async fn watch_terminal_update(
+    on_event: impl FnMut(TerminalUpdate) + 'static,
+) -> Result<Subscription, String> {
+    subscribe("terminals:update", on_event).await
 }
