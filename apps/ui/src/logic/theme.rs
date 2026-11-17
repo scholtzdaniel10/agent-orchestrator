@@ -10,6 +10,7 @@ pub const THEMES: &[(&str, &str)] = &[
     ("phosphor", "Phosphor"),
     ("graphite", "Graphite"),
     ("dusk", "Dusk"),
+    ("orchid", "Orchid"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub enum ThemeId {
     Phosphor,
     Graphite,
     Dusk,
+    Orchid,
 }
 
 impl ThemeId {
@@ -33,6 +35,7 @@ impl ThemeId {
             Self::Phosphor => "phosphor",
             Self::Graphite => "graphite",
             Self::Dusk => "dusk",
+            Self::Orchid => "orchid",
         }
     }
 
@@ -45,6 +48,7 @@ impl ThemeId {
             "phosphor" => Self::Phosphor,
             "graphite" => Self::Graphite,
             "dusk" => Self::Dusk,
+            "orchid" => Self::Orchid,
             _ => return None,
         })
     }
@@ -182,6 +186,29 @@ mod tests {
         assert_eq!(
             storage.data.get("orch.theme").map(String::as_str),
             Some("ember")
+        );
+        assert_eq!(target.0, 1);
+    }
+
+    #[test]
+    fn orchid_theme_loads_and_applies() {
+        let mut storage = Memory {
+            data: BTreeMap::from([("orch.theme".into(), "orchid".into())]),
+            fail: false,
+        };
+        assert_eq!(load_theme(&storage), ThemeId::Orchid);
+        let mut root = Attrs {
+            data: BTreeMap::new(),
+        };
+        let mut target = Counter(0);
+        apply_theme(ThemeId::Orchid, &mut storage, &mut root, &mut target);
+        assert_eq!(
+            root.data.get("data-theme").map(String::as_str),
+            Some("orchid")
+        );
+        assert_eq!(
+            storage.data.get("orch.theme").map(String::as_str),
+            Some("orchid")
         );
         assert_eq!(target.0, 1);
     }
