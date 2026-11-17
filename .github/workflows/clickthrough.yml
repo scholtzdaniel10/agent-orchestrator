@@ -65,7 +65,9 @@ jobs:
           $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
           $app = $null
           try {
-            $app = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE 'target/release/legate.exe') -WorkingDirectory $fixture -PassThru
+            $out = Join-Path $env:GITHUB_WORKSPACE 'clickthrough-out'
+            $app = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE 'target/release/legate.exe') -WorkingDirectory $fixture -PassThru `
+              -RedirectStandardOutput (Join-Path $out 'app-stdout.txt') -RedirectStandardError (Join-Path $out 'app-stderr.txt')
             $deadline = [DateTime]::UtcNow.AddSeconds(90)
             $ready = $false
             while ([DateTime]::UtcNow -lt $deadline) {
@@ -80,7 +82,18 @@ jobs:
               if ($ready) { break }
               Start-Sleep -Milliseconds 500
             }
-            if (-not $ready) { throw 'Timed out waiting for the Legate CDP page' }
+            if (-not $ready) {
+              try { (Invoke-WebRequest 'http://127.0.0.1:9222/json' -TimeoutSec 2).Content | Set-Content (Join-Path $out 'cdp-targets.json') }
+              catch { "CDP endpoint not reachable: $_" | Set-Content (Join-Path $out 'cdp-targets.json') }
+              Get-Process | Where-Object { $_.ProcessName -match 'legate|webview' } |
+                Format-Table Id, ProcessName, MainWindowTitle -AutoSize | Out-String | Set-Content (Join-Path $out 'processes.txt')
+              Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $shot = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              [System.Drawing.Graphics]::FromImage($shot).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $shot.Save((Join-Path $out 'desktop.png'))
+              throw 'Timed out waiting for the Legate CDP page'
+            }
             node --check scripts/clickthrough/run.mjs
             if ($LASTEXITCODE -ne 0) { throw 'Script syntax check failed' }
             node scripts/clickthrough/run.mjs
