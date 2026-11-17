@@ -246,6 +246,10 @@ fn open_page(
     let mut builder = WebviewWindowBuilder::new(app, label, url)
         .title(title)
         .inner_size(asked.0 as f64, asked.1 as f64);
+    let main = app.config().app.windows.iter().find(|window| window.label == "main");
+    if let Some(args) = main.and_then(|window| window.additional_browser_args.as_deref()) {
+        builder = builder.additional_browser_args(args);
+    }
     if let Some(bounds) = placed {
         builder = builder
             .inner_size(bounds.width as f64, bounds.height as f64)

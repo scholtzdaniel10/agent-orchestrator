@@ -135,6 +135,8 @@ jobs:
             $env:LEGATE_CDP = $cdp
             node --check scripts/clickthrough/run.mjs
             if ($LASTEXITCODE -ne 0) { throw 'Script syntax check failed' }
+            node --test scripts/clickthrough/run.test.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'Script regression tests failed' }
             node scripts/clickthrough/run.mjs
             if ($LASTEXITCODE -ne 0) { throw 'Desktop click-through failed; see the artifact report' }
           } catch {

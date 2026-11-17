@@ -256,7 +256,7 @@ async function value(selector, value, client = main) {
 }
 
 async function key(key, code = key, modifiers = 0, client = main) {
-  const virtual = { Enter: 13, Escape: 27, ArrowRight: 39, '\\': 220, b: 66 }[key];
+  const virtual = { Enter: 13, Escape: 27, ArrowRight: 39, '\\': 220, b: 66, n: 78 }[key];
   const params = { key, code, modifiers, windowsVirtualKeyCode: virtual };
   await client.call('Input.dispatchKeyEvent', { type: 'keyDown', ...params });
   await client.call('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
@@ -319,19 +319,23 @@ async function setupCheck(client = main) {
 }
 
 async function newWindow(prefix, compact) {
-  const existing = new Set((await targets()).map((target) => target.id));
-  await click('.app-header button[title="New window"]');
-  let target;
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    target = (await targets()).find((item) => !existing.has(item.id));
-    if (target) break;
-    await delay(100);
-  }
-  assert(target, 'New window did not create a Legate page target');
-  const client = await attach(target);
-  if (compact) await client.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
-  await step(`${prefix}-new-window`, async () => {
+  let client;
+  await step(`${prefix}-new-window-open`, async () => {
+    const existing = new Set((await targets()).map((target) => target.id));
+    await click('.app-header button[title="New window"]');
+    let target;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      target = (await targets()).find((item) => !existing.has(item.id));
+      if (target) break;
+      await delay(100);
+    }
+    assert(target, 'New window did not create a Legate page target');
+    const attached = await attach(target);
+    if (compact) await attached.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+    client = attached;
+  });
+  if (client) await step(`${prefix}-new-window`, async () => {
     await waitFor(find('.app-header'), 'new window workspace', client);
     if (await client.evaluate(`!!${find('.setup-screen')}`)) {
       await setupCheck(client);
@@ -344,6 +348,7 @@ async function newWindow(prefix, compact) {
 
 async function pass(prefix, compact) {
   await step(`${prefix}-viewport`, async () => {
+    await main.call('Page.bringToFront');
     if (compact) {
       await settings();
       await value('select[aria-label="Interface size"]', '100');
@@ -389,8 +394,9 @@ async function pass(prefix, compact) {
   await step(`${prefix}-task-cancel`, async () => {
     await click('.new-task-actions button', 'Cancel');
     await waitFor(`!${find('.new-task-overlay')}`, 'closed task dialog');
-    await click('.sidebar-new-task');
-    await waitFor(find('.new-task-overlay'), 'sidebar New task');
+    await main.evaluate('document.activeElement?.blur()');
+    await key('n', 'KeyN', 2);
+    await waitFor(find('.new-task-overlay'), 'Ctrl+N New task');
     await click('.new-task-actions button', 'Cancel');
   });
 
@@ -433,10 +439,15 @@ async function pass(prefix, compact) {
       await waitFor(find(form), `${name} form`);
     });
     if (name === 'trigger') {
-      await click('.goal-triggers button[aria-label="When"]');
-      const labels = await main.evaluate(`ct.all('.select-list [role="option"]').map(ct.text)`);
-      assert(labels.length, 'No trigger choices');
-      await key('Escape');
+      let labels = [];
+      await step(`${prefix}-trigger-choices`, async () => {
+        await click('.goal-triggers button[aria-label="When"]');
+        labels = await main.evaluate(`ct.all('.select-list [role="option"]').map(ct.text)`);
+        assert(labels.length, 'No trigger choices');
+        await main.evaluate(`${find('.select-list[role="listbox"]')}.focus()`);
+        await key('Escape');
+        await waitFor(`!${find('.select-list')}`, 'closed trigger choices');
+      });
       for (const label of labels) await step(`${prefix}-trigger-${label}`, async () => {
         await click('.goal-triggers button[aria-label="When"]');
         await click('.select-list [role="option"]', label);
@@ -449,10 +460,10 @@ async function pass(prefix, compact) {
     });
   }
   await step(`${prefix}-sidebar-navigation`, async () => {
-    await click('.sidebar-nav button', 'Goals');
-    await waitFor(find('.drawer .inspector-heading h2', 'Goals'), 'sidebar Goals');
-    await click('.sidebar-nav button', 'Automations');
-    await waitFor(find('.goal-triggers'), 'Automations');
+    await panel('goals');
+    await click('.goal-triggers-head button', 'Add trigger');
+    await waitFor(find('.goal-triggers .goal-form'), 'Automations');
+    await click('.goal-triggers-head button', 'Close');
     await value('[aria-label="Search projects, worktrees and chats"]', 'no-such-clickthrough-item');
     await value('[aria-label="Search projects, worktrees and chats"]', '');
     await click('.project-group.is-open .project-group-fold');
@@ -641,7 +652,11 @@ async function pass(prefix, compact) {
     for (const selector of ['.status-bar button:nth-last-child(3)', '.status-bar button:nth-last-child(2)', '.status-bar-activity']) await click(selector);
     await waitFor(find('.drawer .inspector-heading h2', 'Activity'), 'status Activity');
   });
-  const planButtons = await main.evaluate(`ct.all('.status-bar button').slice(0, -3).map(ct.text)`);
+  let planButtons = [];
+  await step(`${prefix}-status-choices`, async () => {
+    planButtons = await main.evaluate(`ct.all('.status-bar button').slice(0, -3).map(ct.text)`);
+    assert(planButtons.length, 'No status plan buttons');
+  });
   for (const label of planButtons) await step(`${prefix}-status-${label}`, async () => {
     await click('.status-bar button', label);
     if (await main.evaluate(`!!${find('.setup-screen')}`)) {
@@ -652,6 +667,13 @@ async function pass(prefix, compact) {
   await newWindow(prefix, compact);
 }
 
+async function runPasses() {
+  for (const [prefix, compact] of [['default', false], ['900x700', true]]) {
+    try { await pass(prefix, compact); }
+    catch (error) { await step(`${prefix}-pass`, async () => { throw error; }); }
+  }
+}
+
 try {
   assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Run this script only on the GitHub Actions runner');
   assert.equal(process.env.RUNNER_OS, 'Windows', 'The desktop click-through requires Windows');
@@ -660,9 +682,8 @@ try {
   assert.equal(pages.length, 1, 'Expected exactly one initial Legate page');
   main = await attach(pages[0]);
   await waitFor(find('.app-header'), 'Legate startup', main, 30_000);
-  await pass('default', false);
-  await pass('900x700', true);
-  for (const client of clients.values()) await inspect(client);
+  await runPasses();
+  for (const client of clients.values()) await step(`final-inspect-${client.id}`, () => inspect(client), client);
 } catch (error) {
   await step(`${current}-fatal`, async () => { throw error; });
 } finally {
