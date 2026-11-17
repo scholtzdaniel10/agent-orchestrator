@@ -74,3 +74,98 @@ test('an unexpected default-pass failure still runs the compact pass', async (t)
   assert.match(app.report(), /\| 900x700-complete \| PASS \|/);
   assert.match(app.errors()[0].detail, /default pass failed/);
 });
+
+test('shell input waits for the prompt and full command echo before Enter', async (t) => {
+  const app = runner(t);
+  await app.run(`
+    let focused = false;
+    let prompts = 0;
+    let echoPolls = 0;
+    let entered = false;
+    let pending = '';
+    globalThis.window = globalThis;
+    globalThis.ctOutput = ['clickthrough-shell-ready\\r\\n'];
+    globalThis.ct = { find: () => ({ focus: () => { focused = true; } }) };
+    main = {
+      evaluate: async (expression) => {
+        const result = eval(expression);
+        if (!pending && ++prompts === 2) ctOutput.push('PS fixture> ');
+        if (pending && ++echoPolls === 2) { ctOutput.push(pending); pending = ''; }
+        return result;
+      },
+      call: async (method, params) => {
+        if (method === 'Input.insertText') {
+          assert(focused, 'The terminal must have focus');
+          assert(ctOutput.join('').endsWith('> '), 'Wait for an interactive prompt');
+          ctOutput.push('e');
+          pending = params.text.slice(1);
+        } else if (params.type === 'keyDown') {
+          assert(ctOutput.join('').includes('echo clickthrough-ok'), 'Wait for the complete echo');
+          entered = true;
+        }
+      },
+    };
+    await shellCommand('echo clickthrough-ok');
+    assert(entered);
+    assert(echoPolls >= 2);
+  `);
+});
+
+test('a missing first character fails instead of executing the truncated shell command', async (t) => {
+  const app = runner(t);
+  await app.run(`
+    let clock = 0;
+    let entered = false;
+    Date = { now: () => clock += 1000 };
+    globalThis.window = globalThis;
+    globalThis.ctOutput = ['clickthrough-shell-ready\\r\\nPS fixture> '];
+    globalThis.ct = { find: () => ({ focus() {} }) };
+    main = {
+      evaluate: async (expression) => eval(expression),
+      call: async (method, params) => {
+        if (method === 'Input.insertText') ctOutput.push(params.text.slice(1));
+        else entered = true;
+      },
+    };
+    await assert.rejects(shellCommand('echo clickthrough-ok'), /Timed out waiting for complete shell command echo/);
+    assert.equal(entered, false);
+  `);
+});
+
+test('wrapped PowerShell prompts and command echoes still reach Enter', async (t) => {
+  const app = runner(t);
+  await app.run(`
+    let clock = 0;
+    let entered = false;
+    Date = { now: () => clock += 1000 };
+    globalThis.window = globalThis;
+    globalThis.ctOutput = ['clickthrough-shell-ready\\r\\nPS fixture\\r\\n> '];
+    globalThis.ct = { find: () => ({ focus() {} }) };
+    main = {
+      evaluate: async (expression) => eval(expression),
+      call: async (method, params) => {
+        if (method === 'Input.insertText') ctOutput.push('ec\\r\\nho clickthrough-\\r\\nok');
+        else if (params.type === 'keyDown') entered = true;
+      },
+    };
+    await shellCommand('echo clickthrough-ok');
+    assert(entered);
+  `);
+});
+
+test('terminal imports finishing after unmount do not create a detached terminal', async () => {
+  const bridgeSource = readFileSync(new URL('../../apps/ui/assets/vendor/legate-xterm.js', import.meta.url), 'utf8');
+  const modules = 'data:text/javascript,' + encodeURIComponent(`
+    export class Terminal { constructor() { throw new Error('Constructed a detached terminal'); } }
+    export class FitAddon {}
+    export class WebglAddon {}
+  `);
+  const window = { legateAsset: { xterm: modules, fit: modules, webgl: modules } };
+  new Function('window', 'document', 'getComputedStyle', bridgeSource)(
+    window, { documentElement: {} }, () => ({ getPropertyValue: () => '' }),
+  );
+  const host = { isConnected: true };
+  const opening = window.legateXterm.open('unmounted', host, 13);
+  host.isConnected = false;
+  await assert.rejects(opening, /That terminal view has closed/);
+});

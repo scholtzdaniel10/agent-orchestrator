@@ -511,6 +511,12 @@ pub async fn on_popped_panels(on_event: impl FnMut(Vec<String>) + 'static) -> Re
 
 // Component-scoped versions of the events above: they end when the Subscription is dropped.
 
+pub async fn watch_changes(
+    on_event: impl FnMut(Vec<ChangeSet>) + 'static,
+) -> Result<Subscription, String> {
+    subscribe("changes:update", on_event).await
+}
+
 pub async fn watch_goals(on_event: impl FnMut(Goal) + 'static) -> Result<Subscription, String> {
     subscribe("goals:update", on_event).await
 }

@@ -263,6 +263,17 @@ async function key(key, code = key, modifiers = 0, client = main) {
   await delay(120);
 }
 
+async function shellCommand(command, client = main) {
+  // ConPTY hard-wraps both the prompt and long command echoes.
+  const output = `window.ctOutput?.join('').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\\r\\n]/g, '')`;
+  const input = find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea');
+  await waitFor(`${output}?.match(/PS .*> $/) && ${input}`, 'interactive PowerShell prompt', client, 30_000);
+  await client.evaluate(`${input}.focus()`);
+  await client.call('Input.insertText', { text: command });
+  await waitFor(`${output}?.includes(${JSON.stringify(command)})`, 'complete shell command echo', client);
+  await key('Enter', 'Enter', 0, client);
+}
+
 async function inspect(client) {
   const state = await client.evaluate(`(() => {
     ct.scan();
@@ -592,9 +603,7 @@ async function pass(prefix, compact) {
   });
   await step(`${prefix}-shell-echo`, async () => {
     await waitFor(`window.ctOutput?.join('').includes('clickthrough-shell-ready') && ${find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea')}`, 'interactive setup shell', main, 30_000);
-    await main.evaluate(`ctOutput.length = 0; ${find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea')}.focus()`);
-    await main.call('Input.insertText', { text: 'echo clickthrough-ok' });
-    await key('Enter');
+    await shellCommand('echo clickthrough-ok');
     await waitFor(`/[\\r\\n]clickthrough-ok[\\r\\n]/.test(ctOutput.join('').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, ''))`, 'shell command output');
     return 'Input.insertText + Enter; actual PTY output contains a standalone clickthrough-ok line.';
   });
@@ -611,9 +620,7 @@ async function pass(prefix, compact) {
   });
   await step(`${prefix}-worktree-edit`, async () => {
     await value('#pane-layout', 'auto');
-    await main.evaluate(`${find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea')}.focus()`);
-    await main.call('Input.insertText', { text: "Add-Content README.md 'clickthrough worktree edit'" });
-    await key('Enter');
+    await shellCommand("Add-Content README.md 'clickthrough worktree edit'");
     await waitFor(find('.tab-review'), 'worktree change to review', main, 30_000);
     await panel('changes');
     await waitFor(find('.change-file'), 'worktree changed file');
@@ -650,6 +657,7 @@ async function pass(prefix, compact) {
   await step(`${prefix}-shell-close`, async () => {
     await click('.terminal-pane:not(.is-hidden) .terminal-pane-head button[aria-label^="Close "]');
     await waitFor(`!${find('.terminal-pane:not(.is-hidden) .xterm')}`, 'closed shell terminal');
+    await waitFor(`${find('.project-worktree-name', worktree)}?.closest('.project-worktree-row').textContent.includes('setup stopped')`, 'stopped worktree setup');
     await click('.project-worktree-row[title="Project folder"]');
   });
   await step(`${prefix}-status-bar`, async () => {

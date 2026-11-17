@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use dioxus::core::{Runtime, current_scope_id};
 use dioxus::prelude::*;
 use gloo_timers::callback::Timeout;
 use js_sys::Date;
@@ -21,6 +22,7 @@ use crate::logic::file_tree::{
     files_count_label, flatten_visible, format_bytes, parent_path, status_mark, status_name,
     window_range,
 };
+use crate::state::use_subscriptions;
 
 const DIFF_ROW_PX: f64 = 17.4;
 const TEXT_ROW_PX: f64 = 17.4;
@@ -35,8 +37,6 @@ thread_local! {
     static EXPANDED: RefCell<HashMap<String, HashSet<String>>> = RefCell::new(HashMap::new());
     static SPLITS: RefCell<HashMap<String, f64>> = RefCell::new(HashMap::new());
     static SELECTED: RefCell<HashMap<String, Option<String>>> = RefCell::new(HashMap::new());
-    static RELOADERS: RefCell<Vec<(u64, LoaderHandle)>> = const { RefCell::new(Vec::new()) };
-    static CHANGES_ON: Cell<bool> = const { Cell::new(false) };
     static NEXT_DOM: Cell<u64> = const { Cell::new(1) };
     static SPLIT_DRAG: RefCell<Option<SplitSession>> = const { RefCell::new(None) };
     static SPLIT_LISTENING: Cell<bool> = const { Cell::new(false) };
@@ -85,6 +85,8 @@ fn remember_selected(key: &str, path: &Option<String>) {
 }
 
 struct LoaderInner {
+    runtime: Rc<Runtime>,
+    scope: ScopeId,
     place: RefCell<Option<String>>,
     load_id: Cell<u64>,
     last_at: Cell<f64>,
@@ -130,44 +132,29 @@ impl LoaderHandle {
             loading.set(true);
         }
         let place = self.inner.place.borrow().clone();
-        spawn_local(async move {
-            let outcome = api::list_files(place.as_deref()).await;
-            if handle.inner.load_id.get() != id {
-                return;
-            }
-            match outcome {
-                Ok(next) => {
-                    if list.peek().as_ref() != Some(&next) {
-                        list.set(Some(next));
-                    }
-                    if error.peek().is_some() {
-                        error.set(None);
-                    }
+        self.inner.runtime.in_scope(self.inner.scope, || {
+            spawn(async move {
+                let outcome = api::list_files(place.as_deref()).await;
+                if handle.inner.load_id.get() != id {
+                    return;
                 }
-                Err(err) => error.set(Some(bridge_error(&err))),
-            }
-            if *loading.peek() {
-                loading.set(false);
-            }
+                match outcome {
+                    Ok(next) => {
+                        if list.peek().as_ref() != Some(&next) {
+                            list.set(Some(next));
+                        }
+                        if error.peek().is_some() {
+                            error.set(None);
+                        }
+                    }
+                    Err(err) => error.set(Some(bridge_error(&err))),
+                }
+                if *loading.peek() {
+                    loading.set(false);
+                }
+            })
         });
     }
-}
-
-fn ensure_changes_listener() {
-    let start = CHANGES_ON.with(|on| !on.replace(true));
-    if !start {
-        return;
-    }
-    spawn_local(async {
-        let _ = api::on_changes(|_list| {
-            RELOADERS.with(|list| {
-                for (_, loader) in list.borrow().iter() {
-                    loader.request(false);
-                }
-            });
-        })
-        .await;
-    });
 }
 
 struct SplitSession {
@@ -249,9 +236,12 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     let opening_flag = use_hook(|| Rc::new(Cell::new(false)));
     let content_ticket = use_hook(|| Rc::new(Cell::new(0_u64)));
     let text_rows = use_hook(|| Rc::new(Cell::new(0_i64)));
+    let subscriptions = use_subscriptions();
 
     let loader = use_hook(|| LoaderHandle {
         inner: Rc::new(LoaderInner {
+            runtime: Runtime::current(),
+            scope: current_scope_id(),
             place: RefCell::new(r#where.clone()),
             load_id: Cell::new(0),
             last_at: Cell::new(0.0),
@@ -281,13 +271,16 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         scroll_top.set(0.0);
     }
 
-    let registered = use_hook(|| Rc::new(Cell::new(false)));
-    if !registered.get() {
-        registered.set(true);
-        let handle = loader.clone();
-        RELOADERS.with(|slots| slots.borrow_mut().push((panel_id, handle)));
-        ensure_changes_listener();
-    }
+    let changes_loader = loader.clone();
+    use_effect(move || {
+        let subscriptions = subscriptions.clone();
+        let handle = changes_loader.clone();
+        spawn_local(async move {
+            if let Ok(subscription) = api::watch_changes(move |_| handle.request(false)).await {
+                subscriptions.hold(subscription);
+            }
+        });
+    });
     let loader_focus = loader.clone();
     let focus_slot = use_hook(|| Rc::new(RefCell::new(None::<Closure<dyn FnMut(web_sys::Event)>>)));
     if focus_slot.borrow().is_none() {
@@ -308,8 +301,17 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     let refresh_loader = loader.clone();
     let retry_loader = loader.clone();
     let drop_loader = loader;
+    let drop_body = body_id.clone();
     use_drop(move || {
-        RELOADERS.with(|slots| slots.borrow_mut().retain(|(id, _)| *id != panel_id));
+        SPLIT_DRAG.with(|slot| {
+            let mut session = slot.borrow_mut();
+            if session
+                .as_ref()
+                .is_some_and(|drag| drag.body_id == drop_body)
+            {
+                session.take();
+            }
+        });
         if let Some(pending) = drop_loader.inner.pending.borrow_mut().take() {
             drop(pending);
         }
@@ -354,7 +356,7 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         let read_ticket = ticket.clone();
         let read_place = place.clone();
         let read_path = path.clone();
-        spawn_local(async move {
+        spawn(async move {
             let value = match api::read_file(read_place.as_deref(), &read_path).await {
                 Ok(value) => value,
                 Err(_) => FileContent::Missing,
@@ -365,7 +367,7 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         });
         if status != FileStatus::Clean {
             let diff_ticket = ticket.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let text = api::file_diff(place.as_deref(), &path)
                     .await
                     .unwrap_or_default();
@@ -1180,7 +1182,7 @@ fn open_current(
     opening_flag.set(true);
     opening.set(true);
     open_error.set(None);
-    spawn_local(async move {
+    spawn(async move {
         if let Err(err) = api::open_file(place.as_deref(), &path).await {
             open_error.set(Some(bridge_error(&err)));
         }

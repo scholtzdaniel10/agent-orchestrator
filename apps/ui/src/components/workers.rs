@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 use legate_core::{ChangeSet, JobRecord, JobStatus, ProviderId, TerminalInfo};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::agent_pane::AgentPane;
@@ -193,7 +192,7 @@ pub fn Workers(
                     let next = empty_pane_for_terminal(&slots.read(), &id);
                     slots.set(next);
                     let closing = id.clone();
-                    spawn_local(async move {
+                    spawn(async move {
                         if let Err(text) = api::close_terminal(&closing).await {
                             open_error.set(Some(text));
                         }
@@ -383,7 +382,7 @@ pub fn Workers(
                                                 let next = empty_pane_for_terminal(&slots.read(), &close_id);
                                                 slots.set(next);
                                                 let closing = close_id.clone();
-                                                spawn_local(async move {
+                                                spawn(async move {
                                                     if let Err(text) = api::close_terminal(&closing).await {
                                                         open_error.set(Some(text));
                                                     }
@@ -402,7 +401,7 @@ pub fn Workers(
                     key: "{job.id}",
                     job: job.clone(),
                     on_take_over: Callback::new(move |id: String| {
-                        spawn_local(async move {
+                        spawn(async move {
                             match api::take_over_job(&id, 100.0, 30.0).await {
                                 Ok(info) => {
                                     on_select_worktree.call(info.change.clone());
@@ -452,7 +451,7 @@ fn open_provider(
         return;
     }
     opening.set(true);
-    spawn_local(async move {
+    spawn(async move {
         match api::open_terminal(&provider, 100.0, 30.0, worktree.as_deref(), None).await {
             Ok(info) => {
                 let next = match pane {

@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 use legate_core::{CursorModels, ModelOption, PlanStatus, ProviderId};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::state::use_store;
@@ -20,7 +19,7 @@ pub fn ModelPicker(plan: PlanStatus, disabled: bool, label_title: Option<String>
         if !available {
             return;
         }
-        spawn_local(async move {
+        spawn(async move {
             if let Ok(list) = api::list_models(id).await {
                 models.set(Some(list));
             }
@@ -170,7 +169,7 @@ fn save_model(id: ProviderId, next: String, disabled: bool, error: &mut Signal<O
     let mut error = *error;
     error.set(None);
     let model = if next.is_empty() { None } else { Some(next) };
-    spawn_local(async move {
+    spawn(async move {
         if let Err(text) = api::set_model(id, model.as_deref()).await {
             error.set(Some(text));
         }

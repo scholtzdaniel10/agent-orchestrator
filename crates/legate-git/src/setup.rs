@@ -61,13 +61,13 @@ impl SetupTracker {
         if removed {
             if self.by_change.get(change) == Some(&SetupState::Running) {
                 self.by_change
-                    .insert(change.to_string(), SetupState::Failed);
+                    .insert(change.to_string(), SetupState::Stopped);
             }
-        } else if status == "exited" {
-            let state = if exit_code == Some(0) {
-                SetupState::Done
-            } else {
-                SetupState::Failed
+        } else if status == "exited" && self.by_change.get(change) != Some(&SetupState::Stopped) {
+            let state = match exit_code {
+                Some(0) => SetupState::Done,
+                Some(_) => SetupState::Failed,
+                None => SetupState::Stopped,
             };
             self.by_change.insert(change.to_string(), state);
         }

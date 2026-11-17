@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 use legate_core::{ChangeSet, ProviderId, TerminalInfo, TerminalProvider, TerminalStatus};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
@@ -49,7 +48,7 @@ pub fn TerminalTabs(
     let mut seen_project = use_signal(String::new);
     if !project.is_empty() && seen_project() != project {
         seen_project.set(project.clone());
-        spawn_local(async move {
+        spawn(async move {
             let _ = api::restore_terminals(80.0, 24.0).await;
         });
     }

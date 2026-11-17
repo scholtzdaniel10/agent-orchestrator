@@ -24,6 +24,7 @@ window.legateXterm = {
     const { Terminal } = await import(urls.xterm)
     const { FitAddon } = await import(urls.fit)
     const { WebglAddon } = await import(urls.webgl)
+    if (!element.isConnected) throw new Error('That terminal view has closed.')
     const term = new Terminal({
       fontFamily: '"JetBrains Mono", "Cascadia Mono", Consolas, monospace',
       fontSize: fontSize || 13,

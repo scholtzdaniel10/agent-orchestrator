@@ -3,10 +3,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use dioxus::core::{Runtime, current_scope_id};
 use dioxus::prelude::*;
 use gloo_timers::callback::Interval;
 use legate_core::{TerminalInfo, TerminalStatus};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::logic::terminal_bus::{Detach, TerminalBus};
@@ -81,15 +81,20 @@ pub fn TerminalPane(
         if !visible || popped {
             return;
         }
-        spawn_local(async move {
+        spawn(async move {
+            let runtime = Runtime::current();
+            let scope = current_scope_id();
             let Some(element) = web_sys::window()
                 .and_then(|window| window.document())
                 .and_then(|document| document.get_element_by_id(&host))
             else {
                 return;
             };
+            let mut opened = Session {
+                id: term_id.clone(),
+                detach: None,
+            };
             if xterm::open(&term_id, &element, font).await.is_err() || Cell::get(&ticket) != next {
-                let _ = xterm::dispose(&term_id);
                 return;
             }
             let replaying = Rc::new(Cell::new(false));
@@ -100,8 +105,10 @@ pub fn TerminalPane(
                     return;
                 }
                 let write_id = write_id.clone();
-                spawn_local(async move {
-                    let _ = api::write_terminal(&write_id, &data).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::write_terminal(&write_id, &data).await;
+                    })
                 });
             });
             if restore && let Ok(snapshot) = api::terminal_snapshot(&term_id).await {
@@ -111,7 +118,6 @@ pub fn TerminalPane(
                 bus.forget(&term_id);
             }
             if Cell::get(&ticket) != next {
-                let _ = xterm::dispose(&term_id);
                 return;
             }
             let sink_id = term_id.clone();
@@ -119,10 +125,8 @@ pub fn TerminalPane(
                 let _ = xterm::write(&sink_id, &chunk);
             });
             let _ = xterm::disable_stdin(&term_id, false);
-            session.set(Some(Session {
-                id: term_id,
-                detach: Some(detach),
-            }));
+            opened.detach = Some(detach);
+            session.set(Some(opened));
         });
     });
 
@@ -141,7 +145,7 @@ pub fn TerminalPane(
         *claim_key.borrow_mut() = watch;
         if visible && focused && !popped {
             let claim = id.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = api::claim_terminal(&claim).await;
                 if let Ok(cells) = xterm::fit(&claim) {
                     let _ = api::resize_terminal(&claim, cells.cols, cells.rows).await;
@@ -153,7 +157,7 @@ pub fn TerminalPane(
         if !Cell::get(&waking) {
             waking.set(true);
             let wake = id.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = api::wake_terminal(&wake, 80.0, 24.0).await;
             });
         }
@@ -167,6 +171,8 @@ pub fn TerminalPane(
     use_hook(move || {
         let fit_id = fit_id.clone();
         let fit_font = fit_font.clone();
+        let runtime = Runtime::current();
+        let scope = current_scope_id();
         Rc::new(Interval::new(700, move || {
             let wanted = prefs.read().terminal_font_size as f64;
             if (Cell::get(&fit_font) - wanted).abs() > 0.1
@@ -174,15 +180,19 @@ pub fn TerminalPane(
             {
                 fit_font.set(wanted);
                 let fit_id = fit_id.clone();
-                spawn_local(async move {
-                    let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                    })
                 });
                 return;
             }
             if let Ok(cells) = xterm::fit(&fit_id) {
                 let fit_id = fit_id.clone();
-                spawn_local(async move {
-                    let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                    })
                 });
             }
         }))
@@ -215,7 +225,7 @@ pub fn TerminalPane(
                             onclick: move |event| {
                                 event.stop_propagation();
                                 let pop_id = pop_id.clone();
-                                spawn_local(async move {
+                                spawn(async move {
                                     let _ = api::pop_out_terminal(&pop_id).await;
                                 });
                             },
@@ -241,7 +251,7 @@ pub fn TerminalPane(
                         onclick: move |event| {
                             event.stop_propagation();
                             let pop_id = id.clone();
-                            spawn_local(async move {
+                            spawn(async move {
                                 let _ = api::pop_out_terminal(&pop_id).await;
                             });
                         },

@@ -1,9 +1,10 @@
 //! Async process spawn. A worker thread never waits on a child with blocking IO.
 
+use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -12,6 +13,21 @@ use tokio::process::Command;
 pub(crate) const MAX_BUFFER: usize = 32 * 1024 * 1024;
 pub(crate) const GIT_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
+
+fn git_lock(cwd: &Path) -> Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: LazyLock<Mutex<HashMap<PathBuf, Weak<tokio::sync::Mutex<()>>>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    let key = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let mut locks = LOCKS.lock().unwrap_or_else(|err| err.into_inner());
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    let slot = locks.entry(key).or_default();
+    if let Some(lock) = slot.upgrade() {
+        return lock;
+    }
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    *slot = Arc::downgrade(&lock);
+    lock
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CmdOut {
@@ -169,7 +185,17 @@ pub(crate) async fn spawn_raw(
     timeout: Duration,
     max_buffer: usize,
 ) -> RawOut {
+    let is_git = command == "git";
+    // Change refresh stages files, so readers must also wait for a worktree's writer.
+    let lock = if is_git { cwd.map(git_lock) } else { None };
+    let _guard = match &lock {
+        Some(lock) => Some(lock.lock().await),
+        None => None,
+    };
     let mut cmd = Command::new(command);
+    if is_git {
+        cmd.env("GIT_OPTIONAL_LOCKS", "0");
+    }
     cmd.args(args);
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
@@ -251,4 +277,25 @@ where
 
 pub(crate) fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(|arg| (*arg).to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn git_commands_in_one_worktree_share_a_lock() {
+        let tree = tempfile::tempdir().unwrap();
+        let first = git_lock(tree.path());
+        let same = git_lock(&tree.path().join("."));
+        assert!(Arc::ptr_eq(&first, &same));
+        let guard = first.lock().await;
+        assert!(same.try_lock().is_err());
+
+        let other_tree = tempfile::tempdir().unwrap();
+        let other = git_lock(other_tree.path());
+        assert!(other.try_lock().is_ok());
+        drop(guard);
+        assert!(same.try_lock().is_ok());
+    }
 }

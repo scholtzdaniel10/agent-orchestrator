@@ -1,6 +1,5 @@
 use crate::state::use_store;
 use dioxus::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 
 #[component]
 pub fn WorkflowSetup() -> Element {
@@ -34,7 +33,7 @@ pub fn WorkflowSetup() -> Element {
             button { class: "btn btn-primary", r#type: "button", disabled: project.is_empty(),
                 onclick: move |_| {
                     let prompt=copy_prompt.clone();
-                    spawn_local(async move {
+                    spawn(async move {
                         let Some(window)=web_sys::window() else { error.set(true); return; };
                         let result=wasm_bindgen_futures::JsFuture::from(window.navigator().clipboard().write_text(&prompt)).await;
                         copied.set(result.is_ok()); error.set(result.is_err());

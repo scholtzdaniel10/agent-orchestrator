@@ -3,7 +3,6 @@
 use dioxus::prelude::*;
 use legate_core::{JobAccess, JobRecord, JobType, PROVIDERS};
 use serde_json::json;
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::wire::Routine;
@@ -37,7 +36,7 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
     if seen_project() != project {
         seen_project.set(project.clone());
         let listed = project.clone();
-        spawn_local(async move {
+        spawn(async move {
             match api::get_project_setup().await {
                 Ok(lines) => commands.set(lines.join("\n")),
                 Err(text) => setup_error.set(Some(text)),
@@ -88,7 +87,7 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
                                 .map(str::to_string)
                                 .collect();
                             setup_saving.set(true);
-                            spawn_local(async move {
+                            spawn(async move {
                                 match api::set_project_setup(&lines).await {
                                     Ok(()) => {
                                         commands.set(lines.join("\n"));
@@ -140,7 +139,7 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
                                         onclick: move |_| {
                                             let id = run_id.clone();
                                             running.set(Some(id.clone()));
-                                            spawn_local(async move {
+                                            spawn(async move {
                                                 match api::run_routine(&id).await {
                                                     Ok(job) => {
                                                         run_error.set(None);
@@ -180,7 +179,7 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
                                             }
                                             let id = remove_id.clone();
                                             armed.set(None);
-                                            spawn_local(async move {
+                                            spawn(async move {
                                                 if let Err(text) = api::remove_routine(&id).await {
                                                     load_error.set(Some(text));
                                                     return;
@@ -226,7 +225,7 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
                             if saving() { return; }
                             let Some(current) = draft.read().clone() else { return; };
                             saving.set(true);
-                            spawn_local(async move {
+                            spawn(async move {
                                 let id = current.id.clone().unwrap_or_else(fresh_id);
                                 let mut body = json!({
                                     "id": id,

@@ -20,7 +20,7 @@ fn setup_tracker_runs_fails_and_finishes() {
     tracker.on_terminal(Some("abcd1234"), "shell", false, "running", None);
     assert_eq!(tracker.get("abcd1234"), Some(SetupState::Running));
     tracker.on_terminal(Some("abcd1234"), "shell", true, "exited", Some(0));
-    assert_eq!(tracker.get("abcd1234"), Some(SetupState::Failed));
+    assert_eq!(tracker.get("abcd1234"), Some(SetupState::Stopped));
 
     tracker.begin("abcd1234", true);
     tracker.on_terminal(Some("abcd1234"), "shell", false, "exited", Some(0));
@@ -34,6 +34,26 @@ fn setup_tracker_runs_fails_and_finishes() {
     tracker.on_terminal(None, "shell", false, "exited", Some(0));
     tracker.clear("abcd1234");
     assert_eq!(tracker.get("abcd1234"), None);
+}
+
+#[test]
+fn closing_setup_is_stopped_and_only_a_known_nonzero_exit_fails() {
+    let mut tracker = SetupTracker::new();
+    tracker.begin("setup", true);
+    tracker.on_terminal(Some("setup"), "shell", true, "running", None);
+    assert_eq!(tracker.get("setup"), Some(SetupState::Stopped));
+    // A late exit event from the killed process cannot turn a deliberate close into failure.
+    tracker.on_terminal(Some("setup"), "shell", false, "exited", Some(1));
+    assert_eq!(tracker.get("setup"), Some(SetupState::Stopped));
+
+    tracker.begin("setup", true);
+    tracker.on_terminal(Some("setup"), "shell", false, "exited", None);
+    assert_eq!(tracker.get("setup"), Some(SetupState::Stopped));
+
+    tracker.begin("setup", true);
+    tracker.on_terminal(Some("setup"), "shell", false, "exited", Some(2));
+    tracker.on_terminal(Some("setup"), "shell", true, "exited", Some(2));
+    assert_eq!(tracker.get("setup"), Some(SetupState::Failed));
 }
 
 #[test]

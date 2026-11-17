@@ -6,7 +6,6 @@ use legate_core::{
     UsageShows,
 };
 use serde_json::json;
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::star::Star;
@@ -76,7 +75,7 @@ pub fn SettingsPage(
     let mut loaded = use_signal(|| false);
     if !loaded() {
         loaded.set(true);
-        spawn_local(async move {
+        spawn(async move {
             match api::get_app_info().await {
                 Ok(next) => info.set(Some(next)),
                 Err(text) => error.set(Some(text)),
@@ -288,7 +287,7 @@ pub fn SettingsPage(
                                         aria_label: "Lead runs on",
                                         onchange: move |event| {
                                             let picked = ProviderId::parse(&event.value());
-                                            spawn_local(async move {
+                                            spawn(async move {
                                                 if api::set_lead_plan(picked).await.is_ok() {
                                                     lead_plan.set(Some(picked));
                                                     on_lead_changed.call(());
@@ -313,7 +312,7 @@ pub fn SettingsPage(
                                         aria_label: "Most the lead may hand out",
                                         onchange: move |event| {
                                             let Some(access) = JobAccess::parse(&event.value()) else { return; };
-                                            spawn_local(async move {
+                                            spawn(async move {
                                                 if api::set_lead_access(access).await.is_ok() {
                                                     lead_access.set(Some(access));
                                                     on_lead_changed.call(());
@@ -358,7 +357,7 @@ pub fn SettingsPage(
                                                                 r#type: "button",
                                                                 onclick: move |_| {
                                                                     let folder = folder.folder.clone();
-                                                                    spawn_local(async move {
+                                                                    spawn(async move {
                                                                         if let Ok(next) = api::skills_remove(&folder).await {
                                                                             skills.set(Some(next));
                                                                         }
@@ -386,7 +385,7 @@ pub fn SettingsPage(
                                                 class: "btn btn-quiet btn-compact",
                                                 r#type: "button",
                                                 onclick: move |_| {
-                                                    spawn_local(async move {
+                                                    spawn(async move {
                                                         if let Ok(next) = api::skills_add().await {
                                                             skills.set(Some(next));
                                                         }
@@ -438,7 +437,7 @@ pub fn SettingsPage(
                                             class: "btn btn-quiet btn-compact",
                                             r#type: "button",
                                             onclick: move |_| {
-                                                spawn_local(async move {
+                                                spawn(async move {
                                                     let _ = api::choose_clone_dir().await;
                                                 });
                                             },
@@ -503,7 +502,7 @@ pub fn SettingsPage(
                                             class: "btn btn-quiet btn-compact",
                                             r#type: "button",
                                             onclick: move |_| {
-                                                spawn_local(async move { let _ = api::open_data_dir().await; });
+                                                spawn(async move { let _ = api::open_data_dir().await; });
                                             },
                                             "Open folder"
                                         }
@@ -568,7 +567,7 @@ fn needle_hits(needle: &str, label: &str, extra: &str) -> bool {
 }
 
 fn save_pref(patch: serde_json::Value) {
-    spawn_local(async move {
+    spawn(async move {
         let _ = api::set_prefs(&patch).await;
     });
 }
