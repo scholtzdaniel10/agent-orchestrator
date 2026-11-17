@@ -279,7 +279,11 @@ async function shellCommand(command, client = main) {
   // A ConPTY repaint (after any resize) drops trailing spaces, so the prompt may end in ">" alone.
   await waitFor(`${output}?.match(/PS [^>]*>\\s*$/) && ${input}`, 'interactive PowerShell prompt', client, 30_000);
   await client.evaluate(`${input}.focus()`);
-  await client.call('Input.insertText', { text: command });
+  for (const char of command) {
+    await client.call('Input.dispatchKeyEvent', { type: 'keyDown', text: char, unmodifiedText: char, key: char });
+    await client.call('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
+    await delay(15);
+  }
   // Repaints and hard wraps can also move spaces around in the echo; compare without whitespace.
   await waitFor(`${output}?.replace(/\\s/g, '').includes(${JSON.stringify(command.replace(/\s/g, ''))})`, 'complete shell command echo', client);
   await key('Enter', 'Enter', 0, client);
@@ -617,7 +621,7 @@ async function pass(prefix, compact) {
     await uncoverTerminal();
     await shellCommand('echo clickthrough-ok');
     await waitFor(`/[\\r\\n]clickthrough-ok[\\r\\n]/.test(ctOutput.join('').replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g, ''))`, 'shell command output');
-    return 'Input.insertText + Enter; actual PTY output contains a standalone clickthrough-ok line.';
+    return 'Input.dispatchKeyEvent + Enter; actual PTY output contains a standalone clickthrough-ok line.';
   });
   for (const pane of inventory.panes) await step(`${prefix}-panes-${pane.id}`, async () => {
     await value('#pane-layout', pane.id);

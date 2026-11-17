@@ -83,6 +83,7 @@ test('shell input waits for the prompt and full command echo before Enter', asyn
     let echoPolls = 0;
     let entered = false;
     let pending = '';
+    const keys = [];
     globalThis.window = globalThis;
     globalThis.ctOutput = ['clickthrough-shell-ready\\r\\n'];
     globalThis.ct = { find: () => ({ focus: () => { focused = true; } }) };
@@ -94,20 +95,31 @@ test('shell input waits for the prompt and full command echo before Enter', asyn
         return result;
       },
       call: async (method, params) => {
-        if (method === 'Input.insertText') {
+        assert.equal(method, 'Input.dispatchKeyEvent');
+        if (params.key === 'Enter') {
+          if (params.type === 'keyDown') {
+            assert(ctOutput.join('').includes('echo clickthrough-ok'), 'Wait for the complete echo');
+            entered = true;
+          }
+        } else {
           assert(focused, 'The terminal must have focus');
-          assert(ctOutput.join('').endsWith('> '), 'Wait for an interactive prompt');
-          ctOutput.push('e');
-          pending = params.text.slice(1);
-        } else if (params.type === 'keyDown') {
-          assert(ctOutput.join('').includes('echo clickthrough-ok'), 'Wait for the complete echo');
-          entered = true;
+          keys.push([params.type, params.key]);
+          if (params.type === 'keyDown') {
+            assert.equal(params.key, params.text);
+            assert.equal(params.unmodifiedText, params.text);
+            assert.equal(params.text.length, 1);
+            if (keys.length === 1) {
+              assert(ctOutput.join('').endsWith('> '), 'Wait for an interactive prompt');
+              ctOutput.push(params.text);
+            } else pending += params.text;
+          }
         }
       },
     };
     await shellCommand('echo clickthrough-ok');
     assert(entered);
     assert(echoPolls >= 2);
+    assert.deepEqual(keys, [...'echo clickthrough-ok'].flatMap(key => [['keyDown', key], ['keyUp', key]]));
   `);
 });
 
@@ -116,6 +128,7 @@ test('a missing first character fails instead of executing the truncated shell c
   await app.run(`
     let clock = 0;
     let entered = false;
+    let typed = 0;
     Date = { now: () => clock += 1000 };
     globalThis.window = globalThis;
     globalThis.ctOutput = ['clickthrough-shell-ready\\r\\nPS fixture> '];
@@ -123,8 +136,9 @@ test('a missing first character fails instead of executing the truncated shell c
     main = {
       evaluate: async (expression) => eval(expression),
       call: async (method, params) => {
-        if (method === 'Input.insertText') ctOutput.push(params.text.slice(1));
-        else entered = true;
+        assert.equal(method, 'Input.dispatchKeyEvent');
+        if (params.key === 'Enter') entered = true;
+        else if (params.type === 'keyDown' && typed++ > 0) ctOutput.push(params.text);
       },
     };
     await assert.rejects(shellCommand('echo clickthrough-ok'), /Timed out waiting for complete shell command echo/);
@@ -144,8 +158,10 @@ test('wrapped PowerShell prompts and command echoes still reach Enter', async (t
     main = {
       evaluate: async (expression) => eval(expression),
       call: async (method, params) => {
-        if (method === 'Input.insertText') ctOutput.push('ec\\r\\nho clickthrough-\\r\\nok');
-        else if (params.type === 'keyDown') entered = true;
+        assert.equal(method, 'Input.dispatchKeyEvent');
+        if (params.type !== 'keyDown') return;
+        if (params.key === 'Enter') entered = true;
+        else ctOutput.push(params.text, '\\r\\n');
       },
     };
     await shellCommand('echo clickthrough-ok');
