@@ -578,12 +578,16 @@ async function pass(prefix, compact) {
     })()`);
   });
   const worktree = `clickthrough-${prefix}`;
+  await step(`${prefix}-worktree-cancel`, async () => {
+    await click('[aria-label="New worktree"]');
+    await click('.project-worktree-create button', 'Cancel');
+    await waitFor(`!${find('.project-worktree-create')}`, 'cancelled worktree form');
+  });
   await step(`${prefix}-worktree-create`, async () => {
     await click('[aria-label="New worktree"]');
     await value('[aria-label="New worktree name"]', worktree);
     assert.equal(await main.evaluate(`${find('select[aria-label="Start"]')}.value`), '', 'Worktree must start no agent');
-    await main.evaluate(`${find('[aria-label="New worktree name"]')}.focus()`);
-    await key('Enter');
+    await click('.project-worktree-create button', 'Create');
     await waitFor(find('.project-worktree-name', worktree), 'created worktree', main, 30_000);
   });
   await step(`${prefix}-shell-echo`, async () => {

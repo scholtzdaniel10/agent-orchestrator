@@ -4942,6 +4942,11 @@ button.job-step {
   font-size: 11px;
 }
 
+.project-worktree-create-actions {
+  display: flex;
+  gap: var(--space-8);
+}
+
 .project-worktree-create .project-worktree-rename,
 .project-worktree-create .project-worktree-task,
 .project-worktree-create .project-worktree-how input,

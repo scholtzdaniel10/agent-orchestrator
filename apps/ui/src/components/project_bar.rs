@@ -648,6 +648,13 @@ fn WorktreesSection(
             if creating() {
                 form {
                     class: "project-worktree-create",
+                    onkeydown: move |event| {
+                        if event.key().to_string() == "Escape" {
+                            event.prevent_default();
+                            event.stop_propagation();
+                            finish_create(false, &draft, &task, how_many(), &start, &mut creating, on_create);
+                        }
+                    },
                     onsubmit: move |event| {
                         event.prevent_default();
                         finish_create(true, &draft, &task, how_many(), &start, &mut creating, on_create);
@@ -705,6 +712,15 @@ fn WorktreesSection(
                                     option { value: "{id.as_str()}", "{worker_label(id)}" }
                                 }
                             }
+                        }
+                    }
+                    div { class: "project-worktree-create-actions",
+                        button { r#type: "submit", class: "btn btn-primary", "Create" }
+                        button {
+                            r#type: "button",
+                            class: "btn btn-quiet",
+                            onclick: move |_| finish_create(false, &draft, &task, how_many(), &start, &mut creating, on_create),
+                            "Cancel"
                         }
                     }
                 }
