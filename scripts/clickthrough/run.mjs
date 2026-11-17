@@ -309,9 +309,10 @@ async function shellCommand(command, client = main) {
   const input = find('.terminal-pane:not(.is-hidden) .xterm-helper-textarea');
   // A ConPTY repaint (after any resize) drops trailing spaces, so the prompt may end in ">" alone.
   await waitFor(`${output}?.match(/PS [^>]*>\\s*$/) && ${input}`, 'interactive PowerShell prompt', client, 30_000);
-  // PowerShell prints its first prompt before PSReadLine is reading keys; give it a moment.
-  await delay(1500);
   await client.evaluate(`${input}.focus()`);
+  // Focusing sends ConPTY a focus-in report (ESC[I); a key arriving on top of it is swallowed by
+  // the console's input parser on the CI image. A person pauses after clicking in; so do we.
+  await delay(1500);
   for (const char of command) {
     await client.call('Input.dispatchKeyEvent', { type: 'keyDown', text: char, unmodifiedText: char, key: char });
     await client.call('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
