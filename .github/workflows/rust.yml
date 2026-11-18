@@ -46,7 +46,7 @@ jobs:
         with:
           tool: wasm-bindgen-cli@0.2.130
       - name: Browser smoke tests (headless Chrome)
-        run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test -p legate-ui --target wasm32-unknown-unknown --test setup_smoke --locked
+        run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test -p legate-ui --target wasm32-unknown-unknown --test setup_smoke --test app_smoke --locked
 
   desktop:
     runs-on: windows-latest

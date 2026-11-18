@@ -8,54 +8,21 @@
 //! Runs in a headless browser: see "Browser tests" in CONTRIBUTING.md.
 #![cfg(target_arch = "wasm32")]
 
+mod common;
+
+use common::{
+    assert_no_app_panic, click, document, emit, install_bridge, listening, mount, settle, text_of,
+    wait_for,
+};
 use dioxus::prelude::*;
-use gloo_timers::future::TimeoutFuture;
 use legate_ui::components::SetupScreen;
 use legate_ui::logic::terminal_bus::create_terminal_bus;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::prelude::*;
+use serde_json::{Map, json};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-/// What the UI uses of `window.__TAURI__`: `core.invoke` and `event.listen`, which resolves to
-/// an unlisten function. `window.__legateTest` lets the test count listeners and emit events.
-const BRIDGE: &str = r#"
-const listeners = {};
-window.__legateTest = {
-  listening(name) { return (listeners[name] || []).length; },
-  emit(name, payload) {
-    for (const handler of [...(listeners[name] || [])]) handler({ event: name, id: 0, payload });
-  },
-};
-window.__TAURI__ = {
-  core: {
-    invoke(cmd) {
-      if (cmd === 'setup_status') return Promise.resolve([]);
-      return Promise.reject('The test bridge does not answer ' + cmd + '.');
-    },
-  },
-  event: {
-    listen(name, handler) {
-      (listeners[name] = listeners[name] || []).push(handler);
-      return Promise.resolve(() => {
-        const list = listeners[name] || [];
-        const at = list.indexOf(handler);
-        if (at >= 0) list.splice(at, 1);
-      });
-    },
-  },
-};
-"#;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__legateTest"], js_name = listening)]
-    fn listening(name: &str) -> u32;
-
-    #[wasm_bindgen(js_namespace = ["window", "__legateTest"], js_name = emit, catch)]
-    fn emit(name: &str, payload: JsValue) -> Result<(), JsValue>;
-}
+const ROOT: &str = "setup-smoke-root";
 
 #[component]
 fn Host() -> Element {
@@ -74,80 +41,33 @@ fn Host() -> Element {
     }
 }
 
-fn document() -> web_sys::Document {
-    web_sys::window()
-        .and_then(|window| window.document())
-        .expect("a document")
-}
-
-const ROOT_ID: &str = "setup-smoke-root";
-
-/// What the mounted app shows (not the runner's own page).
-fn page_text() -> String {
-    document()
-        .get_element_by_id(ROOT_ID)
-        .and_then(|root| root.text_content())
-        .unwrap_or_default()
-}
-
-fn button(label: &str) -> Option<web_sys::HtmlElement> {
-    let buttons = document().query_selector_all("button").ok()?;
-    (0..buttons.length())
-        .filter_map(|at| buttons.item(at))
-        .filter_map(|node| node.dyn_into::<web_sys::HtmlElement>().ok())
-        .find(|element| element.text_content().as_deref() == Some(label))
-}
-
-/// Waits up to five seconds for `ready`, then fails with `what`.
-async fn wait_for(what: &str, ready: impl Fn() -> bool) {
-    for _ in 0..250 {
-        if ready() {
-            return;
-        }
-        TimeoutFuture::new(20).await;
-    }
-    panic!(
-        "Timed out waiting for {what}. The page shows: {}",
-        page_text()
-    );
-}
-
 #[wasm_bindgen_test]
 async fn setup_opens_closes_and_ignores_later_terminal_updates() {
-    js_sys::Function::new_no_args(BRIDGE)
-        .call0(&JsValue::NULL)
-        .expect("the test bridge installs");
-    let root = document().create_element("div").expect("a root element");
-    root.set_id(ROOT_ID);
-    document()
-        .body()
-        .expect("a body")
-        .append_child(&root)
-        .expect("the root mounts");
-    dioxus::web::launch::launch_cfg(Host, dioxus::web::Config::new().rootelement(root));
+    let mut answers = Map::new();
+    answers.insert("setup_status".into(), json!([]));
+    install_bridge(answers);
+    mount(ROOT, Host);
 
-    wait_for("Setup to show when it last checked", || {
-        page_text().contains("Last check ")
+    wait_for(ROOT, "Setup to show when it last checked", || {
+        text_of(ROOT).contains("Last check ")
     })
     .await;
-    wait_for("Setup to listen for terminal updates", || {
+    wait_for(ROOT, "Setup to listen for terminal updates", || {
         listening("terminals:update") == 1
     })
     .await;
 
-    button("Skip for now")
-        .expect("a Skip for now button")
-        .click();
-    wait_for("Setup to close", || {
+    click(ROOT, ".setup-footer button", Some("Skip for now")).await;
+    wait_for(ROOT, "Setup to close", || {
         document().get_element_by_id("setup-closed").is_some()
     })
     .await;
-    wait_for("Setup to stop listening once closed", || {
+    wait_for(ROOT, "Setup to stop listening once closed", || {
         listening("terminals:update") == 0
     })
     .await;
 
-    let update = serde_json::json!({
+    let update = json!({
         "info": {
             "id": "term-1",
             "provider": "claude",
@@ -161,6 +81,7 @@ async fn setup_opens_closes_and_ignores_later_terminal_updates() {
     });
     let payload = serde_wasm_bindgen::to_value(&update).expect("the update converts");
     emit("terminals:update", payload).expect("a terminal update after Setup closed is harmless");
-    TimeoutFuture::new(50).await;
-    assert!(page_text().contains("Setup closed"));
+    settle().await;
+    assert_no_app_panic("the terminal update after Setup closed");
+    assert!(text_of(ROOT).contains("Setup closed"));
 }
