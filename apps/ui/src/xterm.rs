@@ -11,6 +11,11 @@ pub struct Cells {
     pub rows: f64,
 }
 
+#[derive(Deserialize)]
+struct Opened {
+    token: f64,
+}
+
 const XTERM_URL: manganis::Asset = manganis::asset!("/assets/vendor/xterm.mjs");
 const FIT_URL: manganis::Asset = manganis::asset!("/assets/vendor/addon-fit.mjs");
 const WEBGL_URL: manganis::Asset = manganis::asset!("/assets/vendor/addon-webgl.mjs");
@@ -22,6 +27,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = write, catch)]
     fn write_js(id: &str, data: &str) -> Result<(), JsValue>;
+
+    #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = replay, catch)]
+    async fn replay_js(id: &str, data: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = onData, catch)]
     fn on_data_js(id: &str, callback: &js_sys::Function) -> Result<(), JsValue>;
@@ -45,7 +53,7 @@ extern "C" {
     fn drop_webgl_js(id: &str) -> Result<(), JsValue>;
 
     #[wasm_bindgen(js_namespace = ["window", "legateXterm"], js_name = dispose, catch)]
-    fn dispose_js(id: &str) -> Result<(), JsValue>;
+    fn dispose_js(id: &str, token: f64) -> Result<(), JsValue>;
 }
 
 fn js_error(value: JsValue) -> String {
@@ -81,16 +89,23 @@ pub async fn ready() -> bool {
     false
 }
 
-pub async fn open(id: &str, element: &Element, font_size: f64) -> Result<Cells, String> {
+pub async fn open(id: &str, element: &Element, font_size: f64) -> Result<f64, String> {
     install_assets();
     if !ready().await {
         return Err("The terminal view has not loaded.".into());
     }
-    cells(open_js(id, element, font_size).await.map_err(js_error)?)
+    let value = open_js(id, element, font_size).await.map_err(js_error)?;
+    serde_wasm_bindgen::from_value::<Opened>(value)
+        .map(|opened| opened.token)
+        .map_err(|err| err.to_string())
 }
 
 pub fn write(id: &str, data: &str) -> Result<(), String> {
     write_js(id, data).map_err(js_error)
+}
+
+pub async fn replay(id: &str, data: &str) -> Result<(), String> {
+    replay_js(id, data).await.map(|_| ()).map_err(js_error)
 }
 
 pub fn on_data(id: &str, callback: impl FnMut(String) + 'static) {
@@ -124,6 +139,6 @@ pub fn drop_webgl(id: &str) -> Result<(), String> {
     drop_webgl_js(id).map_err(js_error)
 }
 
-pub fn dispose(id: &str) -> Result<(), String> {
-    dispose_js(id).map_err(js_error)
+pub fn dispose(id: &str, token: f64) -> Result<(), String> {
+    dispose_js(id, token).map_err(js_error)
 }

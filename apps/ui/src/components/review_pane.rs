@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 use legate_core::{ChangeSet, ChangedFile};
-use wasm_bindgen_futures::spawn_local;
 
 use super::files_panel::{DiffBlock, bridge_error};
 use crate::api;
@@ -45,7 +44,7 @@ pub fn ReviewPane(change: ChangeSet, on_close: Callback, on_done: Callback) -> E
         let n = ticket.get().saturating_add(1);
         ticket.set(n);
         let ticket = ticket.clone();
-        spawn_local(async move {
+        spawn(async move {
             let next = match api::change_diff(&id).await {
                 Ok(text) => Payload {
                     id: id.clone(),
@@ -218,7 +217,7 @@ fn merge_change(
     busy.set(true);
     action_error.set(None);
     merge_message.set(None);
-    spawn_local(async move {
+    spawn(async move {
         match api::merge_change(&id).await {
             Ok(result) => {
                 let message = if result.message.is_empty() {
@@ -253,7 +252,7 @@ fn discard_change(
     busy_flag.set(true);
     busy.set(true);
     action_error.set(None);
-    spawn_local(async move {
+    spawn(async move {
         match api::discard_change(&id).await {
             Ok(()) => on_done.call(()),
             Err(err) => action_error.set(Some(bridge_error(&err))),

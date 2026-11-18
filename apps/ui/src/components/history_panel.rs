@@ -7,7 +7,6 @@ use dioxus::prelude::*;
 use js_sys::Date;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::JsValue;
-use wasm_bindgen_futures::spawn_local;
 
 use super::files_panel::{DiffBlock, bridge_error, document_element};
 use crate::api;
@@ -194,7 +193,7 @@ pub fn HistoryPanel(r#where: Option<String>, label: String, refresh_key: String)
         let generation = log_ticket.get().saturating_add(1);
         log_ticket.set(generation);
         let log_ticket = log_ticket.clone();
-        spawn_local(async move {
+        spawn(async move {
             let result = api::commit_log(place.as_deref(), 0.0).await;
             if log_ticket.get() != generation {
                 return;
@@ -267,7 +266,7 @@ pub fn HistoryPanel(r#where: Option<String>, label: String, refresh_key: String)
         let generation = detail_ticket.get().saturating_add(1);
         detail_ticket.set(generation);
         let detail_ticket = detail_ticket.clone();
-        spawn_local(async move {
+        spawn(async move {
             let result = api::commit_detail(place.as_deref(), &hash).await;
             if detail_ticket.get() != generation {
                 return;
@@ -295,7 +294,7 @@ pub fn HistoryPanel(r#where: Option<String>, label: String, refresh_key: String)
         let generation = diff_ticket.get().saturating_add(1);
         diff_ticket.set(generation);
         let diff_ticket = diff_ticket.clone();
-        spawn_local(async move {
+        spawn(async move {
             let result = api::commit_file_diff(place.as_deref(), &hash, &path).await;
             if diff_ticket.get() != generation {
                 return;
@@ -677,7 +676,7 @@ fn load_more(
     }
     paging.set(true);
     let skip = prev.commits.len() as f64;
-    spawn_local(async move {
+    spawn(async move {
         match api::commit_log(place.as_deref(), skip).await {
             Ok(page) => {
                 let current = log.peek().clone().filter(|item| item.key == asked);

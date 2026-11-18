@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 use legate_core::{JobRecord, JobStatus, JobStep, JobStepStatus, StepTool};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::logic::agent_tabs::step_word;
@@ -106,7 +105,7 @@ fn EditedFilesCard(job: JobRecord) -> Element {
             let next = ticket.get() + 1;
             ticket.set(next);
             let ticket = ticket.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let result = api::change_diff(&id).await;
                 if ticket.get() != next {
                     return;

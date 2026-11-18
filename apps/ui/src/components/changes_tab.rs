@@ -7,7 +7,6 @@ use dioxus::prelude::*;
 use gloo_timers::callback::Timeout;
 use legate_core::{ChangeSet, ChangedFile, JobRecord, JobStatus, ProviderId, plan_of};
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
 
 use super::files_panel::{DiffLineList, bridge_error, document_element};
 use crate::api;
@@ -193,7 +192,7 @@ pub fn ChangesTab(
     });
 
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             let ok = api::github_available().await.unwrap_or(false);
             github_on.set(ok);
         });
@@ -481,6 +480,9 @@ fn ChangeOption(
             if setup == Some(legate_core::SetupState::Failed) {
                 span { class: "setup-failed", "setup failed" }
             }
+            if setup == Some(legate_core::SetupState::Stopped) {
+                span { class: "change-origin", "setup stopped" }
+            }
             if file_count == 0 {
                 span { class: "change-stats", "No changes yet" }
             } else {
@@ -558,7 +560,7 @@ fn DiffPane(id: String, tick: u32) -> Element {
         loading.set(true);
         error.set(None);
         let ticket = ticket.clone();
-        spawn_local(async move {
+        spawn(async move {
             match api::change_diff(&id).await {
                 Ok(next) => {
                     if ticket.get() == id_now {
@@ -620,7 +622,7 @@ fn merge_selected(
         .find(|job| job.change.as_deref() == Some(&id))
         .map(|job| job.prompt.clone())
         .unwrap_or_default();
-    spawn_local(async move {
+    spawn(async move {
         match api::merge_change(&id).await {
             Ok(result) => {
                 notice.set(Some(Notice {
@@ -666,7 +668,7 @@ fn discard_selected(
     busy_flag.set(true);
     busy.set(true);
     notice.set(None);
-    spawn_local(async move {
+    spawn(async move {
         match api::discard_change(&id).await {
             Ok(()) => {}
             Err(err) => notice.set(Some(Notice {
@@ -699,7 +701,7 @@ fn submit_pr(
     }
     pr_opening.set(true);
     pr_error.set(None);
-    spawn_local(async move {
+    spawn(async move {
         match api::github_open_pr(&title, &body).await {
             Ok(opened) => {
                 pr_url.set(Some(opened.url));

@@ -28,6 +28,12 @@ cargo clippy -p legate-desktop --all-targets --locked -- -D warnings
 cargo test -p legate-desktop --locked
 ```
 
+## Desktop click-through
+
+The Windows CI smoke test builds Legate and clicks through its screens over CDP, saving screenshots and an error report.
+Trigger it with `gh workflow run clickthrough.yml --ref <branch>` on a non-main branch, or push a `clickthrough/*` branch.
+Download the `desktop-clickthrough` artifact from the Actions run for `report.md`, `errors.json` and screenshots.
+
 ## Layout
 
 | Path | Role |

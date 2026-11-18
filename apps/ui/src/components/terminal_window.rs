@@ -1,3 +1,4 @@
+use dioxus::core::use_hook_with_cleanup;
 use dioxus::prelude::*;
 use legate_core::TerminalInfo;
 use wasm_bindgen::JsCast;
@@ -5,18 +6,19 @@ use wasm_bindgen_futures::spawn_local;
 
 use crate::api::{self, TerminalUpdate};
 use crate::components::terminal_pane::{PanePlacement, TerminalPane};
-use crate::state::use_store;
+use crate::state::{use_store, use_subscriptions};
 
 #[component]
 pub fn TerminalWindow(id: String) -> Element {
     let store = use_store();
     let mut info = use_signal(|| None::<TerminalInfo>);
     let mut missing = use_signal(|| false);
+    let subscriptions = use_subscriptions();
     let term_id = id.clone();
     let close_id = id.clone();
     use_effect(move || {
         let listed = term_id.clone();
-        spawn_local(async move {
+        spawn(async move {
             if let Ok(list) = api::list_terminals().await {
                 info.set(list.into_iter().find(|item| item.id == listed));
                 if info.read().is_none() {
@@ -25,8 +27,9 @@ pub fn TerminalWindow(id: String) -> Element {
             }
         });
         let watched = term_id.clone();
+        let subscriptions = subscriptions.clone();
         spawn_local(async move {
-            let _ = api::on_terminal_update(
+            let watched = api::watch_terminal_update(
                 move |TerminalUpdate {
                           info: next,
                           removed,
@@ -44,26 +47,41 @@ pub fn TerminalWindow(id: String) -> Element {
                 },
             )
             .await;
+            if let Ok(subscription) = watched {
+                subscriptions.hold(subscription);
+            }
         });
-        let closure =
-            wasm_bindgen::closure::Closure::wrap(Box::new(|event: web_sys::KeyboardEvent| {
-                if event.ctrl_key()
-                    && event.shift_key()
-                    && !event.alt_key()
-                    && (event.key() == "N" || event.key() == "n")
-                {
-                    event.prevent_default();
-                    spawn_local(async {
-                        let _ = api::new_window().await;
-                    });
-                }
-            }) as Box<dyn FnMut(_)>);
-        if let Some(window) = web_sys::window() {
-            let _ = window
-                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-        }
-        closure.forget();
     });
+    use_hook_with_cleanup(
+        || {
+            let closure =
+                wasm_bindgen::closure::Closure::wrap(Box::new(|event: web_sys::KeyboardEvent| {
+                    if event.ctrl_key()
+                        && event.shift_key()
+                        && !event.alt_key()
+                        && (event.key() == "N" || event.key() == "n")
+                    {
+                        event.prevent_default();
+                        spawn_local(async {
+                            let _ = api::new_window().await;
+                        });
+                    }
+                }) as Box<dyn FnMut(_)>);
+            if let Some(window) = web_sys::window() {
+                let _ = window
+                    .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+            }
+            std::rc::Rc::new(closure)
+        },
+        |closure| {
+            if let Some(window) = web_sys::window() {
+                let _ = window.remove_event_listener_with_callback(
+                    "keydown",
+                    closure.as_ref().as_ref().unchecked_ref(),
+                );
+            }
+        },
+    );
     let current = info.read().clone();
     let gone = missing();
     let bus = store.bus.read().clone();
@@ -81,7 +99,7 @@ pub fn TerminalWindow(id: String) -> Element {
                     on_activate: Callback::new(|_| {}),
                     on_close: Callback::new(move |_| {
                         let close_id = close_id.clone();
-                        spawn_local(async move { let _ = api::close_terminal(&close_id).await; });
+                        spawn(async move { let _ = api::close_terminal(&close_id).await; });
                     }),
                     own_window: true,
                 }

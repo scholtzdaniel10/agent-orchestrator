@@ -3,10 +3,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use dioxus::core::{Runtime, current_scope_id};
 use dioxus::prelude::*;
 use gloo_timers::callback::Interval;
 use legate_core::{TerminalInfo, TerminalStatus};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::logic::terminal_bus::{Detach, TerminalBus};
@@ -21,6 +21,7 @@ pub enum PanePlacement {
 
 struct Session {
     id: String,
+    token: f64,
     detach: Option<Detach>,
 }
 
@@ -29,7 +30,7 @@ impl Drop for Session {
         if let Some(detach) = self.detach.take() {
             detach.call();
         }
-        let _ = xterm::dispose(&self.id);
+        let _ = xterm::dispose(&self.id, self.token);
     }
 }
 
@@ -81,37 +82,49 @@ pub fn TerminalPane(
         if !visible || popped {
             return;
         }
-        spawn_local(async move {
+        spawn(async move {
+            let runtime = Runtime::current();
+            let scope = current_scope_id();
             let Some(element) = web_sys::window()
                 .and_then(|window| window.document())
                 .and_then(|document| document.get_element_by_id(&host))
             else {
                 return;
             };
-            if xterm::open(&term_id, &element, font).await.is_err() || Cell::get(&ticket) != next {
-                let _ = xterm::dispose(&term_id);
+            let Ok(token) = xterm::open(&term_id, &element, font).await else {
+                return;
+            };
+            let mut opened = Session {
+                id: term_id.clone(),
+                token,
+                detach: None,
+            };
+            if Cell::get(&ticket) != next {
                 return;
             }
-            let replaying = Rc::new(Cell::new(false));
-            let flag = replaying.clone();
             let write_id = term_id.clone();
             xterm::on_data(&term_id, move |data| {
-                if Cell::get(&flag) || data.is_empty() {
+                if data.is_empty() {
                     return;
                 }
                 let write_id = write_id.clone();
-                spawn_local(async move {
-                    let _ = api::write_terminal(&write_id, &data).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::write_terminal(&write_id, &data).await;
+                    })
                 });
             });
-            if restore && let Ok(snapshot) = api::terminal_snapshot(&term_id).await {
-                replaying.set(true);
-                let _ = xterm::write(&term_id, &snapshot);
-                replaying.set(false);
-                bus.forget(&term_id);
+            if restore {
+                let snapshot = api::terminal_snapshot(&term_id).await;
+                if Cell::get(&ticket) != next {
+                    return;
+                }
+                if let Ok(snapshot) = snapshot {
+                    bus.forget(&term_id);
+                    let _ = xterm::replay(&term_id, &snapshot).await;
+                }
             }
             if Cell::get(&ticket) != next {
-                let _ = xterm::dispose(&term_id);
                 return;
             }
             let sink_id = term_id.clone();
@@ -119,10 +132,8 @@ pub fn TerminalPane(
                 let _ = xterm::write(&sink_id, &chunk);
             });
             let _ = xterm::disable_stdin(&term_id, false);
-            session.set(Some(Session {
-                id: term_id,
-                detach: Some(detach),
-            }));
+            opened.detach = Some(detach);
+            session.set(Some(opened));
         });
     });
 
@@ -141,7 +152,7 @@ pub fn TerminalPane(
         *claim_key.borrow_mut() = watch;
         if visible && focused && !popped {
             let claim = id.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = api::claim_terminal(&claim).await;
                 if let Ok(cells) = xterm::fit(&claim) {
                     let _ = api::resize_terminal(&claim, cells.cols, cells.rows).await;
@@ -153,7 +164,7 @@ pub fn TerminalPane(
         if !Cell::get(&waking) {
             waking.set(true);
             let wake = id.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = api::wake_terminal(&wake, 80.0, 24.0).await;
             });
         }
@@ -167,6 +178,8 @@ pub fn TerminalPane(
     use_hook(move || {
         let fit_id = fit_id.clone();
         let fit_font = fit_font.clone();
+        let runtime = Runtime::current();
+        let scope = current_scope_id();
         Rc::new(Interval::new(700, move || {
             let wanted = prefs.read().terminal_font_size as f64;
             if (Cell::get(&fit_font) - wanted).abs() > 0.1
@@ -174,15 +187,19 @@ pub fn TerminalPane(
             {
                 fit_font.set(wanted);
                 let fit_id = fit_id.clone();
-                spawn_local(async move {
-                    let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                    })
                 });
                 return;
             }
             if let Ok(cells) = xterm::fit(&fit_id) {
                 let fit_id = fit_id.clone();
-                spawn_local(async move {
-                    let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                runtime.in_scope(scope, || {
+                    spawn(async move {
+                        let _ = api::resize_terminal(&fit_id, cells.cols, cells.rows).await;
+                    })
                 });
             }
         }))
@@ -215,7 +232,7 @@ pub fn TerminalPane(
                             onclick: move |event| {
                                 event.stop_propagation();
                                 let pop_id = pop_id.clone();
-                                spawn_local(async move {
+                                spawn(async move {
                                     let _ = api::pop_out_terminal(&pop_id).await;
                                 });
                             },
@@ -241,7 +258,7 @@ pub fn TerminalPane(
                         onclick: move |event| {
                             event.stop_propagation();
                             let pop_id = id.clone();
-                            spawn_local(async move {
+                            spawn(async move {
                                 let _ = api::pop_out_terminal(&pop_id).await;
                             });
                         },

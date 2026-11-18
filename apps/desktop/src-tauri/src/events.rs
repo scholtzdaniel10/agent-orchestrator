@@ -3,7 +3,7 @@
 use legate_app::AppEvent;
 use legate_core::{JobStatus, ProviderId};
 use serde::Serialize;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
 
 use crate::state::Shell;
@@ -74,9 +74,7 @@ fn maybe_notify(app: &tauri::AppHandle, shell: &Shell, job: &legate_core::JobRec
 }
 
 fn emit<T: Serialize + Clone>(app: &tauri::AppHandle, name: &str, payload: &T) {
-    for window in app.webview_windows().values() {
-        let _ = window.emit(name, payload);
-    }
+    let _ = app.emit(name, payload);
 }
 
 #[derive(Clone, Serialize)]

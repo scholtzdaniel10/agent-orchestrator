@@ -31,6 +31,20 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = observe)]
     fn observe(this: &JsResizeObserver, target: &web_sys::Element);
+
+    #[wasm_bindgen(method, js_name = disconnect)]
+    fn disconnect(this: &JsResizeObserver);
+}
+
+struct ResizeWatch {
+    observer: JsResizeObserver,
+    _callback: Closure<dyn FnMut()>,
+}
+
+impl Drop for ResizeWatch {
+    fn drop(&mut self) {
+        self.observer.disconnect();
+    }
 }
 
 #[component]
@@ -56,12 +70,12 @@ pub fn FlowView(
     let prev = use_hook(|| Rc::new(RefCell::new(None::<FlowSnapshot>)));
     let next_id = use_hook(|| Rc::new(Cell::new(1i64)));
     let prev_jobs = use_hook(|| Rc::new(RefCell::new(Vec::<JobRecord>::new())));
-    let watch = use_hook(|| Rc::new(Cell::new(false)));
+    let watch = use_hook(|| Rc::new(RefCell::new(None::<ResizeWatch>)));
     let clock = use_hook(|| Rc::new(Cell::new(0u64)));
     let subscriptions = use_subscriptions();
 
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             if let Ok(list) = api::list_lead_messages().await {
                 lead_local.set(list);
             }
@@ -91,7 +105,7 @@ pub fn FlowView(
             return;
         }
         let clock = clock.clone();
-        spawn_local(async move {
+        spawn(async move {
             while clock.get() == ticket {
                 gloo_timers::future::TimeoutFuture::new(1_000).await;
                 if clock.get() != ticket {
@@ -188,7 +202,7 @@ pub fn FlowView(
         let Some(root) = element("flow-root") else {
             return;
         };
-        if watch.get() {
+        if watch.borrow().is_some() {
             return;
         }
         let callback = Closure::wrap(Box::new(move || {
@@ -196,8 +210,10 @@ pub fn FlowView(
         }) as Box<dyn FnMut()>);
         let observer = JsResizeObserver::new(callback.as_ref().unchecked_ref());
         observer.observe(&root);
-        callback.forget();
-        watch.set(true);
+        *watch.borrow_mut() = Some(ResizeWatch {
+            observer,
+            _callback: callback,
+        });
     });
 
     let flow_class = if across_now { "flow is-across" } else { "flow" };
@@ -250,7 +266,7 @@ fn Topology(
     across: bool,
 ) -> Element {
     let mut menu = use_signal(|| None::<(ProviderId, f64, f64)>);
-    let wired = use_hook(|| Rc::new(Cell::new(false)));
+    let wired = use_hook(|| Rc::new(RefCell::new(None::<ResizeWatch>)));
     let mut stamp = use_signal(String::new);
     let mark = topo_stamp(
         &jobs,
@@ -269,7 +285,7 @@ fn Topology(
         let _ = stamp();
         if let Some(root) = element("flow-topo") {
             draw_wires(&root);
-            if !wired.get() {
+            if wired.borrow().is_none() {
                 let callback = Closure::wrap(Box::new(|| {
                     if let Some(root) = element("flow-topo") {
                         draw_wires(&root);
@@ -277,8 +293,10 @@ fn Topology(
                 }) as Box<dyn FnMut()>);
                 let observer = JsResizeObserver::new(callback.as_ref().unchecked_ref());
                 observer.observe(&root);
-                callback.forget();
-                wired.set(true);
+                *wired.borrow_mut() = Some(ResizeWatch {
+                    observer,
+                    _callback: callback,
+                });
             }
         }
     });

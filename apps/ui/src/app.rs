@@ -260,7 +260,7 @@ pub fn App() -> Element {
                             class: "btn btn-quiet btn-compact",
                             r#type: "button",
                             title: "New window",
-                            onclick: move |_| spawn_local(async move { let _ = api::new_window().await; }),
+                            onclick: move |_| { spawn(async move { let _ = api::new_window().await; }); },
                             "New window"
                         }
                         button {
@@ -353,26 +353,26 @@ pub fn App() -> Element {
                                     create_worktrees(store, name, count, start, prompt);
                                 }),
                                 on_rename_worktree: Callback::new(move |(id, name): (String, String)| {
-                                    spawn_local(async move { let _ = api::rename_worktree(&id, &name).await; });
+                                    spawn(async move { let _ = api::rename_worktree(&id, &name).await; });
                                 }),
                                 on_discard_worktree: Callback::new(move |id: String| {
-                                    spawn_local(async move { let _ = api::discard_change(&id).await; });
+                                    spawn(async move { let _ = api::discard_change(&id).await; });
                                 }),
                                 on_open_in_worktree: Callback::new(move |(provider, worktree): (ProviderId, Option<String>)| {
                                     open_terminal(store, provider.as_str().into(), worktree, None);
                                 }),
                                 on_reveal: Callback::new(move |worktree: Option<String>| {
-                                    spawn_local(async move { let _ = api::reveal_folder(worktree.as_deref()).await; });
+                                    spawn(async move { let _ = api::reveal_folder(worktree.as_deref()).await; });
                                 }),
                                 on_reveal_project: Callback::new(move |path: String| {
-                                    spawn_local(async move { let _ = api::reveal_project(&path).await; });
+                                    spawn(async move { let _ = api::reveal_project(&path).await; });
                                 }),
                                 on_open_settings: Callback::new(move |_| settings_open.set(true)),
                                 on_new_task: Callback::new(move |_| task_open.set(true)),
                                 on_open_goals: Callback::new(move |_| open_tab(layout, store, DrawerTab::Goals)),
                                 on_open_automations: Callback::new(move |_| {
                                     open_tab(layout, store, DrawerTab::Goals);
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         gloo_timers::future::TimeoutFuture::new(50).await;
                                         if let Some(node) = document().and_then(|doc| doc.query_selector(".goal-triggers").ok().flatten()) {
                                             node.scroll_into_view();
@@ -750,7 +750,7 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
             mode: *store.lead_mode.read(),
             settings_nonce: *store.settings_nonce.read(),
             on_reset: Callback::new(move |direct: Option<ProviderId>| {
-                spawn_local(async move {
+                spawn(async move {
                     let _ = api::reset_lead(direct).await;
                     if let Ok(list) = api::list_lead_messages().await {
                         store.messages.set(list);
@@ -771,7 +771,7 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
                 store.drawer_open.set(true);
             }),
             on_run_plan: Callback::new(move |(id, jobs): (String, Vec<legate_core::ProposedJob>)| {
-                spawn_local(async move {
+                spawn(async move {
                     let _ = api::run_lead_proposal(&id, Some(&jobs)).await;
                 });
             }),
@@ -1311,7 +1311,7 @@ fn create_worktrees(
     prompt: Option<String>,
 ) {
     let count = count.clamp(1, 6);
-    spawn_local(async move {
+    spawn(async move {
         let mut made = Vec::new();
         for index in 1..=count {
             let named = match &name {
@@ -1395,7 +1395,7 @@ fn begin_project_switch(mut store: Store, layout: Signal<LayoutState>) -> u64 {
 
 fn choose_project(mut store: Store, layout: Signal<LayoutState>) {
     let generation = begin_project_switch(store, layout);
-    spawn_local(async move {
+    spawn(async move {
         let result = api::choose_project().await;
         if (store.project_request)() != generation {
             return;
@@ -1418,7 +1418,7 @@ fn switch_project(
     worktree: Option<String>,
 ) {
     let generation = begin_project_switch(store, layout);
-    spawn_local(async move {
+    spawn(async move {
         let result = api::switch_project(&path).await;
         if (store.project_request)() != generation {
             return;
@@ -1440,7 +1440,7 @@ fn switch_project(
 }
 
 fn remove_project(mut store: Store, path: String) {
-    spawn_local(async move {
+    spawn(async move {
         if let Err(text) = api::remove_project(&path).await {
             store.error.set(Some(text));
             return;
@@ -1526,7 +1526,7 @@ async fn adopt(mut store: Store, layout: Signal<LayoutState>, info: ProjectInfo)
 
 fn refresh_projects(store: Store, layout: Signal<LayoutState>) {
     let generation = begin_project_switch(store, layout);
-    spawn_local(async move {
+    spawn(async move {
         if let Ok(info) = api::get_project().await
             && (store.project_request)() == generation
         {
@@ -1542,7 +1542,7 @@ fn open_terminal(
     prompt: Option<String>,
 ) {
     store.opening.set(true);
-    spawn_local(async move {
+    spawn(async move {
         let _ = open_terminal_now(store, &provider, worktree.as_deref(), prompt.as_deref()).await;
         store.opening.set(false);
     });
@@ -1553,7 +1553,7 @@ fn open_chat(mut store: Store, layout: Signal<LayoutState>, id: String) {
         return;
     }
     let generation = *store.project_request.read();
-    spawn_local(async move {
+    spawn(async move {
         let result = api::open_lead_chat(&id).await;
         if *store.project_request.read() != generation {
             return;
@@ -1580,7 +1580,7 @@ fn reset_chat(mut store: Store, layout: Signal<LayoutState>) {
         return;
     }
     let generation = *store.project_request.read();
-    spawn_local(async move {
+    spawn(async move {
         let result = api::reset_lead(None).await;
         if *store.project_request.read() != generation {
             return;
@@ -1605,13 +1605,13 @@ fn reset_chat(mut store: Store, layout: Signal<LayoutState>) {
 }
 
 fn rename_chat(id: String, title: String) {
-    spawn_local(async move {
+    spawn(async move {
         let _ = api::rename_lead_chat(&id, &title).await;
     });
 }
 
 fn remove_chat(mut store: Store, id: String) {
-    spawn_local(async move {
+    spawn(async move {
         let _ = api::remove_lead_chat(&id).await;
         if let Ok(chats) = api::list_lead_chats().await {
             store.chats.set(chats);

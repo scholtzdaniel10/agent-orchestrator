@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
 use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, VersionStatus};
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
@@ -28,7 +27,7 @@ pub fn UsageMeter(
     let mut checking = use_signal(|| false);
     let mut refresh_error = use_signal(|| None::<String>);
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             match api::refresh_usage().await {
                 Ok(result) if !result.ok => refresh_error.set(result.error),
                 Err(text) => refresh_error.set(Some(text)),
@@ -93,7 +92,7 @@ pub fn UsageMeter(
                                                         onclick: move |_| {
                                                             if checking() { return; }
                                                             checking.set(true);
-                                                            spawn_local(async move {
+                                                            spawn(async move {
                                                                 let _ = api::recheck_plans().await;
                                                                 checking.set(false);
                                                             });
@@ -218,7 +217,7 @@ fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
                         saving.set(true);
                         message.set(None);
                         let when = crate::logic::usage_format::date_from_value(&reset()).unwrap_or(now);
-                        spawn_local(async move {
+                        spawn(async move {
                             let result = api::set_cursor_reading(percent, when as f64).await;
                             message.set(Some(match result {
                                 Ok(result) if result.ok => "Reading saved.".into(),

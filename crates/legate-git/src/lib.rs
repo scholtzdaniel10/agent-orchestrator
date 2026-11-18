@@ -3,7 +3,8 @@
 //! Git commands go through the git CLI. A refresh uses one
 //! `git status --porcelain=v2 -z`, one `git worktree list --porcelain`,
 //! and one `git diff --numstat -z` per worktree. Independent commands run
-//! concurrently, and a worker thread never blocks on a child process.
+//! concurrently across worktrees; commands within a worktree are serialized.
+//! Read commands disable optional index locks, and a worker thread never blocks on a child process.
 
 mod changes;
 mod cmd;

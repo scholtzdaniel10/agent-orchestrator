@@ -10,7 +10,6 @@ use legate_core::{
 };
 use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
@@ -191,7 +190,7 @@ pub fn ProjectBar(
                             repos_loading.set(true);
                         }
                         github_open.set(true);
-                        spawn_local(async move {
+                        spawn(async move {
                             let mut repos = repos;
                             let mut repos_loading = repos_loading;
                             match api::github_repos().await {
@@ -224,7 +223,7 @@ pub fn ProjectBar(
                             return;
                         }
                         cloning.set(Some(name.clone()));
-                        spawn_local(async move {
+                        spawn(async move {
                             match api::github_clone(&name).await {
                                 Ok(Some(_)) => {
                                     cloning.set(None);
@@ -648,6 +647,13 @@ fn WorktreesSection(
             if creating() {
                 form {
                     class: "project-worktree-create",
+                    onkeydown: move |event| {
+                        if event.key().to_string() == "Escape" {
+                            event.prevent_default();
+                            event.stop_propagation();
+                            finish_create(false, &draft, &task, how_many(), &start, &mut creating, on_create);
+                        }
+                    },
                     onsubmit: move |event| {
                         event.prevent_default();
                         finish_create(true, &draft, &task, how_many(), &start, &mut creating, on_create);
@@ -705,6 +711,15 @@ fn WorktreesSection(
                                     option { value: "{id.as_str()}", "{worker_label(id)}" }
                                 }
                             }
+                        }
+                    }
+                    div { class: "project-worktree-create-actions",
+                        button { r#type: "submit", class: "btn btn-primary", "Create" }
+                        button {
+                            r#type: "button",
+                            class: "btn btn-quiet",
+                            onclick: move |_| finish_create(false, &draft, &task, how_many(), &start, &mut creating, on_create),
+                            "Cancel"
                         }
                     }
                 }
@@ -964,6 +979,8 @@ fn WorktreeRow(
                                     span { "setting up…" }
                                 } else if item.setup == Some(legate_core::SetupState::Failed) {
                                     span { class: "setup-failed", "setup failed" }
+                                } else if item.setup == Some(legate_core::SetupState::Stopped) {
+                                    span { "setup stopped" }
                                 }
                                 if item.files.is_empty() {
                                     span { "no changes yet" }
@@ -1652,7 +1669,7 @@ fn project_entries(
         "Copy path",
         Callback::new(move |_| {
             let copy_path = copy_path.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = copy_text(&copy_path).await;
             });
         }),
@@ -1783,7 +1800,7 @@ fn worktree_menu(
         "Copy path",
         Callback::new(move |_| {
             let copy = copy.clone();
-            spawn_local(async move {
+            spawn(async move {
                 let _ = copy_text(&copy).await;
             });
         }),
@@ -1794,7 +1811,7 @@ fn worktree_menu(
             "Copy branch name",
             Callback::new(move |_| {
                 let branch = branch.clone();
-                spawn_local(async move {
+                spawn(async move {
                     let _ = copy_text(&branch).await;
                 });
             }),

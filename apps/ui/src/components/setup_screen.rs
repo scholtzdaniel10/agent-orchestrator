@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use dioxus::core::{Runtime, current_scope_id, use_hook_with_cleanup};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
@@ -20,12 +21,14 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
     let mut sign_ins = use_signal(Vec::<(String, legate_core::TerminalInfo)>::new);
     let mut error = use_signal(|| None::<String>);
     let subscriptions = use_subscriptions();
+    let scope = current_scope_id();
 
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             load(rows, checked_at, checking, error).await;
         });
         let subscriptions = subscriptions.clone();
+        let runtime = Runtime::current();
         spawn_local(async move {
             let watched = api::watch_terminal_update(move |TerminalUpdate { info, removed }| {
                 let found = sign_ins.read().iter().any(|(_, term)| term.id == info.id);
@@ -34,8 +37,10 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                 }
                 if removed {
                     sign_ins.with_mut(|list| list.retain(|(_, term)| term.id != info.id));
-                    spawn_local(async move {
-                        load(rows, checked_at, checking, error).await;
+                    runtime.in_scope(scope, || {
+                        spawn(async move {
+                            load(rows, checked_at, checking, error).await;
+                        })
                     });
                     return;
                 }
@@ -46,8 +51,10 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                     }
                 });
                 if exited {
-                    spawn_local(async move {
-                        load(rows, checked_at, checking, error).await;
+                    runtime.in_scope(scope, || {
+                        spawn(async move {
+                            load(rows, checked_at, checking, error).await;
+                        })
                     });
                 }
             })
@@ -61,22 +68,33 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
     let ready = rows.read().as_ref().is_some_and(|list| can_work(list));
     let ready_flag = use_hook(|| Rc::new(Cell::new(false)));
     ready_flag.set(ready);
-    use_hook(move || {
-        let on_close = on_close;
-        let ready_flag = ready_flag.clone();
-        let closure =
-            wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-                if event.key() == "Escape" && ready_flag.get() {
-                    event.prevent_default();
-                    on_close.call(());
-                }
-            }) as Box<dyn FnMut(_)>);
-        if let Some(window) = web_sys::window() {
-            let _ = window
-                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-        }
-        closure.forget();
-    });
+    use_hook_with_cleanup(
+        move || {
+            let on_close = on_close;
+            let ready_flag = ready_flag.clone();
+            let closure = wasm_bindgen::closure::Closure::wrap(Box::new(
+                move |event: web_sys::KeyboardEvent| {
+                    if event.key() == "Escape" && ready_flag.get() {
+                        event.prevent_default();
+                        on_close.call(());
+                    }
+                },
+            ) as Box<dyn FnMut(_)>);
+            if let Some(window) = web_sys::window() {
+                let _ = window
+                    .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+            }
+            Rc::new(closure)
+        },
+        |closure| {
+            if let Some(window) = web_sys::window() {
+                let _ = window.remove_event_listener_with_callback(
+                    "keydown",
+                    closure.as_ref().as_ref().unchecked_ref(),
+                );
+            }
+        },
+    );
 
     let list = rows.read().clone();
     let sign = sign_ins.read().clone();
@@ -129,7 +147,7 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                                                         onclick: move |_| {
                                                             let command = command.clone();
                                                             let row_id = row_id;
-                                                            spawn_local(async move {
+                                                            spawn(async move {
                                                                 if copy_text(&command).await {
                                                                     copied.set(Some(row_id));
                                                                 }
@@ -148,7 +166,7 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                                                     class: "btn btn-primary",
                                                     onclick: move |_| {
                                                         let name = name.to_string();
-                                                        spawn_local(async move {
+                                                        spawn(async move {
                                                             match api::setup_sign_in(&name).await {
                                                                 Ok(info) => {
                                                                     sign_ins.with_mut(|list| list.push((name, info)));
@@ -175,7 +193,7 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                                                             on_close: Callback::new(move |_| {
                                                                 let id = term.id.clone();
                                                                 sign_ins.with_mut(|list| list.retain(|(_, item)| item.id != id));
-                                                                spawn_local(async move { let _ = api::close_terminal(&id).await; });
+                                                                spawn(async move { let _ = api::close_terminal(&id).await; });
                                                             }),
                                                         }
                                                     }
@@ -192,7 +210,7 @@ pub fn SetupScreen(bus: TerminalBus, on_close: Callback, on_skip: Callback) -> E
                             class: "btn btn-quiet",
                             disabled: busy,
                             onclick: move |_| {
-                                spawn_local(async move { load(rows, checked_at, checking, error).await; });
+                                spawn(async move { load(rows, checked_at, checking, error).await; });
                             },
                             if busy { "Checking…" } else { "Re-check" }
                         }

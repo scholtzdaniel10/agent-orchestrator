@@ -505,6 +505,7 @@ pub struct ChangedFile {
 #[serde(rename_all = "lowercase")]
 pub enum SetupState {
     Running,
+    Stopped,
     Failed,
     Done,
 }

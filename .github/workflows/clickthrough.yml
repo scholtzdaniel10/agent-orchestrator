@@ -1,0 +1,156 @@
+name: Desktop click-through
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'clickthrough/**'
+
+permissions:
+  contents: read
+
+jobs:
+  clickthrough:
+    if: github.ref != 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare failure artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force clickthrough-out | Out-Null
+          @'
+          # Desktop click-through
+
+          | Step | Result | Notes |
+          | --- | --- | --- |
+          | CI preparation | FAIL | CI stopped before the click-through could write its report. See the job log. |
+          '@ | Set-Content clickthrough-out/report.md
+          '[{"source":"workflow","message":"CI stopped before the click-through could run. See the job log."}]' | Set-Content clickthrough-out/errors.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: dioxus-cli@0.7.10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Build embedded frontend
+        working-directory: apps/ui
+        run: dx build --release --platform web
+      - name: Build shipped desktop shell
+        run: cargo build -p legate-desktop --release --locked
+      - name: Click through desktop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fixture = Join-Path $env:RUNNER_TEMP 'clickthrough-fixture'
+          $env:LEGATE_DATA = Join-Path $env:RUNNER_TEMP 'clickthrough-data'
+          $env:ORCH_WORKTREES = Join-Path $env:RUNNER_TEMP 'clickthrough-worktrees'
+          New-Item -ItemType Directory -Path $fixture, $env:LEGATE_DATA, $env:ORCH_WORKTREES | Out-Null
+          'clickthrough fixture content' | Set-Content (Join-Path $fixture 'README.md')
+          'fixture notes' | Set-Content (Join-Path $fixture 'notes.txt')
+          git -C $fixture init --initial-branch=main
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture init failed' }
+          git -C $fixture -c user.name=CI -c user.email=ci@example.invalid add README.md notes.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture add failed' }
+          git -C $fixture -c user.name=CI -c user.email=ci@example.invalid commit -m 'Clickthrough fixture'
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture commit failed' }
+          # session::resolve_project uses ORCH_CWD when fresh settings have no project.
+          $env:ORCH_CWD = $fixture
+          # Port 0: WebView2 picks a free port and writes it to DevToolsActivePort in its user data folder.
+          # Tauri always passes its own browser arguments, so ask for debugging three ways, in order.
+          $debugArgs = '--remote-debugging-port=0'
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $debugArgs
+          $policy = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+          New-Item -Path $policy -Force | Out-Null
+          New-ItemProperty -Path $policy -Name 'legate.exe' -Value $debugArgs -PropertyType String -Force | Out-Null
+          $webviewData = Join-Path $env:LOCALAPPDATA 'dev.legate.app'
+          $out = Join-Path $env:GITHUB_WORKSPACE 'clickthrough-out'
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'target/release/legate.exe'
+          function Start-Legate($tag) {
+            Start-Process -FilePath $exe -WorkingDirectory $fixture -PassThru `
+              -RedirectStandardOutput (Join-Path $out "$tag-stdout.txt") -RedirectStandardError (Join-Path $out "$tag-stderr.txt")
+          }
+          function Wait-Cdp($proc) {
+            $deadline = [DateTime]::UtcNow.AddSeconds(60)
+            $cdp = $null
+            while ([DateTime]::UtcNow -lt $deadline) {
+              if ($proc.HasExited) { throw "Legate exited before CDP was ready: $($proc.ExitCode)" }
+              if (-not $cdp) {
+                $portFile = Get-ChildItem $webviewData -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($portFile) { $cdp = "http://127.0.0.1:$((Get-Content $portFile.FullName -TotalCount 1).Trim())" }
+              }
+              if ($cdp) {
+                $raw = curl.exe -s --noproxy '*' --max-time 5 "$cdp/json/list"
+                if ($LASTEXITCODE -eq 0 -and $raw) {
+                  $pages = @(($raw | ConvertFrom-Json) | Where-Object {
+                    $_.type -eq 'page' -and $_.webSocketDebuggerUrl -and
+                    ($_.title -eq 'Legate' -or $_.url -match '^https?://tauri\.localhost|^tauri://localhost')
+                  })
+                  if ($pages.Count -gt 0) { return $cdp }
+                }
+              }
+              Start-Sleep -Milliseconds 500
+            }
+            return $null
+          }
+          function Save-Diagnostics($tag) {
+            Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='legate.exe'" |
+              Select-Object ProcessId, ParentProcessId, CommandLine | Format-List | Out-String -Width 4000 |
+              Set-Content (Join-Path $out "$tag-processes.txt")
+            netstat -ano | Select-String 'LISTENING' | Out-String | Set-Content (Join-Path $out "$tag-listening.txt")
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $shot = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            [System.Drawing.Graphics]::FromImage($shot).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $shot.Save((Join-Path $out "$tag-desktop.png"))
+          }
+          $app = $null
+          try {
+            $app = Start-Legate 'env-and-policy'
+            $cdp = Wait-Cdp $app
+            if (-not $cdp) {
+              Save-Diagnostics 'env-and-policy'
+              taskkill.exe /PID $app.Id /T /F | Out-Null
+              Start-Sleep -Seconds 2
+              Remove-Item -Recurse -Force (Join-Path $webviewData 'EBWebView') -ErrorAction SilentlyContinue
+              # Last resort: a CI-only build whose main window carries the debugging argument itself.
+              $env:TAURI_CONFIG = '{"app":{"windows":[{"label":"main","title":"Legate","width":1400,"height":820,"resizable":true,"visible":true,"additionalBrowserArgs":"--remote-debugging-port=0 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"}]}}'
+              cargo build -p legate-desktop --release --locked
+              if ($LASTEXITCODE -ne 0) { throw 'CI debug build failed' }
+              'Attached through a CI-only build (TAURI_CONFIG additionalBrowserArgs); env var and policy were ignored.' |
+                Set-Content (Join-Path $out 'cdp-method.txt')
+              $app = Start-Legate 'tauri-config'
+              $cdp = Wait-Cdp $app
+              if (-not $cdp) { Save-Diagnostics 'tauri-config'; throw 'Timed out waiting for the Legate CDP page' }
+            } else {
+              'Attached through WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS and/or the WebView2 policy key.' |
+                Set-Content (Join-Path $out 'cdp-method.txt')
+            }
+            $env:LEGATE_CDP = $cdp
+            node --check scripts/clickthrough/run.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'Script syntax check failed' }
+            node --test scripts/clickthrough/run.test.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'Script regression tests failed' }
+            node scripts/clickthrough/run.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'Desktop click-through failed; see the artifact report' }
+          } catch {
+            $_ | Out-String | Set-Content clickthrough-out/runner-error.txt
+            throw
+          } finally {
+            if ($null -ne $app -and -not $app.HasExited) {
+              taskkill.exe /PID $app.Id /T /F | Out-Null
+            }
+          }
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-clickthrough
+          path: clickthrough-out/
+          if-no-files-found: error

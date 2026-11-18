@@ -33,7 +33,7 @@ pub fn GoalsPanel(
     let subscriptions = use_subscriptions();
 
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             match api::list_goals().await {
                 Ok(list) => goals.set(Some(list)),
                 Err(err) => error.set(Some(error_text(&err))),
@@ -575,7 +575,7 @@ fn TriggersSection() -> Element {
     let subscriptions = use_subscriptions();
 
     use_effect(move || {
-        spawn_local(async move {
+        spawn(async move {
             if let Ok(list) = api::list_triggers().await {
                 triggers.set(list);
             }
@@ -842,7 +842,7 @@ fn run_act(
     cell.set(true);
     busy.set(true);
     error.set(None);
-    spawn_local(async move {
+    spawn(async move {
         if let Err(err) = task.await {
             error.set(Some(error_text(&err)));
         }

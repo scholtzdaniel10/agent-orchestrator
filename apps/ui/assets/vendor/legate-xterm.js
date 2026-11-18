@@ -1,4 +1,5 @@
 const sessions = new Map()
+let nextToken = 0
 
 function theme() {
   const style = getComputedStyle(document.documentElement)
@@ -24,6 +25,8 @@ window.legateXterm = {
     const { Terminal } = await import(urls.xterm)
     const { FitAddon } = await import(urls.fit)
     const { WebglAddon } = await import(urls.webgl)
+    if (!element.isConnected) throw new Error('That terminal view has closed.')
+    window.legateXterm.dispose(id)
     const term = new Terminal({
       fontFamily: '"JetBrains Mono", "Cascadia Mono", Consolas, monospace',
       fontSize: fontSize || 13,
@@ -61,16 +64,29 @@ window.legateXterm = {
       webgl = null
     }
     fit.fit()
-    sessions.set(String(id), { term, fit, webgl, data: null })
-    return { cols: term.cols, rows: term.rows }
+    const token = ++nextToken
+    sessions.set(String(id), { token, term, fit, webgl, data: null, replaying: false })
+    return { cols: term.cols, rows: term.rows, token }
   },
   write(id, data) {
     session(id).term.write(data)
   },
+  replay(id, data) {
+    const current = session(id)
+    current.replaying = true
+    return new Promise((resolve) => {
+      current.term.write(data, () => {
+        current.replaying = false
+        resolve()
+      })
+    })
+  },
   onData(id, callback) {
     const current = session(id)
     if (current.data !== null) current.data.dispose()
-    current.data = current.term.onData((data) => callback(data))
+    current.data = current.term.onData((data) => {
+      if (!current.replaying) callback(data)
+    })
   },
   fit(id) {
     const current = session(id)
@@ -99,9 +115,9 @@ window.legateXterm = {
       current.webgl = null
     }
   },
-  dispose(id) {
+  dispose(id, token) {
     const current = sessions.get(String(id))
-    if (current === undefined) return
+    if (current === undefined || (token !== undefined && current.token !== token)) return
     if (current.data !== null) current.data.dispose()
     if (current.webgl !== null) current.webgl.dispose()
     current.term.dispose()

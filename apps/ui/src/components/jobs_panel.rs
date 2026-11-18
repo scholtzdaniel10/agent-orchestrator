@@ -9,7 +9,6 @@ use legate_core::{
     is_provider_id, plan_of,
 };
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
 
 use super::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption, error_text};
 use super::job_steps::JobSteps;
@@ -528,7 +527,7 @@ fn merge_column(
     merging_ref.set(true);
     merging.set(true);
     let merging_ref = merging_ref.clone();
-    spawn_local(async move {
+    spawn(async move {
         match api::merge_change(&change_id).await {
             Ok(result) if !result.ok => {
                 messages.with_mut(|map| {
@@ -582,7 +581,7 @@ fn launch_submit(
     submitting.set(true);
     submit_error.set(None);
     let check_text = check();
-    spawn_local(async move {
+    spawn(async move {
         let outcome = submit_body(
             &text,
             &check_text,
@@ -693,7 +692,7 @@ fn stop_job(
     }
     stopping.set(true);
     stopping_id.set(Some(id.clone()));
-    spawn_local(async move {
+    spawn(async move {
         match api::cancel_job(&id).await {
             Ok(job) => {
                 on_job.call(job);

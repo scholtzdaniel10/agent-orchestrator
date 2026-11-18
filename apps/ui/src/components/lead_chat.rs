@@ -8,7 +8,6 @@ use legate_core::{
     LeadStatus, ModelOption, PROVIDERS, PlanStatus, ProposalStatus, ProposedJob, ProviderId,
     is_provider_id, plan_of,
 };
-use wasm_bindgen_futures::spawn_local;
 
 use super::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption, error_text};
 use super::lead_plan::LeadPlan;
@@ -96,7 +95,7 @@ pub fn LeadChat(
             let picked = picked.clone();
             let choice_ref = choice_ref.clone();
             let plan_ticket = load_ticket.clone();
-            spawn_local(async move {
+            spawn(async move {
                 match api::get_lead_plan().await {
                     Ok(plan) => {
                         if plan_ticket.get() != ticket || (picked.get() && !fresh) {
@@ -117,7 +116,7 @@ pub fn LeadChat(
             });
             let access_ticket = load_ticket.clone();
             let access_ref = access_ref.clone();
-            spawn_local(async move {
+            spawn(async move {
                 match api::get_lead_access().await {
                     Ok(access) => {
                         if access_ticket.get() != ticket {
@@ -151,7 +150,7 @@ pub fn LeadChat(
             let ticket = model_ticket.get() + 1;
             model_ticket.set(ticket);
             let model_ticket = model_ticket.clone();
-            spawn_local(async move {
+            spawn(async move {
                 match tokio_join_models(provider).await {
                     Ok((options, value)) => {
                         if model_ticket.get() == ticket {
@@ -283,7 +282,7 @@ pub fn LeadChat(
                                     choice.set(value.clone());
                                     plan_error.set(None);
                                     let choice_ref = choice_ref.clone();
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         let plan = if value == "auto" { None } else { ProviderId::parse(&value) };
                                         if let Err(err) = api::set_lead_plan(plan).await
                                             && choice_ref.borrow().as_str() == value
@@ -317,7 +316,7 @@ pub fn LeadChat(
                                         value: value.clone(),
                                     }));
                                     model_error.set(None);
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         if let Err(err) = api::set_lead_model(plan, value.as_deref()).await {
                                             model_error.set(Some(error_text(&err)));
                                         }
@@ -347,7 +346,7 @@ pub fn LeadChat(
                                     worker_access.set(value);
                                     plan_error.set(None);
                                     let access_ref = access_ref.clone();
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         if let Err(err) = api::set_lead_access(value).await
                                             && access_ref.get() == value
                                         {
@@ -486,7 +485,7 @@ fn launch_send(
     draft.set(String::new());
     crate::logic::project_workspace::write(&project, "draft", &String::new());
     send_error.set(None);
-    spawn_local(async move {
+    spawn(async move {
         let result = api::send_lead(&text).await;
         if result.is_err() {
             let current = crate::logic::project_workspace::read::<String>(&project, "draft")
@@ -573,7 +572,7 @@ fn start_chat(
         return;
     }
     resetting.set(true);
-    spawn_local(async move {
+    spawn(async move {
         if let Err(err) = api::reset_lead(direct).await {
             let _ = err;
             resetting.set(false);
@@ -684,7 +683,7 @@ fn message_row(
                                 move |planned: Vec<ProposedJob>| {
                                     let id = message_id.clone();
                                     on_run_plan.call((id.clone(), planned.clone()));
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         if let Err(err) = api::run_lead_proposal(&id, Some(&planned)).await {
                                             action_error.set(Some((id, error_text(&err))));
                                         }
@@ -695,7 +694,7 @@ fn message_row(
                                 let message_id = message_id.clone();
                                 move |_| {
                                     let id = message_id.clone();
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         if let Err(err) = api::dismiss_lead_proposal(&id).await {
                                             action_error.set(Some((id, error_text(&err))));
                                         }

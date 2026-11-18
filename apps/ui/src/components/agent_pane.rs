@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 use legate_core::{JobAccess, JobRecord, JobStatus};
-use wasm_bindgen_futures::spawn_local;
 
 use super::bot_avatar::{BotAvatar, BotName, BotState, error_text};
 use crate::api;
@@ -152,7 +151,7 @@ pub fn AgentPane(job: JobRecord, on_take_over: Callback<String>, on_close: Callb
                                 error.set(None);
                                 let job_id = job_id.clone();
                                 let on_take_over = on_take_over;
-                                spawn_local(async move {
+                                spawn(async move {
                                     match api::take_over_job(&job_id, 100.0, 30.0).await {
                                         Ok(_) => on_take_over.call(job_id),
                                         Err(err) => {
@@ -174,7 +173,7 @@ pub fn AgentPane(job: JobRecord, on_take_over: Callback<String>, on_close: Callb
                                 move |_| {
                                     error.set(None);
                                     let job_id = job_id.clone();
-                                    spawn_local(async move {
+                                    spawn(async move {
                                         if let Err(err) = api::cancel_job(&job_id).await {
                                             error.set(Some(error_text(&err)));
                                         }

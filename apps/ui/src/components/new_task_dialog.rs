@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 use legate_core::ProviderId;
-use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
@@ -97,7 +96,7 @@ pub fn NewTaskDialog(
                         }
                         NewTaskPlan::Job { job_type, text: prompt, who, access } => {
                             busy.set(true);
-                            spawn_local(async move {
+                            spawn(async move {
                                 match api::submit_job(job_type, &prompt, Some(who), Some(access), None).await {
                                     Ok(_) => {
                                         busy.set(false);
@@ -120,7 +119,7 @@ pub fn NewTaskDialog(
                                 quick_type: input.quick_type,
                                 quick_access: input.quick_access,
                             };
-                            spawn_local(async move {
+                            spawn(async move {
                                 match api::create_goal(&goal).await {
                                     Ok(_) => {
                                         busy.set(false);
