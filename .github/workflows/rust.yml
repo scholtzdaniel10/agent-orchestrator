@@ -34,6 +34,20 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude legate-desktop --locked
 
+  ui-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.130
+      - name: Browser smoke tests (headless Chrome)
+        run: CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" cargo test -p legate-ui --target wasm32-unknown-unknown --test setup_smoke --locked
+
   desktop:
     runs-on: windows-latest
     steps:
