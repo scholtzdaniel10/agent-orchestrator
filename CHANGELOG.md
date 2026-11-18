@@ -6,6 +6,11 @@
 - Restores modular project workspaces and keeps project chats live across switches.
 - Updates the command workspace and usage inspector.
 - Stabilizes project chat and Windows terminal regression tests.
+- Adds the Orchid theme.
+- Adds a desktop click-through on CI that drives the real app at two window sizes.
+- Fixes every event arriving twice with two windows open, which made terminals lose the first typed key.
+- Fixes restored terminals answering old shell queries, and stale terminal views after a quick reopen.
+- Stops panels updating after they close, serializes Git per worktree to avoid `index.lock` collisions, shows "setup stopped" when a setup shell is closed, and adds Create/Cancel to the new-worktree form.
 
 ## 0.2.0-rc.2 — Rust Windows preview
 
