@@ -218,7 +218,17 @@ test('failed shell steps report the first UI write even when the PTY echo loses 
   const app = runner(t);
   await app.run(`
     globalThis.window = globalThis;
-    globalThis.document = { hasFocus: () => true, activeElement: { closest: () => ({ id: 'term-host-new' }) } };
+    globalThis.document = {
+      hasFocus: () => true,
+      activeElement: { closest: () => ({ id: 'term-host-new' }) },
+      querySelectorAll(selector) {
+        assert.equal(selector, '.terminal-host');
+        return [{ id: 'term-host-new', querySelectorAll(selector) {
+          assert.equal(selector, '.xterm');
+          return [{}, {}];
+        } }];
+      },
+    };
     let clock = 0;
     let typed = 0;
     let entered = false;
@@ -252,6 +262,7 @@ test('failed shell steps report the first UI write even when the PTY echo loses 
   assert.match(report, /\| 900x700-shell-echo \| FAIL \|/);
   assert.match(report, /Timed out waiting for complete shell command echo/);
   assert.match(report, /Terminal input probe:/);
+  assert.match(report, /"hosts":\["term-host-new:2"\]/);
   assert.match(report, /"writes":\[\{"id":"new","data":"e"\}/);
   assert.match(report, /"input":\[\{"id":"new","data":"e"\}/);
   assert.match(report, /term-host-new/);

@@ -21,6 +21,7 @@ pub enum PanePlacement {
 
 struct Session {
     id: String,
+    token: f64,
     detach: Option<Detach>,
 }
 
@@ -29,7 +30,7 @@ impl Drop for Session {
         if let Some(detach) = self.detach.take() {
             detach.call();
         }
-        let _ = xterm::dispose(&self.id);
+        let _ = xterm::dispose(&self.id, self.token);
     }
 }
 
@@ -90,11 +91,15 @@ pub fn TerminalPane(
             else {
                 return;
             };
+            let Ok(token) = xterm::open(&term_id, &element, font).await else {
+                return;
+            };
             let mut opened = Session {
                 id: term_id.clone(),
+                token,
                 detach: None,
             };
-            if xterm::open(&term_id, &element, font).await.is_err() || Cell::get(&ticket) != next {
+            if Cell::get(&ticket) != next {
                 return;
             }
             let write_id = term_id.clone();
@@ -109,9 +114,15 @@ pub fn TerminalPane(
                     })
                 });
             });
-            if restore && let Ok(snapshot) = api::terminal_snapshot(&term_id).await {
-                bus.forget(&term_id);
-                let _ = xterm::replay(&term_id, &snapshot).await;
+            if restore {
+                let snapshot = api::terminal_snapshot(&term_id).await;
+                if Cell::get(&ticket) != next {
+                    return;
+                }
+                if let Ok(snapshot) = snapshot {
+                    bus.forget(&term_id);
+                    let _ = xterm::replay(&term_id, &snapshot).await;
+                }
             }
             if Cell::get(&ticket) != next {
                 return;

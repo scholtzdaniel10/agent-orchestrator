@@ -354,6 +354,7 @@ async function step(name, action, client = main) {
     try {
       const probe = await client.evaluate(`({
         writes: window.ctWrites ?? [], input: window.ctInput ?? [], output: window.ctOutput ?? [],
+        hosts: [...document.querySelectorAll('.terminal-host')].map(h => h.id + ':' + h.querySelectorAll('.xterm').length),
         focus: { document: document.hasFocus(), tag: document.activeElement?.tagName,
           terminal: document.activeElement?.closest('[id^="term-host-"]')?.id }
       })`);
