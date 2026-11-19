@@ -17,12 +17,13 @@ mod guard;
 mod history;
 mod project;
 mod setup;
+mod source;
 mod worktrees;
 
 pub use changes::{ListedName, merge_listed_changes};
 pub use cmd::{CmdOut, CmdRun, FnRun, ProcessRun};
 pub use error::GitError;
-pub use files::{FileStat, FileSys, Files, OUTSIDE_PROJECT, OsFs};
+pub use files::{FILE_CHANGED, FileStat, FileSys, Files, NOT_UTF8, OUTSIDE_PROJECT, OsFs};
 pub use fresh::{EnvMap, merged_path, refresh_path, registry_path};
 pub use github::{Github, OpenedPr};
 pub use guard::{
@@ -36,6 +37,7 @@ pub use project::ProjectGitCounts;
 pub use setup::{
     SetupTracker, parse_setup_commands, parse_worktree_name, parse_worktree_name_value,
 };
+pub use source::{PrTarget, SourceControl};
 pub use worktrees::{
     ApplyOutcome, MergeOutcome, RepoStatus, WINDOWS_LOCK_MESSAGE, WorktreeLoc, Worktrees,
     remove_worktree_with_retries,

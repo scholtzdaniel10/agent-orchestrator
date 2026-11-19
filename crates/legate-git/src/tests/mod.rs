@@ -6,4 +6,5 @@ mod guard;
 mod history;
 mod project;
 mod setup;
+mod source;
 mod worktrees;

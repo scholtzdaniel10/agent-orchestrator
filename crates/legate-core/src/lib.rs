@@ -14,8 +14,8 @@ pub mod types;
 mod util;
 
 pub use api::{
-    BuiltInSkill, FileContent, FileEntry, FileList, FileStatus, FoundSkill, GivenTo, PlanProblem,
-    PlanStatus, PlanWindow, SkillFolderReport, SkillsState,
+    BranchStatus, BuiltInSkill, FileContent, FileEntry, FileList, FileStatus, FoundSkill, GivenTo,
+    PlanProblem, PlanStatus, PlanWindow, SkillFolderReport, SkillsState,
 };
 pub use ids::{IdHit, IdItem, resolve_id};
 pub use job::{JobRecord, JobStatus, JobStep, JobStepStatus};

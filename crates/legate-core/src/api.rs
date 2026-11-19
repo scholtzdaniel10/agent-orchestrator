@@ -72,6 +72,19 @@ pub struct FileEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BranchStatus {
+    pub branch: String,
+    pub upstream: Option<String>,
+    pub base: Option<String>,
+    pub ahead: i64,
+    pub behind: i64,
+    pub uncommitted: Vec<FileEntry>,
+    pub commits: i64,
+    pub insertions: i64,
+    pub deletions: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileList {
     pub entries: Vec<FileEntry>,
     pub truncated: bool,

@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use legate_core::{
-    AppInfo, ChangeSet, FileContent, FileList, JobAccess, JobRecord, JobType, LeadChat,
-    LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProposedJob,
+    AppInfo, BranchStatus, ChangeSet, FileContent, FileList, JobAccess, JobRecord, JobType,
+    LeadChat, LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProposedJob,
     ProviderId, SkillsState, TerminalInfo,
 };
 use legate_git::{CommitDetail, CommitPage, MergeOutcome, OpenedPr};
@@ -315,6 +315,19 @@ impl AppHandle {
             .await
     }
 
+    pub async fn write_file(
+        &self,
+        where_id: Option<String>,
+        path: impl Into<String>,
+        text: impl Into<String>,
+        base: Option<String>,
+    ) -> Result<(), AppError> {
+        let path = path.into();
+        let text = text.into();
+        self.invoke(move |world| world.write_file(where_id, path, text, base))
+            .await
+    }
+
     pub async fn file_diff(
         &self,
         where_id: Option<String>,
@@ -405,6 +418,30 @@ impl AppHandle {
     pub async fn run_trigger(&self, id: impl Into<String>) -> Result<(), AppError> {
         let id = id.into();
         self.invoke(move |world| world.run_trigger(id)).await
+    }
+
+    pub async fn branch_status(&self, where_id: Option<String>) -> Result<BranchStatus, AppError> {
+        self.invoke(move |world| world.branch_status(where_id))
+            .await
+    }
+
+    pub async fn commit_all(
+        &self,
+        where_id: Option<String>,
+        message: impl Into<String>,
+    ) -> Result<(), AppError> {
+        let message = message.into();
+        self.invoke(move |world| world.commit_all(where_id, message))
+            .await
+    }
+
+    pub async fn push_branch(&self, where_id: Option<String>) -> Result<(), AppError> {
+        self.invoke(move |world| world.push_branch(where_id)).await
+    }
+
+    pub async fn open_branch_pr(&self, where_id: Option<String>) -> Result<String, AppError> {
+        self.invoke(move |world| world.open_branch_pr(where_id))
+            .await
     }
 
     pub async fn commit_log(

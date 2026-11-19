@@ -399,6 +399,21 @@ pub async fn read_file(
 }
 
 #[tauri::command]
+pub async fn write_file(
+    shell: State<'_, Shell>,
+    r#where: Option<String>,
+    path: String,
+    text: String,
+    base: Option<String>,
+) -> Result<(), String> {
+    shell
+        .backend()?
+        .write_file(r#where, path, text, base)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn file_diff(
     shell: State<'_, Shell>,
     r#where: Option<String>,
@@ -544,6 +559,52 @@ pub async fn remove_trigger(shell: State<'_, Shell>, id: String) -> Result<(), S
 #[tauri::command]
 pub async fn run_trigger(shell: State<'_, Shell>, id: String) -> Result<(), String> {
     shell.backend()?.run_trigger(id).await.map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn branch_status(
+    shell: State<'_, Shell>,
+    r#where: Option<String>,
+) -> Result<legate_core::BranchStatus, String> {
+    shell
+        .backend()?
+        .branch_status(r#where)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn commit_all(
+    shell: State<'_, Shell>,
+    r#where: Option<String>,
+    message: String,
+) -> Result<(), String> {
+    shell
+        .backend()?
+        .commit_all(r#where, message)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn push_branch(shell: State<'_, Shell>, r#where: Option<String>) -> Result<(), String> {
+    shell
+        .backend()?
+        .push_branch(r#where)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn open_branch_pr(
+    shell: State<'_, Shell>,
+    r#where: Option<String>,
+) -> Result<String, String> {
+    shell
+        .backend()?
+        .open_branch_pr(r#where)
+        .await
+        .map_err(err_string)
 }
 
 #[tauri::command]

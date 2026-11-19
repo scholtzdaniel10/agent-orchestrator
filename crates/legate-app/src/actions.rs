@@ -5,13 +5,14 @@ use std::path::Path;
 use std::rc::Rc;
 
 use legate_core::{
-    FileContent, FileList, JobAccess, JobRecord, JobStatus, JobType, LeadChat, LeadMessage,
-    ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProjectWorktree, ProviderId,
-    SkillsState, TerminalInfo,
+    BranchStatus, FileContent, FileList, JobAccess, JobRecord, JobStatus, JobType, LeadChat,
+    LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProjectWorktree,
+    ProviderId, SkillsState, TerminalInfo,
 };
 use legate_git::{
     CommitDetail, CommitPage, GitError, GuardJob, ListedName, MergeOutcome, OpenedPr, PAGE,
-    Worktrees, assert_worktree_idle, parse_setup_commands, parse_worktree_name, require_hash,
+    SourceControl, Worktrees, assert_worktree_idle, parse_setup_commands, parse_worktree_name,
+    require_hash,
 };
 use legate_lead::{
     Firing, Goal, GoalSource, LeadError, NewGoal, NewTrigger, PlannedJob, QuickJob, Trigger,
@@ -703,6 +704,29 @@ impl World {
         Box::pin(async move { files.read(Path::new(&root), &path).await.map_err(git_err) })
     }
 
+    pub fn write_file(
+        &self,
+        where_id: Option<String>,
+        path: String,
+        text: String,
+        base: Option<String>,
+    ) -> Task<()> {
+        if !valid_file_path(&path) {
+            return fail("invalid path");
+        }
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        let files = clone_files();
+        Box::pin(async move {
+            files
+                .write(Path::new(&root), &path, &text, base.as_deref())
+                .await
+                .map_err(git_err)
+        })
+    }
+
     /// Absolute path of a project or worktree file, after the same checks as opening it.
     pub fn resolve_file(&self, where_id: Option<String>, path: String) -> Task<String> {
         if !valid_file_path(&path) {
@@ -755,6 +779,74 @@ impl World {
             return Err(AppError::message(GONE));
         }
         Ok(folder.to_string_lossy().into_owned())
+    }
+
+    pub fn branch_status(&self, where_id: Option<String>) -> Task<BranchStatus> {
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        Box::pin(async move {
+            SourceControl::new()
+                .status(Path::new(&root))
+                .await
+                .map_err(git_err)
+        })
+    }
+
+    pub fn commit_all(&self, where_id: Option<String>, message: String) -> Task<()> {
+        if let Some(id) = where_id.as_deref()
+            && let Err(err) = self.idle_worktree(id)
+        {
+            return ready(Err(err));
+        }
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        let push = self.change_push.clone();
+        Box::pin(async move {
+            SourceControl::new()
+                .commit_all(Path::new(&root), &message)
+                .await
+                .map_err(git_err)?;
+            push.spawn();
+            Ok(())
+        })
+    }
+
+    pub fn push_branch(&self, where_id: Option<String>) -> Task<()> {
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        Box::pin(async move {
+            SourceControl::new()
+                .push(Path::new(&root))
+                .await
+                .map_err(git_err)
+        })
+    }
+
+    pub fn open_branch_pr(&self, where_id: Option<String>) -> Task<String> {
+        let root = match self.files_root(where_id) {
+            Ok(root) => root,
+            Err(err) => return ready(Err(err)),
+        };
+        Box::pin(async move {
+            let dir = Path::new(&root);
+            let target = SourceControl::new().pr_target(dir).await.map_err(git_err)?;
+            clone_github()
+                .create_pr(
+                    dir,
+                    &target.title,
+                    "",
+                    Some(&target.base),
+                    Some(&target.head),
+                )
+                .await
+                .map_err(git_err)
+        })
     }
 
     pub fn list_goals(&self) -> Task<Vec<Goal>> {

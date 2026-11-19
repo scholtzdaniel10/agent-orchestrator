@@ -7,7 +7,7 @@ use std::process::Command;
 use legate_core::{FileContent, FileStatus};
 
 use crate::cmd::{CmdOut, CmdRun, ProcessRun};
-use crate::files::{FileStat, FileSys, Files, OUTSIDE_PROJECT, OsFs};
+use crate::files::{FILE_CHANGED, FileStat, FileSys, Files, NOT_UTF8, OUTSIDE_PROJECT, OsFs};
 use crate::test_support::{Spy, Temp, git_ok};
 
 struct Flat {
@@ -24,6 +24,10 @@ impl FileSys for Flat {
 
     fn read_file(&self, _target: &Path) -> io::Result<Vec<u8>> {
         Ok(self.bytes.clone())
+    }
+
+    fn write_file(&self, _target: &Path, _bytes: &[u8]) -> io::Result<()> {
+        Ok(())
     }
 
     fn stat(&self, _target: &Path) -> io::Result<FileStat> {
@@ -43,7 +47,7 @@ impl FileSys for Flat {
     }
 }
 
-fn files_repo() -> (Temp, PathBuf) {
+pub(super) fn files_repo() -> (Temp, PathBuf) {
     let temp = Temp::new();
     let project = temp.path().join("project");
     fs::create_dir_all(project.join("src")).unwrap();
@@ -269,6 +273,90 @@ async fn read_returns_text_binary_too_large_and_missing() {
         oversized.read(&project, "kept.txt").await.unwrap(),
         FileContent::TooLarge { bytes: 1_000_001 }
     );
+}
+
+#[tokio::test]
+async fn write_saves_text() {
+    let (_temp, project) = files_repo();
+    Files::new()
+        .write(&project, "app.txt", "new\n", Some("old\n"))
+        .await
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(project.join("app.txt")).unwrap(),
+        "new\n"
+    );
+}
+
+#[tokio::test]
+async fn write_rejects_stale_base() {
+    let (_temp, project) = files_repo();
+    let err = Files::new()
+        .write(&project, "app.txt", "new\n", Some("something else"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.to_string(), FILE_CHANGED);
+    assert_eq!(
+        fs::read_to_string(project.join("app.txt")).unwrap(),
+        "old\n"
+    );
+}
+
+#[tokio::test]
+async fn write_without_base_overwrites() {
+    let (_temp, project) = files_repo();
+    Files::new()
+        .write(&project, "app.txt", "new\n", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(project.join("app.txt")).unwrap(),
+        "new\n"
+    );
+}
+
+#[tokio::test]
+async fn write_refuses_non_utf8() {
+    let (_temp, project) = files_repo();
+    let path = project.join("app.txt");
+    let bytes = [0x66, 0xff, 0x0a];
+    fs::write(&path, bytes).unwrap();
+    let err = Files::new()
+        .write(&project, "app.txt", "new\n", None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.to_string(), NOT_UTF8);
+    assert_eq!(fs::read(path).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn write_refuses_outside_and_missing() {
+    let (_temp, project) = files_repo();
+    let files = Files::new();
+    for (path, expected) in [
+        ("../x.txt", OUTSIDE_PROJECT),
+        ("nope.txt", "That file is missing."),
+        ("src", "That file is missing."),
+    ] {
+        let err = files
+            .write(&project, path, "new\n", None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.to_string(), expected);
+    }
+}
+
+#[tokio::test]
+async fn write_keeps_crlf() {
+    let (_temp, project) = files_repo();
+    let path = project.join("app.txt");
+    let text = "a\r\nb\r\n";
+    fs::write(&path, text).unwrap();
+    Files::new()
+        .write(&project, "app.txt", text, Some(text))
+        .await
+        .unwrap();
+    assert_eq!(fs::read(path).unwrap(), text.as_bytes());
 }
 
 #[tokio::test]

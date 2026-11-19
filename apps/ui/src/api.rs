@@ -7,8 +7,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use legate_core::{
-    AppInfo, ChangeSet, FileContent, FileList, JobAccess, JobRecord, JobType, LeadChat,
-    LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProposedJob,
+    AppInfo, BranchStatus, ChangeSet, FileContent, FileList, JobAccess, JobRecord, JobType,
+    LeadChat, LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProposedJob,
     ProviderId, SkillsState, TerminalInfo,
 };
 
@@ -231,6 +231,18 @@ pub async fn list_files(where_id: Option<&str>) -> Result<FileList, String> {
 pub async fn read_file(where_id: Option<&str>, path: &str) -> Result<FileContent, String> {
     call("read_file", &json!({ "where": where_id, "path": path })).await
 }
+pub async fn write_file(
+    where_id: Option<&str>,
+    path: &str,
+    text: &str,
+    base: Option<&str>,
+) -> Result<(), String> {
+    call(
+        "write_file",
+        &json!({ "where": where_id, "path": path, "text": text, "base": base }),
+    )
+    .await
+}
 pub async fn file_diff(where_id: Option<&str>, path: &str) -> Result<String, String> {
     call("file_diff", &json!({ "where": where_id, "path": path })).await
 }
@@ -275,6 +287,22 @@ pub async fn remove_trigger(id: &str) -> Result<(), String> {
 }
 pub async fn run_trigger(id: &str) -> Result<(), String> {
     call("run_trigger", &json!({ "id": id })).await
+}
+pub async fn branch_status(where_id: Option<&str>) -> Result<BranchStatus, String> {
+    call("branch_status", &json!({ "where": where_id })).await
+}
+pub async fn commit_all(where_id: Option<&str>, message: &str) -> Result<(), String> {
+    call(
+        "commit_all",
+        &json!({ "where": where_id, "message": message }),
+    )
+    .await
+}
+pub async fn push_branch(where_id: Option<&str>) -> Result<(), String> {
+    call("push_branch", &json!({ "where": where_id })).await
+}
+pub async fn open_branch_pr(where_id: Option<&str>) -> Result<String, String> {
+    call("open_branch_pr", &json!({ "where": where_id })).await
 }
 pub async fn commit_log(where_id: Option<&str>, skip: f64) -> Result<CommitPage, String> {
     call("commit_log", &json!({ "where": where_id, "skip": skip })).await

@@ -1,4 +1,4 @@
-//! Project file list, read, and diff against HEAD.
+//! Project file list, read, write, and diff against HEAD.
 
 use std::path::{Path, PathBuf};
 
@@ -10,6 +10,8 @@ use crate::gitpath::{
     canonicalize_path, git_path, is_inside, normalize_abs, read_until_nul, slash,
 };
 
+pub const FILE_CHANGED: &str = "The file changed on disk since you opened it.";
+pub const NOT_UTF8: &str = "This file isn't UTF-8 text, so Legate won't save over it.";
 pub const OUTSIDE_PROJECT: &str = "That file is outside the project.";
 
 const LIST_CAP: usize = 20_000;
@@ -26,6 +28,7 @@ pub struct FileStat {
 pub trait FileSys: Send + Sync {
     fn realpath(&self, target: &Path) -> Option<PathBuf>;
     fn read_file(&self, target: &Path) -> std::io::Result<Vec<u8>>;
+    fn write_file(&self, target: &Path, bytes: &[u8]) -> std::io::Result<()>;
     fn stat(&self, target: &Path) -> std::io::Result<FileStat>;
     fn readdir(&self, dir: &Path) -> std::io::Result<Vec<String>>;
 }
@@ -40,6 +43,10 @@ impl FileSys for OsFs {
 
     fn read_file(&self, target: &Path) -> std::io::Result<Vec<u8>> {
         std::fs::read(target)
+    }
+
+    fn write_file(&self, target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        std::fs::write(target, bytes)
     }
 
     fn stat(&self, target: &Path) -> std::io::Result<FileStat> {
@@ -167,6 +174,26 @@ impl<R: CmdRun, F: FileSys> Files<R, F> {
             text: String::from_utf8_lossy(&buf).into_owned(),
             bytes,
         })
+    }
+
+    pub async fn write(
+        &self,
+        root: &Path,
+        path: &str,
+        text: &str,
+        base: Option<&str>,
+    ) -> Result<(), GitError> {
+        let abs = self.resolve(root, path)?;
+        if !self.fs.stat(&abs).is_ok_and(|info| info.is_file) {
+            return Err(GitError::new("That file is missing."));
+        }
+        let bytes = self.fs.read_file(&abs)?;
+        let current = String::from_utf8(bytes).map_err(|_| GitError::new(NOT_UTF8))?;
+        if base.is_some_and(|base| base != current.as_str()) {
+            return Err(GitError::new(FILE_CHANGED));
+        }
+        self.fs.write_file(&abs, text.as_bytes())?;
+        Ok(())
     }
 
     pub async fn diff(&self, root: &Path, path: &str) -> Result<String, GitError> {

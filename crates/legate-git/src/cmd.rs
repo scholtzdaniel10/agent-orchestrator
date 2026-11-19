@@ -195,6 +195,7 @@ pub(crate) async fn spawn_raw(
     let mut cmd = Command::new(command);
     if is_git {
         cmd.env("GIT_OPTIONAL_LOCKS", "0");
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
     }
     cmd.args(args);
     if let Some(cwd) = cwd {
