@@ -3871,14 +3871,14 @@ button.job-step {
   background: var(--accent);
 }
 
+/* In the flex row right after the sidebar, so it sits on the sidebar's real edge (past the command rail). */
 .layout-handle-sidebar {
-  top: 0;
-  right: auto;
-  bottom: 0;
-  left: var(--layout-sidebar, 240px);
+  position: relative;
+  flex: none;
+  align-self: stretch;
   width: 10px;
   height: auto;
-  transform: translateX(-50%);
+  margin: 0 -5px;
   cursor: col-resize;
 }
 

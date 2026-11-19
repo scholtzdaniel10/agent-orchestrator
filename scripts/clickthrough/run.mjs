@@ -544,7 +544,7 @@ async function pass(prefix, compact) {
       await waitFor(find('.files-preview .diff-line.is-add', editedLine), 'edited line in Changes');
     });
     await step(`${prefix}-source-commit`, async () => {
-      await click('#drawer-tab-source');
+      await panel('source');
       await waitFor(find(`${sourceRows} .files-name`, 'README.md'), 'README.md Source control row');
       await value(`${sourcePage} textarea[aria-label="Commit message"]`, 'Clickthrough edit');
       await click(`${sourcePage} button`, 'Commit');
@@ -557,7 +557,7 @@ async function pass(prefix, compact) {
       assert(fixtureGit('ls-remote', 'origin', 'main').trim(), 'Origin must have main after publishing');
     });
     await step(`${prefix}-resize-drag`, async () => {
-      for (const [part, dx] of [['sidebar', 60], ['drawer', -60]]) {
+      for (const [part, dx] of [['sidebar', -40], ['drawer', 40]]) {
         const size = `getComputedStyle(document.querySelector('.app')).getPropertyValue('--layout-${part}')`;
         const before = await main.evaluate(size);
         assert(before, `Missing --layout-${part}`);
