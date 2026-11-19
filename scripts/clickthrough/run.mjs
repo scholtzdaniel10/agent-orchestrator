@@ -300,17 +300,30 @@ async function dragHandle(selector, dx) {
   await waitFor(handle, selector);
   const { x, y } = await main.evaluate(`(() => {
     const rect = ${handle}.getBoundingClientRect();
+    window.ctDrag = [];
+    if (!window.ctDragProbe) {
+      window.ctDragProbe = true;
+      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'gotpointercapture', 'lostpointercapture']) {
+        addEventListener(type, (event) => window.ctDrag?.push(type + ':' + event.buttons + ':' + String(event.target?.className || event.target?.tagName).slice(0, 40)), true);
+      }
+    }
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   })()`);
+  const hit = await main.evaluate(`String(document.elementFromPoint(${x}, ${y})?.className || '')`);
   await main.call('Input.dispatchMouseEvent', {
     type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
   });
+  const pressed = await main.evaluate(`${handle}.className`);
   for (let step = 1; step <= 5; step++) {
-    await main.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx * step / 5, y, buttons: 1 });
+    // Like Puppeteer: a move while the button is held names the button too.
+    await main.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx * step / 5, y, button: 'left', buttons: 1 });
+    await delay(30);
   }
   await main.call('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: x + dx, y, button: 'left', buttons: 0, clickCount: 1,
   });
+  const events = await main.evaluate(`[...new Set(window.ctDrag)].join(' | ')`);
+  return `hit=${hit}; pressed=${pressed}; events=${events}`;
 }
 
 function fixtureGit(...args) {
@@ -561,8 +574,8 @@ async function pass(prefix, compact) {
         const size = `getComputedStyle(document.querySelector('.app')).getPropertyValue('--layout-${part}')`;
         const before = await main.evaluate(size);
         assert(before, `Missing --layout-${part}`);
-        await dragHandle(`.layout-handle-${part}`, dx);
-        await waitFor(`${size} !== ${JSON.stringify(before)}`, `changed ${part} width`);
+        const probe = await dragHandle(`.layout-handle-${part}`, dx);
+        await waitFor(`${size} !== ${JSON.stringify(before)}`, `changed ${part} width (${probe})`);
       }
 
       await saveWorktreeSetup();
