@@ -136,7 +136,7 @@ pub fn SourceControlPanel(r#where: Option<String>, label: String, refresh_key: S
                                             span { class: "files-name", title: "{path}", "{path}" }
                                         }
                                         if expanded {
-                                            SourceDiff { r#where: r#where.clone(), path: path, refresh_key: refresh_key.clone() }
+                                            SourceDiff { r#where: r#where.clone(), path: path.clone(), refresh_key: refresh_key.clone() }
                                         }
                                     }
                                 }
