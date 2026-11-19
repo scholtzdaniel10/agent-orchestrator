@@ -1,5 +1,7 @@
 //! Window layout. Port of `layout.ts`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -16,6 +18,8 @@ pub const HEADER_HEIGHT: i64 = 40;
 pub const STATUS_HEIGHT: i64 = 28;
 pub const MIN_DOCK: i64 = 120;
 pub const MAX_DOCK: i64 = 900;
+pub const MIN_PANE_W: f64 = 160.0;
+pub const MIN_PANE_H: f64 = 100.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PaneLayoutId {
@@ -87,10 +91,11 @@ pub enum DrawerTab {
     Activity,
     History,
     Goals,
+    Source,
 }
 
 impl DrawerTab {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Files,
         Self::Lead,
         Self::Jobs,
@@ -100,6 +105,7 @@ impl DrawerTab {
         Self::Activity,
         Self::History,
         Self::Goals,
+        Self::Source,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -113,6 +119,7 @@ impl DrawerTab {
             Self::Activity => "activity",
             Self::History => "history",
             Self::Goals => "goals",
+            Self::Source => "source",
         }
     }
 
@@ -127,6 +134,7 @@ impl DrawerTab {
             Self::Activity => "Activity",
             Self::History => "History",
             Self::Goals => "Goals",
+            Self::Source => "Source control",
         }
     }
 
@@ -185,7 +193,13 @@ pub struct DockActive {
     pub left: Option<DrawerTab>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaneSizes {
+    pub cols: Vec<f64>,
+    pub rows: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutState {
     pub sizes: LayoutSizes,
@@ -193,6 +207,8 @@ pub struct LayoutState {
     pub drawer_open: bool,
     pub drawer_tab: DrawerTab,
     pub pane_layout: PaneLayoutId,
+    #[serde(default, rename = "pane_sizes")]
+    pub pane_sizes: BTreeMap<String, PaneSizes>,
     pub tab_order: Vec<DrawerTab>,
     pub dock_tabs: SideDocks,
     pub dock_active: DockActive,
@@ -248,6 +264,7 @@ pub fn default_layout() -> LayoutState {
         drawer_open: true,
         drawer_tab: DrawerTab::Files,
         pane_layout: PaneLayoutId::Auto,
+        pane_sizes: BTreeMap::new(),
         tab_order: DrawerTab::ALL.to_vec(),
         dock_tabs: SideDocks {
             top: Vec::new(),
@@ -272,14 +289,103 @@ pub fn is_drawer_tab(value: &str) -> bool {
 }
 
 pub fn pane_count(layout: PaneLayoutId, terminal_count: usize) -> usize {
-    match resolved_pane_layout(layout, terminal_count) {
-        PaneLayoutId::One => 1,
-        PaneLayoutId::TwoSide | PaneLayoutId::TwoStack => 2,
-        PaneLayoutId::ThreeSide => 3,
-        PaneLayoutId::FourGrid => 4,
-        PaneLayoutId::SixGrid => 6,
-        PaneLayoutId::Auto => 1,
+    let (cols, rows) = pane_grid(resolved_pane_layout(layout, terminal_count));
+    cols * rows
+}
+
+pub fn pane_grid(layout: PaneLayoutId) -> (usize, usize) {
+    match layout {
+        PaneLayoutId::Auto | PaneLayoutId::One => (1, 1),
+        PaneLayoutId::TwoSide => (2, 1),
+        PaneLayoutId::TwoStack => (1, 2),
+        PaneLayoutId::ThreeSide => (3, 1),
+        PaneLayoutId::FourGrid => (2, 2),
+        PaneLayoutId::SixGrid => (3, 2),
     }
+}
+
+fn valid_pane_sizes(layout: PaneLayoutId, sizes: &PaneSizes) -> bool {
+    let (cols, rows) = pane_grid(layout);
+    sizes.cols.len() == cols
+        && sizes.rows.len() == rows
+        && sizes
+            .cols
+            .iter()
+            .chain(&sizes.rows)
+            .all(|f| f.is_finite() && *f > 0.0)
+}
+
+pub fn pane_fractions(state: &LayoutState, layout: PaneLayoutId) -> PaneSizes {
+    if let Some(sizes) = state.pane_sizes.get(layout.as_str())
+        && valid_pane_sizes(layout, sizes)
+    {
+        return sizes.clone();
+    }
+    let (cols, rows) = pane_grid(layout);
+    PaneSizes {
+        cols: vec![1.0; cols],
+        rows: vec![1.0; rows],
+    }
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+pub(crate) fn pane_track_pixels(fractions: &[f64], total_px: f64, min_px: f64) -> Vec<f64> {
+    // Distribute the available space above the minimums in proportion to each pane's excess.
+    let free = (total_px - min_px * fractions.len() as f64).max(0.0);
+    let max = fractions.iter().copied().fold(0.0, f64::max);
+    let sum: f64 = fractions.iter().map(|f| f / max).sum();
+    let mut tracks: Vec<f64> = fractions
+        .iter()
+        .map(|f| ((f / max) / sum * total_px - min_px).max(0.0))
+        .collect();
+    let excess: f64 = tracks.iter().sum();
+    for track in &mut tracks {
+        *track = min_px
+            + if excess > 0.0 {
+                *track / excess * free
+            } else {
+                0.0
+            };
+    }
+    tracks
+}
+
+pub fn move_pane_split(
+    fractions: &[f64],
+    index: usize,
+    delta_px: f64,
+    total_px: f64,
+    min_px: f64,
+) -> Vec<f64> {
+    let mut next = fractions.to_vec();
+    let sum: f64 = fractions.iter().sum();
+    if index >= fractions.len().saturating_sub(1)
+        || !sum.is_finite()
+        || !total_px.is_finite()
+        || !delta_px.is_finite()
+        || !min_px.is_finite()
+        || total_px <= 0.0
+        || min_px < 0.0
+        || fractions.iter().any(|f| !f.is_finite() || *f <= 0.0)
+    {
+        return next;
+    }
+    let left = fractions[index];
+    let right = fractions[index + 1];
+    let min = (min_px / total_px) * sum;
+    let max = left + right - min;
+    if min > max {
+        return next;
+    }
+    let desired = left + (delta_px / total_px) * sum;
+    if desired >= max {
+        next[index] = max;
+        next[index + 1] = min;
+    } else {
+        next[index] = desired.max(min);
+        next[index + 1] = left + right - next[index];
+    }
+    next
 }
 
 pub fn auto_pane_layout(terminal_count: usize) -> PaneLayoutId {
@@ -342,6 +448,17 @@ pub fn parse_layout(raw: &Value) -> LayoutState {
             .and_then(Value::as_str)
             .and_then(PaneLayoutId::parse)
             .unwrap_or(fallback.pane_layout),
+        pane_sizes: root
+            .get("pane_sizes")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(key, value)| {
+                let layout = PaneLayoutId::parse(key)?;
+                let sizes = PaneSizes::deserialize(value).ok()?;
+                valid_pane_sizes(layout, &sizes).then(|| (key.clone(), sizes))
+            })
+            .collect(),
         ..docks_layout(root)
     }
 }
@@ -865,11 +982,12 @@ fn round_i64(value: f64) -> i64 {
 mod tests {
     use super::{
         DEFAULT_SIZES, DrawerTab, KeyPress, LAYOUT_KEY, LayoutFlags, LayoutShortcut, LayoutSizes,
-        LayoutState, LayoutStore, MIN_DRAWER, MIN_SIDEBAR, MIN_WORKERS, PaneLayoutId, SizeKey,
-        Viewport, assign_tab_to_pane, auto_pane_layout, clamp_sizes, default_layout, dock_of,
-        docks_from, drawer_overlays, drop_missing_terminals, empty_pane_for_terminal, empty_slots,
-        fill_panes, is_default_tab_order, layout_shortcut, load_layout, max_size, move_tab,
-        move_tab_to, pane_count, parse_layout, place_new_terminal, place_terminal_in_pane,
+        LayoutState, LayoutStore, MIN_DRAWER, MIN_PANE_W, MIN_SIDEBAR, MIN_WORKERS, PaneLayoutId,
+        PaneSizes, SizeKey, Viewport, assign_tab_to_pane, auto_pane_layout, clamp_sizes,
+        default_layout, dock_of, docks_from, drawer_overlays, drop_missing_terminals,
+        empty_pane_for_terminal, empty_slots, fill_panes, is_default_tab_order, layout_shortcut,
+        load_layout, max_size, move_pane_split, move_tab, move_tab_to, pane_count, pane_fractions,
+        pane_grid, pane_track_pixels, parse_layout, place_new_terminal, place_terminal_in_pane,
         resolved_pane_layout, save_layout, seat_unplaced, tab_order_from, tabs_in_order,
     };
     use serde_json::{Value, json};
@@ -1057,6 +1175,7 @@ mod tests {
                 "drawerOpen": true,
                 "drawerTab": "activity",
                 "paneLayout": "6-grid",
+                "pane_sizes": {},
                 "tabOrder": ["activity", "files", "lead", "jobs", "changes", "routines", "usage"],
                 "dockTabs": { "top": ["history"], "bottom": [], "left": [] },
                 "dockActive": { "top": "history", "bottom": null, "left": null },
@@ -1065,6 +1184,101 @@ mod tests {
         );
     }
 
+    #[test]
+    fn save_and_load_keep_pane_sizes() {
+        let mut storage = Memory {
+            data: BTreeMap::new(),
+            fail_get: false,
+        };
+        let mut state = default_layout();
+        state.pane_sizes.insert(
+            "6-grid".into(),
+            PaneSizes {
+                cols: vec![1.5, 1.0, 0.5],
+                rows: vec![0.75, 1.25],
+            },
+        );
+        save_layout(&state, &mut storage);
+        assert_eq!(load_layout(&storage), state);
+    }
+
+    #[test]
+    fn parse_layout_drops_invalid_pane_sizes() {
+        let state = parse_layout(&json!({
+            "pane_sizes": {
+                "2-side": { "cols": [1.5, 0.5], "rows": [1.0] },
+                "2-stack": { "cols": [1.0], "rows": [1.0] },
+                "3-side": null,
+                "4-grid": { "cols": [1.0, 1.0], "rows": [0.0, 2.0] },
+                "unknown": { "cols": [1.0], "rows": [1.0] }
+            }
+        }));
+        assert_eq!(state.pane_sizes.keys().collect::<Vec<_>>(), vec!["2-side"]);
+    }
+
+    #[test]
+    fn pane_grid_shapes() {
+        for (layout, shape) in [
+            (PaneLayoutId::One, (1, 1)),
+            (PaneLayoutId::TwoSide, (2, 1)),
+            (PaneLayoutId::TwoStack, (1, 2)),
+            (PaneLayoutId::ThreeSide, (3, 1)),
+            (PaneLayoutId::FourGrid, (2, 2)),
+            (PaneLayoutId::SixGrid, (3, 2)),
+        ] {
+            assert_eq!(pane_grid(layout), shape);
+        }
+    }
+
+    #[test]
+    fn pane_fractions_fall_back() {
+        let mut state = default_layout();
+        let layout = PaneLayoutId::TwoSide;
+        let equal = PaneSizes {
+            cols: vec![1.0, 1.0],
+            rows: vec![1.0],
+        };
+        assert_eq!(pane_fractions(&state, layout), equal);
+        for cols in [vec![1.0], vec![f64::NAN, 1.0], vec![1.0, -0.5]] {
+            state.pane_sizes.insert(
+                layout.as_str().into(),
+                PaneSizes {
+                    cols,
+                    rows: vec![1.0],
+                },
+            );
+            assert_eq!(pane_fractions(&state, layout), equal);
+        }
+    }
+
+    #[test]
+    fn move_pane_split_clamps_and_keeps_sum() {
+        let start = [1.0, 1.0];
+        assert_eq!(
+            move_pane_split(&start, 0, 200.0, 800.0, MIN_PANE_W),
+            vec![1.5, 0.5]
+        );
+        let clamped = move_pane_split(&start, 0, 390.0, 800.0, MIN_PANE_W);
+        assert_eq!(clamped.iter().sum::<f64>(), 2.0);
+        assert_eq!(clamped[1] * 400.0, MIN_PANE_W);
+        assert_eq!(move_pane_split(&start, 0, 100.0, 300.0, MIN_PANE_W), start);
+    }
+
+    #[test]
+    fn pane_tracks_keep_minimum_when_the_stage_shrinks() {
+        assert_eq!(
+            pane_track_pixels(&[1.5, 0.5], 800.0, MIN_PANE_W),
+            [600.0, 200.0]
+        );
+        assert_eq!(
+            pane_track_pixels(&[1.5, 0.5], 480.0, MIN_PANE_W),
+            [320.0, 160.0]
+        );
+        assert_eq!(
+            pane_track_pixels(&[1.5, 0.5], 240.0, MIN_PANE_W),
+            [160.0, 160.0]
+        );
+    }
     #[test]
     fn clamp_sizes_matches_the_viewport() {
         assert_eq!(clamp_sizes(DEFAULT_SIZES, wide(), OPEN), DEFAULT_SIZES);
@@ -1323,6 +1537,9 @@ mod tests {
 
     #[test]
     fn tab_order_and_docks() {
+        assert_eq!(DrawerTab::parse("source"), Some(DrawerTab::Source));
+        assert_eq!(DrawerTab::Source.label(), "Source control");
+        assert_eq!(DrawerTab::ALL.len(), 10);
         assert_eq!(
             tab_order_from(Some(&json!(["activity", "nope", "files", "activity"]))),
             vec![
@@ -1335,6 +1552,7 @@ mod tests {
                 DrawerTab::Usage,
                 DrawerTab::History,
                 DrawerTab::Goals,
+                DrawerTab::Source,
             ]
         );
         assert_eq!(tab_order_from(None), DrawerTab::ALL.to_vec());
@@ -1360,6 +1578,7 @@ mod tests {
                 DrawerTab::Activity,
                 DrawerTab::History,
                 DrawerTab::Goals,
+                DrawerTab::Source,
             ]
         );
         assert_eq!(move_tab(&order, DrawerTab::Lead, -5.0)[0], DrawerTab::Lead);
@@ -1380,7 +1599,8 @@ mod tests {
                 DrawerTab::Changes,
                 DrawerTab::Routines,
                 DrawerTab::Usage,
-                DrawerTab::Goals
+                DrawerTab::Goals,
+                DrawerTab::Source,
             ]
         );
         let mut ordered = tabs_in_order(&docks);

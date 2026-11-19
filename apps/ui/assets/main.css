@@ -1657,12 +1657,14 @@ input:not([type='checkbox']):not([type='radio']) {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow: auto;
 }
 
 .terminal-stage {
   position: absolute;
   inset: 0;
   display: grid;
+  isolation: isolate;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -3834,7 +3836,8 @@ button.job-step {
   max-width: 148px;
 }
 
-.layout-handle {
+.layout-handle,
+.pane-handle {
   position: absolute;
   z-index: 20;
   margin: 0;
@@ -3846,9 +3849,26 @@ button.job-step {
   touch-action: none;
 }
 
-.layout-handle:hover,
-.layout-handle:focus-visible {
+.layout-handle::after,
+.pane-handle::after {
+  position: absolute;
+  pointer-events: none;
   background: var(--border);
+  content: '';
+}
+
+:is(.layout-handle, .pane-handle)[aria-orientation='vertical']::after {
+  inset: 0 auto 0 50%;
+  width: 1px;
+}
+
+:is(.layout-handle, .pane-handle)[aria-orientation='horizontal']::after {
+  inset: 50% 0 auto;
+  height: 1px;
+}
+
+:is(.layout-handle, .pane-handle):is(:hover, :focus-visible, .is-dragging)::after {
+  background: var(--accent);
 }
 
 .layout-handle-sidebar {
@@ -3856,7 +3876,7 @@ button.job-step {
   right: auto;
   bottom: 0;
   left: var(--layout-sidebar, 240px);
-  width: 6px;
+  width: 10px;
   height: auto;
   transform: translateX(-50%);
   cursor: col-resize;
@@ -3867,7 +3887,7 @@ button.job-step {
   right: var(--layout-drawer, 420px);
   bottom: 0;
   left: auto;
-  width: 6px;
+  width: 10px;
   height: auto;
   transform: translateX(50%);
   cursor: col-resize;
@@ -3877,20 +3897,34 @@ button.job-step {
   z-index: 30;
 }
 
-.app.is-dragging,
-.app.is-dragging * {
-  transition: none;
-}
-
-.app.is-dragging {
-  user-select: none;
-}
-
-.app.is-dragging-col {
+.pane-handle.is-col {
+  inset: 0 auto;
+  width: 10px;
+  transform: translateX(-50%);
   cursor: col-resize;
 }
 
-.app.is-dragging-row {
+.pane-handle.is-row {
+  inset: auto 0;
+  height: 10px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+
+.app:has(:is(.layout-handle, .pane-handle).is-dragging),
+.app:has(:is(.layout-handle, .pane-handle).is-dragging) * {
+  transition: none;
+}
+
+.app:has(:is(.layout-handle, .pane-handle).is-dragging) {
+  user-select: none;
+}
+
+.app:has([aria-orientation='vertical'].is-dragging) {
+  cursor: col-resize;
+}
+
+.app:has([aria-orientation='horizontal'].is-dragging) {
   cursor: row-resize;
 }
 
@@ -6296,8 +6330,8 @@ label,
   position: relative;
   flex: none;
   width: 100%;
-  height: 6px;
-  margin: -3px 0;
+  height: 10px;
+  margin: -5px 0;
   transform: none;
   cursor: row-resize;
 }

@@ -13,7 +13,7 @@ use common::{
     assert_no_app_panic, click, exists, find, install_bridge, listener_counts, mount, settle,
     wait_for,
 };
-use legate_core::{AppInfo, FileList, ProjectInfo, SkillsState};
+use legate_core::{AppInfo, BranchStatus, FileList, ProjectInfo, SkillsState};
 use legate_ui::app::App;
 use legate_ui::logic::layout::DrawerTab;
 use legate_ui::state::default_prefs;
@@ -74,6 +74,17 @@ fn answers() -> Map<String, Value> {
         commits: Vec::new(),
         more: false,
     };
+    let branch = BranchStatus {
+        branch: "main".into(),
+        upstream: None,
+        base: None,
+        ahead: 0,
+        behind: 0,
+        uncommitted: Vec::new(),
+        commits: 0,
+        insertions: 0,
+        deletions: 0,
+    };
     for (cmd, value) in [
         ("get_project", to_value(project)),
         ("get_prefs", to_value(default_prefs())),
@@ -81,6 +92,7 @@ fn answers() -> Map<String, Value> {
         ("list_files", to_value(files)),
         ("skills_get", to_value(skills)),
         ("commit_log", to_value(commits)),
+        ("branch_status", to_value(branch)),
         ("github_available", Ok(json!(false))),
     ] {
         answers.insert(cmd.into(), value.expect("an answer serializes"));
@@ -157,6 +169,12 @@ async fn every_screen_opens_and_closes_cleanly() {
         })
         .await;
         settle().await;
+        if tab == DrawerTab::Source {
+            wait_for(ROOT, "the current branch", || {
+                find(".drawer .files-status", Some("main ↑0 ↓0")).is_some()
+            })
+            .await;
+        }
         close_inspector().await;
         settle().await;
         assert_no_leftover_listeners(&screen, &baseline);

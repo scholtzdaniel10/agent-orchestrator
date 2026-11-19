@@ -1,10 +1,8 @@
 //! Top-level layout. The element tree matches `App.tsx` so `main.css` applies.
 
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-
 use dioxus::prelude::dioxus_elements::InteractionLocation;
 use dioxus::prelude::*;
+use dioxus::web::WebEventExt;
 use legate_core::{
     JobRecord, JobStatus, LeadStatus, PlanProblem, ProjectInfo, ProviderId, TerminalInfo,
     TerminalProvider, UsageShows, plan_of,
@@ -16,14 +14,14 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api;
 use crate::components::{
     ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
-    NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, Star, TabIcon, TerminalWindow,
-    UsageMeter, Workers,
+    NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, SourceControlPanel, Star,
+    TabIcon, TerminalWindow, UsageMeter, Workers,
 };
 use crate::logic::agent_tabs::agent_jobs;
 use crate::logic::flow_events::FlowEvent;
 use crate::logic::layout::{
-    self, DockId, DrawerTab, LayoutFlags, LayoutShortcut, LayoutState, PaneLayoutId, SizeKey,
-    Viewport,
+    self, DockId, DrawerTab, LayoutFlags, LayoutShortcut, LayoutState, PaneLayoutId, PaneSizes,
+    SizeKey, Viewport,
 };
 use crate::logic::setup_seen::{self, SeenStorage};
 use crate::logic::theme::{self, ThemeId, ThemeRoot, ThemeStorage, ThemeTarget};
@@ -46,7 +44,6 @@ pub fn App() -> Element {
     let mut task_open = use_signal(|| false);
     let mut layout_target = use_signal(|| DrawerTab::Lead);
     let mut layout_destination = use_signal(|| DockId::Right);
-    let mut dragging = use_signal(|| None::<String>);
     let mut initial_ids = use_signal(|| None::<Vec<String>>);
     let mut closed_agents = use_signal(Vec::<String>::new);
     if !applied() {
@@ -166,11 +163,7 @@ pub fn App() -> Element {
         .cloned()
         .collect();
     let pane = PaneLayoutId::parse(&store.pane_layout.read()).unwrap_or(frame.pane_layout);
-    let app_class = app_class(
-        dragging.read().as_deref(),
-        flags,
-        overlay && flags.drawer_open,
-    );
+    let app_class = app_class(flags, overlay && flags.drawer_open);
     let app_style = format!(
         "--layout-sidebar: {}px; --layout-drawer: {}px;",
         if flags.sidebar_shown {
@@ -382,7 +375,7 @@ pub fn App() -> Element {
                                 on_open_setup: Callback::new(move |_| store.setup_open.set(true)),
                             }
                         }
-                        SideDock { dock: DockId::Left, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Left, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Left)), on_drag: Callback::new(move |value: Option<String>| dragging.set(value)) }
+                        SideDock { dock: DockId::Left, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Left, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Left)) }
                     }
                     ResizeHandle {
                         class_name: "layout-handle layout-handle-sidebar".to_string(),
@@ -394,14 +387,13 @@ pub fn App() -> Element {
                         invert: false,
                         on_change: Callback::new(move |value: i64| resize_bar(layout, store, SizeKey::Sidebar, value)),
                         on_reset: Callback::new(move |_| reset_bar(layout, store, SizeKey::Sidebar)),
-                        on_drag: Callback::new(move |value: Option<String>| dragging.set(value)),
                     }
                 }
                 section { class: "workspace", aria_label: "Workspace", aria_busy: "{switching_project}",
                     if switching_project {
                         div { class: "project-transition", role: "status", "Switching project..." }
                     }
-                    SideDock { dock: DockId::Top, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Top, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Top)), on_drag: Callback::new(move |value: Option<String>| dragging.set(value)) }
+                    SideDock { dock: DockId::Top, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Top, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Top)) }
                     ErrorBoundary { class_name: Some("workspace-slot".into()),
                         Workers {
                             terminals: visible_terminals,
@@ -414,6 +406,18 @@ pub fn App() -> Element {
                             project: project.as_ref().map(|item| item.path.clone()).unwrap_or_default(),
                             bus: store.bus.read().clone(),
                             pane_layout: pane,
+                            layout_state: layout,
+                            on_pane_sizes: Callback::new(move |(id, sizes): (PaneLayoutId, Option<PaneSizes>)| {
+                                let mut layout = layout;
+                                let mut next = layout.peek().clone();
+                                if let Some(sizes) = sizes {
+                                    next.pane_sizes.insert(id.as_str().into(), sizes);
+                                } else {
+                                    next.pane_sizes.remove(id.as_str());
+                                }
+                                layout::save_layout(&next, &mut WebStore);
+                                layout.set(next);
+                            }),
                             on_pane_layout: Callback::new(move |next: PaneLayoutId| {
                                 let mut saved = layout.read().clone();
                                 saved.pane_layout = next;
@@ -431,7 +435,7 @@ pub fn App() -> Element {
                             })),
                         }
                     }
-                    SideDock { dock: DockId::Bottom, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Bottom, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Bottom)), on_drag: Callback::new(move |value: Option<String>| dragging.set(value)) }
+                    SideDock { dock: DockId::Bottom, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Bottom, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Bottom)) }
                 }
                 if frame.drawer_open {
                     ResizeHandle {
@@ -444,7 +448,6 @@ pub fn App() -> Element {
                         invert: true,
                         on_change: Callback::new(move |value: i64| resize_bar(layout, store, SizeKey::Drawer, value)),
                         on_reset: Callback::new(move |_| reset_bar(layout, store, SizeKey::Drawer)),
-                        on_drag: Callback::new(move |value: Option<String>| dragging.set(value)),
                     }
                     aside { class: "drawer", aria_label: "Panel",
                         div { class: "inspector-heading",
@@ -579,7 +582,6 @@ fn SideDock(
     on_open: Callback<DrawerTab>,
     on_resize: Callback<i64>,
     on_reset: Callback,
-    on_drag: Callback<Option<String>>,
 ) -> Element {
     let tabs = tabs_of(&docks, dock);
     if tabs.is_empty() {
@@ -603,7 +605,6 @@ fn SideDock(
             invert: invert,
             on_change: on_resize,
             on_reset: on_reset,
-            on_drag: on_drag,
         }
     };
     let body = rsx! {
@@ -700,7 +701,7 @@ fn Pages(dock: DockId, frame: LayoutState, docks: layout::Docks) -> Element {
                     rsx! {
                         div { class: if shown { "drawer-page" } else { "drawer-page is-hidden" }, key: "{tab.as_str()}",
                             ErrorBoundary { class_name: None,
-                                TabBody { tab: name, frame: frame.clone() }
+                                TabBody { tab: name, frame: frame.clone(), shown: shown }
                             }
                         }
                     }
@@ -711,8 +712,9 @@ fn Pages(dock: DockId, frame: LayoutState, docks: layout::Docks) -> Element {
 }
 
 #[component]
-fn TabBody(tab: String, frame: LayoutState) -> Element {
+fn TabBody(tab: String, frame: LayoutState, #[props(default = true)] shown: bool) -> Element {
     let mut store = state::use_store();
+    let mut source_visit = use_signal(|| (false, 0u64));
     let jobs = store.jobs.read().clone();
     let plans = store.plans.read().clone();
     let changes = store.changes.read().clone();
@@ -751,6 +753,18 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
                 FilesPanel { key: "{project_path}", r#where: primary.clone(), label: files_label.clone() }
             }
         },
+        "source" => {
+            let (was_shown, mut visits) = *source_visit.peek();
+            if shown != was_shown {
+                visits += u64::from(shown);
+                source_visit.set((shown, visits));
+            }
+            if visits == 0 {
+                return rsx! {};
+            }
+            let source_key = format!("{:?}:{primary:?}", project.as_ref().map(|item| &item.path));
+            rsx! { SourceControlPanel { key: "{source_key}", r#where: primary, label: files_label, refresh_key: format!("{refresh}:{visits}") } }
+        }
         "lead" => rsx! { LeadChat {
             messages: messages.clone(),
             jobs: jobs,
@@ -871,8 +885,9 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
 }
 
 #[component]
-fn ResizeHandle(
+pub(crate) fn ResizeHandle(
     class_name: String,
+    #[props(default)] style: String,
     orientation: &'static str,
     value: i64,
     min: i64,
@@ -881,72 +896,27 @@ fn ResizeHandle(
     invert: bool,
     on_change: Callback<i64>,
     on_reset: Callback,
-    on_drag: Callback<Option<String>>,
 ) -> Element {
-    let dragging = use_hook(|| Rc::new(Cell::new(false)));
-    let origin = use_hook(|| Rc::new(Cell::new(0.0)));
-    let start_value = use_hook(|| Rc::new(Cell::new(0i64)));
-    let change_slot = use_hook(|| Rc::new(RefCell::new(on_change)));
-    let drag_slot = use_hook(|| Rc::new(RefCell::new(on_drag)));
-    *change_slot.borrow_mut() = on_change;
-    *drag_slot.borrow_mut() = on_drag;
+    let mut drag = use_signal(|| None::<(i32, f64, i64)>);
     let vertical = orientation == "vertical";
-    use_hook({
-        let dragging = Rc::clone(&dragging);
-        let origin = Rc::clone(&origin);
-        let start_value = Rc::clone(&start_value);
-        let change_slot = Rc::clone(&change_slot);
-        let drag_slot = Rc::clone(&drag_slot);
-        move || {
-            let drag_flag = Rc::clone(&dragging);
-            let origin_cell = Rc::clone(&origin);
-            let start_cell = Rc::clone(&start_value);
-            let changes = Rc::clone(&change_slot);
-            let move_listener = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                if !drag_flag.get() {
-                    return;
-                }
-                let pos = client_axis(&event, vertical);
-                let delta = pos - origin_cell.get();
-                let next = if invert {
-                    start_cell.get() - delta as i64
-                } else {
-                    start_cell.get() + delta as i64
-                };
-                changes.borrow().call(next.clamp(min, max));
-            }) as Box<dyn FnMut(web_sys::Event)>);
-            let drag_flag = Rc::clone(&dragging);
-            let drags = Rc::clone(&drag_slot);
-            let up_listener = Closure::wrap(Box::new(move |_event: web_sys::Event| {
-                if !drag_flag.get() {
-                    return;
-                }
-                drag_flag.set(false);
-                drags.borrow().call(None);
-                layout::request_layout_fit();
-            }) as Box<dyn FnMut(web_sys::Event)>);
-            if let Some(window) = web_sys::window() {
-                let _ = window.add_event_listener_with_callback(
-                    "pointermove",
-                    move_listener.as_ref().unchecked_ref(),
-                );
-                let _ = window.add_event_listener_with_callback(
-                    "pointerup",
-                    up_listener.as_ref().unchecked_ref(),
-                );
-                let _ = window.add_event_listener_with_callback(
-                    "pointercancel",
-                    up_listener.as_ref().unchecked_ref(),
-                );
-            }
-            move_listener.forget();
-            up_listener.forget();
+    let finish_drag = move |event: PointerEvent| {
+        if drag
+            .peek()
+            .is_some_and(|(id, _, _)| id == event.pointer_id())
+        {
+            drag.set(None);
+            layout::request_layout_fit();
         }
-    });
-    let drag_name = orientation.to_string();
+    };
+    let class_name = if drag.read().is_some() {
+        format!("{class_name} is-dragging")
+    } else {
+        class_name
+    };
     rsx! {
         button {
             class: "{class_name}",
+            style: "{style}",
             r#type: "button",
             role: "separator",
             aria_label: "{label}",
@@ -956,12 +926,32 @@ fn ResizeHandle(
             aria_valuemax: "{max}",
             tabindex: "0",
             onpointerdown: move |event| {
+                let Some(pointer) = event.try_as_web_event() else { return; };
+                if !pointer.is_primary() || pointer.button() != 0 || drag.peek().is_some() {
+                    return;
+                }
+                let Some(target) = pointer.target().and_then(|target| target.dyn_into::<web_sys::Element>().ok()) else { return; };
+                let id = pointer.pointer_id();
+                if target.set_pointer_capture(id).is_err() {
+                    return;
+                }
                 let point = event.client_coordinates();
-                origin.set(if vertical { point.x } else { point.y });
-                start_value.set(value);
-                dragging.set(true);
-                on_drag.call(Some(drag_name.clone()));
+                drag.set(Some((id, if vertical { point.x } else { point.y }, value)));
             },
+            onpointermove: move |event| {
+                let Some((id, origin, start)) = *drag.peek() else { return; };
+                if event.pointer_id() != id {
+                    return;
+                }
+                let point = event.client_coordinates();
+                let pos = if vertical { point.x } else { point.y };
+                let delta = (pos - origin) as i64;
+                let next = if invert { start - delta } else { start + delta };
+                on_change.call(next.clamp(min, max));
+            },
+            onpointerup: finish_drag,
+            onpointercancel: finish_drag,
+            onlostpointercapture: finish_drag,
             ondoubleclick: move |_| {
                 on_reset.call(());
                 layout::request_layout_fit();
@@ -1015,17 +1005,8 @@ fn on_tab_key(
     }
 }
 
-fn app_class(dragging: Option<&str>, flags: LayoutFlags, overlay: bool) -> String {
+fn app_class(flags: LayoutFlags, overlay: bool) -> String {
     let mut names = vec!["app".to_string()];
-    if dragging.is_some() {
-        names.push("is-dragging".into());
-    }
-    if dragging == Some("vertical") {
-        names.push("is-dragging-col".into());
-    }
-    if dragging == Some("horizontal") {
-        names.push("is-dragging-row".into());
-    }
     if !flags.sidebar_shown {
         names.push("is-hide-sidebar".into());
     }
@@ -1681,14 +1662,6 @@ fn query(name: &str) -> Option<String> {
 
 fn document() -> Option<web_sys::Document> {
     web_sys::window()?.document()
-}
-
-fn client_axis(event: &web_sys::Event, vertical: bool) -> f64 {
-    let key = if vertical { "clientX" } else { "clientY" };
-    js_sys::Reflect::get(event, &wasm_bindgen::JsValue::from_str(key))
-        .ok()
-        .and_then(|value| value.as_f64())
-        .unwrap_or(0.0)
 }
 
 fn in_terminal(event: &web_sys::KeyboardEvent) -> bool {

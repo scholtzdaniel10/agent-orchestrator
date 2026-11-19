@@ -65,5 +65,11 @@ pub fn TabIcon(tab: DrawerTab) -> Element {
             line { x1: "1.5", y1: "8", x2: "3.2", y2: "8" }
             line { x1: "12.8", y1: "8", x2: "14.5", y2: "8" }
         }),
+        DrawerTab::Source => glyph(rsx! {
+            path { d: "M4.5 5.5V10.5M4.5 10C4.5 7 11.5 8.5 11.5 5.5" }
+            circle { cx: "4.5", cy: "3.5", r: "2" }
+            circle { cx: "4.5", cy: "12.5", r: "2" }
+            circle { cx: "11.5", cy: "3.5", r: "2" }
+        }),
     }
 }

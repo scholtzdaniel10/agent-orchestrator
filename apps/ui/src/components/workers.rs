@@ -4,20 +4,22 @@ use dioxus::prelude::*;
 use legate_core::{ChangeSet, JobRecord, JobStatus, ProviderId, TerminalInfo};
 
 use crate::api;
+use crate::app::ResizeHandle;
 use crate::components::agent_pane::AgentPane;
 use crate::components::review_pane::ReviewPane;
 use crate::components::terminal_pane::{PanePlacement, TerminalPane};
 use crate::components::terminal_tabs::{AgentTab, AgentTabs, ReviewTab, TerminalTabs};
 use crate::logic::agent_tabs::{agent_status_label, agent_tab_label};
 use crate::logic::layout::{
-    self, PaneLayoutId, assign_tab_to_pane, drop_missing_terminals, empty_pane_for_terminal,
-    fill_panes, pane_count, place_new_terminal, place_terminal_in_pane, resolved_pane_layout,
-    seat_unplaced,
+    self, LayoutState, PaneLayoutId, PaneSizes, assign_tab_to_pane, drop_missing_terminals,
+    empty_pane_for_terminal, fill_panes, pane_count, place_new_terminal, place_terminal_in_pane,
+    resolved_pane_layout, seat_unplaced,
 };
 use crate::logic::terminal_bus::TerminalBus;
 use crate::logic::worktree_label::{
     NamedChange, terminal_display_title, terminals_in_sidebar_order,
 };
+use crate::xterm;
 
 const AGENTS: [ProviderId; 4] = [
     ProviderId::Claude,
@@ -38,6 +40,8 @@ pub fn Workers(
     project: String,
     bus: TerminalBus,
     pane_layout: PaneLayoutId,
+    layout_state: Signal<LayoutState>,
+    on_pane_sizes: Callback<(PaneLayoutId, Option<PaneSizes>)>,
     on_pane_layout: Callback<PaneLayoutId>,
     on_terminal: Callback<TerminalInfo>,
     agent_jobs: Vec<JobRecord>,
@@ -60,6 +64,7 @@ pub fn Workers(
     let mut reviewing = use_signal(|| None::<String>);
     let mut viewing = use_signal(|| None::<String>);
     let mut seen_agent = use_signal(|| None::<i64>);
+    let mut stage_size = use_signal(|| (0.0, 0.0));
     let current_selection_key = selected_worktrees
         .iter()
         .map(|id| id.clone().unwrap_or_default())
@@ -124,6 +129,14 @@ pub fn Workers(
         .collect::<Vec<_>>()
         .join("\u{1}");
     let shown = resolved_pane_layout(pane_layout, visible_ids.len());
+    let fractions = layout::pane_fractions(&layout_state.read(), shown);
+    let (width, height) = stage_size();
+    let cols = layout::pane_track_pixels(&fractions.cols, width, layout::MIN_PANE_W);
+    let rows = layout::pane_track_pixels(&fractions.rows, height, layout::MIN_PANE_H);
+    let columns = pane_template(&cols);
+    let row_tracks = pane_template(&rows);
+    let min_width = layout::MIN_PANE_W * cols.len() as f64;
+    let min_height = layout::MIN_PANE_H * rows.len() as f64;
     let selection_changed = seen_selection() != selection_key;
     if selection_changed {
         seen_selection.set(selection_key);
@@ -159,6 +172,24 @@ pub fn Workers(
         && review_change
             .as_ref()
             .is_some_and(|change| reviewing.read().as_ref() == Some(&change.id));
+    let stage_shown = !reviewing_on && agent_view.is_none() && !visible.is_empty();
+    // Fit after the browser has applied the new terminal grid tracks.
+    use_effect(use_reactive(
+        (&cols, &rows, &stage_shown),
+        move |(_, _, shown)| {
+            if !shown {
+                return;
+            }
+            for id in slots.peek().iter().flatten() {
+                if let Ok(cells) = xterm::fit(id) {
+                    let id = id.clone();
+                    spawn(async move {
+                        let _ = api::resize_terminal(&id, cells.cols, cells.rows).await;
+                    });
+                }
+            }
+        },
+    ));
     let tab_active = focus_id.read().clone().unwrap_or_else(|| {
         slots_now
             .get(focused() as usize)
@@ -307,6 +338,15 @@ pub fn Workers(
                     }
                 } else {
                     div { class: "terminal-stage is-{shown.as_str()}",
+                        style: "grid-template-columns: {columns}; grid-template-rows: {row_tracks}; min-width: {min_width}px; min-height: {min_height}px;",
+                        onresize: move |event| {
+                            if let Ok(size) = event.get_content_box_size()
+                                && size.width > 0.0 && size.height > 0.0
+                                && *stage_size.peek() != (size.width, size.height)
+                            {
+                                stage_size.set((size.width, size.height));
+                            }
+                        },
                         for (index, id) in slots_now.iter().cloned().enumerate() {
                             if id.is_none() {
                                 {
@@ -393,6 +433,8 @@ pub fn Workers(
                                 }
                             }
                         }
+                        {pane_handles(shown, true, &cols, layout_state, on_pane_sizes)}
+                        {pane_handles(shown, false, &rows, layout_state, on_pane_sizes)}
                     }
                 }
             }
@@ -431,6 +473,63 @@ pub fn Workers(
             }
         }
     }
+}
+
+fn pane_template(tracks: &[f64]) -> String {
+    tracks
+        .iter()
+        .map(|f| format!("minmax(0, {f}fr)"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn pane_handles(
+    shown: PaneLayoutId,
+    column: bool,
+    tracks: &[f64],
+    layout_state: Signal<LayoutState>,
+    on_pane_sizes: Callback<(PaneLayoutId, Option<PaneSizes>)>,
+) -> Element {
+    let (orientation, axis, inset, minimum) = if column {
+        ("vertical", "col", "left", layout::MIN_PANE_W)
+    } else {
+        ("horizontal", "row", "top", layout::MIN_PANE_H)
+    };
+    let total = tracks.iter().sum::<f64>();
+    let handles = tracks.windows(2).enumerate().map(|(index, pair)| {
+        let boundary = tracks[..=index].iter().sum::<f64>();
+        let percent = 100.0 * boundary / total;
+        let value = boundary.round() as i64;
+        let min = (boundary - pair[0] + minimum).round() as i64;
+        let max = ((boundary + pair[1] - minimum).round() as i64).max(min);
+        rsx! {
+            ResizeHandle {
+                key: "{shown.as_str()}-{axis}-{index}",
+                class_name: format!("pane-handle is-{axis}"),
+                style: format!("{inset}: {percent}%;"),
+                orientation: orientation,
+                value: value,
+                min: min,
+                max: max,
+                label: format!("Terminal {} {} divider", if column { "column" } else { "row" }, index + 1),
+                invert: false,
+                on_change: Callback::new(move |position: i64| {
+                    let mut sizes = layout::pane_fractions(&layout_state.peek(), shown);
+                    let fractions = if column { &mut sizes.cols } else { &mut sizes.rows };
+                    let pixels = layout::pane_track_pixels(fractions, total, minimum);
+                    let current = pixels[..=index].iter().sum::<f64>().round() as i64;
+                    let next = layout::move_pane_split(&pixels, index, (position - current) as f64, total, minimum);
+                    if next != pixels {
+                        *fractions = next;
+                        on_pane_sizes.call((shown, Some(sizes)));
+                        layout::request_layout_fit();
+                    }
+                }),
+                on_reset: Callback::new(move |_| on_pane_sizes.call((shown, None))),
+            }
+        }
+    });
+    rsx! { {handles} }
 }
 
 #[allow(clippy::too_many_arguments)]
