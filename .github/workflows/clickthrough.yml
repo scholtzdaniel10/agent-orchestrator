@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   clickthrough:
-    if: github.ref != 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -52,14 +51,27 @@ jobs:
           $env:LEGATE_DATA = Join-Path $env:RUNNER_TEMP 'clickthrough-data'
           $env:ORCH_WORKTREES = Join-Path $env:RUNNER_TEMP 'clickthrough-worktrees'
           New-Item -ItemType Directory -Path $fixture, $env:LEGATE_DATA, $env:ORCH_WORKTREES | Out-Null
-          'clickthrough fixture content' | Set-Content (Join-Path $fixture 'README.md')
+          [IO.File]::WriteAllText((Join-Path $fixture 'README.md'), "clickthrough fixture content`r`n")
           'fixture notes' | Set-Content (Join-Path $fixture 'notes.txt')
           git -C $fixture init --initial-branch=main
           if ($LASTEXITCODE -ne 0) { throw 'Fixture init failed' }
-          git -C $fixture -c user.name=CI -c user.email=ci@example.invalid add README.md notes.txt
+          # Keep CRLF in the index so a newline-only change is visible to git diff.
+          git -C $fixture config --local core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture line-ending config failed' }
+          git -C $fixture config --local user.name CI
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture user.name config failed' }
+          git -C $fixture config --local user.email ci@example.invalid
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture user.email config failed' }
+          git -C $fixture add README.md notes.txt
           if ($LASTEXITCODE -ne 0) { throw 'Fixture add failed' }
-          git -C $fixture -c user.name=CI -c user.email=ci@example.invalid commit -m 'Clickthrough fixture'
+          git -C $fixture commit -m 'Clickthrough fixture'
           if ($LASTEXITCODE -ne 0) { throw 'Fixture commit failed' }
+          $origin = Join-Path $env:RUNNER_TEMP 'clickthrough-origin.git'
+          git init --bare --initial-branch=main $origin
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture origin init failed' }
+          git -C $fixture remote add origin $origin
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture origin setup failed' }
+          $env:CLICKTHROUGH_FIXTURE = $fixture
           # session::resolve_project uses ORCH_CWD when fresh settings have no project.
           $env:ORCH_CWD = $fixture
           # Port 0: WebView2 picks a free port and writes it to DevToolsActivePort in its user data folder.

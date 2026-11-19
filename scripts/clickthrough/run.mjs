@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,7 @@ function report() {
   writeFileSync(join(out, 'report.md'), [
     '# Desktop click-through', '',
     `Source inventory: ${inventory?.summary ?? 'unavailable'}.`,
-    'Each pass covers the same controls at the default viewport and at 900 × 700.',
+    'General checks run at the default viewport and at 900 × 700. The default pass also covers editing, publishing and mouse resizing.',
     'Agent jobs, sign-in, installers, native pickers, external file/browser links, merge and discard are excluded.', '',
     '| Step | Result | Notes |', '| --- | --- | --- |',
     ...steps.map((step) => `| ${cell(step.name)} | ${step.result} | ${cell(step.notes)} |`), '',
@@ -287,11 +288,34 @@ async function value(selector, value, client = main) {
 }
 
 async function key(key, code = key, modifiers = 0, client = main) {
-  const virtual = { Enter: 13, Escape: 27, ArrowRight: 39, '\\': 220, b: 66, n: 78 }[key];
+  const virtual = { Enter: 13, Escape: 27, End: 35, ArrowRight: 39, '\\': 220, b: 66, n: 78, s: 83 }[key];
   const params = { key, code, modifiers, windowsVirtualKeyCode: virtual };
   await client.call('Input.dispatchKeyEvent', { type: 'keyDown', ...params });
   await client.call('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
   await delay(120);
+}
+
+async function dragHandle(selector, dx) {
+  const handle = find(selector);
+  await waitFor(handle, selector);
+  const { x, y } = await main.evaluate(`(() => {
+    const rect = ${handle}.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  await main.call('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
+  });
+  for (let step = 1; step <= 5; step++) {
+    await main.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx * step / 5, y, buttons: 1 });
+  }
+  await main.call('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: x + dx, y, button: 'left', buttons: 0, clickCount: 1,
+  });
+}
+
+function fixtureGit(...args) {
+  assert(process.env.CLICKTHROUGH_FIXTURE, 'Missing CLICKTHROUGH_FIXTURE');
+  return execFileSync('git', args, { cwd: process.env.CLICKTHROUGH_FIXTURE }).toString();
 }
 
 // At narrow widths the inspector overlays the terminal; close it first, as a person would,
@@ -372,6 +396,13 @@ async function panel(id) {
   await click(`.command-rail button[title=${JSON.stringify(tab.label)}]`);
   await waitFor(`${find('.drawer .inspector-heading h2', tab.label)}`, `${tab.label} inspector`);
   await waitFor(`ct.all('.drawer .drawer-page:not(.is-hidden)').some(el => el.innerText.trim().length)`, `${tab.label} content`);
+}
+
+async function saveWorktreeSetup() {
+  await panel('routines');
+  await value('#setup-commands', 'powershell.exe -NoLogo -NoProfile -NoExit -Command "Write-Output clickthrough-shell-ready"');
+  await click('.routines-setup button', 'Save');
+  await waitFor(find('.routines-setup button', 'Save'), 'saved setup command');
 }
 
 async function settings() {
@@ -472,11 +503,13 @@ async function pass(prefix, compact) {
   });
 
   for (const tab of inventory.tabs) await step(`${prefix}-panel-${tab.id}`, () => panel(tab.id));
+  const fixtureEditor = find('.files-preview .cm-editor');
+  const fixtureContent = `${fixtureEditor}?.textContent.includes('clickthrough fixture content')`;
   await step(`${prefix}-files-preview`, async () => {
     await panel('files');
     await waitFor(find('[role="treeitem"]', 'README.md'), 'fixture file');
     await click('[role="treeitem"]', 'README.md');
-    await waitFor(`ct.all('.files-text').some(el => el.textContent.includes('clickthrough fixture content'))`, 'file preview');
+    await waitFor(fixtureContent, 'file preview');
     await value('[aria-label="Filter files"]', 'notes');
     await waitFor(find('[role="treeitem"]', 'notes.txt'), 'filtered file');
     await value('[aria-label="Filter files"]', '');
@@ -484,9 +517,79 @@ async function pass(prefix, compact) {
     await click('.files-tools button', 'Changed');
     await click('.files-head button', 'Refresh');
   });
+  if (!compact) {
+    const editorContent = find('.files-preview .cm-editor .cm-content');
+    const editedLine = '+clickthrough fixture content edited';
+    const sourcePage = '.drawer .drawer-page:not(.is-hidden)';
+    const sourceRows = `${sourcePage} button.files-row`;
+    await step(`${prefix}-files-editor`, async () => {
+      await click('[role="treeitem"]', 'README.md');
+      await waitFor(fixtureContent, 'README.md editor');
+    });
+    await step(`${prefix}-files-save-noop`, async () => {
+      await waitFor(editorContent, 'editable README.md');
+      await main.evaluate(`${editorContent}.focus()`);
+      await key('s', 'KeyS', 2);
+      fixtureGit('diff', '--exit-code');
+    });
+    await step(`${prefix}-files-save-edit`, async () => {
+      await key('End');
+      await main.call('Input.insertText', { text: ' edited' });
+      await waitFor(`${editorContent}?.textContent.includes(${JSON.stringify(editedLine.slice(1))})`, 'edited README.md');
+      await key('s', 'KeyS', 2);
+      const toggle = '.files-preview-actions button';
+      await waitFor(find(toggle, 'Changes'), 'saved README.md change');
+      assert(fixtureGit('diff').split(/\r?\n/).includes(editedLine), 'Git diff must show the edited README.md line');
+      await click(toggle, 'Changes');
+      await waitFor(find('.files-preview .diff-line.is-add', editedLine), 'edited line in Changes');
+    });
+    await step(`${prefix}-source-commit`, async () => {
+      await click('#drawer-tab-source');
+      await waitFor(find(`${sourceRows} .files-name`, 'README.md'), 'README.md Source control row');
+      await value(`${sourcePage} textarea[aria-label="Commit message"]`, 'Clickthrough edit');
+      await click(`${sourcePage} button`, 'Commit');
+      await waitFor(`${find(`${sourcePage} button`, 'Commit')} && !ct.all('${sourceRows}').length`, 'empty Source control changes');
+      assert.equal(fixtureGit('log', '-1', '--format=%s').trim(), 'Clickthrough edit');
+    });
+    await step(`${prefix}-source-publish`, async () => {
+      await click(`${sourcePage} button`, 'Publish branch');
+      await waitFor(find(`${sourcePage} button`, 'Push'), 'published branch Push button');
+      assert(fixtureGit('ls-remote', 'origin', 'main').trim(), 'Origin must have main after publishing');
+    });
+    await step(`${prefix}-resize-drag`, async () => {
+      for (const [part, dx] of [['sidebar', 60], ['drawer', -60]]) {
+        const size = `getComputedStyle(document.querySelector('.app')).getPropertyValue('--layout-${part}')`;
+        const before = await main.evaluate(size);
+        assert(before, `Missing --layout-${part}`);
+        await dragHandle(`.layout-handle-${part}`, dx);
+        await waitFor(`${size} !== ${JSON.stringify(before)}`, `changed ${part} width`);
+      }
+
+      await saveWorktreeSetup();
+      await uncoverTerminal();
+      await click('[aria-label="New worktree"]');
+      await value('[aria-label="New worktree name"]', 'clickthrough-resize');
+      await value('[aria-label="How many"]', '2');
+      await click('.project-worktree-create button', 'Create');
+      await value('#pane-layout', '2-side');
+      const first = find('.terminal-stage.is-2-side .terminal-pane.is-slot-0');
+      const second = find('.terminal-stage.is-2-side .terminal-pane.is-slot-1');
+      await waitFor(`${first} && ${second}`, 'two side-by-side terminals', main, 30_000);
+      try {
+        const width = `${first}.getBoundingClientRect().width`;
+        const before = await main.evaluate(width);
+        await dragHandle('.pane-handle.is-col', 80);
+        await waitFor(`${width} > ${before + 40}`, 'first terminal pane widened by more than 40 px');
+      } finally {
+        for (const slot of [1, 0]) await click(`.terminal-pane.is-slot-${slot} .terminal-pane-head button[aria-label^="Close "]`);
+        await value('#pane-layout', 'auto');
+        await click('.project-worktree-row[title="Project folder"]');
+      }
+    });
+  }
   await step(`${prefix}-history-detail`, async () => {
     await panel('history');
-    await click('.history-row');
+    await click('.history-row[title^="Clickthrough fixture"]');
     await waitFor(find('.history-message', 'Clickthrough fixture'), 'fixture commit');
     await click('.history-file');
     await waitFor(find('.history-detail .diff-block'), 'commit file diff');
@@ -633,10 +736,7 @@ async function pass(prefix, compact) {
   });
 
   await step(`${prefix}-worktree-setup`, async () => {
-    await panel('routines');
-    await value('#setup-commands', 'powershell.exe -NoLogo -NoProfile -NoExit -Command "Write-Output clickthrough-shell-ready"');
-    await click('.routines-setup button', 'Save');
-    await waitFor(find('.routines-setup button', 'Save'), 'saved setup command');
+    await saveWorktreeSetup();
     await main.evaluate(terminalProbe);
   });
   const worktree = `clickthrough-${prefix}`;
