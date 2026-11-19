@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-rc.4 - Rust Windows preview
+
+- Edit files in the Files panel with a built-in editor: syntax colours, search (Ctrl+F), save (Ctrl+S) and an unsaved-changes dot. Saving refuses to overwrite a file that changed on disk since you opened it, and offers Reload or Overwrite. Line endings and encoding are kept as they were.
+- Adds a Source control tab. It shows the branch, ahead/behind, commits versus base and uncommitted files with their diffs, and lets you commit all, push or publish the branch, and open a pull request. Commit is refused in a worktree while a job is still running there.
+- Split terminals can be resized by dragging between them; sizes are remembered per layout, and a double-click resets them. Panel edges have a wider, always-visible handle.
+- Git never waits on a terminal credential prompt.
+
 ## 0.2.0-rc.3 - Rust Windows preview
 
 - Adds Codex subscription support and hides unavailable usage plans.
