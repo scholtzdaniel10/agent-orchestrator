@@ -15,6 +15,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Element as DomNode, EventTarget, window};
 
+use super::code_editor::CodeEditor;
 use crate::api;
 use crate::logic::diff_lines::{DiffKind, DiffLine, parse_diff};
 use crate::logic::file_tree::{
@@ -22,10 +23,9 @@ use crate::logic::file_tree::{
     files_count_label, flatten_visible, format_bytes, parent_path, status_mark, status_name,
     window_range,
 };
-use crate::state::use_subscriptions;
+use crate::state::{Store, confirm_discard_editor, use_store, use_subscriptions};
 
 const DIFF_ROW_PX: f64 = 17.4;
-const TEXT_ROW_PX: f64 = 17.4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Preview {
@@ -42,7 +42,7 @@ thread_local! {
     static SPLIT_LISTENING: Cell<bool> = const { Cell::new(false) };
 }
 
-fn next_dom_id() -> u64 {
+pub(super) fn next_dom_id() -> u64 {
     NEXT_DOM.with(|next| {
         let id = next.get();
         next.set(id.saturating_add(1));
@@ -208,10 +208,10 @@ fn ensure_split_listeners() {
 
 #[component]
 pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
+    let store = use_store();
     let panel_id = use_hook(next_dom_id);
     let tree_id = format!("files-tree-{panel_id}");
     let body_id = format!("files-body-{panel_id}");
-    let preview_id = format!("files-preview-{panel_id}");
     let key = where_key(r#where.as_deref());
 
     let mut list = use_signal(|| None::<FileList>);
@@ -230,12 +230,10 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     let mut open_error = use_signal(|| None::<String>);
     let mut scroll_top = use_signal(|| 0.0_f64);
     let mut view_h = use_signal(|| 320.0_f64);
-    let mut preview_scroll = use_signal(|| 0.0_f64);
-    let mut preview_view = use_signal(|| 400.0_f64);
+    let mut content_refresh = use_signal(|| 0_u64);
     let mut seen = use_signal(|| key.clone());
     let opening_flag = use_hook(|| Rc::new(Cell::new(false)));
     let content_ticket = use_hook(|| Rc::new(Cell::new(0_u64)));
-    let text_rows = use_hook(|| Rc::new(Cell::new(0_i64)));
     let subscriptions = use_subscriptions();
 
     let loader = use_hook(|| LoaderHandle {
@@ -254,6 +252,7 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     *loader.inner.place.borrow_mut() = r#where.clone();
 
     if seen.peek().as_str() != key {
+        content_ticket.set(content_ticket.get().wrapping_add(1));
         seen.set(key.clone());
         expanded.set(load_expanded(&key));
         split.set(load_split(&key));
@@ -299,6 +298,8 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     let load_now = loader.clone();
     let place_loader = loader.clone();
     let refresh_loader = loader.clone();
+    let save_loader = loader.clone();
+    let save_ticket = content_ticket.clone();
     let retry_loader = loader.clone();
     let drop_loader = loader;
     let drop_body = body_id.clone();
@@ -329,9 +330,9 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         load_now.request(true);
     });
 
-    let ticket = content_ticket.clone();
+    let ticket = content_ticket;
     use_effect(move || {
-        let _ = seen();
+        let _ = (seen(), content_refresh());
         let path = selected.read().clone();
         let status = {
             let listed = list.read();
@@ -361,7 +362,10 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
                 Ok(value) => value,
                 Err(_) => FileContent::Missing,
             };
-            if read_ticket.get() == id {
+            if read_ticket.get() == id
+                && (matches!(&value, FileContent::Text { .. })
+                    || store.editor_dirty.peek().as_deref() != Some(read_path.as_str()))
+            {
                 content.set(Some((read_path, value)));
             }
         });
@@ -437,18 +441,6 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         }
     });
 
-    let preview_measure = preview_id.clone();
-    use_effect(move || {
-        let _ = preview();
-        let Some(el) = document_element(&preview_measure) else {
-            return;
-        };
-        let height = f64::from(el.client_height());
-        if height > 1.0 && (*preview_view.peek() - height).abs() > 1.0 {
-            preview_view.set(height);
-        }
-    });
-
     let row_count = rows.read().len() as i64;
     let range = window_range(row_count, scroll_top(), view_h(), FILE_ROW_HEIGHT as f64);
     let start = usize::try_from(range.start.max(0)).unwrap_or(0);
@@ -469,27 +461,25 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
         .filter(|row| row.kind == RowKind::File)
         .count();
     let count_label = files_count_label(shown_files, total_files, narrowed);
+    let chosen_path = selected.read().clone();
     let selected_entry = {
-        let wanted = selected.read().clone();
         list.read().as_ref().and_then(|item| {
-            wanted.and_then(|path| item.entries.iter().find(|row| row.path == path).cloned())
+            item.entries
+                .iter()
+                .find(|row| Some(&row.path) == chosen_path.as_ref())
+                .cloned()
         })
     };
-    let shown_content = content.read().as_ref().and_then(|(path, value)| {
-        selected_entry
-            .as_ref()
-            .filter(|row| &row.path == path)
-            .map(|_| value.clone())
-    });
+    let editor_is_dirty = chosen_path.is_some() && *store.editor_dirty.read() == chosen_path;
+    let shown_content = content
+        .read()
+        .as_ref()
+        .and_then(|(path, value)| (chosen_path.as_ref() == Some(path)).then(|| value.clone()));
     let shown_diff = diff.read().as_ref().and_then(|(path, value)| {
         selected_entry
             .as_ref()
             .filter(|row| &row.path == path)
             .map(|_| value.clone())
-    });
-    text_rows.set(match &shown_content {
-        Some(FileContent::Text { text, .. }) => split_lines(text).len() as i64,
-        _ => 0,
     });
     let dirty = selected_entry
         .as_ref()
@@ -505,7 +495,6 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
     let filtering = !filter.read().trim().is_empty() || changed_only();
     let open_folders = expanded.read().clone();
     let focused_path = focused.read().clone().or(selected.read().clone());
-    let chosen_path = selected.read().clone();
     let split_value = split();
     let inner_height = row_count.saturating_mul(FILE_ROW_HEIGHT);
     let translate = range.start.saturating_mul(FILE_ROW_HEIGHT);
@@ -604,6 +593,7 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
                             opening,
                             opening_flag.clone(),
                             place_open.clone(),
+                            store,
                         );
                     },
                     div { class: "files-tree-inner", style: "height: {inner_height}px;",
@@ -652,14 +642,13 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
                     id: "files-split-{panel_id}",
                 }
                 div {
-                    id: "{preview_id}",
                     class: "files-preview",
                     style: "flex: {1.0 - split_value} 1 0;",
-                    if selected_entry.is_none() {
-                        p { class: "files-status", "Select a file." }
-                    } else if let Some(file) = selected_entry.as_ref() {
+                    if let Some(path) = chosen_path.as_ref().filter(|_| selected_entry.is_some() || editor_is_dirty) {
                         div { class: "files-preview-head",
-                            span { class: "files-preview-path", title: "{file.path}", "{file.path}" }
+                            if mode == Preview::Changes || !matches!(&shown_content, Some(FileContent::Text { .. })) {
+                                span { class: "files-preview-path", title: "{path}", "{path}" }
+                            }
                             if let Some(size) = bytes {
                                 span { class: "files-preview-size", "{format_bytes(size.max(0) as u64)}" }
                             }
@@ -694,23 +683,39 @@ pub fn FilesPanel(r#where: Option<String>, label: String) -> Element {
                         }
                         div {
                             class: "files-preview-body",
-                            onscroll: move |event| {
-                                let top = event.data().scroll_top();
-                                let height = f64::from(event.data().client_height());
-                                let count = text_rows.get();
-                                let next = window_range(count, top, height, TEXT_ROW_PX);
-                                let prev = window_range(count, *preview_scroll.peek(), *preview_view.peek(), TEXT_ROW_PX);
-                                if next != prev {
-                                    preview_scroll.set(top);
-                                    preview_view.set(height);
-                                }
-                            },
                             if mode == Preview::Changes {
                                 DiffBlock { text: shown_diff.clone(), jump_nonce: 0, jump_path: String::new() }
-                            } else {
-                                FileBody { content: shown_content.clone(), scroll_top: preview_scroll(), view_h: preview_view() }
+                            }
+                            match shown_content {
+                                Some(FileContent::Text { text, .. }) => rsx! {
+                                    for text in [text] {
+                                        div { key: "{key}:{path}", class: "files-editor-preview", hidden: mode == Preview::Changes,
+                                            CodeEditor {
+                                                r#where: r#where.clone(),
+                                                path: path.clone(),
+                                                text: text,
+                                                on_saved: {
+                                                    let save_ticket = save_ticket.clone();
+                                                    let save_loader = save_loader.clone();
+                                                    move |_| {
+                                                        save_ticket.set(save_ticket.get().wrapping_add(1));
+                                                        content_refresh += 1;
+                                                        save_loader.request(true);
+                                                    }
+                                                },
+                                            }
+                                        }
+                                    }
+                                },
+                                _ if mode == Preview::Changes => rsx! {},
+                                Some(FileContent::Missing) => rsx! { p { class: "files-status", "This file is missing." } },
+                                Some(FileContent::Binary { .. }) => rsx! { p { class: "files-status", "This file is binary." } },
+                                Some(FileContent::TooLarge { .. }) => rsx! { p { class: "files-status", "This file is too large to show." } },
+                                None => rsx! { p { class: "files-status", "Loading\u{2026}" } },
                             }
                         }
+                    } else {
+                        p { class: "files-status", "Select a file." }
                     }
                 }
             }
@@ -732,6 +737,7 @@ fn FileRow(
     preview: Signal<Preview>,
     open_error: Signal<Option<String>>,
 ) -> Element {
+    let store = use_store();
     let deleted = row.status == FileStatus::Deleted;
     let class = row_class(chosen, focused, deleted);
     let pad = 8 + row.depth * 12;
@@ -761,11 +767,11 @@ fn FileRow(
             class: "{class}",
             style: "padding-left: {pad}px; height: {FILE_ROW_HEIGHT}px;",
             onclick: move |_| {
-                focus_to.set(Some(path.clone()));
                 if kind == RowKind::Dir {
+                    focus_to.set(Some(path.clone()));
                     toggle_folder(&folder_key, expanded, &path);
                 } else {
-                    select_file(&select_key, selected, focus_to, preview, open_error, path.clone());
+                    select_file(store, &select_key, selected, focus_to, preview, open_error, path.clone());
                 }
             },
             if kind == RowKind::Dir {
@@ -780,75 +786,6 @@ fn FileRow(
             if kind == RowKind::File && let Some(letter) = mark {
                 span { class: "{mark_class}", "{letter}" }
             }
-        }
-    }
-}
-
-#[component]
-fn FileBody(content: Option<FileContent>, scroll_top: f64, view_h: f64) -> Element {
-    let Some(content) = content else {
-        return rsx! { p { class: "files-status", "Loading\u{2026}" } };
-    };
-    match content {
-        FileContent::Missing => rsx! { p { class: "files-status", "This file is missing." } },
-        FileContent::Binary { .. } => rsx! { p { class: "files-status", "This file is binary." } },
-        FileContent::TooLarge { .. } => {
-            rsx! { p { class: "files-status", "This file is too large to show." } }
-        }
-        FileContent::Text { text, .. } => {
-            let lines = split_lines(&text);
-            let cap = FILE_LINE_CAP as usize;
-            let hidden = lines.len().saturating_sub(cap);
-            let shown: Vec<&str> = lines.into_iter().take(cap).collect();
-            let count = shown.len();
-            let windowed = count as i64 > FILE_WINDOW_THRESHOLD;
-            let range = window_range(count as i64, scroll_top, view_h, TEXT_ROW_PX);
-            let start = usize::try_from(range.start.max(0)).unwrap_or(0).min(count);
-            let end = usize::try_from(range.end.max(0)).unwrap_or(0).min(count);
-            let start = start.min(end);
-            let slice: Vec<(usize, String)> = shown[start..end]
-                .iter()
-                .enumerate()
-                .map(|(offset, line)| (start + offset, (*line).to_string()))
-                .collect();
-            let height = (count as f64) * TEXT_ROW_PX;
-            let shift = (start as f64) * TEXT_ROW_PX;
-            rsx! {
-                div { class: "files-text",
-                    if windowed {
-                        div { style: "position: relative; height: {height}px;",
-                            div { style: "position: absolute; top: 0; left: 0; right: 0; transform: translateY({shift}px);",
-                                for (index, line) in slice {
-                                    TextLine { key: "{index}", index: index, line: line }
-                                }
-                            }
-                        }
-                    } else {
-                        for (index, line) in shown.into_iter().enumerate() {
-                            TextLine { key: "{index}", index: index, line: line.to_string() }
-                        }
-                    }
-                    if hidden > 0 {
-                        p { class: "files-status", "First {FILE_LINE_CAP} lines shown. {hidden} more." }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn TextLine(index: usize, line: String) -> Element {
-    let number = index + 1;
-    let source = if line.is_empty() {
-        " ".to_string()
-    } else {
-        line
-    };
-    rsx! {
-        div { class: "files-text-line",
-            span { class: "files-text-n", "{number}" }
-            span { class: "files-text-src", "{source}" }
         }
     }
 }
@@ -1052,6 +989,7 @@ fn on_tree_key(
     opening: Signal<bool>,
     opening_flag: Rc<Cell<bool>>,
     place: Option<String>,
+    store: Store,
 ) {
     let key_name = event.key();
     let listed = rows.read();
@@ -1077,7 +1015,7 @@ fn on_tree_key(
             return;
         };
         drop(listed);
-        focus_row(select_key, selected, focused, open_error, next);
+        focus_row(store, select_key, selected, focused, open_error, next);
         return;
     }
     if key_name == Key::ArrowRight {
@@ -1090,7 +1028,7 @@ fn on_tree_key(
             } else if let Some(child) = listed.get(index + 1).cloned() {
                 drop(listed);
                 if child.depth > row.depth {
-                    focus_row(select_key, selected, focused, open_error, child);
+                    focus_row(store, select_key, selected, focused, open_error, child);
                 }
             }
         }
@@ -1112,7 +1050,7 @@ fn on_tree_key(
             .cloned();
         drop(listed);
         if let Some(target) = target {
-            focus_row(select_key, selected, focused, open_error, target);
+            focus_row(store, select_key, selected, focused, open_error, target);
         }
         return;
     }
@@ -1128,12 +1066,19 @@ fn on_tree_key(
 }
 
 fn focus_row(
+    store: Store,
     select_key: &str,
     mut selected: Signal<Option<String>>,
     mut focused: Signal<Option<String>>,
     mut open_error: Signal<Option<String>>,
     row: VisibleRow,
 ) {
+    if row.kind == RowKind::File
+        && selected.peek().as_ref() != Some(&row.path)
+        && !confirm_discard_editor(store)
+    {
+        return;
+    }
     focused.set(Some(row.path.clone()));
     if row.kind == RowKind::File {
         selected.set(Some(row.path.clone()));
@@ -1152,6 +1097,7 @@ fn toggle_folder(key: &str, mut expanded: Signal<HashSet<String>>, path: &str) {
 }
 
 fn select_file(
+    store: Store,
     key: &str,
     mut selected: Signal<Option<String>>,
     mut focused: Signal<Option<String>>,
@@ -1159,6 +1105,9 @@ fn select_file(
     mut open_error: Signal<Option<String>>,
     path: String,
 ) {
+    if selected.peek().as_ref() != Some(&path) && !confirm_discard_editor(store) {
+        return;
+    }
     selected.set(Some(path.clone()));
     remember_selected(key, &Some(path.clone()));
     focused.set(Some(path));
@@ -1211,28 +1160,6 @@ fn content_bytes(content: &FileContent) -> Option<i64> {
         | FileContent::TooLarge { bytes } => Some(*bytes),
         FileContent::Missing => None,
     }
-}
-
-fn split_lines(text: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let bytes = text.as_bytes();
-    let mut start = 0;
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'\n' {
-            let mut end = index;
-            if end > start && bytes[end - 1] == b'\r' {
-                end -= 1;
-            }
-            lines.push(&text[start..end]);
-            index += 1;
-            start = index;
-        } else {
-            index += 1;
-        }
-    }
-    lines.push(&text[start..]);
-    lines
 }
 
 pub(super) fn bridge_error(err: &str) -> String {

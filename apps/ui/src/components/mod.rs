@@ -1,6 +1,7 @@
 mod agent_pane;
 mod bot_avatar;
 mod changes_tab;
+mod code_editor;
 mod error_boundary;
 mod files_panel;
 mod flow_view;

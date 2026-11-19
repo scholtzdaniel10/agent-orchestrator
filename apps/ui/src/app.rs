@@ -720,6 +720,10 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
     let messages = store.messages.read().clone();
     let project = store.project.read().clone();
     let primary = store.primary.read().clone();
+    let project_path = project
+        .as_ref()
+        .map(|item| item.path.as_str())
+        .unwrap_or_default();
     let folder = project
         .as_ref()
         .map(|item| folder_name(&item.path))
@@ -742,7 +746,11 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
     let refresh = format!("{}:{done}", changes.len());
     let _ = frame;
     match tab.as_str() {
-        "files" => rsx! { FilesPanel { r#where: primary.clone(), label: files_label } },
+        "files" => rsx! {
+            for project_path in [project_path] {
+                FilesPanel { key: "{project_path}", r#where: primary.clone(), label: files_label.clone() }
+            }
+        },
         "lead" => rsx! { LeadChat {
             messages: messages.clone(),
             jobs: jobs,
@@ -786,6 +794,9 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
             on_select_job: Callback::new(move |id: Option<String>| store.selected_job.set(id)),
             on_job: Callback::new(|_| {}),
             on_view_change: Callback::new(move |id: String| {
+                if !can_select_primary(store, Some(&id)) {
+                    return;
+                }
                 store.selected_change.set(Some(id.clone()));
                 store.primary.set(Some(id));
                 store.drawer_tab.set("changes".into());
@@ -842,6 +853,9 @@ fn TabBody(tab: String, frame: LayoutState) -> Element {
         "goals" => rsx! { GoalsPanel {
             jobs: jobs,
             on_view_change: Callback::new(move |id: String| {
+                if !can_select_primary(store, Some(&id)) {
+                    return;
+                }
                 store.selected_change.set(Some(id.clone()));
                 store.primary.set(Some(id));
                 store.drawer_tab.set("changes".into());
@@ -1248,12 +1262,21 @@ fn prune_selection(mut store: Store) {
     if primary
         .as_ref()
         .is_some_and(|id| changes.iter().all(|change| &change.id != id))
+        && store.editor_dirty.read().is_none()
     {
         store.primary.set(None);
     }
 }
 
+fn can_select_primary(store: Store, id: Option<&str>) -> bool {
+    !*store.project_switching.peek()
+        && (store.primary.peek().as_deref() == id || state::confirm_discard_editor(store))
+}
+
 fn select_worktree(mut store: Store, id: Option<String>, mode: &str) {
+    if !can_select_primary(store, id.as_deref()) {
+        return;
+    }
     let changes = store.changes.read().clone();
     let mut keys = vec![None];
     keys.extend(changes.into_iter().map(|change| Some(change.id)));
@@ -1287,6 +1310,9 @@ fn select_worktree(mut store: Store, id: Option<String>, mode: &str) {
 }
 
 fn select_all(mut store: Store) {
+    if !can_select_primary(store, None) {
+        return;
+    }
     let changes = store.changes.read().clone();
     let mut keys = vec![None];
     keys.extend(changes.into_iter().map(|change| Some(change.id)));
@@ -1296,11 +1322,10 @@ fn select_all(mut store: Store) {
         .all(|key| selected.iter().any(|item| item == key));
     if all {
         store.selected.set(vec![None]);
-        store.primary.set(None);
     } else {
-        store.primary.set(keys.first().cloned().flatten());
         store.selected.set(keys);
     }
+    store.primary.set(None);
 }
 
 fn create_worktrees(
@@ -1339,8 +1364,10 @@ fn create_worktrees(
                 }
             }
         }
-        if !made.is_empty() {
-            store.primary.set(made.first().cloned().flatten());
+        if let Some(primary) = made.first().cloned().flatten()
+            && can_select_primary(store, Some(&primary))
+        {
+            store.primary.set(Some(primary));
             store.selected.set(made);
         }
     });
@@ -1394,6 +1421,9 @@ fn begin_project_switch(mut store: Store, layout: Signal<LayoutState>) -> u64 {
 }
 
 fn choose_project(mut store: Store, layout: Signal<LayoutState>) {
+    if *store.project_switching.peek() || !state::confirm_discard_editor(store) {
+        return;
+    }
     let generation = begin_project_switch(store, layout);
     spawn(async move {
         let result = api::choose_project().await;
@@ -1417,6 +1447,9 @@ fn switch_project(
     path: String,
     worktree: Option<String>,
 ) {
+    if *store.project_switching.peek() || !state::confirm_discard_editor(store) {
+        return;
+    }
     let generation = begin_project_switch(store, layout);
     spawn(async move {
         let result = api::switch_project(&path).await;
@@ -1524,13 +1557,19 @@ async fn adopt(mut store: Store, layout: Signal<LayoutState>, info: ProjectInfo)
     }
 }
 
-fn refresh_projects(store: Store, layout: Signal<LayoutState>) {
+fn refresh_projects(mut store: Store, layout: Signal<LayoutState>) {
     let generation = begin_project_switch(store, layout);
     spawn(async move {
-        if let Ok(info) = api::get_project().await
-            && (store.project_request)() == generation
-        {
-            adopt(store, layout, info).await;
+        let info = api::get_project().await;
+        if (store.project_request)() != generation {
+            return;
+        }
+        match info {
+            Ok(info) => adopt(store, layout, info).await,
+            Err(text) => {
+                store.error.set(Some(text));
+                store.project_switching.set(false);
+            }
         }
     });
 }

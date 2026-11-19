@@ -45,6 +45,7 @@ pub struct Store {
     pub lead_mode: Signal<Option<ProviderId>>,
     pub goals_waiting: Signal<Vec<String>>,
     pub primary: Signal<Option<String>>,
+    pub editor_dirty: Signal<Option<String>>,
     pub selected_job: Signal<Option<String>>,
     pub show_job: Signal<Option<(String, i64)>>,
     pub selected_change: Signal<Option<String>>,
@@ -85,6 +86,7 @@ pub fn provide_store() -> Store {
         lead_mode: use_signal(|| None),
         goals_waiting: use_signal(Vec::new),
         primary: use_signal(|| None),
+        editor_dirty: use_signal(|| None),
         selected_job: use_signal(|| None),
         show_job: use_signal(|| None),
         selected_change: use_signal(|| None),
@@ -98,6 +100,21 @@ pub fn provide_store() -> Store {
 
 pub fn use_store() -> Store {
     use_context()
+}
+
+pub(crate) fn confirm_discard_editor(mut store: Store) -> bool {
+    let Some(path) = store.editor_dirty.peek().clone() else {
+        return true;
+    };
+    let confirmed = web_sys::window().is_some_and(|window| {
+        window
+            .confirm_with_message(&format!("Discard unsaved changes to {path}?"))
+            .unwrap_or(false)
+    });
+    if confirmed {
+        store.editor_dirty.set(None);
+    }
+    confirmed
 }
 
 pub fn boot(store: Store) {

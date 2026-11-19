@@ -4868,7 +4868,8 @@ button.job-step {
 }
 
 .files-preview-body {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  height: 0;
   min-height: 0;
   overflow: auto;
 }
@@ -4878,33 +4879,25 @@ button.job-step {
   height: 100%;
 }
 
-.files-text {
-  min-width: 100%;
-  width: max-content;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.45;
+.files-editor-preview,
+.files-editor {
+  height: 100%;
 }
 
-.files-text-line {
+.files-editor {
   display: flex;
-  min-width: 100%;
-  width: max-content;
-  white-space: pre;
+  flex-direction: column;
 }
 
-.files-text-n {
-  flex: none;
-  width: 44px;
-  padding: 0 8px 0 6px;
-  color: var(--muted);
-  text-align: right;
-  user-select: none;
+.files-editor-host {
+  flex: 1 1 0;
+  min-height: 0;
+  font-size: 12px;
 }
 
-.files-text-src {
-  flex: 1;
-  padding-right: 8px;
+.files-editor-dirty {
+  margin-inline-end: 4px;
+  color: var(--signal);
 }
 
 /* Seven tabs share one row at the default drawer width; they still wrap when it is dragged narrower. */

@@ -10,6 +10,8 @@ pub mod app;
 #[cfg(target_arch = "wasm32")]
 pub mod components;
 #[cfg(target_arch = "wasm32")]
+pub mod editor;
+#[cfg(target_arch = "wasm32")]
 pub mod state;
 #[cfg(target_arch = "wasm32")]
 pub mod wire;

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use dioxus::core::spawn_forever;
 use dioxus::prelude::dioxus_elements::{InteractionLocation, ModifiersInteraction};
 use dioxus::prelude::*;
 use legate_core::{
@@ -20,6 +21,7 @@ use crate::logic::sidebar_cards::{
     arrange_cards, card_status, read_options,
 };
 use crate::logic::worktree_label::{self, NamedChange};
+use crate::state::{confirm_discard_editor, use_store};
 
 type WorktreeCreate = Callback<(Option<String>, i64, Option<ProviderId>, Option<String>)>;
 
@@ -71,6 +73,7 @@ pub fn ProjectBar(
     on_open_setup: Callback,
 ) -> Element {
     let _ = on_open_setup;
+    let mut store = use_store();
     let mut search = use_signal(String::new);
     let options = use_signal(stored_options);
     let mut folds = use_signal(stored_folds);
@@ -219,19 +222,26 @@ pub fn ProjectBar(
                     now,
                     on_filter: Callback::new(move |value: String| filter.set(value)),
                     on_clone: Callback::new(move |name: String| {
-                        if cloning.read().is_some() {
+                        if cloning.peek().is_some() || *store.project_switching.peek() || !confirm_discard_editor(store) {
                             return;
                         }
                         cloning.set(Some(name.clone()));
-                        spawn(async move {
-                            match api::github_clone(&name).await {
-                                Ok(Some(_)) => {
-                                    cloning.set(None);
-                                    github_open.set(false);
-                                    filter.set(String::new());
-                                    on_github_clone.call(name);
+                        store.project_switching.set(true);
+                        spawn_forever(async move {
+                            let result = api::github_clone(&name).await;
+                            if let Ok(mut value) = cloning.try_write() {
+                                *value = None;
+                            }
+                            if let Ok(Some(_)) = result {
+                                if let Ok(mut value) = github_open.try_write() {
+                                    *value = false;
                                 }
-                                _ => cloning.set(None),
+                                if let Ok(mut value) = filter.try_write() {
+                                    value.clear();
+                                }
+                                on_github_clone.call(name);
+                            } else {
+                                store.project_switching.set(false);
                             }
                         });
                     }),
