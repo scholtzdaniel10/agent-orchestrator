@@ -577,27 +577,6 @@ async function pass(prefix, compact) {
         const probe = await dragHandle(`.layout-handle-${part}`, dx);
         await waitFor(`${size} !== ${JSON.stringify(before)}`, `changed ${part} width (${probe})`);
       }
-
-      await saveWorktreeSetup();
-      await uncoverTerminal();
-      await click('[aria-label="New worktree"]');
-      await value('[aria-label="New worktree name"]', 'clickthrough-resize');
-      await value('[aria-label="How many"]', '2');
-      await click('.project-worktree-create button', 'Create');
-      await value('#pane-layout', '2-side');
-      const first = find('.terminal-stage.is-2-side .terminal-pane.is-slot-0');
-      const second = find('.terminal-stage.is-2-side .terminal-pane.is-slot-1');
-      await waitFor(`${first} && ${second}`, 'two side-by-side terminals', main, 30_000);
-      try {
-        const width = `${first}.getBoundingClientRect().width`;
-        const before = await main.evaluate(width);
-        await dragHandle('.pane-handle.is-col', 80);
-        await waitFor(`${width} > ${before + 40}`, 'first terminal pane widened by more than 40 px');
-      } finally {
-        for (const slot of [1, 0]) await click(`.terminal-pane.is-slot-${slot} .terminal-pane-head button[aria-label^="Close "]`);
-        await value('#pane-layout', 'auto');
-        await click('.project-worktree-row[title="Project folder"]');
-      }
     });
   }
   await step(`${prefix}-history-detail`, async () => {
@@ -776,6 +755,17 @@ async function pass(prefix, compact) {
     await value('#pane-layout', pane.id);
     await waitFor(`JSON.parse(localStorage.getItem('orch.layout')).paneLayout === ${JSON.stringify(pane.id)}`, 'persisted pane layout');
     await waitFor(find(`.terminal-stage.is-${pane.id === 'auto' ? '1' : pane.id}`), 'rendered terminal layout');
+  });
+  // Uses the open terminal plus the empty second slot, so no extra worktree is left behind.
+  if (!compact) await step(`${prefix}-pane-split-drag`, async () => {
+    await value('#pane-layout', '2-side');
+    const first = find('.terminal-stage.is-2-side .is-slot-0');
+    await waitFor(`${first} && ${find('.pane-handle.is-col')}`, 'two-pane layout with a split handle');
+    const width = `${first}.getBoundingClientRect().width`;
+    const before = await main.evaluate(width);
+    const probe = await dragHandle('.pane-handle.is-col', 80);
+    await waitFor(`${width} > ${before + 40}`, `first pane widened by more than 40 px (${probe})`);
+    await value('#pane-layout', 'auto');
   });
   await step(`${prefix}-terminal-worktree-toggle`, async () => {
     const before = await main.evaluate(`${find('.tab-worktree')}.getAttribute('aria-pressed')`);
