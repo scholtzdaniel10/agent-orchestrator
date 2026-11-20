@@ -46,7 +46,7 @@ pub trait Runner {
         job: &RunJob,
         cwd: &str,
         opts: &RunOptions,
-    ) -> Result<Box<dyn ActiveRun>, String>;
+    ) -> std::io::Result<Box<dyn ActiveRun>>;
 }
 
 #[derive(Clone, Debug)]

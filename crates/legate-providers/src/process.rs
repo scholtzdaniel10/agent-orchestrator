@@ -153,7 +153,13 @@ pub(crate) fn spawn_cli(spec: SpawnSpec) -> RunHandle {
             if let Some(cleanup) = spec.cleanup {
                 cleanup();
             }
-            return RunHandle::failed(err.to_string());
+            // A missing working directory can also cause NotFound.
+            let err = if err.kind() == std::io::ErrorKind::NotFound && !spec.cwd.is_dir() {
+                std::io::Error::other(err)
+            } else {
+                err
+            };
+            return RunHandle::start_failed(err);
         }
     };
 

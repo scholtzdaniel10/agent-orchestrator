@@ -7,6 +7,7 @@
 //! Run weights stay in the state's deque.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io;
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
@@ -22,7 +23,7 @@ use crate::clock::{SystemClock, system_now_ms};
 use crate::ids::RunningCounts;
 use crate::ports::{ActiveRun, Clock, ExitStatus, RunJob, Runner, Workspaces};
 use crate::state::RouterState;
-use crate::usage::{Pick, RouterError};
+use crate::usage::RouterError;
 use crate::versions::{compare_to_tested, unknown_format_message};
 
 pub const JOB_HEARTBEAT_MS: i64 = 5_000;
@@ -372,7 +373,7 @@ impl Orchestrator {
             job_type,
             original_prompt: prompt.to_string(),
             prompt: prompt.to_string(),
-            provider: None,
+            provider,
             status: JobStatus::Queued,
             output: String::new(),
             failed_over: Vec::new(),
@@ -404,53 +405,63 @@ impl Orchestrator {
         }
         self.prune(&project);
 
-        if let Some(provider) = provider {
-            if let Some(job) = self.inner.borrow_mut().jobs.get_mut(&id) {
-                job.provider = Some(provider);
-            }
+        self.refresh_usage();
+        let candidates = self.candidates();
+        let now = self.clock.now_ms();
+        let unavailable = provider.and_then(|provider| {
             if self.is_off(provider) {
-                return self.fail_now(&id, &format!("{} is turned off", provider.as_str()));
-            }
-            if !self.inner.borrow().candidates.contains(&provider) {
-                return self.fail_now(&id, &format!("{} is not signed in", provider.as_str()));
-            }
-            self.refresh_usage();
-            let resting = self
+                Some("turned off")
+            } else if !candidates.contains(&provider) {
+                Some("not available")
+            } else if self
                 .state
                 .borrow()
                 .resting_deadline(plan_of(provider))
-                .is_some_and(|until| until > self.clock.now_ms());
-            if resting {
-                return self.fail_now(&id, &format!("{} is resting", provider.as_str()));
-            }
+                .is_some_and(|until| until > now)
             {
-                let mut inner = self.inner.borrow_mut();
-                if let Some(job) = inner.jobs.get_mut(&id) {
-                    job.chosen = true;
-                    job.reason = Some("chosen".to_string());
-                }
+                Some("resting")
+            } else {
+                None
             }
-            self.enqueue(provider, &id);
-            self.emit_status(&id);
-            self.pump(provider);
-            return self.record_of(&id);
-        }
-
-        self.refresh_usage();
-        let candidates = self.candidates();
-        let running = self.running_counts();
-        let now = self.clock.now_ms();
-        let pick =
-            self.state
-                .borrow_mut()
-                .pick_with_reason(job_type, &candidates, now, &[], &running);
-        let Some(pick) = pick else {
-            return self.fail_now(&id, "no provider available");
+        });
+        let chosen = provider.filter(|_| unavailable.is_none());
+        let (provider, reason) = if let Some(provider) = chosen {
+            (provider, "chosen".to_string())
+        } else {
+            let running = self.running_counts();
+            let pick = self.state.borrow_mut().pick_with_reason(
+                job_type,
+                &candidates,
+                now,
+                provider.as_slice(),
+                &running,
+            );
+            let Some(pick) = pick else {
+                return match provider.zip(unavailable) {
+                    Some((provider, reason)) => self.fail_now(
+                        &id,
+                        &format!(
+                            "{} is {reason}, and no other plan is available",
+                            provider.as_str()
+                        ),
+                    ),
+                    None => self.fail_now(&id, "no provider available"),
+                };
+            };
+            let reason = match provider {
+                Some(provider) => format!("{} unavailable", provider.as_str()),
+                None => pick.reason.to_string(),
+            };
+            (pick.provider, reason)
         };
-        self.assign_pick(&id, pick);
-        self.enqueue(pick.provider, &id);
+        if let Some(job) = self.inner.borrow_mut().jobs.get_mut(&id) {
+            job.provider = Some(provider);
+            job.chosen = chosen.is_some();
+            job.reason = Some(reason);
+        }
+        self.enqueue(provider, &id);
         self.emit_status(&id);
-        self.pump(pick.provider);
+        self.pump(provider);
         self.record_of(&id)
     }
 
@@ -726,13 +737,6 @@ impl Orchestrator {
             .any(|job| self.is_ours(job) && is_open(job.status))
     }
 
-    fn assign_pick(&self, id: &str, pick: Pick) {
-        if let Some(job) = self.inner.borrow_mut().jobs.get_mut(id) {
-            job.provider = Some(pick.provider);
-            job.reason = Some(pick.reason.to_string());
-        }
-    }
-
     fn fail_now(&self, id: &str, error: &str) -> JobRecord {
         if let Some(job) = self.inner.borrow_mut().jobs.get_mut(id) {
             job.status = JobStatus::Failed;
@@ -865,10 +869,8 @@ impl Orchestrator {
                     Ok(prepared) => {
                         self.spawn_prepared(id, provider, prepared, self.clock.now_ms())
                     }
-                    Err(message) => {
-                        let started_at = self.clock.now_ms();
-                        self.fail_thrown(&id, provider, &message, started_at, 0, None, None);
-                        self.clear_slot(provider, &id);
+                    Err(error) => {
+                        self.fail_launch(&id, provider, &error, self.clock.now_ms(), 0);
                         self.resolve_idle();
                     }
                 }
@@ -944,16 +946,8 @@ impl Orchestrator {
                 self.consume(job_id, provider, started_at, instant, prepared)
                     .await
             }
-            Err(message) => {
-                self.fail_thrown(
-                    job_id,
-                    provider,
-                    &message,
-                    started_at,
-                    elapsed_ms(instant),
-                    None,
-                    None,
-                );
+            Err(error) => {
+                self.fail_launch(job_id, provider, &error, started_at, elapsed_ms(instant));
                 true
             }
         }
@@ -1181,7 +1175,7 @@ impl Orchestrator {
         self.emit_status(job_id);
     }
 
-    fn launch(&self, job_id: &str, provider: ProviderId) -> Result<PreparedRun, String> {
+    fn launch(&self, job_id: &str, provider: ProviderId) -> io::Result<PreparedRun> {
         let cwd = self
             .inner
             .borrow()
@@ -1192,15 +1186,10 @@ impl Orchestrator {
         self.launch_in(job_id, provider, &cwd)
     }
 
-    fn launch_in(
-        &self,
-        job_id: &str,
-        provider: ProviderId,
-        cwd: &str,
-    ) -> Result<PreparedRun, String> {
+    fn launch_in(&self, job_id: &str, provider: ProviderId, cwd: &str) -> io::Result<PreparedRun> {
         let runner = self
             .runner(provider)
-            .ok_or_else(|| format!("no adapter for {}", provider.as_str()))?;
+            .ok_or_else(|| io::Error::other(format!("no adapter for {}", provider.as_str())))?;
         let args = self.run_args(job_id);
         let opts = self.run_options(job_id, provider);
         let active = runner.start(&args, cwd, &opts)?;
@@ -1560,7 +1549,7 @@ impl Orchestrator {
             .get(job_id)
             .map(|job| job.output.clone())
             .unwrap_or_default();
-        self.requeue(job_id, provider, true, &output);
+        self.requeue(job_id, provider, true, &output, None);
         true
     }
 
@@ -1668,7 +1657,7 @@ impl Orchestrator {
                 .get(job_id)
                 .map(|job| job.output.clone())
                 .unwrap_or_default();
-            self.requeue(job_id, provider, true, &output);
+            self.requeue(job_id, provider, true, &output, None);
         }
         if !credits {
             self.reroute_queued(provider);
@@ -1744,12 +1733,19 @@ impl Orchestrator {
                     self.emit_status(&id);
                     continue;
                 }
-                self.requeue(&id, adapter, false, "");
+                self.requeue(&id, adapter, false, "", None);
             }
         }
     }
 
-    fn requeue(&self, job_id: &str, from: ProviderId, record_failure: bool, output: &str) {
+    fn requeue(
+        &self,
+        job_id: &str,
+        from: ProviderId,
+        record_failure: bool,
+        output: &str,
+        launch_error: Option<&io::Error>,
+    ) {
         if record_failure && let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
             job.failed_over.push(from);
         }
@@ -1775,7 +1771,10 @@ impl Orchestrator {
             if let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
                 job.status = JobStatus::Failed;
                 job.provider = None;
-                job.error = Some("all providers are at their limit".to_string());
+                job.error = Some(match launch_error {
+                    Some(error) => format!("{error} (no other plan is available)"),
+                    None => "all providers are at their limit".to_string(),
+                });
             }
             self.emit_status(job_id);
             return;
@@ -1811,6 +1810,36 @@ impl Orchestrator {
         self.enqueue(next, job_id);
         self.emit_status(job_id);
         self.pump(next);
+    }
+
+    fn fail_launch(
+        &self,
+        job_id: &str,
+        provider: ProviderId,
+        error: &io::Error,
+        started_at: i64,
+        duration_ms: i64,
+    ) {
+        if error.kind() == io::ErrorKind::NotFound {
+            let mut inner = self.inner.borrow_mut();
+            inner.candidates.retain(|&id| id != provider);
+            inner.problems.insert(provider, PlanProblem::NotInstalled);
+        }
+        if self.finish_cancelled(job_id, provider, started_at, duration_ms, None, None) {
+            self.clear_slot(provider, job_id);
+            return;
+        }
+        self.insert_run(
+            job_id,
+            provider,
+            started_at,
+            duration_ms,
+            None,
+            None,
+            RunOutcome::Error,
+        );
+        self.clear_slot(provider, job_id);
+        self.requeue(job_id, provider, true, "", Some(error));
     }
 
     #[allow(clippy::too_many_arguments)]

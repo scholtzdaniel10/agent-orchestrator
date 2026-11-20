@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -91,6 +92,7 @@ pub struct RunHandle {
     pub events: EventStream,
     exit_rx: watch::Receiver<Option<ProcessExit>>,
     kill: Arc<dyn Fn() + Send + Sync>,
+    start_error: Option<io::Error>,
 }
 
 impl RunHandle {
@@ -103,17 +105,29 @@ impl RunHandle {
             events,
             exit_rx,
             kill,
+            start_error: None,
         }
     }
 
     pub(crate) fn failed(message: String) -> Self {
+        Self::start_failed(io::Error::other(message))
+    }
+
+    pub(crate) fn start_failed(error: io::Error) -> Self {
         let (_tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let (_exit_tx, exit_rx) = watch::channel(Some(ProcessExit {
             code: None,
-            stderr: message,
+            stderr: error.to_string(),
             unreadable: false,
         }));
-        Self::new(EventStream { rx }, exit_rx, Arc::new(|| {}))
+        let mut handle = Self::new(EventStream { rx }, exit_rx, Arc::new(|| {}));
+        handle.start_error = Some(error);
+        handle
+    }
+
+    /// Takes an immediate startup error. It remains available as text through `exit`.
+    pub fn take_start_error(&mut self) -> Option<io::Error> {
+        self.start_error.take()
     }
 
     pub async fn exit(&self) -> ProcessExit {

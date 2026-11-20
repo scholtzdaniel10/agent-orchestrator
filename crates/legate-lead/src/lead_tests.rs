@@ -456,8 +456,9 @@ impl Runner for Lane {
         job: &RunJob,
         cwd: &str,
         opts: &RunOptions,
-    ) -> Result<Box<dyn ActiveRun>, String> {
-        let script = take_script(&self.0, &job.id, &job.prompt, cwd, opts)?;
+    ) -> std::io::Result<Box<dyn ActiveRun>> {
+        let script =
+            take_script(&self.0, &job.id, &job.prompt, cwd, opts).map_err(std::io::Error::other)?;
         Ok(Box::new(WorkerRun {
             events: script.events,
             index: 0,

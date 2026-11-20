@@ -5,6 +5,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
+use std::io;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -87,7 +88,7 @@ struct Script {
     exit_code: Option<i32>,
     stderr: String,
     unreadable: bool,
-    throw_on_run: bool,
+    start_error: Option<io::Error>,
     on_start: Option<Rc<dyn Fn()>>,
 }
 
@@ -100,7 +101,7 @@ impl Default for Script {
             exit_code: Some(0),
             stderr: String::new(),
             unreadable: false,
-            throw_on_run: false,
+            start_error: None,
             on_start: None,
         }
     }
@@ -310,23 +311,21 @@ impl Runner for FakeAdapter {
         stderr_is_limit(stderr)
     }
 
-    fn start(
-        &self,
-        job: &RunJob,
-        cwd: &str,
-        opts: &RunOptions,
-    ) -> Result<Box<dyn ActiveRun>, String> {
+    fn start(&self, job: &RunJob, cwd: &str, opts: &RunOptions) -> io::Result<Box<dyn ActiveRun>> {
         self.received.borrow_mut().push(job.clone());
         self.cwds.borrow_mut().push(cwd.to_string());
         self.options.borrow_mut().push(opts.clone());
-        let Some(script) = self.scripts.borrow_mut().pop_front() else {
-            return Err(format!("no script left for {}", self.id.as_str()));
+        let Some(mut script) = self.scripts.borrow_mut().pop_front() else {
+            return Err(io::Error::other(format!(
+                "no script left for {}",
+                self.id.as_str()
+            )));
         };
         if let Some(on_start) = &script.on_start {
             on_start();
         }
-        if script.throw_on_run {
-            return Err("adapter exploded".to_string());
+        if let Some(error) = script.start_error.take() {
+            return Err(error);
         }
         Ok(Box::new(FakeRun::from_script(script)))
     }
@@ -820,13 +819,13 @@ fn stderr_limit_uses_the_default_rest_and_fails_over() {
 }
 
 #[test]
-fn a_thrown_adapter_fails_that_job_and_the_queue_continues() {
+fn a_launch_error_with_no_fallback_fails_that_job_and_the_queue_continues() {
     drive(async {
         let claude = FakeAdapter::new(
             ProviderId::Claude,
             vec![
                 Script {
-                    throw_on_run: true,
+                    start_error: Some(io::Error::other("adapter exploded")),
                     ..Script::default()
                 },
                 ok("second"),
@@ -840,7 +839,10 @@ fn a_thrown_adapter_fails_that_job_and_the_queue_continues() {
                 go(&orch, JobType::Planning, "second");
                 orch.idle().await;
                 assert_eq!(orch.list()[0].status, JobStatus::Failed);
-                assert_eq!(orch.list()[0].error.as_deref(), Some("adapter exploded"));
+                assert_eq!(
+                    orch.list()[0].error.as_deref(),
+                    Some("adapter exploded (no other plan is available)")
+                );
                 assert_eq!(orch.list()[1].status, JobStatus::Done);
                 assert_eq!(orch.list()[1].output, "second");
                 assert_eq!(claude.prompts(), ["first", "second"]);
@@ -852,6 +854,105 @@ fn a_thrown_adapter_fails_that_job_and_the_queue_continues() {
                     .map(|run| run.outcome)
                     .collect();
                 assert_eq!(outcomes, vec![RunOutcome::Error, RunOutcome::Ok]);
+            },
+        )
+        .await;
+    });
+}
+
+#[test]
+fn a_launch_error_retries_on_another_plan_for_read_and_edit_jobs() {
+    drive(async {
+        for access in [JobAccess::Read, JobAccess::Edit] {
+            let claude = FakeAdapter::new(
+                ProviderId::Claude,
+                vec![Script {
+                    start_error: Some(io::Error::other("adapter exploded")),
+                    ..Script::default()
+                }],
+            );
+            let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("continued")]);
+            let opts = Opts {
+                workspaces: Some(trees(|_, job_id, _| Ok(slice_tree(job_id)))),
+                ..Opts::default()
+            };
+            with_orch(
+                vec![claude.clone(), cursor.clone()],
+                opts,
+                |orch, store| async move {
+                    let submitted = orch.submit(
+                        JobType::Planning,
+                        "try claude first",
+                        Some(ProviderId::Claude),
+                        Some(SubmitAccess::Level(access)),
+                        SubmitExtra::default(),
+                    );
+                    orch.idle().await;
+                    let job = orch.get(&submitted.id).unwrap();
+                    assert_eq!(job.status, JobStatus::Done);
+                    assert_eq!(job.provider, Some(ProviderId::Cursor));
+                    assert_eq!(job.failed_over, [ProviderId::Claude]);
+                    assert_eq!(job.reason.as_deref(), Some("failover"));
+                    assert_eq!(job.output, "continued");
+                    assert_eq!(job.error, None);
+                    assert_eq!(
+                        store.runs(Some("claude")).unwrap()[0].outcome,
+                        RunOutcome::Error
+                    );
+                    assert_eq!(
+                        claude.cwds.borrow().as_slice(),
+                        cursor.cwds.borrow().as_slice()
+                    );
+                    assert!(orch.workers().iter().all(|worker| worker.running == 0));
+                },
+            )
+            .await;
+        }
+    });
+}
+
+#[test]
+fn an_executable_missing_at_launch_is_skipped_until_recheck() {
+    drive(async {
+        let claude = FakeAdapter::new(
+            ProviderId::Claude,
+            vec![
+                Script {
+                    start_error: Some(io::Error::new(io::ErrorKind::NotFound, "cli disappeared")),
+                    ..Script::default()
+                },
+                ok("reinstalled"),
+            ],
+        );
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("retry"), ok("next")]);
+        with_orch(
+            vec![claude.clone(), cursor],
+            Opts::default(),
+            |orch, _| async move {
+                let retried = go(&orch, JobType::Planning, "retry");
+                assert_eq!(retried.provider, Some(ProviderId::Cursor));
+                assert_eq!(retried.failed_over, [ProviderId::Claude]);
+                assert!(!orch.workers()[0].available);
+                assert_eq!(orch.workers()[0].problem, Some(PlanProblem::NotInstalled));
+                let next = go_on(&orch, JobType::Planning, "next", ProviderId::Claude);
+                assert_eq!(next.provider, Some(ProviderId::Cursor));
+                assert_eq!(next.reason.as_deref(), Some("claude unavailable"));
+                orch.idle().await;
+                assert_eq!(orch.get(&retried.id).unwrap().status, JobStatus::Done);
+                assert_eq!(orch.get(&next.id).unwrap().status, JobStatus::Done);
+                assert_eq!(claude.prompts(), ["retry"]);
+
+                orch.recheck().await;
+                let restored = go_on(
+                    &orch,
+                    JobType::Planning,
+                    "back on claude",
+                    ProviderId::Claude,
+                );
+                assert_eq!(restored.provider, Some(ProviderId::Claude));
+                assert_eq!(restored.reason.as_deref(), Some("chosen"));
+                orch.idle().await;
+                assert_eq!(orch.get(&restored.id).unwrap().status, JobStatus::Done);
             },
         )
         .await;
@@ -1452,7 +1553,7 @@ fn an_off_plan_is_never_checked_or_used() {
         let claude = FakeAdapter::new(ProviderId::Claude, vec![]);
         let cursor = FakeAdapter::new(ProviderId::Cursor, vec![]);
         let grok = FakeAdapter::new(ProviderId::Grok, vec![]);
-        let local = FakeAdapter::new(ProviderId::Local, vec![ok("ran")]);
+        let local = FakeAdapter::new(ProviderId::Local, vec![ok("ran"), ok("fallback")]);
         let opts = Opts {
             off_plans: vec![ProviderId::Claude, ProviderId::Cursor],
             ..Opts::default()
@@ -1479,11 +1580,37 @@ fn an_off_plan_is_never_checked_or_used() {
                     "claude please",
                     ProviderId::Claude,
                 );
-                assert_eq!(chosen.status, JobStatus::Failed);
-                assert_eq!(chosen.error.as_deref(), Some("claude is turned off"));
+                assert_eq!(chosen.provider, Some(ProviderId::Local));
+                assert_eq!(chosen.reason.as_deref(), Some("claude unavailable"));
                 orch.idle().await;
+                assert_eq!(orch.get(&chosen.id).unwrap().status, JobStatus::Done);
             },
         )
+        .await;
+    });
+}
+
+#[test]
+fn a_requested_plan_that_is_off_fails_when_no_other_plan_is_available() {
+    drive(async {
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![]);
+        let opts = Opts {
+            off_plans: vec![ProviderId::Cursor],
+            ..Opts::default()
+        };
+        with_orch(vec![cursor], opts, |orch, _| async move {
+            let job = go_on(
+                &orch,
+                JobType::Planning,
+                "cursor please",
+                ProviderId::Cursor,
+            );
+            assert_eq!(job.status, JobStatus::Failed);
+            assert_eq!(
+                job.error.as_deref(),
+                Some("cursor is turned off, and no other plan is available")
+            );
+        })
         .await;
     });
 }
@@ -1583,11 +1710,11 @@ fn a_fable_limit_fails_the_chosen_job_and_requeues_an_automatic_job_without_rest
 }
 
 #[test]
-fn a_chosen_plan_that_is_not_signed_in_or_resting_fails() {
+fn a_signed_out_plan_falls_back_but_a_resting_plan_fails_without_an_alternative() {
     drive(async {
         let now = 1_800_000_000_000;
-        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("no")]);
-        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("no")]);
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("fallback")]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![]);
         cursor.signed_in.set(false);
         let mut opts = Opts::default();
         opts.clock = Some(clock_at(now));
@@ -1601,9 +1728,11 @@ fn a_chosen_plan_that_is_not_signed_in_or_resting_fails() {
                     "cursor please",
                     ProviderId::Cursor,
                 );
-                assert_eq!(unsigned.status, JobStatus::Failed);
-                assert_eq!(unsigned.error.as_deref(), Some("cursor is not signed in"));
+                assert_eq!(unsigned.provider, Some(ProviderId::Claude));
+                assert_eq!(unsigned.reason.as_deref(), Some("cursor unavailable"));
                 assert!(cursor.received.borrow().is_empty());
+                orch.idle().await;
+                assert_eq!(orch.get(&unsigned.id).unwrap().status, JobStatus::Done);
                 store.set_resting("claude", now + 1000).unwrap();
                 let resting = go_on(
                     &orch,
@@ -1611,9 +1740,37 @@ fn a_chosen_plan_that_is_not_signed_in_or_resting_fails() {
                     "claude please",
                     ProviderId::Claude,
                 );
-                assert_eq!(resting.error.as_deref(), Some("claude is resting"));
-                assert!(claude.received.borrow().is_empty());
+                assert_eq!(
+                    resting.error.as_deref(),
+                    Some("claude is resting, and no other plan is available")
+                );
+                assert_eq!(claude.prompts(), ["cursor please"]);
+            },
+        )
+        .await;
+    });
+}
+
+#[test]
+fn a_resting_requested_plan_falls_back_to_an_available_plan() {
+    drive(async {
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("fallback")]);
+        with_orch(
+            vec![claude, cursor],
+            Opts::default(),
+            |orch, store| async move {
+                store.set_resting("claude", 1_800_000_000_000).unwrap();
+                let job = go_on(
+                    &orch,
+                    JobType::Planning,
+                    "claude please",
+                    ProviderId::Claude,
+                );
+                assert_eq!(job.provider, Some(ProviderId::Cursor));
+                assert_eq!(job.reason.as_deref(), Some("claude unavailable"));
                 orch.idle().await;
+                assert_eq!(orch.get(&job.id).unwrap().status, JobStatus::Done);
             },
         )
         .await;
@@ -2405,7 +2562,7 @@ fn recheck_picks_up_plans_without_disturbing_a_running_job() {
         let mut script = ok("a");
         script.gate = Some(held.clone());
         let claude = FakeAdapter::new(ProviderId::Claude, vec![script]);
-        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("b")]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("fallback"), ok("b")]);
         cursor.signed_in.set(false);
         with_orch(
             vec![claude.clone(), cursor.clone()],
@@ -2421,8 +2578,9 @@ fn recheck_picks_up_plans_without_disturbing_a_running_job() {
                 assert_eq!(claude.prompts(), ["keep going"]);
                 assert_eq!(orch.workers()[0].problem, Some(PlanProblem::SignedOut));
                 assert!(orch.workers()[1].available);
-                let rejected = go_on(&orch, JobType::Planning, "needs claude", ProviderId::Claude);
-                assert_eq!(rejected.error.as_deref(), Some("claude is not signed in"));
+                let fallback = go_on(&orch, JobType::Planning, "needs claude", ProviderId::Claude);
+                assert_eq!(fallback.provider, Some(ProviderId::Cursor));
+                assert_eq!(fallback.reason.as_deref(), Some("claude unavailable"));
                 let on_cursor = go_on(&orch, JobType::Planning, "now cursor", ProviderId::Cursor);
                 assert_eq!(on_cursor.provider, Some(ProviderId::Cursor));
                 held.trip();
@@ -2439,9 +2597,18 @@ fn recheck_picks_up_plans_without_disturbing_a_running_job() {
 }
 
 #[test]
-fn submit_to_a_plan_with_a_problem_says_not_signed_in() {
+fn submit_to_a_missing_plan_falls_back_to_an_available_plan() {
     drive(async {
-        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("a")]);
+        let claude = FakeAdapter::new(
+            ProviderId::Claude,
+            vec![
+                ok("a"),
+                Script {
+                    events: vec![limit(None)],
+                    ..Script::default()
+                },
+            ],
+        );
         let cursor = FakeAdapter::new(ProviderId::Cursor, vec![]);
         cursor.installed.set(false);
         with_orch(
@@ -2454,11 +2621,30 @@ fn submit_to_a_plan_with_a_problem_says_not_signed_in() {
                     "cursor please",
                     ProviderId::Cursor,
                 );
-                assert_eq!(missing.status, JobStatus::Failed);
-                assert_eq!(missing.error.as_deref(), Some("cursor is not signed in"));
-                assert_eq!(missing.provider, Some(ProviderId::Cursor));
+                assert_eq!(missing.reason.as_deref(), Some("cursor unavailable"));
+                assert_eq!(missing.provider, Some(ProviderId::Claude));
                 assert!(cursor.received.borrow().is_empty());
                 orch.idle().await;
+                assert_eq!(orch.get(&missing.id).unwrap().status, JobStatus::Done);
+
+                let limited = go_on(&orch, JobType::Planning, "automatic", ProviderId::Cursor);
+                orch.idle().await;
+                assert_eq!(
+                    orch.get(&limited.id).unwrap().failed_over,
+                    [ProviderId::Claude]
+                );
+
+                let unavailable = go_on(
+                    &orch,
+                    JobType::Planning,
+                    "no alternative",
+                    ProviderId::Cursor,
+                );
+                assert_eq!(unavailable.status, JobStatus::Failed);
+                assert_eq!(
+                    unavailable.error.as_deref(),
+                    Some("cursor is not available, and no other plan is available")
+                );
             },
         )
         .await;
@@ -3211,7 +3397,7 @@ fn a_cursor_limit_rests_grok_and_a_grok_limit_rests_cursor() {
     drive(async {
         let now = 1_800_000_000_000;
         let resets_at = 1_900_000_000;
-        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("c")]);
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("c"), ok("c")]);
         let cursor = FakeAdapter::new(
             ProviderId::Cursor,
             vec![Script {
@@ -3260,8 +3446,9 @@ fn a_cursor_limit_rests_grok_and_a_grok_limit_rests_cursor() {
                         .resting_until,
                     Some(resets_at * 1000)
                 );
-                let blocked = go_on(&orch, JobType::Boilerplate, "grok too", ProviderId::Grok);
-                assert_eq!(blocked.error.as_deref(), Some("grok is resting"));
+                let fallback = go_on(&orch, JobType::Boilerplate, "grok too", ProviderId::Grok);
+                assert_eq!(fallback.provider, Some(ProviderId::Claude));
+                assert_eq!(fallback.reason.as_deref(), Some("grok unavailable"));
                 assert!(grok.received.borrow().is_empty());
                 store.clear_resting("cursor").unwrap();
                 go_on(&orch, JobType::Boilerplate, "spend grok", ProviderId::Grok);
@@ -3279,7 +3466,9 @@ fn a_cursor_limit_rests_grok_and_a_grok_limit_rests_cursor() {
                 assert_eq!(spent.provider, Some(ProviderId::Grok));
                 assert_eq!(spent.status, JobStatus::Failed);
                 let cursor_too = go_on(&orch, JobType::Planning, "cursor too", ProviderId::Cursor);
-                assert_eq!(cursor_too.error.as_deref(), Some("cursor is resting"));
+                assert_eq!(cursor_too.provider, Some(ProviderId::Claude));
+                assert_eq!(cursor_too.reason.as_deref(), Some("cursor unavailable"));
+                orch.idle().await;
             },
         )
         .await;

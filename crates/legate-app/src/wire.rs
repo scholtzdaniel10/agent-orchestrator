@@ -63,8 +63,11 @@ impl Runner for AdapterRunner {
         job: &RunJob,
         cwd: &str,
         opts: &RunOptions,
-    ) -> Result<Box<dyn ActiveRun>, String> {
-        let handle = self.adapter.run(&job.id, &job.prompt, Path::new(cwd), opts);
+    ) -> std::io::Result<Box<dyn ActiveRun>> {
+        let mut handle = self.adapter.run(&job.id, &job.prompt, Path::new(cwd), opts);
+        if let Some(error) = handle.take_start_error() {
+            return Err(error);
+        }
         Ok(Box::new(forward(handle)))
     }
 }
@@ -593,4 +596,27 @@ fn is_terminal(status: legate_core::JobStatus) -> bool {
         status,
         legate_core::JobStatus::Done | legate_core::JobStatus::Failed
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use legate_providers::{Bin, CodexAdapter};
+
+    #[tokio::test]
+    async fn adapter_runner_returns_a_missing_executable_as_a_start_error() {
+        let cwd = std::env::current_dir().unwrap();
+        let missing = cwd.join(format!("missing-provider-{}.exe", uuid::Uuid::new_v4()));
+        let adapter = CodexAdapter::new(Some(Bin::new(missing.to_string_lossy().into_owned())));
+        let runner = AdapterRunner::new(Arc::new(adapter));
+        let job = RunJob {
+            id: "job".into(),
+            prompt: "test".into(),
+        };
+        let error = runner
+            .start(&job, &cwd.to_string_lossy(), &RunOptions::default())
+            .err()
+            .expect("missing executable should fail to start");
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
 }
