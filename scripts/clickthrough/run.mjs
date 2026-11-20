@@ -419,6 +419,8 @@ async function planSwitch() {
   await waitFor(`${find('.plan-switch')} || ${empty}`, 'usage plans loaded');
   const invoke = (command, args = {}) =>
     main.evaluate(`window.__TAURI__.core.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`);
+  // A plan recheck can outlast one 8-second evaluate on the Windows runner, so start it and wait on the page.
+  const recheck = () => main.evaluate(`void window.__TAURI__.core.invoke('recheck_plans')`);
   let server;
   let restore;
   try {
@@ -435,8 +437,8 @@ async function planSwitch() {
       }).listen(0, '127.0.0.1');
       await once(server, 'listening');
       await invoke('set_prefs', { patch: { localUrl: `http://127.0.0.1:${server.address().port}` } });
-      await invoke('recheck_plans');
-      await waitFor(find('.plan-switch'), 'connected Local plan');
+      await recheck();
+      await waitFor(find('.plan-switch'), 'connected Local plan', main, 30_000);
     }
     const claude = find('.plan-switch[aria-label="Use Claude"]');
     const label = await main.evaluate(`(${claude} ?? ${find('.plan-switch')}).getAttribute('aria-label')`);
@@ -445,14 +447,15 @@ async function planSwitch() {
     const status = `ct.text(${card}?.querySelector('.status'))`;
     const hint = JSON.stringify("Turned off. Legate won't check or route to it.");
     await click(toggle);
-    await waitFor(`${status} === 'off' && ${card}?.innerText.includes(${hint})`, 'off status and hint');
+    await waitFor(`${status} === 'off' && ${card}?.innerText.includes(${hint})`, 'off status and hint', main, 30_000);
     await click(toggle);
-    await waitFor(`${card} && ${status} !== 'off'`, 'plan switched back on');
+    await waitFor(`${card} && ${status} !== 'off'`, 'plan switched back on', main, 30_000);
   } finally {
     server?.close();
     if (restore) {
       await invoke('set_prefs', { patch: restore });
-      await invoke('recheck_plans');
+      await recheck();
+      await waitFor(`!${find('.plan-switch')}`, 'Local plan disconnected again', main, 30_000);
     }
   }
 }
