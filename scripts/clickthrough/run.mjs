@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -409,6 +411,50 @@ async function panel(id) {
   await click(`.command-rail button[title=${JSON.stringify(tab.label)}]`);
   await waitFor(`${find('.drawer .inspector-heading h2', tab.label)}`, `${tab.label} inspector`);
   await waitFor(`ct.all('.drawer .drawer-page:not(.is-hidden)').some(el => el.innerText.trim().length)`, `${tab.label} content`);
+}
+
+async function planSwitch() {
+  if (!await main.evaluate(`!!${find('.drawer .inspector-heading h2', 'Usage')}`)) await panel('usage');
+  const empty = find('.usage .hint', 'No connected agents. Open Setup to sign in.');
+  await waitFor(`${find('.plan-switch')} || ${empty}`, 'usage plans loaded');
+  const invoke = (command, args = {}) =>
+    main.evaluate(`window.__TAURI__.core.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`);
+  let server;
+  let restore;
+  try {
+    if (!await main.evaluate(`!!${find('.plan-switch')}`)) {
+      // The clean runner has no connected agents. Make Local available for this step.
+      const { localUrl, localModel, offPlans } = await invoke('get_prefs');
+      restore = { localUrl, offPlans };
+      server = createServer((request, response) => {
+        const body = request.url === '/api/version' ? { version: '0.1.0' }
+          : request.url === '/api/tags' ? { models: [{ name: localModel }] }
+          : null;
+        response.writeHead(body ? 200 : 404, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify(body));
+      }).listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      await invoke('set_prefs', { patch: { localUrl: `http://127.0.0.1:${server.address().port}` } });
+      await invoke('recheck_plans');
+      await waitFor(find('.plan-switch'), 'connected Local plan');
+    }
+    const claude = find('.plan-switch[aria-label="Use Claude"]');
+    const label = await main.evaluate(`(${claude} ?? ${find('.plan-switch')}).getAttribute('aria-label')`);
+    const toggle = `.plan-switch[aria-label=${JSON.stringify(label)}]`;
+    const card = `${find(toggle)}?.closest('.usage-card')`;
+    const status = `ct.text(${card}?.querySelector('.status'))`;
+    const hint = JSON.stringify("Turned off. Legate won't check or route to it.");
+    await click(toggle);
+    await waitFor(`${status} === 'off' && ${card}?.innerText.includes(${hint})`, 'off status and hint');
+    await click(toggle);
+    await waitFor(`${card} && ${status} !== 'off'`, 'plan switched back on');
+  } finally {
+    server?.close();
+    if (restore) {
+      await invoke('set_prefs', { patch: restore });
+      await invoke('recheck_plans');
+    }
+  }
 }
 
 async function saveWorktreeSetup() {
@@ -832,6 +878,7 @@ async function pass(prefix, compact) {
       await click('.setup-footer button', 'Skip for now');
     } else await waitFor(find('.drawer .inspector-heading h2', 'Usage'), 'status Usage');
   });
+  if (!compact) await step(`${prefix}-plan-switch`, planSwitch);
   await newWindow(prefix, compact);
 }
 

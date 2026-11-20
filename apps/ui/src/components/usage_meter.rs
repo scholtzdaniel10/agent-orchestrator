@@ -10,6 +10,7 @@ use crate::logic::usage_format::{
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PlanWord {
+    Off,
     NotInstalled,
     SignedOut,
     Resting,
@@ -36,6 +37,14 @@ pub fn UsageMeter(
         });
     });
     let notice = refresh_error.read().clone();
+    let off_plans: Vec<_> = plans
+        .iter()
+        .flatten()
+        .filter(|plan| {
+            plan.problem == Some(PlanProblem::Off) && legate_core::plan_of(plan.id) == plan.id
+        })
+        .map(|plan| plan.id)
+        .collect();
     let plans = plans.map(|list| visible_usage_plans(&list));
     rsx! {
         div { class: "usage",
@@ -62,6 +71,14 @@ pub fn UsageMeter(
                         for plan in plans {
                             {
                                 let word = plan_word(&plan, now);
+                                let off = word == PlanWord::Off;
+                                let card_class = if off { "usage-card is-off" } else { "usage-card" };
+                                let mut next_off_plans = off_plans.clone();
+                                if off {
+                                    next_off_plans.retain(|id| *id != plan.id);
+                                } else {
+                                    next_off_plans.push(plan.id);
+                                }
                                 let figure = usage_figure(plan.used, shows);
                                 let left = headroom(plan.used);
                                 let name = match plan.id {
@@ -74,7 +91,7 @@ pub fn UsageMeter(
                                 let plan_id = plan.id;
                                 rsx! {
                                     div { class: "usage-card-wrap", key: "{name}",
-                                        div { class: "usage-card",
+                                        div { class: card_class,
                                             div { class: "usage-head",
                                                 BotAvatar { bot: BotName::Plan(plan.id), state: avatar(word), size: 24.0, title: None }
                                                 span { class: "usage-name", "{name}" }
@@ -82,8 +99,27 @@ pub fn UsageMeter(
                                                     span { class: "status-dot", aria_hidden: "true" }
                                                     "{status_label(&plan, word)}"
                                                 }
+                                                input {
+                                                    r#type: "checkbox",
+                                                    role: "switch",
+                                                    class: "plan-switch",
+                                                    aria_label: "Use {name}",
+                                                    checked: !off,
+                                                    disabled: checking(),
+                                                    onchange: move |_| {
+                                                        if checking() { return; }
+                                                        checking.set(true);
+                                                        let patch = serde_json::json!({ "offPlans": next_off_plans });
+                                                        spawn(async move {
+                                                            refresh_error.set(api::set_prefs(&patch).await.err());
+                                                            checking.set(false);
+                                                        });
+                                                    },
+                                                }
                                             }
-                                            if let Some(text) = problem_notice(&plan) {
+                                            if off {
+                                                p { class: "hint", "Turned off. Legate won't check or route to it." }
+                                            } else if let Some(text) = problem_notice(&plan) {
                                                 div { class: "usage-problem",
                                                     p { class: "hint", "{text}" }
                                                     button {
@@ -143,6 +179,22 @@ pub fn UsageMeter(
                                                     }
                                                     if plan.id == ProviderId::Cursor {
                                                         CursorReading { plan_id: plan_id, now: now }
+                                                    }
+                                                    if word == PlanWord::Resting {
+                                                        button {
+                                                            class: "btn btn-compact",
+                                                            r#type: "button",
+                                                            disabled: checking(),
+                                                            onclick: move |_| {
+                                                                if checking() { return; }
+                                                                checking.set(true);
+                                                                spawn(async move {
+                                                                    refresh_error.set(api::wake_plan(plan_id).await.err());
+                                                                    checking.set(false);
+                                                                });
+                                                            },
+                                                            "Wake now"
+                                                        }
                                                     }
                                                 }
                                             }
@@ -238,6 +290,9 @@ fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
 }
 
 fn plan_word(plan: &PlanStatus, now: i64) -> PlanWord {
+    if plan.problem == Some(PlanProblem::Off) {
+        return PlanWord::Off;
+    }
     if plan.problem == Some(PlanProblem::NotInstalled) {
         return PlanWord::NotInstalled;
     }
@@ -258,6 +313,7 @@ fn status_label(plan: &PlanStatus, word: PlanWord) -> String {
         format!("{} running", plan.running)
     } else {
         match word {
+            PlanWord::Off => "off".into(),
             PlanWord::NotInstalled => "not installed".into(),
             PlanWord::SignedOut => "signed out".into(),
             PlanWord::Resting => "resting".into(),
@@ -281,7 +337,7 @@ fn problem_notice(plan: &PlanStatus) -> Option<&'static str> {
         Some(PlanProblem::SignedOut) => {
             Some("The Cursor CLI is signed out. Run `agent login` in a terminal.")
         }
-        None => None,
+        Some(PlanProblem::Off) | None => None,
     }
 }
 
@@ -304,7 +360,9 @@ fn version_line(plan: &PlanStatus) -> String {
 
 fn avatar(word: PlanWord) -> BotState {
     match word {
-        PlanWord::NotInstalled | PlanWord::SignedOut | PlanWord::Resting => BotState::Resting,
+        PlanWord::Off | PlanWord::NotInstalled | PlanWord::SignedOut | PlanWord::Resting => {
+            BotState::Resting
+        }
         PlanWord::Busy => BotState::Working,
         PlanWord::Ready => BotState::Idle,
     }
@@ -312,7 +370,7 @@ fn avatar(word: PlanWord) -> BotState {
 
 fn status_class(word: PlanWord, running: i64) -> &'static str {
     match word {
-        PlanWord::NotInstalled | PlanWord::SignedOut => "status status-out",
+        PlanWord::Off | PlanWord::NotInstalled | PlanWord::SignedOut => "status status-out",
         PlanWord::Busy if running > 1 => "status status-running",
         PlanWord::Busy => "status status-busy",
         PlanWord::Resting => "status status-resting",

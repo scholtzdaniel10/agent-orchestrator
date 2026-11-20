@@ -152,6 +152,10 @@ pub async fn list_plans() -> Result<Vec<PlanStatus>, String> {
 pub async fn recheck_plans() -> Result<Vec<PlanStatus>, String> {
     call("recheck_plans", &json!({})).await
 }
+
+pub async fn wake_plan(id: ProviderId) -> Result<Vec<PlanStatus>, String> {
+    call("wake_plan", &json!({ "id": id })).await
+}
 pub async fn list_models(provider: ProviderId) -> Result<Vec<ModelOption>, String> {
     call("list_models", &json!({ "provider": provider })).await
 }

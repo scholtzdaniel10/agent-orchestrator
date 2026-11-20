@@ -875,6 +875,9 @@ fn worker_text(
     elapsed_now: i64,
     starts: &HashMap<String, i64>,
 ) -> (String, Option<String>) {
+    if plan.problem == Some(PlanProblem::Off) {
+        return (format!("off{extra}"), None);
+    }
     if plan.problem == Some(PlanProblem::NotInstalled) {
         return (format!("not installed{extra}"), None);
     }

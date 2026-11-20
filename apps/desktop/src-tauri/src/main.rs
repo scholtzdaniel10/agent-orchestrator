@@ -61,6 +61,7 @@ fn main() -> anyhow::Result<()> {
             commands::take_over_job,
             commands::list_plans,
             commands::recheck_plans,
+            commands::wake_plan,
             commands::list_models,
             commands::set_model,
             commands::get_project,

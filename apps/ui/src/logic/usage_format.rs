@@ -2,14 +2,16 @@
 //!
 //! Month numbers are 0–11, matching `Date` in the TypeScript.
 
-use legate_core::UsageShows;
+use legate_core::{PlanProblem, UsageShows};
 use time::{Date, Duration, Month, OffsetDateTime, UtcOffset};
 
 pub fn visible_usage_plans(plans: &[legate_core::PlanStatus]) -> Vec<legate_core::PlanStatus> {
     let mut shown: Vec<_> = plans
         .iter()
         .filter(|plan| {
-            plan.available && plan.problem.is_none() && legate_core::plan_of(plan.id) == plan.id
+            legate_core::plan_of(plan.id) == plan.id
+                && (plan.problem == Some(PlanProblem::Off)
+                    || (plan.available && plan.problem.is_none()))
         })
         .cloned()
         .collect();
@@ -324,7 +326,7 @@ mod tests {
         assert_eq!(usage_figure(f64::NAN, UsageShows::Left), 0);
     }
     #[test]
-    fn usage_hides_missing_and_signed_out_plans() {
+    fn usage_keeps_off_plans_visible_and_hides_unconnected_plans() {
         let plan = |id: &str, available: bool| -> legate_core::PlanStatus {
             serde_json::from_value(serde_json::json!({
                 "id":id,"available":available,"used":0.1,"atRisk":false,
@@ -333,15 +335,18 @@ mod tests {
             }))
             .unwrap()
         };
-        let shown = super::visible_usage_plans(&[
-            plan("claude", true),
-            plan("cursor", false),
-            plan("codex", true),
-            plan("local", false),
-        ]);
+        let mut cursor = plan("cursor", false);
+        cursor.problem = Some(legate_core::PlanProblem::Off);
+        let mut grok = plan("grok", false);
+        grok.problem = Some(legate_core::PlanProblem::Off);
+        let mut codex = plan("codex", false);
+        codex.problem = Some(legate_core::PlanProblem::SignedOut);
+        let mut local = plan("local", false);
+        local.problem = Some(legate_core::PlanProblem::NotInstalled);
+        let shown = super::visible_usage_plans(&[plan("claude", true), cursor, grok, codex, local]);
         assert_eq!(
             shown.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
-            vec!["claude", "codex"]
+            vec!["claude", "cursor"]
         );
     }
 }

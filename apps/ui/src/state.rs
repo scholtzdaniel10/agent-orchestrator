@@ -358,6 +358,7 @@ pub fn default_prefs() -> Prefs {
         usage_shows: UsageShows::Left,
         cursor_models: CursorModels::Own,
         usage_check: true,
+        off_plans: Vec::new(),
         local_url: DEFAULT_LOCAL_URL.to_string(),
         local_model: DEFAULT_LOCAL_MODEL.to_string(),
         local_small_model: None,

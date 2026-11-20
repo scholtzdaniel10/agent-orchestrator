@@ -1209,6 +1209,9 @@ fn meter_plans(plans: &[legate_core::PlanStatus]) -> Vec<legate_core::PlanStatus
 
 fn plan_bar_label(plan: &legate_core::PlanStatus, now: i64, shows: UsageShows) -> (String, bool) {
     let name = plan.id.as_str();
+    if plan.problem == Some(PlanProblem::Off) {
+        return (format!("{name} off"), false);
+    }
     if plan.problem == Some(PlanProblem::NotInstalled) {
         return (format!("{name} not installed"), true);
     }

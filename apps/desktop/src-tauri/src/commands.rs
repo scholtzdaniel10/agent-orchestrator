@@ -152,6 +152,14 @@ pub async fn recheck_plans(
 }
 
 #[tauri::command]
+pub async fn wake_plan(
+    shell: State<'_, Shell>,
+    id: ProviderId,
+) -> Result<Vec<legate_core::PlanStatus>, String> {
+    shell.backend()?.wake_plan(id).await.map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn list_models(
     shell: State<'_, Shell>,
     provider: ProviderId,

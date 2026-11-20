@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use crate::types::{
     CursorModels, DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL, JobAccess,
-    LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, Prefs, ProviderId, UsageShows,
+    LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, PROVIDERS, Prefs, ProviderId, UsageShows, plan_of,
 };
 use crate::util::json_i64;
 
@@ -23,6 +23,7 @@ const PREF_KEYS: &[&str] = &[
     "usageShows",
     "cursorModels",
     "usageCheck",
+    "offPlans",
     "localUrl",
     "localModel",
     "localSmallModel",
@@ -207,6 +208,13 @@ impl Settings {
     pub fn prefs(&self) -> Prefs {
         let raw = self.data.get("prefs").and_then(Value::as_object);
         let get = |key: &str| raw.and_then(|map| map.get(key));
+        let off_plans: Vec<_> = get("offPlans")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().and_then(ProviderId::parse))
+            .map(plan_of)
+            .collect();
         Prefs {
             max_parallel: whole_in(get("maxParallel"), 1, 8),
             terminal_font_size: whole_in(get("terminalFontSize"), 10, 22).unwrap_or(13),
@@ -229,6 +237,10 @@ impl Settings {
                 CursorModels::Own
             },
             usage_check: flag_on(get("usageCheck")),
+            off_plans: PROVIDERS
+                .into_iter()
+                .filter(|id| off_plans.contains(id))
+                .collect(),
             local_url: local_url(get("localUrl")),
             local_model: required_model(get("localModel"), DEFAULT_LOCAL_MODEL),
             local_small_model: optional_model(get("localSmallModel")),
@@ -848,6 +860,7 @@ mod tests {
                 usage_shows: UsageShows::Left,
                 cursor_models: CursorModels::Own,
                 usage_check: true,
+                off_plans: Vec::new(),
                 local_url: DEFAULT_LOCAL_URL.to_string(),
                 local_model: DEFAULT_LOCAL_MODEL.to_string(),
                 local_small_model: None,
@@ -859,7 +872,7 @@ mod tests {
             concat!(
                 r#"{"maxParallel":null,"terminalFontSize":13,"notify":true,"cloneDir":null,"#,
                 r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true,"#,
-                r#""localUrl":"http://127.0.0.1:11434","localModel":"coder-agent","#,
+                r#""offPlans":[],"localUrl":"http://127.0.0.1:11434","localModel":"coder-agent","#,
                 r#""localSmallModel":null,"localNumCtx":65536}"#
             )
         );
@@ -930,6 +943,32 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             "invalid settings"
+        );
+    }
+
+    #[test]
+    fn off_plans_are_normalized_and_persisted() {
+        let temp = Temp::new();
+        let path = temp.file();
+        let mut settings = Settings::open(&path);
+        let prefs = settings
+            .set_prefs(&serde_json::json!({"offPlans": ["claude", "grok", "nope", 3, "claude"]}))
+            .unwrap();
+        assert_eq!(
+            prefs.off_plans,
+            vec![ProviderId::Claude, ProviderId::Cursor]
+        );
+        assert_eq!(Settings::open(&path).prefs().off_plans, prefs.off_plans);
+        assert_eq!(
+            serde_json::to_value(&prefs).unwrap()["offPlans"],
+            serde_json::json!(["claude", "cursor"])
+        );
+        assert!(
+            settings
+                .set_prefs(&serde_json::json!({"offPlans": "claude"}))
+                .unwrap()
+                .off_plans
+                .is_empty()
         );
     }
 

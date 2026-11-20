@@ -798,6 +798,28 @@ fn prefer_wins_when_available_and_is_ignored_when_unavailable() {
 }
 
 #[test]
+fn an_off_preferred_plan_is_skipped() {
+    drive(async {
+        let claude = Lane::new(ProviderId::Claude, vec![]);
+        let cursor = Lane::new(ProviderId::Cursor, vec![done("cursor", "ready")]);
+        let store = memory();
+        let lead = open_lead(
+            &[claude.clone(), cursor],
+            &store,
+            prefer_id(ProviderId::Claude),
+        );
+        lead.set_off_plans(vec![ProviderId::Claude]);
+        lead.init().await.unwrap();
+        assert_eq!(lead.choose_provider().unwrap(), Some(ProviderId::Cursor));
+        assert_eq!(
+            lead.send("go").await.unwrap().provider,
+            Some(ProviderId::Cursor)
+        );
+        assert!(claude.calls().is_empty());
+    });
+}
+
+#[test]
 fn a_resting_preferred_plan_is_skipped_for_one_with_headroom() {
     let now = 1_700_000_000_000;
     drive(async move {
@@ -1166,6 +1188,33 @@ fn a_limit_event_rests_the_provider_and_the_next_turn_switches_plan() {
                     .collect::<Vec<_>>(),
                 vec![RunOutcome::Limit, RunOutcome::Ok]
             );
+        })
+        .await;
+    });
+}
+
+#[test]
+fn a_fable_limit_reports_usage_credits_without_resting_claude() {
+    drive(async {
+        let claude = Lane::new(
+            ProviderId::Claude,
+            vec![events(vec![
+                init("fable", Some("claude-fable-5-2")),
+                AgentEvent::Limit {
+                    resets_at: Some(1_800_000_000),
+                    message: "spent".into(),
+                },
+            ])],
+        );
+        with_lead(&[claude], LeadEnv::default(), |lead, store| async move {
+            let message = lead.send("go").await.unwrap();
+            assert_eq!(message.status, LeadStatus::Error);
+            assert_eq!(
+                message.text,
+                "[Fable is out of usage credits. Pick another Claude model to continue.]"
+            );
+            assert_eq!(store.resting_until("claude").unwrap(), None);
+            assert_eq!(lead_runs(&store)[0].outcome, RunOutcome::Limit);
         })
         .await;
     });

@@ -248,6 +248,7 @@ impl ActiveRun for FakeRun {
 
 struct FakeAdapter {
     id: ProviderId,
+    plan_checks: Cell<usize>,
     received: RefCell<Vec<RunJob>>,
     cwds: RefCell<Vec<String>>,
     options: RefCell<Vec<RunOptions>>,
@@ -261,6 +262,7 @@ impl FakeAdapter {
     fn new(id: ProviderId, scripts: Vec<Script>) -> Rc<Self> {
         Rc::new(Self {
             id,
+            plan_checks: Cell::new(0),
             received: RefCell::new(Vec::new()),
             cwds: RefCell::new(Vec::new()),
             options: RefCell::new(Vec::new()),
@@ -286,16 +288,19 @@ impl Runner for FakeAdapter {
     }
 
     fn is_installed(&self) -> BoxFuture<'_, bool> {
+        self.plan_checks.set(self.plan_checks.get() + 1);
         let value = self.installed.get();
         Box::pin(async move { value })
     }
 
     fn is_signed_in(&self) -> BoxFuture<'_, bool> {
+        self.plan_checks.set(self.plan_checks.get() + 1);
         let value = self.signed_in.get();
         Box::pin(async move { value })
     }
 
     fn version(&self) -> BoxFuture<'_, Option<String>> {
+        self.plan_checks.set(self.plan_checks.get() + 1);
         let value = self.version.take();
         self.version.set(value.clone());
         Box::pin(async move { value })
@@ -372,6 +377,7 @@ fn slice_tree(job_id: &str) -> WorktreeCreated {
 
 #[derive(Default)]
 struct Opts {
+    off_plans: Vec<ProviderId>,
     clock: Option<Rc<dyn Clock>>,
     rules: Option<legate_core::RouterRules>,
     cwd: Option<CwdSource>,
@@ -419,6 +425,7 @@ where
         owner_id: opts.owner_id,
     })
     .unwrap();
+    orch.set_off_plans(opts.off_plans);
     orch.init().await;
     body(orch, store).await;
 }
@@ -1434,6 +1441,142 @@ fn jobs_keep_a_lead_message() {
                 Some("m1")
             );
             orch.idle().await;
+        })
+        .await;
+    });
+}
+
+#[test]
+fn an_off_plan_is_never_checked_or_used() {
+    drive(async {
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![]);
+        let grok = FakeAdapter::new(ProviderId::Grok, vec![]);
+        let local = FakeAdapter::new(ProviderId::Local, vec![ok("ran")]);
+        let opts = Opts {
+            off_plans: vec![ProviderId::Claude, ProviderId::Cursor],
+            ..Opts::default()
+        };
+        with_orch(
+            vec![claude.clone(), cursor.clone(), grok.clone(), local],
+            opts,
+            |orch, _| async move {
+                for adapter in [claude, cursor, grok] {
+                    assert_eq!(adapter.plan_checks.get(), 0);
+                    let worker = orch
+                        .workers()
+                        .into_iter()
+                        .find(|worker| worker.id == adapter.id)
+                        .unwrap();
+                    assert!(!worker.available);
+                    assert_eq!(worker.problem, Some(PlanProblem::Off));
+                }
+                let job = go(&orch, JobType::Planning, "route this");
+                assert_eq!(job.provider, Some(ProviderId::Local));
+                let chosen = go_on(
+                    &orch,
+                    JobType::Planning,
+                    "claude please",
+                    ProviderId::Claude,
+                );
+                assert_eq!(chosen.status, JobStatus::Failed);
+                assert_eq!(chosen.error.as_deref(), Some("claude is turned off"));
+                orch.idle().await;
+            },
+        )
+        .await;
+    });
+}
+
+#[test]
+fn waking_a_resting_plan_makes_it_pickable_again() {
+    drive(async {
+        let claude = FakeAdapter::new(
+            ProviderId::Claude,
+            vec![
+                Script {
+                    events: vec![limit(Some(1_800_000_000))],
+                    ..Script::default()
+                },
+                ok("awake"),
+            ],
+        );
+        with_orch(vec![claude], Opts::default(), |orch, store| async move {
+            go_on(
+                &orch,
+                JobType::Planning,
+                "hit the limit",
+                ProviderId::Claude,
+            );
+            orch.idle().await;
+            assert_eq!(
+                store.resting_until("claude").unwrap(),
+                Some(1_800_000_000_000)
+            );
+            assert_eq!(go(&orch, JobType::Planning, "still resting").provider, None);
+            store.clear_resting("claude").unwrap();
+            orch.wake(ProviderId::Claude);
+            let job = go(&orch, JobType::Planning, "awake now");
+            assert_eq!(job.provider, Some(ProviderId::Claude));
+            orch.idle().await;
+            assert_eq!(orch.get(&job.id).unwrap().status, JobStatus::Done);
+        })
+        .await;
+    });
+}
+
+#[test]
+fn a_fable_limit_fails_the_chosen_job_and_requeues_an_automatic_job_without_rest() {
+    drive(async {
+        let limited = || Script {
+            events: vec![limit(Some(1_800_000_000))],
+            ..Script::default()
+        };
+        let sibling_gate = Flag::new();
+        let sibling_script = Script {
+            gate: Some(sibling_gate.clone()),
+            ..ok("finished")
+        };
+        let claude = FakeAdapter::new(
+            ProviderId::Claude,
+            vec![sibling_script, limited(), limited()],
+        );
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("continued")]);
+        let opts = Opts {
+            model_for: Some(Rc::new(|id| {
+                (id == ProviderId::Claude).then(|| "claude-fable-5-2".into())
+            })),
+            ..Opts::default()
+        };
+        with_orch(vec![claude, cursor], opts, |orch, store| async move {
+            let sibling = go_on(&orch, JobType::Planning, "keep working", ProviderId::Claude);
+            let chosen = go_on(&orch, JobType::Planning, "use Fable", ProviderId::Claude);
+            wait_for(|| orch.get(&chosen.id).unwrap().status == JobStatus::Failed).await;
+            let chosen = orch.get(&chosen.id).unwrap();
+            assert_eq!(
+                chosen.error.as_deref(),
+                Some("Fable is out of usage credits. Pick another Claude model.")
+            );
+            assert_eq!(store.resting_until("claude").unwrap(), None);
+            let automatic = go(&orch, JobType::Planning, "try Fable then switch");
+            assert_eq!(automatic.provider, Some(ProviderId::Claude));
+            wait_for(|| orch.get(&automatic.id).unwrap().status == JobStatus::Done).await;
+            assert_eq!(orch.get(&sibling.id).unwrap().status, JobStatus::Running);
+            sibling_gate.trip();
+            orch.idle().await;
+            let automatic = orch.get(&automatic.id).unwrap();
+            assert_eq!(automatic.status, JobStatus::Done);
+            assert_eq!(automatic.provider, Some(ProviderId::Cursor));
+            assert_eq!(automatic.failed_over, vec![ProviderId::Claude]);
+            assert_eq!(orch.get(&sibling.id).unwrap().status, JobStatus::Done);
+            assert_eq!(store.resting_until("claude").unwrap(), None);
+            let runs = store.runs(Some("claude")).unwrap();
+            assert_eq!(
+                runs.iter()
+                    .filter(|run| run.outcome == RunOutcome::Limit)
+                    .count(),
+                2
+            );
         })
         .await;
     });

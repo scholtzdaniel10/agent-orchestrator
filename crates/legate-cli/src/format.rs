@@ -206,6 +206,9 @@ pub fn change_footer(id: &str, files: usize, added: i64, removed: i64) -> String
 }
 
 pub fn plan_word(plan: &PlanView, now: i64) -> String {
+    if plan.problem == Some(PlanProblem::Off) {
+        return "off".to_string();
+    }
     if plan.problem == Some(PlanProblem::NotInstalled) {
         return "not installed".to_string();
     }
@@ -248,6 +251,7 @@ pub fn version_phrase(plan: &PlanView, tested: &str) -> String {
 
 fn problem_sentence(id: ProviderId, problem: PlanProblem) -> Option<&'static str> {
     match (id, problem) {
+        (_, PlanProblem::Off) => None,
         (ProviderId::Codex, PlanProblem::NotInstalled) => {
             Some("Codex CLI is not installed. Install it, then run `codex login`.")
         }
@@ -284,6 +288,9 @@ pub fn plan_line(plan: &PlanView, tested: &str, now: i64, color: bool) -> String
         parts.push("uses the Cursor plan".to_string());
     }
     parts.push(paint(&word, tone, color));
+    if word == "off" {
+        return parts.join(" · ");
+    }
     if plan.problem != Some(PlanProblem::NotInstalled) {
         parts.push(version_phrase(plan, tested));
     }

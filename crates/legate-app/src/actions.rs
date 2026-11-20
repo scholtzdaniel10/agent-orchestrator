@@ -7,7 +7,7 @@ use std::rc::Rc;
 use legate_core::{
     BranchStatus, FileContent, FileList, JobAccess, JobRecord, JobStatus, JobType, LeadChat,
     LeadMessage, ModelOption, PlanStatus, Prefs, ProjectEntry, ProjectInfo, ProjectWorktree,
-    ProviderId, SkillsState, TerminalInfo,
+    ProviderId, SkillsState, TerminalInfo, plan_of,
 };
 use legate_git::{
     CommitDetail, CommitPage, GitError, GuardJob, ListedName, MergeOutcome, OpenedPr, PAGE,
@@ -233,6 +233,24 @@ impl World {
             let _ = events.send(AppEvent::Plans(plans.clone()));
             Ok(plans)
         })
+    }
+
+    fn wake(&self, provider: ProviderId) -> Result<(), AppError> {
+        let plan = plan_of(provider);
+        self.store
+            .clear_resting(plan.as_str())
+            .map_err(|err| AppError::message(err.to_string()))?;
+        self.orch.wake(plan);
+        Ok(())
+    }
+
+    pub fn wake_plan(&self, provider: ProviderId) -> Task<Vec<PlanStatus>> {
+        if let Err(err) = self.wake(provider) {
+            return ready(Err(err));
+        }
+        let plans = crate::session::plan_list(&self.orch, &self.settings.borrow(), &self.store);
+        let _ = self.events.send(AppEvent::Plans(plans.clone()));
+        ready(Ok(plans))
     }
 
     pub fn list_models(&self, provider: ProviderId) -> Task<Vec<ModelOption>> {
@@ -1087,6 +1105,7 @@ impl World {
     }
 
     pub fn set_prefs(&self, patch: Value) -> Task<Prefs> {
+        let previous = self.settings.borrow().prefs().off_plans;
         let prefs = match self.settings.borrow_mut().set_prefs(&patch) {
             Ok(prefs) => prefs,
             Err(err) => return ready(Err(AppError::message(err.to_string()))),
@@ -1095,7 +1114,26 @@ impl World {
             .set_config(legate_providers::LocalConfig::from_prefs(&prefs));
         sync_models(&self.settings.borrow(), &self.models);
         let _ = self.events.send(AppEvent::Prefs(prefs.clone()));
-        ready(Ok(prefs))
+        if previous == prefs.off_plans {
+            return ready(Ok(prefs));
+        }
+        self.orch.set_off_plans(prefs.off_plans.clone());
+        self.current_lead().set_off_plans(prefs.off_plans.clone());
+        let mut wake_result = Ok(());
+        for plan in previous {
+            if !prefs.off_plans.contains(&plan)
+                && let Err(err) = self.wake(plan)
+            {
+                wake_result = Err(err);
+            }
+        }
+        let recheck = self.recheck_plans();
+        let settings = Rc::clone(&self.settings);
+        Box::pin(async move {
+            recheck.await?;
+            wake_result?;
+            Ok(settings.borrow().prefs())
+        })
     }
 
     pub fn choose_clone_dir(&self, path: String) -> Task<Prefs> {

@@ -143,6 +143,7 @@ fn default_prefs() -> Prefs {
         usage_shows: UsageShows::Left,
         cursor_models: CursorModels::Own,
         usage_check: true,
+        off_plans: Vec::new(),
         local_url: legate_core::DEFAULT_LOCAL_URL.into(),
         local_model: legate_core::DEFAULT_LOCAL_MODEL.into(),
         local_small_model: None,

@@ -171,6 +171,10 @@ impl AppHandle {
         self.invoke(|world| world.recheck_plans()).await
     }
 
+    pub async fn wake_plan(&self, provider: ProviderId) -> Result<Vec<PlanStatus>, AppError> {
+        self.invoke(move |world| world.wake_plan(provider)).await
+    }
+
     pub async fn list_models(&self, provider: ProviderId) -> Result<Vec<ModelOption>, AppError> {
         self.invoke(move |world| world.list_models(provider)).await
     }

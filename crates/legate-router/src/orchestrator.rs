@@ -12,10 +12,11 @@ use std::time::Instant;
 
 use legate_core::{
     AgentEvent, FileEdit, JobAccess, JobRecord, JobStatus, JobStep, JobStepStatus, JobType,
-    PlanProblem, ProviderId, RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus, plan_of,
+    PlanProblem, ProviderId, RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus,
+    needs_usage_credits, plan_of,
 };
 use legate_store::{NewWindow, RunOutcome, RunRow, Store};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify};
 
 use crate::clock::{SystemClock, system_now_ms};
 use crate::ids::RunningCounts;
@@ -206,6 +207,8 @@ pub struct Orchestrator {
     runners: Vec<Rc<dyn Runner>>,
     store: Rc<Store>,
     rules: legate_core::RouterRules,
+    off_plans: std::cell::RefCell<Vec<ProviderId>>,
+    checking: Mutex<()>,
     state: std::cell::RefCell<RouterState>,
     cwd: CwdSource,
     model_for: Option<Rc<dyn Fn(ProviderId) -> Option<String>>>,
@@ -265,6 +268,8 @@ impl Orchestrator {
             runners: opts.runners,
             store: opts.store,
             rules: opts.rules,
+            off_plans: std::cell::RefCell::new(Vec::new()),
+            checking: Mutex::new(()),
             state: std::cell::RefCell::new(state),
             cwd: opts.cwd,
             model_for: opts.model_for,
@@ -282,28 +287,72 @@ impl Orchestrator {
         self.recheck().await;
     }
 
+    pub fn set_off_plans(&self, plans: Vec<ProviderId>) {
+        *self.off_plans.borrow_mut() = plans;
+    }
+
+    fn is_off(&self, provider: ProviderId) -> bool {
+        self.off_plans.borrow().contains(&plan_of(provider))
+    }
+
+    fn candidates(&self) -> Vec<ProviderId> {
+        self.inner
+            .borrow()
+            .candidates
+            .iter()
+            .copied()
+            .filter(|id| !self.is_off(*id))
+            .collect()
+    }
+
     pub async fn recheck(&self) {
+        let _checking = self.checking.lock().await;
         let mut available = Vec::new();
         let mut problems = HashMap::new();
         let mut versions = HashMap::new();
         for runner in &self.runners {
+            let id = runner.id();
+            if self.is_off(id) {
+                problems.insert(id, PlanProblem::Off);
+                continue;
+            }
             let installed = runner.is_installed().await;
+            if self.is_off(id) {
+                problems.insert(id, PlanProblem::Off);
+                continue;
+            }
             let version = runner.version().await;
-            versions.insert(runner.id(), version);
+            versions.insert(id, version);
+            if self.is_off(id) {
+                problems.insert(id, PlanProblem::Off);
+                continue;
+            }
             if !installed {
-                problems.insert(runner.id(), PlanProblem::NotInstalled);
+                problems.insert(id, PlanProblem::NotInstalled);
                 continue;
             }
             if !runner.is_signed_in().await {
-                problems.insert(runner.id(), PlanProblem::SignedOut);
+                problems.insert(id, PlanProblem::SignedOut);
                 continue;
             }
-            available.push(runner.id());
+            available.push(id);
         }
         let mut inner = self.inner.borrow_mut();
         inner.candidates = available;
         inner.problems = problems;
         inner.versions = versions;
+        drop(inner);
+        let off_plans = self.off_plans.borrow().clone();
+        for plan in off_plans {
+            self.reroute_queued(plan);
+        }
+        self.resolve_idle();
+    }
+
+    pub fn wake(&self, plan: ProviderId) {
+        let plan = plan_of(plan);
+        self.state.borrow_mut().set_resting(plan, None);
+        self.pump_plan(plan);
     }
 
     pub fn submit(
@@ -359,6 +408,9 @@ impl Orchestrator {
             if let Some(job) = self.inner.borrow_mut().jobs.get_mut(&id) {
                 job.provider = Some(provider);
             }
+            if self.is_off(provider) {
+                return self.fail_now(&id, &format!("{} is turned off", provider.as_str()));
+            }
             if !self.inner.borrow().candidates.contains(&provider) {
                 return self.fail_now(&id, &format!("{} is not signed in", provider.as_str()));
             }
@@ -385,7 +437,7 @@ impl Orchestrator {
         }
 
         self.refresh_usage();
-        let candidates = self.inner.borrow().candidates.clone();
+        let candidates = self.candidates();
         let running = self.running_counts();
         let now = self.clock.now_ms();
         let pick =
@@ -562,11 +614,16 @@ impl Orchestrator {
             let inner = self.inner.borrow();
             let running = inner.running.get(&id).map(|set| set.len()).unwrap_or(0);
             let queued = inner.queues.get(&id).map(|queue| queue.len()).unwrap_or(0);
+            let off = self.is_off(id);
             let version = inner.versions.get(&id).cloned().unwrap_or(None);
             infos.push(WorkerInfo {
                 id,
-                available: inner.candidates.contains(&id),
-                problem: inner.problems.get(&id).copied(),
+                available: !off && inner.candidates.contains(&id),
+                problem: if off {
+                    Some(PlanProblem::Off)
+                } else {
+                    inner.problems.get(&id).copied()
+                },
                 headroom,
                 resting_until: resting,
                 busy: running > 0,
@@ -761,7 +818,7 @@ impl Orchestrator {
     fn pump(&self, provider: ProviderId) {
         let limit = u32::try_from(self.rules.max_parallel.max(0)).unwrap_or(u32::MAX);
         loop {
-            if self.plan_running(provider) >= limit {
+            if self.is_off(provider) || self.plan_running(provider) >= limit {
                 return;
             }
             let Some(id) = self
@@ -1148,10 +1205,13 @@ impl Orchestrator {
         let opts = self.run_options(job_id, provider);
         let active = runner.start(&args, cwd, &opts)?;
         let killer = active.killer();
-        self.inner
-            .borrow_mut()
-            .killers
-            .insert(job_id.to_string(), killer);
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.killers.insert(job_id.to_string(), killer);
+            if let Some(job) = inner.jobs.get_mut(job_id) {
+                job.model = opts.model;
+            }
+        }
         if self.inner.borrow().cancelling.contains(job_id) {
             self.kill_job(job_id);
         }
@@ -1555,15 +1615,23 @@ impl Orchestrator {
         utilization: Option<f64>,
         result: Option<&HeldResult>,
     ) {
-        let now = self.clock.now_ms();
-        let until = resets_at_seconds
-            .map(|seconds| seconds.saturating_mul(1000))
-            .unwrap_or_else(|| self.rest_until(now));
-        let plan = plan_of(provider);
-        if let Err(err) = self.store.set_resting(plan.as_str(), until) {
-            tracing::error!("{err}");
+        let credits = self
+            .inner
+            .borrow()
+            .jobs
+            .get(job_id)
+            .is_some_and(|job| needs_usage_credits(provider, job.model.as_deref()));
+        if !credits {
+            let now = self.clock.now_ms();
+            let until = resets_at_seconds
+                .map(|seconds| seconds.saturating_mul(1000))
+                .unwrap_or_else(|| self.rest_until(now));
+            let plan = plan_of(provider);
+            if let Err(err) = self.store.set_resting(plan.as_str(), until) {
+                tracing::error!("{err}");
+            }
+            self.state.borrow_mut().set_resting(plan, Some(until));
         }
-        self.state.borrow_mut().set_resting(plan, Some(until));
         self.insert_run(
             job_id,
             provider,
@@ -1573,7 +1641,9 @@ impl Orchestrator {
             result,
             RunOutcome::Limit,
         );
-        self.abandon_others(provider, job_id);
+        if !credits {
+            self.abandon_others(provider, job_id);
+        }
         let chosen = self
             .inner
             .borrow()
@@ -1583,21 +1653,26 @@ impl Orchestrator {
         if chosen {
             if let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
                 job.status = JobStatus::Failed;
-                job.error = Some(format!("{} hit its usage limit", provider.as_str()));
+                job.error = Some(if credits {
+                    "Fable is out of usage credits. Pick another Claude model.".to_string()
+                } else {
+                    format!("{} hit its usage limit", provider.as_str())
+                });
             }
             self.emit_status(job_id);
-            self.reroute_queued(provider);
-            return;
+        } else {
+            let output = self
+                .inner
+                .borrow()
+                .jobs
+                .get(job_id)
+                .map(|job| job.output.clone())
+                .unwrap_or_default();
+            self.requeue(job_id, provider, true, &output);
         }
-        let output = self
-            .inner
-            .borrow()
-            .jobs
-            .get(job_id)
-            .map(|job| job.output.clone())
-            .unwrap_or_default();
-        self.requeue(job_id, provider, true, &output);
-        self.reroute_queued(provider);
+        if !credits {
+            self.reroute_queued(provider);
+        }
     }
 
     fn rest_until(&self, now: i64) -> i64 {
@@ -1660,7 +1735,11 @@ impl Orchestrator {
                 if chosen {
                     if let Some(job) = self.inner.borrow_mut().jobs.get_mut(&id) {
                         job.status = JobStatus::Failed;
-                        job.error = Some(format!("{} hit its usage limit", adapter.as_str()));
+                        job.error = Some(if self.is_off(adapter) {
+                            format!("{} is turned off", adapter.as_str())
+                        } else {
+                            format!("{} hit its usage limit", adapter.as_str())
+                        });
                     }
                     self.emit_status(&id);
                     continue;
@@ -1682,7 +1761,7 @@ impl Orchestrator {
             };
             (job.job_type, job.failed_over.clone())
         };
-        let candidates = self.inner.borrow().candidates.clone();
+        let candidates = self.candidates();
         let running = self.running_counts();
         let now = self.clock.now_ms();
         let next = self.state.borrow_mut().pick_provider(

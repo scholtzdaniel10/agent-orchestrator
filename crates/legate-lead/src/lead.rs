@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use legate_core::{
     JobRecord, JobStatus, LeadChat, LeadMessage, LeadMessageKind, LeadProposal, LeadRole,
-    LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions, plan_of,
+    LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions,
+    needs_usage_credits, plan_of,
 };
 use legate_router::headroom;
 use legate_store::{ChatRow, NewWindow, RunOutcome, RunRow, Store};
@@ -51,7 +52,6 @@ struct ChatContext {
 type LeadListener = Rc<dyn Fn(LeadMessage, Option<String>)>;
 
 struct State {
-    available: Vec<ProviderId>,
     history: Vec<LeadMessage>,
     listeners: Vec<(u64, LeadListener)>,
     next_listener: u64,
@@ -72,6 +72,13 @@ struct State {
     turn_chat: HashMap<String, String>,
 }
 
+#[derive(Default)]
+struct Availability {
+    off_plans: std::cell::RefCell<Vec<ProviderId>>,
+    available: std::cell::RefCell<Vec<ProviderId>>,
+    checking: tokio::sync::Mutex<()>,
+}
+
 pub struct Lead {
     adapters: Vec<std::sync::Arc<dyn LeadAdapter>>,
     store: Rc<Store>,
@@ -82,6 +89,7 @@ pub struct Lead {
     prefer: Option<Rc<dyn Fn() -> Option<ProviderId>>>,
     now: Rc<dyn Fn() -> i64>,
     model_for: Option<Rc<dyn Fn(ProviderId) -> Option<String>>>,
+    availability: Rc<Availability>,
     jobs: std::cell::RefCell<Rc<dyn JobSink>>,
     unsub: std::cell::RefCell<Option<Box<dyn FnOnce()>>>,
     state: std::cell::RefCell<State>,
@@ -96,6 +104,10 @@ struct Plan {
 
 impl Lead {
     pub fn new(opts: LeadOpts) -> Rc<Self> {
+        Self::with_availability(opts, Rc::new(Availability::default()))
+    }
+
+    fn with_availability(opts: LeadOpts, availability: Rc<Availability>) -> Rc<Self> {
         Rc::new_cyclic(|this| Self {
             adapters: opts.adapters,
             store: opts.store,
@@ -108,10 +120,10 @@ impl Lead {
                 .now
                 .unwrap_or_else(|| Rc::new(crate::goals::system_now)),
             model_for: opts.model_for,
+            availability,
             jobs: std::cell::RefCell::new(Rc::new(EmptyJobs)),
             unsub: std::cell::RefCell::new(None),
             state: std::cell::RefCell::new(State {
-                available: Vec::new(),
                 history: Vec::new(),
                 listeners: Vec::new(),
                 next_listener: 1,
@@ -141,33 +153,51 @@ impl Lead {
         project: String,
         bridge: std::sync::Arc<dyn BridgeSource>,
     ) -> Rc<Self> {
-        let child = Self::new(LeadOpts {
-            adapters: self.adapters.clone(),
-            store: self.store.clone(),
-            rules: self.rules.clone(),
-            bridge,
-            dir: self.dir.clone(),
-            project: Rc::new(move || project.clone()),
-            prefer: self.prefer.clone(),
-            now: Some(self.now.clone()),
-            model_for: self.model_for.clone(),
-        });
-        child.state.borrow_mut().available = self.state.borrow().available.clone();
-        child
+        Self::with_availability(
+            LeadOpts {
+                adapters: self.adapters.clone(),
+                store: self.store.clone(),
+                rules: self.rules.clone(),
+                bridge,
+                dir: self.dir.clone(),
+                project: Rc::new(move || project.clone()),
+                prefer: self.prefer.clone(),
+                now: Some(self.now.clone()),
+                model_for: self.model_for.clone(),
+            },
+            self.availability.clone(),
+        )
     }
 
     pub async fn init(&self) -> Result<(), LeadError> {
         self.recheck().await
     }
 
+    pub fn set_off_plans(&self, plans: Vec<ProviderId>) {
+        *self.availability.off_plans.borrow_mut() = plans;
+    }
+
+    fn is_off(&self, provider: ProviderId) -> bool {
+        self.availability
+            .off_plans
+            .borrow()
+            .contains(&plan_of(provider))
+    }
+
     pub async fn recheck(&self) -> Result<(), LeadError> {
+        let _checking = self.availability.checking.lock().await;
         let mut available = Vec::new();
         for adapter in &self.adapters {
-            if adapter.is_installed().await && adapter.is_signed_in().await {
-                available.push(adapter.id());
+            let id = adapter.id();
+            if !self.is_off(id)
+                && adapter.is_installed().await
+                && !self.is_off(id)
+                && adapter.is_signed_in().await
+            {
+                available.push(id);
             }
         }
-        self.state.borrow_mut().available = available;
+        *self.availability.available.borrow_mut() = available;
         Ok(())
     }
 
@@ -543,7 +573,10 @@ impl Lead {
     }
 
     fn preferred(&self) -> Option<ProviderId> {
-        self.prefer.as_ref().and_then(|prefer| prefer())
+        self.prefer
+            .as_ref()
+            .and_then(|prefer| prefer())
+            .filter(|id| !self.is_off(*id))
     }
 
     fn follow_preference(&self) {
@@ -558,7 +591,9 @@ impl Lead {
             let Some(prefer) = self.preferred() else {
                 return;
             };
-            if Some(prefer) == state.session_provider || !state.available.contains(&prefer) {
+            if Some(prefer) == state.session_provider
+                || !self.availability.available.borrow().contains(&prefer)
+            {
                 return;
             }
             prefer
@@ -577,13 +612,16 @@ impl Lead {
     fn plan_for(&self, text: &str, user_request: bool) -> Result<Option<Plan>, LeadError> {
         let state = self.state.borrow();
         if let Some(direct) = state.direct {
+            if self.is_off(direct) {
+                return Ok(None);
+            }
             let resume = if state.session_provider == Some(direct) {
                 state.session_id.clone()
             } else {
                 None
             };
             if resume.is_none() {
-                if !state.available.contains(&direct) {
+                if !self.availability.available.borrow().contains(&direct) {
                     return Ok(None);
                 }
                 let room = headroom(direct, self.store.as_ref(), &self.rules, (self.now)())?;
@@ -603,6 +641,7 @@ impl Lead {
             String::new()
         };
         if let (Some(provider), Some(session)) = (state.session_provider, state.session_id.clone())
+            && !self.is_off(provider)
         {
             return Ok(Some(Plan {
                 provider,
@@ -631,10 +670,10 @@ impl Lead {
     }
 
     fn choose_provider(&self) -> Result<Option<ProviderId>, LeadError> {
-        let available = self.state.borrow().available.clone();
+        let available = self.availability.available.borrow();
         let mut rooms = Vec::new();
         let mut any = false;
-        for id in &available {
+        for id in available.iter().filter(|id| !self.is_off(**id)) {
             let room = headroom(*id, self.store.as_ref(), &self.rules, (self.now)())?;
             if room > 0.0 {
                 any = true;
@@ -881,7 +920,13 @@ impl Lead {
             if stderr_limit {
                 session.kill();
             }
-            self.apply_limit(lead_id, plan.provider, limit_resets.flatten());
+            let model = self.message(lead_id).and_then(|message| message.model);
+            self.apply_limit(
+                lead_id,
+                plan.provider,
+                model.as_deref().or(opts.model.as_deref()),
+                limit_resets.flatten(),
+            );
             self.record(
                 lead_id,
                 plan.provider,
@@ -976,18 +1021,29 @@ impl Lead {
         self.emit_id(lead_id);
     }
 
-    fn apply_limit(&self, lead_id: &str, provider: ProviderId, resets_at: Option<i64>) {
-        let until = match resets_at {
-            Some(seconds) if seconds != 0 => seconds.saturating_mul(1000),
-            _ => (self.now)() + (self.rules.default_rest_hours * 3_600_000.0) as i64,
+    fn apply_limit(
+        &self,
+        lead_id: &str,
+        provider: ProviderId,
+        model: Option<&str>,
+        resets_at: Option<i64>,
+    ) {
+        let credits = needs_usage_credits(provider, model);
+        let notice = if credits {
+            "[Fable is out of usage credits. Pick another Claude model to continue.]".to_string()
+        } else {
+            let until = match resets_at {
+                Some(seconds) if seconds != 0 => seconds.saturating_mul(1000),
+                _ => (self.now)() + (self.rules.default_rest_hours * 3_600_000.0) as i64,
+            };
+            if let Err(err) = self.store.set_resting(plan_of(provider).as_str(), until) {
+                tracing::error!("{err}");
+            }
+            format!(
+                "[The lead's plan ({}) hit its usage limit. Send your message again to continue on another plan.]",
+                provider.as_str()
+            )
         };
-        if let Err(err) = self.store.set_resting(plan_of(provider).as_str(), until) {
-            tracing::error!("{err}");
-        }
-        let notice = format!(
-            "[The lead's plan ({}) hit its usage limit. Send your message again to continue on another plan.]",
-            provider.as_str()
-        );
         if let Some(message) = self
             .state
             .borrow_mut()
@@ -996,7 +1052,7 @@ impl Lead {
             .find(|item| item.id == lead_id)
         {
             message.status = LeadStatus::Error;
-            message.text = if message.text.is_empty() {
+            message.text = if credits || message.text.is_empty() {
                 notice
             } else {
                 format!("{}\n{notice}", message.text)

@@ -7,6 +7,8 @@ use crate::types::{ProviderId, VersionStatus};
 /// Why a plan cannot be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PlanProblem {
+    #[serde(rename = "off")]
+    Off,
     #[serde(rename = "not-installed")]
     NotInstalled,
     #[serde(rename = "signed-out")]

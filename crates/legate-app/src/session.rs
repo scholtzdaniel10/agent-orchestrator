@@ -479,7 +479,8 @@ async fn boot(
     let mut rules = legate_core::load_rules(rules_path.as_deref().map(Path::new))
         .map_err(|err| AppError::message(err.to_string()))?;
     let rules_max = rules.max_parallel;
-    if let Some(max) = settings.borrow().prefs().max_parallel {
+    let prefs = settings.borrow().prefs();
+    if let Some(max) = prefs.max_parallel {
         rules.max_parallel = max;
     }
     let lead_rules = rules.clone();
@@ -519,6 +520,7 @@ async fn boot(
         owner_id: None,
     })
     .map_err(|err| AppError::message(err.to_string()))?;
+    orch.set_off_plans(prefs.off_plans.clone());
     orch.init().await;
 
     let jobs: Rc<dyn legate_lead::JobSink> = Rc::new(OrchJobs::new(Rc::clone(&orch)));
@@ -565,6 +567,7 @@ async fn boot(
             settings.lead_model(id).or_else(|| settings.model(id))
         })),
     });
+    lead.set_off_plans(prefs.off_plans);
     lead.init()
         .await
         .map_err(|err| AppError::message(err.to_string()))?;
@@ -1147,7 +1150,8 @@ impl UsageBits {
 
     async fn probe(&self, trigger: UsageTrigger) -> crate::options::UsageOutcome {
         let automatic = !matches!(trigger, UsageTrigger::Manual);
-        if automatic && !self.settings.borrow().prefs().usage_check {
+        let prefs = self.settings.borrow().prefs();
+        if prefs.off_plans.contains(&ProviderId::Claude) || (automatic && !prefs.usage_check) {
             return crate::options::UsageOutcome::success();
         }
         let reported = usage_at(&self.store, ProviderId::Claude);
@@ -1310,8 +1314,8 @@ impl TerminalWatch {
         if signing_in && (removed || info.status == legate_core::TerminalStatus::Exited) {
             self.sign_in.borrow_mut().remove(&info.id);
             self.orch.recheck().await;
-            let leads = self.leads.borrow().values().cloned().collect::<Vec<_>>();
-            for lead in leads {
+            let lead = self.leads.borrow().values().next().cloned();
+            if let Some(lead) = lead {
                 let _ = lead.recheck().await;
             }
             let plans = plan_list(&self.orch, &self.settings.borrow(), &self.store);

@@ -65,6 +65,11 @@ pub fn plan_of(id: ProviderId) -> ProviderId {
     }
 }
 
+pub fn needs_usage_credits(provider: ProviderId, model: Option<&str>) -> bool {
+    provider == ProviderId::Claude
+        && model.is_some_and(|model| model.to_ascii_lowercase().contains("fable"))
+}
+
 pub fn is_provider_id(value: &str) -> bool {
     ProviderId::parse(value).is_some()
 }
@@ -594,6 +599,8 @@ pub struct Prefs {
     pub cursor_models: CursorModels,
     /// Read Claude's usage with a tiny turn every 10 minutes while a window is open.
     pub usage_check: bool,
+    #[serde(default)]
+    pub off_plans: Vec<ProviderId>,
     /// llama.cpp or Ollama base URL.
     #[serde(default = "default_local_url")]
     pub local_url: String,
@@ -682,6 +689,19 @@ mod tests {
         assert_eq!(plan_of(ProviderId::Claude), ProviderId::Claude);
         assert!(is_provider_id("local"));
         assert!(is_provider_id("codex"));
+    }
+
+    #[test]
+    fn claude_fable_models_need_usage_credits() {
+        for model in ["fable", "claude-fable-5-2", "claude-fable-5-1", "FABLE"] {
+            assert!(needs_usage_credits(ProviderId::Claude, Some(model)));
+        }
+        assert!(!needs_usage_credits(
+            ProviderId::Claude,
+            Some("claude-opus-5-5")
+        ));
+        assert!(!needs_usage_credits(ProviderId::Claude, None));
+        assert!(!needs_usage_credits(ProviderId::Cursor, Some("fable")));
     }
 
     #[test]
