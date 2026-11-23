@@ -72,9 +72,11 @@ function sourceInventory() {
   const how = [...read('apps/ui/src/logic/new_task.rs').match(/pub const HOW_OPTIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1]
     .matchAll(/label: "([^"]+)"/g) ?? []].map((match) => match[1]);
   assert(sections.length && how.length, 'Missing settings or New task choices');
-  for (const text of ['New window', 'New task', 'Move panel', 'Close inspector', 'DrawerTab::ALL']) {
+  for (const text of ['New window', 'New task', 'layout-preset', 'aria_label: "Move {inspector_tab.label()}"', 'dock-zone', 'Close inspector', 'DrawerTab::ALL']) {
     assert(app.includes(text), `App control changed: ${text}`);
   }
+  const presetSource = read('apps/ui/src/logic/layout_presets.rs');
+  const presets = choices(presetSource, 'LayoutPreset');
   for (const [file, text] of [
     ['project_bar.rs', 'New worktree name'], ['routines.rs', 'setup-commands'],
     ['terminal_pane.rs', 'Open in its own window'], ['error_boundary.rs', 'part-error'],
@@ -83,8 +85,8 @@ function sourceInventory() {
   const tabs = choices(layout, 'DrawerTab');
   const panes = choices(layout, 'PaneLayoutId');
   for (const tab of tabs) assert(app.includes(`"${tab.id}" =>`), `Panel body missing from app.rs: ${tab.id}`);
-  return { tabs, panes, themes, sections, how,
-    summary: `app.rs, ${Object.keys(components).length} components, ${tabs.length} panels, ${panes.length} pane layouts, ${themes.length} themes, ${sections.length} settings sections` };
+  return { tabs, panes, themes, sections, how, presets,
+    summary: `app.rs, ${Object.keys(components).length} components, ${tabs.length} panels, ${panes.length} pane layouts, ${presets.length} layout presets, ${themes.length} themes, ${sections.length} settings sections` };
 }
 
 // Observes rendered failures throughout a step, including errors that later disappear.
@@ -287,6 +289,13 @@ async function value(selector, value, client = main) {
   })()`);
   await waitFor(`${element}?.value === ${JSON.stringify(value)}`, `${selector} value`, client);
   await delay(120);
+}
+
+// Picks `label` in one of Legate's dropdowns (FieldSelect): open it, then click the option.
+async function choose(selector, label, client = main) {
+  await click(selector, null, client);
+  await click('.select-list [role="option"]', label, client);
+  await waitFor(`!${find('.select-list')} && ${find(selector, label)}`, `${selector} shows ${label}`, client);
 }
 
 async function key(key, code = key, modifiers = 0, client = main) {
@@ -515,7 +524,7 @@ async function pass(prefix, compact) {
     await main.call('Page.bringToFront');
     if (compact) {
       await settings();
-      await value('select[aria-label="Interface size"]', '100');
+      await choose('button.select[aria-label="Interface size"]', '100%');
       await click('.settings-head button', 'Close');
       await main.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
       await waitFor('innerWidth === 900 && innerHeight === 700', '900 × 700 viewport');
@@ -716,13 +725,13 @@ async function pass(prefix, compact) {
   });
   await step(`${prefix}-settings-search`, async () => {
     await value('[aria-label="Search settings"]', 'Look');
-    await waitFor(find('select[aria-label="Look"]'), 'matching setting');
+    await waitFor(find('button.select[aria-label="Look"]'), 'matching setting');
     await value('[aria-label="Search settings"]', '');
     await click('.settings-head button', 'Close');
   });
   for (const theme of inventory.themes) await step(`${prefix}-theme-${theme.id}`, async () => {
     await settings();
-    await value('select[aria-label="Look"]', theme.id);
+    await choose('button.select[aria-label="Look"]', theme.label);
     await waitFor(`document.documentElement.getAttribute('data-theme') === ${JSON.stringify(theme.id === 'system' ? null : theme.id)}`, 'applied theme');
     await click('.settings-head button', 'Close');
     await waitFor(`!${find('.settings-page')}`, 'themed workspace');
@@ -735,11 +744,12 @@ async function pass(prefix, compact) {
     await click('.setup-footer button', 'Skip for now');
   });
 
+  // Each dock through the panel's own Move menu (the same button in the inspector and in a dock).
+  const dockPlace = { top: 'Above the terminals', bottom: 'Below the terminals', left: 'Under the projects', right: 'Right panel' };
   for (const dock of ['top', 'bottom', 'left', 'right']) await step(`${prefix}-dock-${dock}`, async () => {
-    await click('.workspace-layout-menu summary', 'Layout');
-    await value('.workspace-layout-controls label:nth-child(1) select', 'files');
-    await value('.workspace-layout-controls label:nth-child(2) select', dock);
-    await click('.workspace-layout-controls button', 'Move panel');
+    await click('.command-rail button[title="Files"]');
+    await click('[aria-label="Move Files"]');
+    await click('.side-menu-item', dockPlace[dock]);
     await waitFor(find(dock === 'right' ? '.drawer .files-panel' : `.dock-${dock} #drawer-tab-files`), 'moved Files panel');
     if (dock !== 'right') {
       await click(`#drawer-tab-files`);
@@ -747,7 +757,39 @@ async function pass(prefix, compact) {
       await main.evaluate(`${find(`.layout-handle-${dock}`)}.focus()`);
       await key('Enter');
     }
+  });
+  // Drag a rail icon onto a dock's drop zone, then back to the right panel.
+  if (!compact) await step(`${prefix}-dock-drag`, async () => {
+    const centre = (selector) => main.evaluate(`(() => { const r = ${find(selector)}.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    const drag = async (from, to) => {
+      const mouse = (type, [x, y], buttons) => main.call('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1 });
+      await mouse('mouseMoved', from, 0);
+      await mouse('mousePressed', from, 1);
+      for (let i = 1; i <= 8; i += 1) await mouse('mouseMoved', [from[0] + ((to[0] - from[0]) * i) / 8, from[1] + ((to[1] - from[1]) * i) / 8], 1);
+      await waitFor(find('.dock-zone.is-over'), 'a lit drop zone');
+      await mouse('mouseReleased', to, 0);
+      await delay(200);
+    };
+    const jobs = await centre('.command-rail button[title="Jobs"]');
+    const stage = await main.evaluate(`(() => { const r = ${find('.workspace')}.getBoundingClientRect(); return [r.left + r.width / 2, r.bottom - 40]; })()`);
+    await drag(jobs, stage);
+    await waitFor(find('.dock-bottom #drawer-tab-jobs'), 'Jobs dragged below the terminals');
+    const right = await main.evaluate(`[innerWidth - 60, innerHeight / 2]`);
+    await drag(await centre('.command-rail button[title="Jobs"]'), right);
+    await waitFor(`!${find('.dock-bottom #drawer-tab-jobs')}`, 'Jobs dragged back to the right panel');
+    return 'Pointer drag from the rail onto the bottom and right drop zones.';
+  });
+  for (const preset of inventory.presets) await step(`${prefix}-layout-${preset.id}`, async () => {
     await click('.workspace-layout-menu summary', 'Layout');
+    await main.evaluate(`[...document.querySelectorAll('.layout-preset')].find(b => ct.text(b.querySelector('.layout-preset-label')) === ${JSON.stringify(preset.label)}).click()`);
+    await waitFor(`ct.text(document.querySelector('.layout-preset.is-selected .layout-preset-label')) === ${JSON.stringify(preset.label)}`, `${preset.label} layout marked`);
+    const placed = { classic: `!${find('.dock')}`, side: find('.dock-left'), bottom: find('.dock-bottom'), focus: `!${find('.dock')} && !${find('.drawer')}` }[preset.id];
+    await waitFor(placed, `${preset.label} layout applied`);
+  });
+  await step(`${prefix}-layout-back`, async () => {
+    await click('.workspace-layout-menu summary', 'Layout');
+    await main.evaluate(`[...document.querySelectorAll('.layout-preset')].find(b => ct.text(b.querySelector('.layout-preset-label')) === 'Classic').click()`);
+    await waitFor(find('.drawer'), 'the right panel back');
   });
   await step(`${prefix}-inspector-close`, async () => {
     await click('[aria-label="Close inspector"]');
@@ -789,7 +831,7 @@ async function pass(prefix, compact) {
   await step(`${prefix}-worktree-create`, async () => {
     await click('[aria-label="New worktree"]');
     await value('[aria-label="New worktree name"]', worktree);
-    assert.equal(await main.evaluate(`${find('select[aria-label="Start"]')}.value`), '', 'Worktree must start no agent');
+    assert.equal(await main.evaluate(`ct.text(${find('button.select[aria-label="Start"]')})`), 'nothing', 'Worktree must start no agent');
     await click('.project-worktree-create button', 'Create');
     await waitFor(find('.project-worktree-name', worktree), 'created worktree', main, 30_000);
   });
@@ -801,20 +843,20 @@ async function pass(prefix, compact) {
     return 'Input.dispatchKeyEvent + Enter; actual PTY output contains a standalone clickthrough-ok line.';
   });
   for (const pane of inventory.panes) await step(`${prefix}-panes-${pane.id}`, async () => {
-    await value('#pane-layout', pane.id);
+    await click(`.pane-pic[title=${JSON.stringify(pane.label)}]`);
     await waitFor(`JSON.parse(localStorage.getItem('orch.layout')).paneLayout === ${JSON.stringify(pane.id)}`, 'persisted pane layout');
     await waitFor(find(`.terminal-stage.is-${pane.id === 'auto' ? '1' : pane.id}`), 'rendered terminal layout');
   });
   // Uses the open terminal plus the empty second slot, so no extra worktree is left behind.
   if (!compact) await step(`${prefix}-pane-split-drag`, async () => {
-    await value('#pane-layout', '2-side');
+    await click('.pane-pic[title="2 side by side"]');
     const first = find('.terminal-stage.is-2-side .is-slot-0');
     await waitFor(`${first} && ${find('.pane-handle.is-col')}`, 'two-pane layout with a split handle');
     const width = `${first}.getBoundingClientRect().width`;
     const before = await main.evaluate(width);
     const probe = await dragHandle('.pane-handle.is-col', 80);
     await waitFor(`${width} > ${before + 40}`, `first pane widened by more than 40 px (${probe})`);
-    await value('#pane-layout', 'auto');
+    await click('.pane-pic[title="Auto"]');
   });
   await step(`${prefix}-terminal-worktree-toggle`, async () => {
     const before = await main.evaluate(`${find('.tab-worktree')}.getAttribute('aria-pressed')`);
@@ -823,7 +865,7 @@ async function pass(prefix, compact) {
     await click('.tab-worktree');
   });
   await step(`${prefix}-worktree-edit`, async () => {
-    await value('#pane-layout', 'auto');
+    await click('.pane-pic[title="Auto"]');
     await uncoverTerminal();
     await shellCommand("Add-Content README.md 'clickthrough worktree edit'");
     await waitFor(find('.tab-review'), 'worktree change to review', main, 30_000);
