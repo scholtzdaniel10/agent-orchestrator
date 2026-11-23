@@ -485,6 +485,56 @@ impl World {
         })
     }
 
+    /// Settings → Updates: each CLI's installed version (from Setup) and its latest release.
+    pub fn cli_updates(&self) -> Task<Vec<legate_lead::CliUpdate>> {
+        let setup = SetupHold {
+            codex: self.codex.clone(),
+            claude: self.claude.clone(),
+            cursor: self.cursor.clone(),
+        };
+        Box::pin(async move {
+            let rows = setup.run().await;
+            Ok(legate_lead::check_updates(&rows).await)
+        })
+    }
+
+    /// Runs each chosen CLI's own updater. On Windows that is a PowerShell window of its own,
+    /// and this resolves when the window closes so the caller can check again; elsewhere it is
+    /// a Legate terminal tab, returned as soon as it opens.
+    pub fn run_cli_updates(&self, ids: Vec<String>) -> Task<Option<TerminalInfo>> {
+        let steps: Vec<(String, String)> = ids
+            .iter()
+            .filter_map(|id| update_step(id, &self.claude, &self.cursor))
+            .collect();
+        if steps.is_empty() {
+            return fail("Nothing to update.");
+        }
+        if cfg!(windows) {
+            let script = legate_lead::update_script(&steps);
+            return Box::pin(async move {
+                run_update_window(&script).await.map_err(|err| {
+                    AppError::message(format!("Could not open PowerShell: {err}"))
+                })?;
+                Ok(None)
+            });
+        }
+        let terms = self.terms.clone();
+        let home = home_dir();
+        Box::pin(async move {
+            let info = terms
+                .open_shell(ShellOptions {
+                    cwd: home,
+                    change: None,
+                    title: "update CLIs".to_string(),
+                    commands: steps.into_iter().map(|(_, line)| line).collect(),
+                    cols: 100.0,
+                    rows: 28.0,
+                })
+                .map_err(|err| AppError::message(err.to_string()))?;
+            Ok(Some(info))
+        })
+    }
+
     pub fn skills_get(&self) -> Task<SkillsState> {
         ready(Ok(skills_state(self)))
     }
@@ -1600,6 +1650,66 @@ fn sign_in_line(
     let mut args = spec.args;
     args.push("login".to_string());
     shell_line(&spec.command, &args)
+}
+
+/// The label and command line that update one CLI, using the same binary Setup and sign-in use.
+/// `None` for an unknown id, or a tool with no updater on this system.
+fn update_step(
+    id: &str,
+    claude: &legate_providers::ClaudeAdapter,
+    cursor: &legate_providers::CursorAdapter,
+) -> Option<(String, String)> {
+    let own_updater = |bin: legate_providers::Bin| {
+        let mut args = bin.args;
+        args.push("update".to_string());
+        shell_line(&bin.command, &args)
+    };
+    let package_manager = |winget: &str, brew: &str| {
+        if cfg!(windows) {
+            Some(format!("winget upgrade --id {winget} -e"))
+        } else if cfg!(target_os = "macos") {
+            Some(format!("brew upgrade {brew}"))
+        } else {
+            None
+        }
+    };
+    let (label, line) = match id {
+        "claude" => ("Claude Code CLI", own_updater(claude.resolved_bin())),
+        "cursor" => ("Cursor CLI", own_updater(cursor.resolved_bin())),
+        "codex" => (
+            "Codex CLI",
+            "npm install -g @openai/codex@latest".to_string(),
+        ),
+        "gh" => ("GitHub CLI", package_manager("GitHub.cli", "gh")?),
+        "git" => ("Git", package_manager("Git.Git", "git")?),
+        _ => return None,
+    };
+    Some((label.to_string(), line))
+}
+
+/// Writes the update script to a temporary file, runs it in a new PowerShell window, waits for
+/// the window to close, then deletes the file.
+async fn run_update_window(script: &str) -> std::io::Result<()> {
+    let path = std::env::temp_dir().join(format!("legate-update-{}.ps1", uuid::Uuid::new_v4()));
+    // A byte-order mark so Windows PowerShell 5.1 reads the file as UTF-8.
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(script.as_bytes());
+    tokio::fs::write(&path, bytes).await?;
+    let mut command = tokio::process::Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&path);
+    #[cfg(windows)]
+    {
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        command.creation_flags(CREATE_NEW_CONSOLE);
+    }
+    let outcome = match command.spawn() {
+        Ok(mut child) => child.wait().await.map(|_| ()),
+        Err(err) => Err(err),
+    };
+    let _ = tokio::fs::remove_file(&path).await;
+    outcome
 }
 
 fn shell_line(command: &str, args: &[String]) -> String {

@@ -8,6 +8,7 @@ pub mod flow_events;
 pub mod history_format;
 pub mod job_steps;
 pub mod layout;
+pub mod layout_presets;
 pub mod new_task;
 pub mod rich_text;
 pub mod setup_seen;
@@ -15,6 +16,7 @@ pub mod sidebar_cards;
 pub mod terminal_bus;
 pub mod terminal_sleep;
 pub mod theme;
+pub mod update_check;
 pub mod usage_format;
 pub mod worktree_label;
 

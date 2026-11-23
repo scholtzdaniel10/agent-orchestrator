@@ -13,8 +13,8 @@ use legate_core::{
 };
 
 use crate::wire::{
-    CommitDetail, CommitPage, Goal, GoalInput, MergeOutcome, OpenedPr, Requirement, Routine,
-    Trigger, TriggerInput, UsageOutcome,
+    CliUpdate, CommitDetail, CommitPage, Goal, GoalInput, MergeOutcome, OpenedPr, Requirement,
+    Routine, Trigger, TriggerInput, UsageOutcome,
 };
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -198,6 +198,15 @@ pub async fn setup_status() -> Result<Vec<Requirement>, String> {
 }
 pub async fn setup_sign_in(id: &str) -> Result<TerminalInfo, String> {
     call("setup_sign_in", &json!({ "id": id })).await
+}
+/// Each CLI's installed version and its latest release, for Settings → Updates.
+pub async fn cli_updates() -> Result<Vec<CliUpdate>, String> {
+    call("cli_updates", &json!({})).await
+}
+/// Runs the chosen CLIs' own updaters: a PowerShell window on Windows (resolves when it
+/// closes), a Legate terminal tab elsewhere (returned).
+pub async fn run_cli_updates(ids: &[String]) -> Result<Option<TerminalInfo>, String> {
+    call("run_cli_updates", &json!({ "ids": ids })).await
 }
 pub async fn skills_get() -> Result<SkillsState, String> {
     call("skills_get", &json!({})).await

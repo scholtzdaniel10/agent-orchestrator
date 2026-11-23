@@ -2995,8 +2995,8 @@ textarea.field {
     display: none;
   }
 
-  .pane-layout-picker .select {
-    max-width: 84px;
+  .pane-pic {
+    width: 22px;
   }
 }
 
@@ -3877,10 +3877,29 @@ button.job-step {
   white-space: nowrap;
 }
 
-.pane-layout-picker .select {
-  width: auto;
-  max-width: 148px;
+/* Pane layouts as small pictures of the grid, like Windows snap layouts. */
+.pane-pic {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
 }
+.pane-pic:hover { border-color: var(--border); color: var(--text); }
+.pane-pic:focus-visible { outline: 2px solid var(--signal, var(--accent)); outline-offset: 1px; }
+.pane-pic.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+.pane-pic-grid { display: grid; width: 100%; height: 100%; gap: 2px; }
+.pane-pic-grid > span { border-radius: 1.5px; background: currentColor; opacity: 0.55; }
+.pane-pic.is-selected .pane-pic-grid > span { opacity: 0.9; }
+.pane-pic-auto { font-family: var(--font-ui); font-size: 10px; font-weight: 600; }
+.pane-pic:has(.pane-pic-auto) { width: auto; padding: 3px 6px; }
 
 .layout-handle,
 .pane-handle {
@@ -3928,18 +3947,27 @@ button.job-step {
   cursor: col-resize;
 }
 
+/* In the flex row between the workspace and the drawer: the workspace's 10px right margin is
+   the gap, so the handle covers that gap (its line in the middle) and matches the panels'
+   height through the same 10px top and bottom margins. */
 .layout-handle-drawer {
-  top: 0;
-  right: var(--layout-drawer, 420px);
-  bottom: 0;
-  left: auto;
+  position: relative;
+  flex: none;
+  align-self: stretch;
   width: 10px;
   height: auto;
-  transform: translateX(50%);
+  margin: 10px 0 10px -10px;
   cursor: col-resize;
 }
 
+/* The overlay drawer floats over the workspace with a 10px margin, so the handle follows it. */
 .app.is-drawer-overlay .layout-handle-drawer {
+  position: absolute;
+  top: 10px;
+  right: calc(var(--layout-drawer, 420px) + 10px);
+  bottom: 10px;
+  margin: 0;
+  transform: translateX(50%);
   z-index: 30;
 }
 
@@ -5544,49 +5572,6 @@ button.job-step {
   font-size: 11px;
 }
 
-/* Sidebar footer: Settings */
-
-.project-foot {
-  flex: none;
-  border-top: 1px solid var(--border);
-}
-
-.project-foot-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-stretch: normal;
-  letter-spacing: 0;
-  text-transform: none;
-  cursor: pointer;
-}
-
-.project-foot-button:hover,
-.project-foot-button:focus-visible {
-  outline: none;
-  background: var(--raised);
-  color: var(--text);
-}
-
-@media (max-width: 1099px) {
-  .project-foot-label {
-    display: none;
-  }
-
-  .project-bar:hover .project-foot-label,
-  .project-bar:focus-within .project-foot-label {
-    display: inline;
-  }
-}
-
 /* Settings page */
 
 .settings-page {
@@ -5962,7 +5947,6 @@ label,
 .head-actions label,
 .lead-options label,
 .status,
-.project-foot-button,
 .settings-row-label,
 .pane-layout-label,
 .terminal-pane-title,
@@ -8066,6 +8050,8 @@ input, textarea {
   padding: 0 20px 0 22px;
   background: var(--bg);
 }
+/* Settings and Setup open under the taller header, not over its bottom edge. */
+.roman-workspace .setup-slot { top: 56px; }
 .roman-workspace .app-brand { gap: 14px; }
 .roman-workspace .roman-standard {
   width: 30px;
@@ -8170,7 +8156,6 @@ input, textarea {
 .roman-workspace .project-row.is-selected .project-folder { color: var(--standard); }
 .roman-workspace .project-name { font-weight: 600; }
 .roman-workspace .worktree-group-label { color: var(--muted); font-size: 11px; }
-.roman-workspace .project-foot { padding: 12px; border-top: 1px solid var(--border); }
 .roman-workspace .workspace {
   margin: 10px;
   border: 1px solid var(--border);
@@ -8281,10 +8266,83 @@ input, textarea {
 .workspace-layout-menu { position: relative; }
 .workspace-layout-menu > summary { cursor: pointer; color: var(--muted); padding: 6px 10px; border-radius: 6px; font-size: 12px; }
 .workspace-layout-menu > summary:hover { color: var(--text); background: var(--raised); }
-.workspace-layout-controls { position: absolute; top: calc(100% + 12px); right: 0; z-index: 60; display: flex; flex-direction: column; gap: 12px; width: 240px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--inset); box-shadow: 0 12px 30px #0005; }
-.workspace-layout-controls label { display: flex; flex-direction: column; gap: 6px; }
-.workspace-layout-controls .select { width: 100%; }
-.workspace-layout-controls .hint { font-size: 12px; }
+.workspace-layout-controls { position: absolute; top: calc(100% + 12px); right: 0; z-index: 60; display: flex; flex-direction: column; gap: 12px; width: 320px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--inset); box-shadow: 0 12px 30px #0005; }
+.workspace-layout-controls .hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+/* Layout presets: a picture of each layout, one click to apply. */
+.layout-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.layout-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.layout-preset:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.layout-preset:focus-visible { outline: 2px solid var(--signal, var(--accent)); outline-offset: 2px; }
+.layout-preset.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.layout-preset-label { margin-top: 6px; font-size: 12px; font-weight: 600; }
+.layout-preset-hint { color: var(--muted); font-size: 11px; }
+.layout-thumb {
+  display: grid;
+  width: 100%;
+  height: 52px;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--inset);
+}
+.layout-thumb > span { border-radius: 2px; }
+.thumb-projects { background: color-mix(in srgb, var(--text) 16%, transparent); }
+.thumb-terminals { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.thumb-panel { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.layout-thumb-classic { grid-template: 1fr / 1fr 3fr 1.5fr; }
+.layout-thumb-side { grid-template: 1fr 1fr / 1.3fr 3fr; }
+.layout-thumb-side .thumb-projects { grid-area: 1 / 1; }
+.layout-thumb-side .thumb-panel { grid-area: 2 / 1; }
+.layout-thumb-side .thumb-terminals { grid-area: 1 / 2 / 3 / 3; }
+.layout-thumb-bottom { grid-template: 2fr 1fr / 1fr 4fr; }
+.layout-thumb-bottom .thumb-projects { grid-area: 1 / 1 / 3 / 2; }
+.layout-thumb-bottom .thumb-terminals { grid-area: 1 / 2; }
+.layout-thumb-bottom .thumb-panel { grid-area: 2 / 2; }
+.layout-thumb-focus { grid-template: 1fr / 1fr; }
+.layout-thumb-focus .thumb-projects,
+.layout-thumb-focus .thumb-panel { display: none; }
+
+/* Move buttons on a panel's header. */
+.inspector-actions { display: flex; flex: none; gap: 6px; }
+.dock { position: relative; }
+.dock-move { position: absolute; top: 6px; right: 8px; z-index: 2; }
+
+/* While a rail icon is dragged: the four places a panel can go. */
+.dock-zone-layer { position: absolute; inset: 0; z-index: 45; pointer-events: none; }
+.dock-zone {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, color-mix(in srgb, var(--bg) 86%, transparent));
+  backdrop-filter: blur(3px);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dock-zone.is-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, color-mix(in srgb, var(--bg) 86%, transparent)); color: var(--text); }
+.dock-zone-left { top: 10px; bottom: 10px; left: 86px; width: calc(var(--layout-sidebar, 240px) - 20px); }
+.dock-zone-right { top: 10px; right: 10px; bottom: 10px; width: 28%; }
+.dock-zone-top,
+.dock-zone-bottom { right: calc(28% + 20px); left: calc(var(--layout-sidebar, 240px) + 86px); height: calc(50% - 15px); }
+.dock-zone-top { top: 10px; }
+.dock-zone-bottom { bottom: 10px; }
 
 /* Orchid glow */
 :root[data-theme='orchid'] .app {
@@ -8367,3 +8425,29 @@ input, textarea {
 :root[data-theme='orchid'] :focus-within {
   outline-color: var(--brand);
 }
+
+/* Settings → Updates */
+.updates { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+.updates-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.updates-summary { margin: 0; color: var(--text); font-size: 13px; }
+.updates-list { display: flex; flex-direction: column; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; list-style: none; }
+.updates-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.updates-row:first-child { border-top: 0; }
+.updates-name { font-size: 13px; font-weight: 600; cursor: pointer; }
+.updates-versions { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--muted); font-family: var(--font-mono, monospace); font-size: 12px; }
+.updates-installed { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.updates-latest { color: var(--text); }
+.updates-status { padding: 2px 8px; border-radius: var(--radius-pill, 999px); font-size: 11px; white-space: nowrap; }
+.updates-status.is-newer { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
+.updates-status.is-current { color: var(--good, var(--muted)); }
+.updates-status.is-unknown,
+.updates-status.is-missing { color: var(--muted); }
+.updates-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.updates-actions .hint { margin: 0; color: var(--muted); font-size: 12px; }

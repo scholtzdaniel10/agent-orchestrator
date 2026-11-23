@@ -293,6 +293,23 @@ pub async fn setup_sign_in(
 }
 
 #[tauri::command]
+pub async fn cli_updates(shell: State<'_, Shell>) -> Result<Vec<legate_lead::CliUpdate>, String> {
+    shell.backend()?.cli_updates().await.map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn run_cli_updates(
+    shell: State<'_, Shell>,
+    ids: Vec<String>,
+) -> Result<Option<legate_core::TerminalInfo>, String> {
+    shell
+        .backend()?
+        .run_cli_updates(ids)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn skills_get(shell: State<'_, Shell>) -> Result<legate_core::SkillsState, String> {
     shell.backend()?.skills_get().await.map_err(err_string)
 }

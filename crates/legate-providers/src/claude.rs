@@ -138,7 +138,8 @@ impl ClaudeAdapter {
         parse_line(line, &self.steps)
     }
 
-    fn resolved_bin(&self) -> Bin {
+    /// The CLI binary Legate found (its path and any launcher args), without job flags.
+    pub fn resolved_bin(&self) -> Bin {
         let mut found = lock(&self.found);
         if let Some(bin) = found.as_ref() {
             return bin.clone();

@@ -3,7 +3,7 @@ use legate_core::{ChangeSet, ProviderId, TerminalInfo, TerminalProvider, Termina
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
-use crate::logic::layout::PaneLayoutId;
+use crate::logic::layout::{PaneLayoutId, pane_grid};
 use crate::logic::worktree_label::{NamedChange, terminal_display_title};
 
 #[derive(Clone, PartialEq)]
@@ -169,17 +169,36 @@ pub fn TerminalTabs(
                     onclick: move |_| new_worktree.set(!new_worktree()),
                     "Worktree"
                 }
-                div { class: "pane-layout-picker",
-                    label { r#for: "pane-layout",
-                        span { class: "visually-hidden", "Panes" }
-                        span { class: "pane-layout-label", aria_hidden: "true", "Panes" }
-                    }
-                    select {
-                        id: "pane-layout",
-                        class: "select",
-                        onchange: move |event| on_pane_layout.call(event.value()),
-                        for layout in PaneLayoutId::ALL {
-                            option { value: "{layout.as_str()}", selected: layout.as_str() == pane_layout, "{layout.label()}" }
+                div { class: "pane-layout-picker", role: "radiogroup", aria_label: "Panes",
+                    span { class: "pane-layout-label", aria_hidden: "true", "Panes" }
+                    for layout in PaneLayoutId::ALL {
+                        {
+                            let on = layout.as_str() == pane_layout;
+                            let (cols, rows) = pane_grid(layout);
+                            rsx! {
+                                button {
+                                    key: "{layout.as_str()}",
+                                    class: if on { "pane-pic is-selected" } else { "pane-pic" },
+                                    r#type: "button",
+                                    role: "radio",
+                                    aria_checked: "{on}",
+                                    aria_label: "{layout.label()}",
+                                    title: "{layout.label()}",
+                                    onclick: move |_| on_pane_layout.call(layout.as_str().to_string()),
+                                    if layout == PaneLayoutId::Auto {
+                                        span { class: "pane-pic-auto", aria_hidden: "true", "Auto" }
+                                    } else {
+                                        span {
+                                            class: "pane-pic-grid",
+                                            aria_hidden: "true",
+                                            style: "grid-template-columns: repeat({cols}, 1fr); grid-template-rows: repeat({rows}, 1fr);",
+                                            for cell in 0..cols * rows {
+                                                span { key: "{cell}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -75,6 +75,8 @@ fn main() -> anyhow::Result<()> {
             commands::github_open_pr,
             commands::setup_status,
             commands::setup_sign_in,
+            commands::cli_updates,
+            commands::run_cli_updates,
             commands::skills_get,
             commands::skills_add,
             commands::skills_remove,

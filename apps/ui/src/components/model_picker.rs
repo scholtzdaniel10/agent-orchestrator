@@ -4,6 +4,7 @@ use dioxus::prelude::*;
 use legate_core::{CursorModels, ModelOption, PlanStatus, ProviderId};
 
 use crate::api;
+use crate::components::bot_avatar::{FieldSelect, SelectOption};
 use crate::state::use_store;
 
 const OTHER: &str = "__other__";
@@ -77,17 +78,18 @@ fn ModelField(
                 span { id: "{hint_id}", class: "visually-hidden", "{title}" }
             }
             div { class: "model-row",
-                select {
-                    id: "{select_id}",
-                    class: "select model-input field",
+                FieldSelect {
+                    id: select_id.clone(),
+                    class: "model-input field".to_string(),
                     disabled: disabled,
-                    aria_invalid: if notice.is_some() { "true" } else { "false" },
-                    aria_describedby: if described.is_empty() { "" } else { "{described}" },
-                    onchange: move |event| {
+                    aria_invalid: notice.is_some(),
+                    aria_describedby: described.clone(),
+                    value: if typing() { OTHER.to_string() } else { saved.clone() },
+                    options: model_options(&saved, saved_listed, &listed),
+                    on_change: Callback::new(move |picked: String| {
                         let mut typed = typed;
                         let mut typing = typing;
                         let mut error = error;
-                        let picked = event.value();
                         if picked == OTHER {
                             typed.set(saved_change.clone());
                             typing.set(true);
@@ -97,20 +99,7 @@ fn ModelField(
                         if picked != saved_change {
                             save_model(plan_id, picked, disabled, &mut error);
                         }
-                    },
-                    option { value: "", selected: !typing() && saved.is_empty(), "CLI default" }
-                    if !saved_listed && !saved.is_empty() {
-                        option { value: "{saved}", selected: !typing() && true, "{saved}" }
-                    }
-                    for option in listed {
-                        option {
-                            key: "{option.id}",
-                            value: "{option.id}",
-                            selected: !typing() && option.id == saved,
-                            "{option.label}"
-                        }
-                    }
-                    option { value: "{OTHER}", selected: typing(), "Other…" }
+                    }),
                 }
             }
             if typing() {
@@ -195,4 +184,18 @@ fn cursor_own(id: &str) -> bool {
         || id.starts_with("composer-")
         || id.starts_with("grok-")
         || id.starts_with("cursor-grok-")
+}
+
+/// The model menu: the CLI default, a saved model the CLI no longer lists, every listed model
+/// (its id as the tooltip), and Other… to type one.
+fn model_options(saved: &str, saved_listed: bool, listed: &[ModelOption]) -> Vec<SelectOption> {
+    let mut options = vec![SelectOption::new("", "CLI default")];
+    if !saved_listed && !saved.is_empty() {
+        options.push(SelectOption::new(saved, saved));
+    }
+    options.extend(listed.iter().map(|option| {
+        SelectOption::new(option.id.clone(), option.label.clone()).titled(option.id.clone())
+    }));
+    options.push(SelectOption::new(OTHER, "Other…"));
+    options
 }

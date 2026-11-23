@@ -16,6 +16,19 @@ pub enum RequirementId {
     Gh,
 }
 
+impl RequirementId {
+    /// The id the shell uses, as serde writes it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Git => "git",
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Cursor => "cursor",
+            Self::Gh => "gh",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RequirementNeed {
@@ -254,4 +267,16 @@ pub struct TriggerInput {
     pub check: Option<String>,
     #[serde(default)]
     pub max_rounds: Option<f64>,
+}
+
+/// One CLI in Settings → Updates: what is installed and the newest release.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliUpdate {
+    pub id: RequirementId,
+    pub label: String,
+    pub installed: Option<String>,
+    pub latest: Option<String>,
+    pub newer: bool,
+    pub can_update: bool,
 }

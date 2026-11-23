@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use wasm_bindgen::JsCast;
 
 use crate::api;
-use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
+use crate::components::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption};
 use crate::components::sidebar_menu::{MenuEntry, SidebarMenu};
 use crate::components::star::Star;
 use crate::logic::sidebar_cards::{
@@ -65,7 +65,6 @@ pub fn ProjectBar(
     activity: HashMap<String, i64>,
     on_reveal: Callback<Option<String>>,
     on_reveal_project: Callback<String>,
-    on_open_settings: Callback,
     on_new_task: Callback,
     on_open_goals: Callback,
     on_open_automations: Callback,
@@ -422,24 +421,6 @@ pub fn ProjectBar(
             if let Some(text) = error {
                 p { class: "error-text project-error", role: "alert", "{text}" }
             }
-            div { class: "project-foot",
-                button {
-                    class: "project-foot-button",
-                    r#type: "button",
-                    title: "Settings (Ctrl+,)",
-                    onclick: move |_| on_open_settings.call(()),
-                    svg {
-                        width: "14",
-                        height: "14",
-                        view_box: "0 0 16 16",
-                        path {
-                            fill: "currentColor",
-                            d: "M7 1h2l.4 1.9 1.3.6 1.7-1 1.4 1.4-1 1.7.6 1.3L15 7v2l-1.9.4-.6 1.3 1 1.7-1.4 1.4-1.7-1-1.3.6L9 15H7l-.4-1.9-1.3-.6-1.7 1-1.4-1.4 1-1.7-.6-1.3L1 9V7l1.9-.4.6-1.3-1-1.7 1.4-1.4 1.7 1 1.3-.6zm1 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
-                        }
-                    }
-                    span { class: "project-foot-label", "Settings" }
-                }
-            }
         }
     }
 }
@@ -709,18 +690,21 @@ fn WorktreesSection(
                             },
                         }
                     }
-                    label { class: "project-worktree-start",
-                        "Start"
-                        select {
-                            class: "select",
-                            aria_label: "Start",
-                            onchange: move |event| start.set(event.value()),
-                            option { value: "", "nothing" }
-                            for id in AGENTS {
-                                if plan_ready(id, claude_available, codex_available, cursor_available) {
-                                    option { value: "{id.as_str()}", "{worker_label(id)}" }
-                                }
-                            }
+                    div { class: "project-worktree-start",
+                        span { aria_hidden: "true", "Start" }
+                        FieldSelect {
+                            aria_label: "Start".to_string(),
+                            value: start(),
+                            options: std::iter::once(SelectOption::new("", "nothing"))
+                                .chain(
+                                    AGENTS
+                                        .iter()
+                                        .copied()
+                                        .filter(|id| plan_ready(*id, claude_available, codex_available, cursor_available))
+                                        .map(|id| SelectOption::new(id.as_str(), worker_label(id))),
+                                )
+                                .collect::<Vec<_>>(),
+                            on_change: Callback::new(move |value: String| start.set(value)),
                         }
                     }
                     div { class: "project-worktree-create-actions",

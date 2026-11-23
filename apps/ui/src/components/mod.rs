@@ -26,6 +26,7 @@ mod tab_icon;
 mod terminal_pane;
 mod terminal_tabs;
 mod terminal_window;
+mod updates_section;
 mod usage_meter;
 mod workers;
 
@@ -56,6 +57,7 @@ pub use tab_icon::TabIcon;
 pub use terminal_pane::{PanePlacement, TerminalPane};
 pub use terminal_tabs::{AgentTab, AgentTabs, ReviewTab, TerminalTabs};
 pub use terminal_window::TerminalWindow;
+pub use updates_section::UpdatesSection;
 pub use usage_meter::UsageMeter;
 pub use workers::Workers;
 

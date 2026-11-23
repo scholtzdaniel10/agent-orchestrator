@@ -8,7 +8,9 @@ use legate_core::{
 use serde_json::json;
 
 use crate::api;
+use crate::components::bot_avatar::{FieldSelect, SelectOption};
 use crate::components::star::Star;
+use crate::components::updates_section::UpdatesSection;
 use crate::logic::theme::{THEMES, ThemeId};
 use crate::state::use_store;
 
@@ -26,6 +28,11 @@ const SECTIONS: &[(&str, &str, &str)] = &[
         "Remembered folders, clones and worktree setup.",
     ),
     ("terminal", "Terminal", "Text size of every terminal pane."),
+    (
+        "updates",
+        "Updates",
+        "New versions of the CLIs Legate drives.",
+    ),
     (
         "shortcuts",
         "Shortcuts",
@@ -61,6 +68,8 @@ pub fn SettingsPage(
     tab_order_custom: bool,
     on_reset_tabs: Callback,
     on_close: Callback,
+    /// How many CLI updates the Updates section found, for the Settings badge.
+    on_updates_checked: Callback<usize>,
 ) -> Element {
     let _ = plans;
     let store = use_store();
@@ -176,81 +185,78 @@ pub fn SettingsPage(
                             p { class: "settings-section-blurb", "{blurb}" }
                             if id == "general" || needle_hits(&needle, "Interface size", "scale zoom ui") {
                                 Row { label: "Interface size".to_string(), help: "Scales the whole window.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Interface size",
-                                        onchange: move |event| {
-                                            if let Ok(scale) = event.value().parse::<i64>() {
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Interface size".to_string(),
+                                        value: prefs.ui_scale.to_string(),
+                                        options: SCALES.iter().map(|scale| SelectOption::new(scale.to_string(), format!("{scale}%"))).collect::<Vec<_>>(),
+                                        on_change: Callback::new(move |value: String| {
+                                            if let Ok(scale) = value.parse::<i64>() {
                                                 save_pref(json!({ "uiScale": scale }));
                                             }
-                                        },
-                                        for scale in SCALES {
-                                            option { value: "{scale}", selected: prefs.ui_scale == scale, "{scale}%" }
-                                        }
+                                        }),
                                     }
                                 }
                             }
                             if id == "general" || needle_hits(&needle, "Usage shows", "left used percent") {
                                 Row { label: "Usage shows".to_string(), help: "What the meters and the status bar say.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Usage shows",
-                                        onchange: move |event| {
-                                            let shows = if event.value() == "used" { "used" } else { "left" };
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Usage shows".to_string(),
+                                        value: if prefs.usage_shows == UsageShows::Used { "used".to_string() } else { "left".to_string() },
+                                        options: vec![SelectOption::new("left", "What is left"), SelectOption::new("used", "What is used")],
+                                        on_change: Callback::new(move |value: String| {
+                                            let shows = if value == "used" { "used" } else { "left" };
                                             save_pref(json!({ "usageShows": shows }));
-                                        },
-                                        option { value: "left", selected: prefs.usage_shows == UsageShows::Left, "left" }
-                                        option { value: "used", selected: prefs.usage_shows == UsageShows::Used, "used" }
+                                        }),
                                     }
                                 }
                             }
                             if id == "general" || needle_hits(&needle, "Cursor models", "own all") {
                                 Row { label: "Cursor models".to_string(), help: "Cursor's own pool, or every model it offers.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Cursor models",
-                                        onchange: move |event| {
-                                            let value = if event.value() == "all" { "all" } else { "own" };
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Cursor models".to_string(),
+                                        value: if prefs.cursor_models == CursorModels::All { "all".to_string() } else { "own".to_string() },
+                                        options: vec![SelectOption::new("own", "Cursor's own"), SelectOption::new("all", "Every model")],
+                                        on_change: Callback::new(move |value: String| {
+                                            let value = if value == "all" { "all" } else { "own" };
                                             save_pref(json!({ "cursorModels": value }));
-                                        },
-                                        option { value: "own", selected: prefs.cursor_models == CursorModels::Own, "Cursor's own" }
-                                        option { value: "all", selected: prefs.cursor_models == CursorModels::All, "Every model" }
+                                        }),
                                     }
                                 }
                             }
                             if id == "general" || needle_hits(&needle, "Look", "theme dark light") {
                                 Row { label: "Look".to_string(), help: "System follows the computer.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Look",
-                                        onchange: move |event| {
-                                            if let Some(next) = ThemeId::parse(&event.value()) {
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Look".to_string(),
+                                        value: theme.as_str().to_string(),
+                                        options: THEMES.iter().map(|(id, name)| SelectOption::new(*id, *name)).collect::<Vec<_>>(),
+                                        on_change: Callback::new(move |value: String| {
+                                            if let Some(next) = ThemeId::parse(&value) {
                                                 on_theme.call(next);
                                             }
-                                        },
-                                        for (id, name) in THEMES {
-                                            option { value: "{id}", selected: theme.as_str() == *id, "{name}" }
-                                        }
+                                        }),
                                     }
                                 }
                             }
                             if id == "general" || needle_hits(&needle, "Jobs at once per plan", "parallel") {
                                 Row { label: "Jobs at once per plan".to_string(), help: "How many jobs one plan may run together.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Jobs at once per plan",
-                                        onchange: move |event| {
-                                            let value = event.value();
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Jobs at once per plan".to_string(),
+                                        value: prefs.max_parallel.map_or_else(|| "rules".to_string(), |count| count.to_string()),
+                                        options: std::iter::once(SelectOption::new("rules", "Rules file"))
+                                            .chain((1..=8).map(|count| SelectOption::new(count.to_string(), count.to_string())))
+                                            .collect::<Vec<_>>(),
+                                        on_change: Callback::new(move |value: String| {
                                             if value == "rules" {
                                                 save_pref(json!({ "maxParallel": null }));
                                             } else if let Ok(count) = value.parse::<i64>() {
                                                 save_pref(json!({ "maxParallel": count }));
                                             }
-                                        },
-                                        option { value: "rules", selected: prefs.max_parallel.is_none(), "Rules file" }
-                                        for count in 1..=8 {
-                                            option { value: "{count}", selected: prefs.max_parallel == Some(count), "{count}" }
-                                        }
+                                        }),
                                     }
                                 }
                             }
@@ -282,46 +288,45 @@ pub fn SettingsPage(
                             }
                             if id == "agents" || needle_hits(&needle, "Lead runs on", "lead plan") {
                                 Row { label: "Lead runs on".to_string(), help: "The plan that answers in the Lead tab.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Lead runs on",
-                                        onchange: move |event| {
-                                            let picked = ProviderId::parse(&event.value());
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Lead runs on".to_string(),
+                                        value: lead_plan.read().as_ref().and_then(|plan| *plan).map(|id| id.as_str().to_string()).unwrap_or_default(),
+                                        options: std::iter::once(SelectOption::new("", "Auto"))
+                                            .chain(PROVIDERS.iter().map(|id| SelectOption::new(id.as_str(), id.as_str())))
+                                            .collect::<Vec<_>>(),
+                                        on_change: Callback::new(move |value: String| {
+                                            let picked = ProviderId::parse(&value);
                                             spawn(async move {
                                                 if api::set_lead_plan(picked).await.is_ok() {
                                                     lead_plan.set(Some(picked));
                                                     on_lead_changed.call(());
                                                 }
                                             });
-                                        },
-                                        option { value: "", selected: lead_plan.read().as_ref().is_some_and(|plan| plan.is_none()), "Auto" }
-                                        for id in PROVIDERS {
-                                            option {
-                                                value: "{id.as_str()}",
-                                                selected: lead_plan.read().as_ref().and_then(|plan| *plan) == Some(id),
-                                                "{id.as_str()}"
-                                            }
-                                        }
+                                        }),
                                     }
                                 }
                             }
                             if id == "agents" || needle_hits(&needle, "Most the lead may hand out", "access") {
                                 Row { label: "Most the lead may hand out".to_string(), help: "Jobs the lead starts cannot exceed this.".to_string(),
-                                    select {
-                                        class: "select settings-select",
-                                        aria_label: "Most the lead may hand out",
-                                        onchange: move |event| {
-                                            let Some(access) = JobAccess::parse(&event.value()) else { return; };
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Most the lead may hand out".to_string(),
+                                        value: match lead_access() { Some(JobAccess::Read) => "read", Some(JobAccess::Edit) => "edit", Some(JobAccess::Full) => "full", None => "" }.to_string(),
+                                        options: vec![
+                                            SelectOption::new("read", "Read only"),
+                                            SelectOption::new("edit", "Edit files"),
+                                            SelectOption::new("full", "Full access"),
+                                        ],
+                                        on_change: Callback::new(move |value: String| {
+                                            let Some(access) = JobAccess::parse(&value) else { return; };
                                             spawn(async move {
                                                 if api::set_lead_access(access).await.is_ok() {
                                                     lead_access.set(Some(access));
                                                     on_lead_changed.call(());
                                                 }
                                             });
-                                        },
-                                        option { value: "read", selected: lead_access() == Some(JobAccess::Read), "Read only" }
-                                        option { value: "edit", selected: lead_access() == Some(JobAccess::Edit), "Edit files" }
-                                        option { value: "full", selected: lead_access() == Some(JobAccess::Full), "Full access" }
+                                        }),
                                     }
                                 }
                             }
@@ -480,6 +485,9 @@ pub fn SettingsPage(
                                     }
                                 }
                             }
+                            if id == "updates" {
+                                UpdatesSection { on_checked: on_updates_checked }
+                            }
                             if id == "shortcuts" {
                                 for (keys, what) in SHORTCUTS {
                                     if needle.is_empty() || needle_hits(&needle, what, keys) {
@@ -556,6 +564,7 @@ fn section_text(id: &str) -> &'static str {
         "skills" => "skills folder",
         "projects" => "projects clone worktree",
         "terminal" => "text size font",
+        "updates" => "update upgrade cli version powershell",
         "shortcuts" => "ctrl shortcut",
         "about" => "version data folder",
         _ => "",

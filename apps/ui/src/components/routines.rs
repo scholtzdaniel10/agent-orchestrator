@@ -5,6 +5,7 @@ use legate_core::{JobAccess, JobRecord, JobType, PROVIDERS};
 use serde_json::json;
 
 use crate::api;
+use crate::components::bot_avatar::{FieldSelect, SelectOption};
 use crate::wire::Routine;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -275,54 +276,53 @@ pub fn Routines(project: String, on_run: Callback<JobRecord>) -> Element {
                         }
                         div { class: "composer-tools",
                             label { r#for: "routine-type", "Job type" }
-                            select {
-                                id: "routine-type",
-                                class: "select job-type",
-                                onchange: move |event| {
-                                    let next = JobType::parse(&event.value()).unwrap_or(JobType::Planning);
+                            FieldSelect {
+                                id: "routine-type".to_string(),
+                                class: "job-type".to_string(),
+                                value: current.job_type.as_str().to_string(),
+                                options: JobType::ALL.iter().map(|kind| SelectOption::new(kind.as_str(), kind.as_str())).collect::<Vec<_>>(),
+                                on_change: Callback::new(move |value: String| {
+                                    let next = JobType::parse(&value).unwrap_or(JobType::Planning);
                                     update_draft(draft, |item| item.job_type = next);
-                                },
-                                for kind in JobType::ALL {
-                                    option { value: "{kind.as_str()}", selected: current.job_type == kind, "{kind.as_str()}" }
-                                }
+                                }),
                             }
                             label { r#for: "routine-worker", "Worker" }
-                            select {
-                                id: "routine-worker",
-                                class: "select plan-choice",
-                                onchange: move |event| {
-                                    let next = event.value();
-                                    update_draft(draft, |item| item.worker = next);
-                                },
-                                option { value: "auto", selected: current.worker == "auto", "auto" }
-                                for id in PROVIDERS {
-                                    option { value: "{id.as_str()}", selected: current.worker == id.as_str(), "{id.as_str()}" }
-                                }
+                            FieldSelect {
+                                id: "routine-worker".to_string(),
+                                class: "plan-choice".to_string(),
+                                value: current.worker.clone(),
+                                options: std::iter::once(SelectOption::new("auto", "auto"))
+                                    .chain(PROVIDERS.iter().map(|id| SelectOption::new(id.as_str(), id.as_str())))
+                                    .collect::<Vec<_>>(),
+                                on_change: Callback::new(move |value: String| {
+                                    update_draft(draft, |item| item.worker = value);
+                                }),
                             }
                             label { r#for: "routine-access", "Access" }
-                            select {
-                                id: "routine-access",
-                                class: "select job-access",
-                                onchange: move |event| {
-                                    let next = JobAccess::parse(&event.value()).unwrap_or(JobAccess::Read);
+                            FieldSelect {
+                                id: "routine-access".to_string(),
+                                class: "job-access".to_string(),
+                                value: match current.access { JobAccess::Read => "read", JobAccess::Edit => "edit", JobAccess::Full => "full" }.to_string(),
+                                options: vec![
+                                    SelectOption::new("read", "Read only"),
+                                    SelectOption::new("edit", "Edit files"),
+                                    SelectOption::new("full", "Full access"),
+                                ],
+                                on_change: Callback::new(move |value: String| {
+                                    let next = JobAccess::parse(&value).unwrap_or(JobAccess::Read);
                                     update_draft(draft, |item| item.access = next);
-                                },
-                                option { value: "read", selected: current.access == JobAccess::Read, "Read only" }
-                                option { value: "edit", selected: current.access == JobAccess::Edit, "Edit files" }
-                                option { value: "full", selected: current.access == JobAccess::Full, "Full access" }
+                                }),
                             }
                             label { r#for: "routine-after", "Run automatically" }
-                            select {
-                                id: "routine-after",
-                                class: "select",
-                                onchange: move |event| {
-                                    let next = event.value();
-                                    update_draft(draft, |item| item.after = next);
-                                },
-                                option { value: "", selected: current.after.is_empty(), "only when I click Run" }
-                                for kind in JobType::ALL {
-                                    option { value: "{kind.as_str()}", selected: current.after == kind.as_str(), "after every {kind.as_str()} job" }
-                                }
+                            FieldSelect {
+                                id: "routine-after".to_string(),
+                                value: current.after.clone(),
+                                options: std::iter::once(SelectOption::new("", "only when I click Run"))
+                                    .chain(JobType::ALL.iter().map(|kind| SelectOption::new(kind.as_str(), format!("after every {} job", kind.as_str()))))
+                                    .collect::<Vec<_>>(),
+                                on_change: Callback::new(move |value: String| {
+                                    update_draft(draft, |item| item.after = value);
+                                }),
                             }
                         }
                         div { class: "routines-form-actions",

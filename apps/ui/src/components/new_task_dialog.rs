@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use legate_core::ProviderId;
 
 use crate::api;
-use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
+use crate::components::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption};
 use crate::components::star::Star;
 use crate::logic::new_task::{
     self, HOW_OPTIONS, How, JOB_KINDS, NewTaskContext, NewTaskDraft, NewTaskPlan, WHO_OPTIONS,
@@ -244,14 +244,14 @@ pub fn NewTaskDialog(
                         }
                     }
                     if chosen == How::Background {
-                        label { class: "new-task-field",
-                            "Kind"
-                            select {
-                                class: "select",
-                                onchange: move |event| kind.set(new_task::as_kind(&event.value())),
-                                for item in JOB_KINDS {
-                                    option { value: "{item.as_str()}", selected: kind() == item, "{item.as_str()}" }
-                                }
+                        div { class: "new-task-field",
+                            span { id: "new-task-kind", "Kind" }
+                            FieldSelect {
+                                aria_describedby: "new-task-kind".to_string(),
+                                aria_label: "Kind".to_string(),
+                                value: kind().as_str().to_string(),
+                                options: JOB_KINDS.iter().map(|item| SelectOption::new(item.as_str(), item.as_str())).collect::<Vec<_>>(),
+                                on_change: Callback::new(move |value: String| kind.set(new_task::as_kind(&value))),
                             }
                         }
                     }

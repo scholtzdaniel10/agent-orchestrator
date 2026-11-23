@@ -14,8 +14,8 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api;
 use crate::components::{
     ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
-    NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, SourceControlPanel, Star,
-    TabIcon, TerminalWindow, UsageMeter, Workers,
+    MenuEntry, NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, SidebarMenu,
+    SourceControlPanel, Star, TabIcon, TerminalWindow, UsageMeter, Workers,
 };
 use crate::logic::agent_tabs::agent_jobs;
 use crate::logic::flow_events::FlowEvent;
@@ -23,8 +23,10 @@ use crate::logic::layout::{
     self, DockId, DrawerTab, LayoutFlags, LayoutShortcut, LayoutState, PaneLayoutId, PaneSizes,
     SizeKey, Viewport,
 };
+use crate::logic::layout_presets::{self, LayoutPreset};
 use crate::logic::setup_seen::{self, SeenStorage};
 use crate::logic::theme::{self, ThemeId, ThemeRoot, ThemeStorage, ThemeTarget};
+use crate::logic::update_check;
 use crate::logic::usage_format::usage_figure;
 use crate::state::{self, Store};
 use crate::xterm;
@@ -42,8 +44,13 @@ pub fn App() -> Element {
     let mut applied = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
     let mut task_open = use_signal(|| false);
-    let mut layout_target = use_signal(|| DrawerTab::Lead);
-    let mut layout_destination = use_signal(|| DockId::Right);
+    // A rail icon being dragged to a dock, and whether the click that ends a drag is swallowed.
+    let mut rail_drag = use_signal(|| None::<RailDrag>);
+    let mut rail_dragged = use_signal(|| false);
+    // A panel's Move menu: which panel, and where to draw the menu.
+    let mut move_menu = use_signal(|| None::<(DrawerTab, f64, f64)>);
+    // CLI updates the last check found, for the badge on Settings.
+    let updates_newer = use_signal(|| saved_update_check().newer);
     let mut initial_ids = use_signal(|| None::<Vec<String>>);
     let mut closed_agents = use_signal(Vec::<String>::new);
     if !applied() {
@@ -72,6 +79,9 @@ pub fn App() -> Element {
         xterm::install_assets();
         state::boot(store);
         install_keys(store, layout, settings_open, task_open);
+        if query("terminal").is_none() && query("panel").is_none() {
+            start_update_check(updates_newer);
+        }
     });
 
     let owns_workspace = query("terminal").is_none() && query("panel").is_none();
@@ -155,6 +165,8 @@ pub fn App() -> Element {
     let shows = store.prefs.read().usage_shows;
     let now = *store.now.read();
     let setup_open = *store.setup_open.read();
+    let current_preset = layout_presets::preset_of(&layout.read());
+    let drop_over = rail_drag().filter(|drag| drag.moved).map(|drag| drag.over);
     let switching_project = *store.project_switching.read();
     let agents = agent_jobs(&jobs, &[], &closed_agents.read());
     let visible_terminals: Vec<TerminalInfo> = terminals
@@ -225,28 +237,34 @@ pub fn App() -> Element {
                         details { class: "workspace-layout-menu",
                             summary { "Layout" }
                             div { class: "workspace-layout-controls",
-                                label { "Panel"
-                                    select { class: "select", value: "{layout_target().as_str()}",
-                                        onchange: move |event| { if let Some(tab) = DrawerTab::parse(&event.value()) { layout_target.set(tab); } },
-                                        for tab in DrawerTab::ALL { option { value: "{tab.as_str()}", "{tab.label()}" } }
+                                div { class: "layout-presets", role: "group", aria_label: "Layouts",
+                                    for preset in LayoutPreset::ALL {
+                                        {
+                                            let selected = current_preset == Some(preset);
+                                            rsx! {
+                                                button {
+                                                    key: "{preset.as_str()}",
+                                                    class: if selected { "layout-preset is-selected" } else { "layout-preset" },
+                                                    r#type: "button",
+                                                    aria_pressed: "{selected}",
+                                                    onclick: move |event| {
+                                                        close_menu_of(&event);
+                                                        let next = layout_presets::apply_preset(&layout.read(), preset);
+                                                        write_layout(layout, store, next);
+                                                    },
+                                                    span { class: "layout-thumb layout-thumb-{preset.as_str()}", aria_hidden: "true",
+                                                        span { class: "thumb-projects" }
+                                                        span { class: "thumb-terminals" }
+                                                        span { class: "thumb-panel" }
+                                                    }
+                                                    span { class: "layout-preset-label", "{preset.label()}" }
+                                                    span { class: "layout-preset-hint", "{preset.hint()}" }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                label { "Position"
-                                    select { class: "select", value: "{dock_name(layout_destination())}",
-                                        onchange: move |event| {
-                                            layout_destination.set(match event.value().as_str() { "top" => DockId::Top, "bottom" => DockId::Bottom, "left" => DockId::Left, _ => DockId::Right });
-                                        },
-                                        option { value: "right", "Right inspector" }
-                                        option { value: "left", "Under projects" }
-                                        option { value: "top", "Above terminals" }
-                                        option { value: "bottom", "Below terminals" }
-                                    }
-                                }
-                                button { class: "btn", r#type: "button",
-                                    onclick: move |_| move_panel(layout, store, layout_target(), layout_destination()),
-                                    "Move panel"
-                                }
-                                p { class: "hint", "This project remembers your layout." }
+                                p { class: "hint", "To move one panel, drag its icon from the rail to an edge, or use Move in its header. This project remembers your layout." }
                             }
                         }
                         button {
@@ -283,7 +301,56 @@ pub fn App() -> Element {
                                         r#type: "button",
                                         aria_pressed: "{selected}",
                                         title: "{tab.label()}",
-                                        onclick: move |_| open_tab(layout, store, tab),
+                                        onclick: move |_| {
+                                            // A drag to a dock ends in a click on the icon; it is not an "open".
+                                            if *rail_dragged.peek() {
+                                                rail_dragged.set(false);
+                                                return;
+                                            }
+                                            open_tab(layout, store, tab);
+                                        },
+                                        onpointerdown: move |event| {
+                                            let Some(pointer) = event.try_as_web_event() else { return; };
+                                            if !pointer.is_primary() || pointer.button() != 0 {
+                                                return;
+                                            }
+                                            let Some(target) = pointer.target().and_then(|target| target.dyn_into::<web_sys::Element>().ok()) else { return; };
+                                            let id = pointer.pointer_id();
+                                            if target.set_pointer_capture(id).is_err() {
+                                                return;
+                                            }
+                                            let point = event.client_coordinates();
+                                            rail_drag.set(Some(RailDrag { tab, pointer: id, x: point.x, y: point.y, moved: false, over: None }));
+                                        },
+                                        onpointermove: move |event| {
+                                            let Some(mut drag) = *rail_drag.peek() else { return; };
+                                            if event.pointer_id() != drag.pointer {
+                                                return;
+                                            }
+                                            let point = event.client_coordinates();
+                                            if !drag.moved && (point.x - drag.x).hypot(point.y - drag.y) < RAIL_DRAG_START {
+                                                return;
+                                            }
+                                            drag.moved = true;
+                                            drag.over = drop_zone_at(point.x, point.y);
+                                            if *rail_drag.peek() != Some(drag) {
+                                                rail_drag.set(Some(drag));
+                                            }
+                                        },
+                                        onpointerup: move |event| {
+                                            let Some(drag) = *rail_drag.peek() else { return; };
+                                            if event.pointer_id() != drag.pointer {
+                                                return;
+                                            }
+                                            rail_drag.set(None);
+                                            if drag.moved {
+                                                rail_dragged.set(true);
+                                                if let Some(dock) = drag.over {
+                                                    move_panel(layout, store, drag.tab, dock);
+                                                }
+                                            }
+                                        },
+                                        onpointercancel: move |_| rail_drag.set(None),
                                         TabIcon { tab: tab }
                                         span { "{tab.label()}" }
                                         if tab == DrawerTab::Jobs && running + queued > 0 {
@@ -306,10 +373,13 @@ pub fn App() -> Element {
                     button {
                         class: "command-destination command-settings",
                         r#type: "button",
-                        title: "Settings (Ctrl+,)",
+                        title: if updates_newer() > 0 { format!("Settings (Ctrl+,): {} CLI update(s) in Updates", updates_newer()) } else { "Settings (Ctrl+,)".to_string() },
                         onclick: move |_| settings_open.set(true),
                         Star { size: 18.0 }
                         span { "Settings" }
+                        if updates_newer() > 0 {
+                            span { class: "command-count", aria_label: "{updates_newer()} updates", "{updates_newer()}" }
+                        }
                     }
                 }
                 if frame.sidebar_shown {
@@ -360,7 +430,6 @@ pub fn App() -> Element {
                                 on_reveal_project: Callback::new(move |path: String| {
                                     spawn(async move { let _ = api::reveal_project(&path).await; });
                                 }),
-                                on_open_settings: Callback::new(move |_| settings_open.set(true)),
                                 on_new_task: Callback::new(move |_| task_open.set(true)),
                                 on_open_goals: Callback::new(move |_| open_tab(layout, store, DrawerTab::Goals)),
                                 on_open_automations: Callback::new(move |_| {
@@ -375,7 +444,7 @@ pub fn App() -> Element {
                                 on_open_setup: Callback::new(move |_| store.setup_open.set(true)),
                             }
                         }
-                        SideDock { dock: DockId::Left, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Left, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Left)) }
+                        SideDock { dock: DockId::Left, on_move: Callback::new(move |at: (DrawerTab, f64, f64)| move_menu.set(Some(at))), frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Left, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Left)) }
                     }
                     ResizeHandle {
                         class_name: "layout-handle layout-handle-sidebar".to_string(),
@@ -393,7 +462,7 @@ pub fn App() -> Element {
                     if switching_project {
                         div { class: "project-transition", role: "status", "Switching project..." }
                     }
-                    SideDock { dock: DockId::Top, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Top, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Top)) }
+                    SideDock { dock: DockId::Top, on_move: Callback::new(move |at: (DrawerTab, f64, f64)| move_menu.set(Some(at))), frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Top, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Top)) }
                     ErrorBoundary { class_name: Some("workspace-slot".into()),
                         Workers {
                             terminals: visible_terminals,
@@ -435,7 +504,7 @@ pub fn App() -> Element {
                             })),
                         }
                     }
-                    SideDock { dock: DockId::Bottom, frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Bottom, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Bottom)) }
+                    SideDock { dock: DockId::Bottom, on_move: Callback::new(move |at: (DrawerTab, f64, f64)| move_menu.set(Some(at))), frame: frame.clone(), docks: docks.clone(), jobs_badge: (running + queued) as i64, change_badge: changes.len() as i64, lead_busy: lead_busy, popped: store.popped_panels.read().clone(), on_open: Callback::new(move |tab: DrawerTab| open_tab(layout, store, tab)), on_resize: Callback::new(move |value: i64| resize_dock(layout, store, DockId::Bottom, value)), on_reset: Callback::new(move |_| reset_dock(layout, store, DockId::Bottom)) }
                 }
                 if frame.drawer_open {
                     ResizeHandle {
@@ -455,20 +524,53 @@ pub fn App() -> Element {
                                 TabIcon { tab: inspector_tab }
                                 h2 { "{inspector_tab.label()}" }
                             }
-                            button {
-                                class: "btn btn-quiet btn-compact",
-                                r#type: "button",
-                                aria_label: "Close inspector",
-                                onclick: move |_| {
-                                    let mut next = layout.read().clone();
-                                    next.drawer_open = false;
-                                    write_layout(layout, store, next);
-                                },
-                                "Close"
+                            div { class: "inspector-actions",
+                                button {
+                                    class: "btn btn-quiet btn-compact",
+                                    r#type: "button",
+                                    aria_label: "Move {inspector_tab.label()}",
+                                    aria_haspopup: "menu",
+                                    onclick: move |event| {
+                                        let point = event.client_coordinates();
+                                        move_menu.set(Some((inspector_tab, point.x, point.y)));
+                                    },
+                                    "Move"
+                                }
+                                button {
+                                    class: "btn btn-quiet btn-compact",
+                                    r#type: "button",
+                                    aria_label: "Close inspector",
+                                    onclick: move |_| {
+                                        let mut next = layout.read().clone();
+                                        next.drawer_open = false;
+                                        write_layout(layout, store, next);
+                                    },
+                                    "Close"
+                                }
                             }
                         }
                         Pages { dock: DockId::Right, frame: frame.clone(), docks: docks.clone() }
                     }
+                }
+                if let Some(over) = drop_over {
+                    div { class: "dock-zone-layer", aria_hidden: "true",
+                        for dock in [DockId::Left, DockId::Right, DockId::Top, DockId::Bottom] {
+                            div {
+                                key: "{dock_name(dock)}",
+                                class: if over == Some(dock) { "dock-zone dock-zone-{dock_name(dock)} is-over" } else { "dock-zone dock-zone-{dock_name(dock)}" },
+                                "data-dock": "{dock_name(dock)}",
+                                span { "{dock_label(dock)}" }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((tab, x, y)) = move_menu() {
+                SidebarMenu {
+                    label: format!("Move {}", tab.label()),
+                    at: (x, y),
+                    entries: move_entries(layout, store, &docks, tab, move_menu),
+                    on_close: Callback::new(move |_| move_menu.set(None)),
                 }
             }
             NewTaskDialog {
@@ -554,6 +656,7 @@ pub fn App() -> Element {
                             write_layout(layout, store, next);
                         }),
                         on_close: Callback::new(move |_| settings_open.set(false)),
+                        on_updates_checked: Callback::new(move |count: usize| record_update_check(updates_newer, count)),
                     }
                 }
             }
@@ -582,8 +685,10 @@ fn SideDock(
     on_open: Callback<DrawerTab>,
     on_resize: Callback<i64>,
     on_reset: Callback,
+    on_move: Callback<(DrawerTab, f64, f64)>,
 ) -> Element {
     let tabs = tabs_of(&docks, dock);
+    let active = active_in(&frame, &docks, dock);
     if tabs.is_empty() {
         return rsx! {};
     }
@@ -610,6 +715,19 @@ fn SideDock(
     let body = rsx! {
         section { class: "dock dock-{dock_name(dock)}", aria_label: "{dock_label(dock)}", style: "height: {height}px;",
             TabBar { dock: dock, frame: frame.clone(), docks: docks.clone(), jobs_badge: jobs_badge, change_badge: change_badge, lead_busy: lead_busy, popped: popped.clone(), on_open: on_open }
+            if let Some(tab) = active {
+                button {
+                    class: "btn btn-quiet btn-compact dock-move",
+                    r#type: "button",
+                    aria_label: "Move {tab.label()}",
+                    aria_haspopup: "menu",
+                    onclick: move |event| {
+                        let point = event.client_coordinates();
+                        on_move.call((tab, point.x, point.y));
+                    },
+                    "Move"
+                }
+            }
             Pages { dock: dock, frame: frame, docks: docks }
         }
     };
@@ -1906,4 +2024,118 @@ fn move_panel(layout: Signal<LayoutState>, store: Store, tab: DrawerTab, dock: D
         next.drawer_open = false;
     }
     write_layout(layout, store, next);
+}
+
+/// A rail icon pressed and possibly being dragged to a dock.
+#[derive(Clone, Copy, PartialEq)]
+struct RailDrag {
+    tab: DrawerTab,
+    pointer: i32,
+    x: f64,
+    y: f64,
+    /// Past `RAIL_DRAG_START`: a drag, not a click.
+    moved: bool,
+    over: Option<DockId>,
+}
+
+/// How far the pointer moves before a press on a rail icon becomes a drag.
+const RAIL_DRAG_START: f64 = 6.0;
+
+/// The dock whose drop zone is under the point, from the zones drawn during a drag.
+fn drop_zone_at(x: f64, y: f64) -> Option<DockId> {
+    let document = web_sys::window()?.document()?;
+    let zones = document.query_selector_all(".dock-zone").ok()?;
+    (0..zones.length())
+        .filter_map(|index| zones.item(index)?.dyn_into::<web_sys::Element>().ok())
+        .find(|zone| {
+            let rect = zone.get_bounding_client_rect();
+            x >= rect.left() && x <= rect.right() && y >= rect.top() && y <= rect.bottom()
+        })
+        .and_then(|zone| match zone.get_attribute("data-dock")?.as_str() {
+            "left" => Some(DockId::Left),
+            "top" => Some(DockId::Top),
+            "bottom" => Some(DockId::Bottom),
+            "right" => Some(DockId::Right),
+            _ => None,
+        })
+}
+
+/// Closes the `<details>` menu the clicked element sits in.
+fn close_menu_of(event: &Event<MouseData>) {
+    let Some(element) = event
+        .try_as_web_event()
+        .and_then(|web| web.target())
+        .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
+    else {
+        return;
+    };
+    if let Ok(Some(menu)) = element.closest("details") {
+        let _ = menu.remove_attribute("open");
+    }
+}
+
+/// A panel's Move menu: the four docks (the current one ticked) and its own window.
+fn move_entries(
+    layout: Signal<LayoutState>,
+    store: Store,
+    docks: &layout::Docks,
+    tab: DrawerTab,
+    mut menu: Signal<Option<(DrawerTab, f64, f64)>>,
+) -> Vec<MenuEntry> {
+    let here = layout::dock_of(docks, tab);
+    let mut entries = vec![MenuEntry::heading(format!("Move {} to", tab.label()))];
+    for dock in [DockId::Right, DockId::Left, DockId::Top, DockId::Bottom] {
+        entries.push(MenuEntry::check(
+            dock_label(dock),
+            dock == here,
+            Callback::new(move |_| {
+                menu.set(None);
+                move_panel(layout, store, tab, dock);
+            }),
+        ));
+    }
+    entries.push(MenuEntry::item(
+        "Its own window",
+        Callback::new(move |_| {
+            menu.set(None);
+            spawn(async move {
+                let _ = api::pop_out_panel(tab.as_str()).await;
+            });
+        }),
+    ));
+    entries
+}
+
+/// The last CLI update check, from local storage.
+fn saved_update_check() -> update_check::SavedCheck {
+    let raw = browser_storage()
+        .and_then(|storage| storage.get_item(update_check::UPDATES_KEY).ok().flatten());
+    update_check::parse_saved(raw.as_deref())
+}
+
+/// Shows `count` on the Settings badge and remembers when it was checked.
+fn record_update_check(mut newer: Signal<usize>, count: usize) {
+    newer.set(count);
+    if let Some(storage) = browser_storage() {
+        let _ = storage.set_item(
+            update_check::UPDATES_KEY,
+            &update_check::saved_text(state::now_ms(), count),
+        );
+    }
+}
+
+/// Looks for CLI updates when Legate starts, at most once a day.
+fn start_update_check(newer: Signal<usize>) {
+    if !update_check::is_due(saved_update_check(), state::now_ms()) {
+        return;
+    }
+    spawn(async move {
+        if let Ok(list) = api::cli_updates().await {
+            let count = list
+                .iter()
+                .filter(|row| row.newer && row.can_update)
+                .count();
+            record_update_check(newer, count);
+        }
+    });
 }

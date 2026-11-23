@@ -35,6 +35,7 @@ mod routines;
 mod setup;
 mod text;
 mod triggers;
+mod updates;
 mod watch;
 
 pub use error::LeadError;
@@ -72,3 +73,4 @@ pub use watch::{
 };
 
 pub use legate_providers::{AgentPlugins, plugin_args};
+pub use updates::{CliUpdate, Feed, check_updates, feed_of, is_newer, update_script};

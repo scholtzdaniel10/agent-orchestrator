@@ -151,7 +151,8 @@ impl CursorAdapter {
         Some(GROK_DEFAULT_MODEL.to_string())
     }
 
-    fn resolved_bin(&self) -> Bin {
+    /// The CLI binary Legate found (its path and any launcher args), without job flags.
+    pub fn resolved_bin(&self) -> Bin {
         let mut found = lock(&self.found);
         if let Some(bin) = found.as_ref() {
             return bin.clone();

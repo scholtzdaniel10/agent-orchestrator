@@ -252,6 +252,17 @@ impl AppHandle {
         self.invoke(move |world| world.setup_sign_in(id)).await
     }
 
+    pub async fn cli_updates(&self) -> Result<Vec<legate_lead::CliUpdate>, AppError> {
+        self.invoke(|world| world.cli_updates()).await
+    }
+
+    pub async fn run_cli_updates(
+        &self,
+        ids: Vec<String>,
+    ) -> Result<Option<TerminalInfo>, AppError> {
+        self.invoke(move |world| world.run_cli_updates(ids)).await
+    }
+
     pub async fn skills_get(&self) -> Result<SkillsState, AppError> {
         self.invoke(|world| world.skills_get()).await
     }

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, VersionStatus};
 
 use crate::api;
-use crate::components::bot_avatar::{BotAvatar, BotName, BotState};
+use crate::components::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption};
 use crate::components::model_picker::ModelPicker;
 use crate::logic::usage_format::{
     has_usage_reading, reset_choices, usage_figure, visible_usage_plans,
@@ -249,14 +249,13 @@ fn CursorReading(plan_id: ProviderId, now: i64) -> Element {
                             span { aria_hidden: "true", "%" }
                         }
                     }
-                    label {
-                        span { "Resets" }
-                        select { class: "select",
-                            value: "{reset()}",
-                            onchange: move |event| reset.set(event.value()),
-                            for choice in choices {
-                                option { value: "{choice.value}", "{choice.label}" }
-                            }
+                    div { class: "usage-reading-field",
+                        span { aria_hidden: "true", "Resets" }
+                        FieldSelect {
+                            aria_label: "Resets".to_string(),
+                            value: reset(),
+                            options: choices.iter().map(|choice| SelectOption::new(choice.value.clone(), choice.label.clone())).collect::<Vec<_>>(),
+                            on_change: Callback::new(move |value: String| reset.set(value)),
                         }
                     }
                 }
