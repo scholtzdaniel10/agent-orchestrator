@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use legate_core::{JobAccess, JobRecord, JobType, LeadProposal, ProviderId};
+use legate_core::{JobAccess, JobRecord, JobType, LeadProposal, ProposalStatus, ProviderId};
 
 use crate::error::ToolError;
 
@@ -142,6 +142,10 @@ pub trait BridgeBackend: Send + Sync {
     /// Store a plan for the person to run.
     ///
     /// Called only after the plan checks out and access above the ceiling has
-    /// been lowered. `proposal.status` is `waiting`. Nothing should start.
-    async fn propose_jobs(&self, turn: String, proposal: LeadProposal) -> Result<(), BackendError>;
+    /// been lowered. Returns the status after applying the lead's mode.
+    async fn propose_jobs(
+        &self,
+        turn: String,
+        proposal: LeadProposal,
+    ) -> Result<ProposalStatus, BackendError>;
 }

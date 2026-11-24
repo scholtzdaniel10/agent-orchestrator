@@ -38,8 +38,8 @@ pub const SEND_JOB_DESCRIPTION: &str = "Hand one job to a worker and return its 
 pub const GET_STATUS_DESCRIPTION: &str = "Return every job on the board, oldest first, or one job when id is set. Includes jobs the user started directly. Prompts are cut to 120 characters. Outputs are not included.";
 /// Description of [`GET_RESULT`], byte-identical to `tools.ts`.
 pub const GET_RESULT_DESCRIPTION: &str = "Wait until a job is done or failed, or until the wait ends, then return its status and output (last 6000 characters). If it is still queued or running, the current status is returned so the caller can ask again.";
-/// Description of [`PROPOSE_JOBS`], byte-identical to `tools.ts`.
-pub const PROPOSE_JOBS_DESCRIPTION: &str = "Propose up to 4 jobs for the person to run. Nothing starts until they press Run, and they may edit or remove jobs first. Each job needs a short title (a few words), a type, an access level (read, edit or full; above the ceiling it is lowered), and a self-contained prompt, because the worker sees nothing else. Leave worker out to let the router choose, or name claude, cursor or grok. Call it once per turn with the whole plan and a one-line summary.";
+/// Description of [`PROPOSE_JOBS`].
+pub const PROPOSE_JOBS_DESCRIPTION: &str = "Propose up to 4 jobs. The lead mode determines whether the plan starts immediately or waits for the person to press Run. Each job needs a short title (a few words), a type, an access level (read, edit or full; above the ceiling it is lowered), and a self-contained prompt, because the worker sees nothing else. Leave worker out to let the router choose, or name claude, cursor or grok. Call it once per turn with the whole plan and a one-line summary.";
 
 /// JSON schema for [`LIST_WORKERS`].
 pub const LIST_WORKERS_SCHEMA: &str =
@@ -78,7 +78,7 @@ pub struct ToolConfig {
 /// The lead's tools, wired to `backend`.
 ///
 /// With [`ToolConfig::propose`], the model gets `propose_jobs` instead of
-/// `send_job`, so nothing starts until the person runs the plan.
+/// `send_job`, so the lead can apply its mode to the whole plan.
 pub fn orchestrator_tools(backend: Arc<dyn BridgeBackend>, config: ToolConfig) -> Vec<BridgeTool> {
     let mut tools = Vec::with_capacity(4);
     tools.push(raw_tool(
@@ -321,7 +321,7 @@ async fn propose_jobs_tool(
         jobs.push(job);
     }
     let count = jobs.len();
-    backend
+    let status = backend
         .propose_jobs(
             turn,
             LeadProposal {
@@ -343,7 +343,12 @@ async fn propose_jobs_tool(
         ))
     };
     render(&ProposeOut {
-        status: "waiting for the person to press Run",
+        status: match status {
+            ProposalStatus::Waiting => "waiting for the person to press Run",
+            ProposalStatus::Running => "running",
+            ProposalStatus::Dismissed => "dismissed",
+            ProposalStatus::Stopped => "stopped",
+        },
         jobs: count,
         note,
     })

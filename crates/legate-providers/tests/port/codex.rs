@@ -39,7 +39,7 @@ async fn codex_lead_stays_read_only_and_keeps_bridge_token_off_argv() {
     let temp = support::Temp::new("codex-lead");
     let adapter = CodexAdapter::new(Some(support::fake(&["argv"])));
     let opts = RunOptions {
-        access: Some(JobAccess::Full),
+        access: Some(JobAccess::Edit),
         model: Some("test-model".into()),
         resume: Some("known-thread".into()),
         bridge: Some(BridgeInfo {

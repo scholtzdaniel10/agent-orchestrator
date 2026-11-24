@@ -8,6 +8,7 @@ mod edit_size;
 mod error;
 mod lenient;
 mod local;
+mod memory;
 mod note;
 mod plugins;
 mod process;
@@ -36,6 +37,7 @@ pub use legate_core::{
     RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus,
 };
 pub use local::{LocalAdapter, LocalConfig};
+pub use memory::memory_status;
 pub use note::{LEGATE_NOTE, with_legate_note};
 pub use plugins::{AgentPlugins, plugin_args};
 pub use versions::{

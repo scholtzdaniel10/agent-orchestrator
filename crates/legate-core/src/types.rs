@@ -308,10 +308,18 @@ pub struct RunOptions {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edit: Option<bool>,
+    /// Full access on a bridged run enables LEG IT! lead permissions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access: Option<JobAccess>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_dirs: Option<Vec<String>>,
+}
+
+/// Physical memory, in bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryStatus {
+    pub total: u64,
+    pub available: u64,
 }
 
 /// A model a CLI can run, for the model picker.
@@ -412,6 +420,7 @@ pub enum ProposalStatus {
     Waiting,
     Running,
     Dismissed,
+    Stopped,
 }
 
 /// One job in a lead's plan.
@@ -550,6 +559,17 @@ pub enum UsageShows {
     Used,
 }
 
+/// When the lead can run a proposed plan.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LeadMode {
+    Auto,
+    Legit,
+    #[default]
+    #[serde(other)]
+    Manual,
+}
+
 /// Which Cursor models the pickers list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -596,6 +616,8 @@ pub struct Prefs {
     /// Whole-window scale in percent: 80, 90, 100, 110, or 120.
     pub ui_scale: i64,
     pub usage_shows: UsageShows,
+    #[serde(default)]
+    pub lead_mode: LeadMode,
     pub cursor_models: CursorModels,
     /// Read Claude's usage with a tiny turn every 10 minutes while a window is open.
     pub usage_check: bool,

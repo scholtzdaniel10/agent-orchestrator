@@ -1,7 +1,7 @@
 //! Event-driven job queue from `src/core/router/orchestrator.ts`.
 //!
-//! Dispatch waits on runner events and [`tokio::sync::Notify`], not a polling timer.
-//! Heartbeats and the cross-process watch are deadlines on [`crate::Clock`].
+//! Runner events wake the queue. Heartbeats, memory checks, and the cross-process
+//! watch use deadlines on [`crate::Clock`].
 //! Picks read [`crate::RouterState`]. Rest and reported windows are refreshed from the
 //! store first, because another process (and the tests) write those rows directly.
 //! Run weights stay in the state's deque.
@@ -13,8 +13,8 @@ use std::time::Instant;
 
 use legate_core::{
     AgentEvent, FileEdit, JobAccess, JobRecord, JobStatus, JobStep, JobStepStatus, JobType,
-    PlanProblem, ProviderId, RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus,
-    needs_usage_credits, plan_of,
+    MemoryStatus, PlanProblem, ProviderId, RunOptions, StepPhase, StepTool, UsageWindow,
+    VersionStatus, needs_usage_credits, plan_of,
 };
 use legate_store::{NewWindow, RunOutcome, RunRow, Store};
 use tokio::sync::{Mutex, Notify};
@@ -29,6 +29,10 @@ use crate::versions::{compare_to_tested, unknown_format_message};
 pub const JOB_HEARTBEAT_MS: i64 = 5_000;
 pub const JOB_WATCH_MS: i64 = 2_000;
 pub const JOB_STALE_MS: i64 = 20_000;
+const MEMORY_CHECK_MS: i64 = 2_000;
+const START_SPACING_MS: i64 = 5_000;
+const GIB: u64 = 1 << 30;
+const WAITING_FOR_MEMORY: &str = "Waiting for free memory";
 const KEPT_JOBS: usize = 200;
 const STEP_FLUSH_MS: i64 = 200;
 const STEP_CAP: usize = 400;
@@ -96,6 +100,7 @@ pub struct OrchestratorOpts {
     pub rules: legate_core::RouterRules,
     pub cwd: CwdSource,
     pub clock: Option<Rc<dyn Clock>>,
+    pub memory_status: Option<Rc<dyn Fn() -> Option<MemoryStatus>>>,
     pub model_for: Option<Rc<dyn Fn(ProviderId) -> Option<String>>>,
     pub workspaces: Option<Rc<dyn Workspaces>>,
     pub on_changes: Option<Rc<dyn Fn()>>,
@@ -114,6 +119,7 @@ struct InternalJob {
     model: Option<String>,
     reason: Option<String>,
     chosen: bool,
+    waiting_for_memory: bool,
     access: JobAccess,
     change: Option<String>,
     group: Option<String>,
@@ -156,7 +162,11 @@ struct Inner {
     running: HashMap<ProviderId, HashSet<String>>,
     killers: HashMap<String, Rc<dyn Fn()>>,
     abandoning: HashSet<String>,
-    cancelling: HashSet<String>,
+    cancelling: HashMap<String, String>,
+    start_order: Vec<String>,
+    last_start: Option<i64>,
+    memory_timer: Option<u64>,
+    spacing_timer: Option<u64>,
     listeners: Vec<(u64, Listener)>,
     next_listener: u64,
     step_flush_at: HashMap<String, i64>,
@@ -179,7 +189,11 @@ impl Inner {
             running: HashMap::new(),
             killers: HashMap::new(),
             abandoning: HashSet::new(),
-            cancelling: HashSet::new(),
+            cancelling: HashMap::new(),
+            start_order: Vec::new(),
+            last_start: None,
+            memory_timer: None,
+            spacing_timer: None,
             listeners: Vec::new(),
             next_listener: 1,
             step_flush_at: HashMap::new(),
@@ -205,6 +219,7 @@ pub struct Orchestrator {
     inner: std::cell::RefCell<Inner>,
     notify: std::sync::Arc<Notify>,
     clock: Rc<dyn Clock>,
+    memory_status: Option<Rc<dyn Fn() -> Option<MemoryStatus>>>,
     runners: Vec<Rc<dyn Runner>>,
     store: Rc<Store>,
     rules: legate_core::RouterRules,
@@ -266,6 +281,7 @@ impl Orchestrator {
             inner: std::cell::RefCell::new(Inner::new()),
             notify: std::sync::Arc::new(Notify::new()),
             clock,
+            memory_status: opts.memory_status,
             runners: opts.runners,
             store: opts.store,
             rules: opts.rules,
@@ -380,6 +396,7 @@ impl Orchestrator {
             model: None,
             reason: None,
             chosen: false,
+            waiting_for_memory: false,
             access: granted,
             change: None,
             group: extra.group,
@@ -701,7 +718,11 @@ impl Orchestrator {
             self.resolve_idle();
             return Ok(self.record_of(id));
         }
-        self.inner.borrow_mut().cancelling.insert(id.to_string());
+        self.inner
+            .borrow_mut()
+            .cancelling
+            .entry(id.to_string())
+            .or_insert_with(|| "stopped".to_string());
         self.kill_job(id);
         Ok(self.record_of(id))
     }
@@ -843,8 +864,15 @@ impl Orchestrator {
             if !queued {
                 continue;
             }
+            if self.hold_for_memory_or_spacing(&id, provider) {
+                return;
+            }
             {
                 let mut inner = self.inner.borrow_mut();
+                if self.memory_status.is_some() {
+                    inner.last_start = Some(self.clock.now_ms());
+                    inner.start_order.push(id.clone());
+                }
                 inner
                     .running
                     .entry(provider)
@@ -852,6 +880,7 @@ impl Orchestrator {
                     .insert(id.clone());
                 if let Some(job) = inner.jobs.get_mut(&id) {
                     job.status = JobStatus::Running;
+                    job.waiting_for_memory = false;
                     job.provider = Some(provider);
                 }
             }
@@ -925,9 +954,7 @@ impl Orchestrator {
             .get(job_id)
             .map(|job| job.project.clone())
             .unwrap_or_default();
-        let Some(cwd) = self.edit_folder(job_id, &project).await else {
-            return false;
-        };
+        let folder = self.edit_folder(job_id, &project).await;
         if self.finish_cancelled(
             job_id,
             provider,
@@ -938,6 +965,13 @@ impl Orchestrator {
         ) {
             return false;
         }
+        let cwd = match folder {
+            Ok(path) => path,
+            Err(message) => {
+                self.fail_edit(job_id, &message);
+                return false;
+            }
+        };
         if self.finish_abandoned(job_id, provider) {
             return false;
         }
@@ -991,7 +1025,7 @@ impl Orchestrator {
         let mut limit_at: Option<Option<i64>> = None;
         loop {
             if self.inner.borrow().abandoning.contains(job_id)
-                || self.inner.borrow().cancelling.contains(job_id)
+                || self.inner.borrow().cancelling.contains_key(job_id)
             {
                 break;
             }
@@ -999,7 +1033,7 @@ impl Orchestrator {
                 break;
             };
             if self.inner.borrow().abandoning.contains(job_id)
-                || self.inner.borrow().cancelling.contains(job_id)
+                || self.inner.borrow().cancelling.contains_key(job_id)
             {
                 break;
             }
@@ -1017,7 +1051,7 @@ impl Orchestrator {
         }
         let stop = limit_at.is_some()
             || self.inner.borrow().abandoning.contains(job_id)
-            || self.inner.borrow().cancelling.contains(job_id);
+            || self.inner.borrow().cancelling.contains_key(job_id);
         if stop {
             self.kill_job(job_id);
         }
@@ -1026,7 +1060,7 @@ impl Orchestrator {
             Err(message) => {
                 let stopping = limit_at.is_some()
                     || self.inner.borrow().abandoning.contains(job_id)
-                    || self.inner.borrow().cancelling.contains(job_id);
+                    || self.inner.borrow().cancelling.contains_key(job_id);
                 if !stopping {
                     self.fail_thrown(
                         job_id,
@@ -1135,36 +1169,30 @@ impl Orchestrator {
         // A failover may already be running on another plan. Leave its kill handle in place.
         let still = inner.running.values().any(|set| set.contains(job_id));
         if !still {
+            inner.start_order.retain(|id| id != job_id);
             inner.killers.remove(job_id);
             inner.abandoning.remove(job_id);
             inner.cancelling.remove(job_id);
         }
     }
 
-    async fn edit_folder(&self, job_id: &str, project: &str) -> Option<String> {
+    async fn edit_folder(&self, job_id: &str, project: &str) -> Result<String, String> {
         let base = self
             .inner
             .borrow()
             .jobs
             .get(job_id)
             .and_then(|job| job.base.clone());
-        let Some(spaces) = &self.workspaces else {
-            self.fail_edit(job_id, "no worktrees");
-            return None;
-        };
-        match spaces.create(project, job_id, base.as_deref()).await {
-            Ok(created) => {
-                if let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
-                    job.change = Some(created.id);
-                }
-                self.emit(job_id);
-                Some(created.path)
-            }
-            Err(message) => {
-                self.fail_edit(job_id, &message);
-                None
-            }
+        let spaces = self
+            .workspaces
+            .as_ref()
+            .ok_or_else(|| "no worktrees".to_string())?;
+        let created = spaces.create(project, job_id, base.as_deref()).await?;
+        if let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
+            job.change = Some(created.id);
         }
+        self.emit(job_id);
+        Ok(created.path)
     }
 
     fn fail_edit(&self, job_id: &str, message: &str) {
@@ -1201,7 +1229,7 @@ impl Orchestrator {
                 job.model = opts.model;
             }
         }
-        if self.inner.borrow().cancelling.contains(job_id) {
+        if self.inner.borrow().cancelling.contains_key(job_id) {
             self.kill_job(job_id);
         }
         Ok(PreparedRun {
@@ -1486,9 +1514,9 @@ impl Orchestrator {
         utilization: Option<f64>,
         result: Option<&HeldResult>,
     ) -> bool {
-        if !self.inner.borrow_mut().cancelling.remove(job_id) {
+        let Some(reason) = self.inner.borrow_mut().cancelling.remove(job_id) else {
             return false;
-        }
+        };
         let running = self
             .inner
             .borrow()
@@ -1509,7 +1537,7 @@ impl Orchestrator {
         );
         if let Some(job) = self.inner.borrow_mut().jobs.get_mut(job_id) {
             job.status = JobStatus::Failed;
-            job.error = Some("stopped".to_string());
+            job.error = Some(reason);
         }
         self.emit_status(job_id);
         true
@@ -2053,6 +2081,25 @@ impl Orchestrator {
             self.clock.clear_interval(id);
             self.inner.borrow_mut().heartbeat_timer = None;
         }
+        let timer = self.inner.borrow().memory_timer;
+        if self.memory_status.is_some() && need_beat && timer.is_none() {
+            let weak = self.this.clone();
+            let id = self.clock.set_interval(
+                MEMORY_CHECK_MS,
+                Rc::new(move || {
+                    if let Some(orch) = weak.upgrade() {
+                        orch.check_memory();
+                    }
+                }),
+            );
+            self.inner.borrow_mut().memory_timer = Some(id);
+        } else if !need_beat && let Some(id) = timer {
+            self.clock.clear_interval(id);
+            self.inner.borrow_mut().memory_timer = None;
+        }
+        if !need_beat && let Some(id) = self.inner.borrow_mut().spacing_timer.take() {
+            self.clock.clear_timeout(id);
+        }
         let need_watch = self.inner.borrow().watching || self.has_foreign_unfinished();
         let watch = self.inner.borrow().watch_timer;
         if need_watch && watch.is_none() {
@@ -2070,6 +2117,106 @@ impl Orchestrator {
             self.clock.clear_interval(id);
             self.inner.borrow_mut().watch_timer = None;
         }
+    }
+
+    fn hold_for_memory_or_spacing(&self, id: &str, provider: ProviderId) -> bool {
+        let Some(reading) = self.read_memory() else {
+            return false;
+        };
+        let reserve = (2 * GIB).max(percent_of(reading.total, 15));
+        let short = reading.available < reserve + GIB + GIB / 2;
+        let now = self.clock.now_ms();
+        let next = self
+            .inner
+            .borrow()
+            .last_start
+            .map(|last| last.saturating_add(START_SPACING_MS))
+            .filter(|&at| at > now);
+        if !short && next.is_none() {
+            return false;
+        }
+        let changed = {
+            let mut inner = self.inner.borrow_mut();
+            inner
+                .queues
+                .entry(provider)
+                .or_default()
+                .push_front(id.to_string());
+            let job = inner.jobs.get_mut(id).expect("checked queued job");
+            std::mem::replace(&mut job.waiting_for_memory, short) != short
+        };
+        if !short && let Some(at) = next {
+            self.wake_after_spacing(at.saturating_sub(now));
+        }
+        if changed {
+            self.emit_status(id);
+        }
+        true
+    }
+
+    fn read_memory(&self) -> Option<MemoryStatus> {
+        self.memory_status.as_ref()?().filter(|reading| reading.total > 0)
+    }
+
+    fn pump_queues(&self) {
+        for runner in &self.runners {
+            self.pump(runner.id());
+        }
+    }
+
+    fn wake_after_spacing(&self, wait: i64) {
+        if self.inner.borrow().spacing_timer.is_some() {
+            return;
+        }
+        let weak = self.this.clone();
+        let timer = self.clock.set_timeout(
+            wait,
+            Rc::new(move || {
+                if let Some(orch) = weak.upgrade() {
+                    if let Some(timer) = orch.inner.borrow_mut().spacing_timer.take() {
+                        orch.clock.clear_timeout(timer);
+                    }
+                    orch.pump_queues();
+                }
+            }),
+        );
+        self.inner.borrow_mut().spacing_timer = Some(timer);
+    }
+
+    fn check_memory(&self) {
+        if let Some(reading) = self.read_memory() {
+            let floor = GIB.max(percent_of(reading.total, 8));
+            if reading.available < floor {
+                let victim = {
+                    let inner = self.inner.borrow();
+                    inner
+                        .start_order
+                        .iter()
+                        .rev()
+                        .find(|id| {
+                            !inner.cancelling.contains_key(*id)
+                                && inner
+                                    .jobs
+                                    .get(*id)
+                                    .is_some_and(|job| job.status == JobStatus::Running)
+                        })
+                        .cloned()
+                };
+                if let Some(id) = victim {
+                    let available = reading.available as f64 / GIB as f64;
+                    let total = reading.total as f64 / GIB as f64;
+                    self.inner.borrow_mut().cancelling.insert(
+                        id.clone(),
+                        format!(
+                            "Stopped to free memory: only {available:.1} of {total:.1} GB was left."
+                        ),
+                    );
+                    self.kill_job(&id);
+                }
+                return;
+            }
+        }
+        self.pump_queues();
     }
 
     fn has_owned_active(&self) -> bool {
@@ -2180,6 +2327,10 @@ impl Orchestrator {
         }
         self.sync_timers();
     }
+}
+
+fn percent_of(bytes: u64, percent: u8) -> u64 {
+    (u128::from(bytes) * u128::from(percent)).div_ceil(100) as u64
 }
 
 fn is_open(status: JobStatus) -> bool {
@@ -2331,7 +2482,11 @@ fn to_record(job: &InternalJob) -> JobRecord {
         steps: Some(job.steps.clone()),
         steps_dropped: Some(job.steps_dropped),
         model: job.model.clone(),
-        reason: job.reason.clone(),
+        reason: if job.waiting_for_memory && job.status == JobStatus::Queued {
+            Some(WAITING_FOR_MEMORY.to_string())
+        } else {
+            job.reason.clone()
+        },
         edit: (job.access != JobAccess::Read).then_some(true),
         access: Some(job.access),
         change: job.change.clone(),
@@ -2394,6 +2549,7 @@ fn clone_job(job: &InternalJob) -> InternalJob {
         model: job.model.clone(),
         reason: job.reason.clone(),
         chosen: job.chosen,
+        waiting_for_memory: job.waiting_for_memory,
         access: job.access,
         change: job.change.clone(),
         group: job.group.clone(),
@@ -2432,6 +2588,7 @@ fn from_record(record: JobRecord, project: String, created_at: i64) -> InternalJ
         model: record.model,
         reason: record.reason.clone(),
         chosen: record.reason.as_deref() == Some("chosen"),
+        waiting_for_memory: false,
         access,
         change: record.change,
         group: record.group,
@@ -2455,6 +2612,7 @@ fn from_record(record: JobRecord, project: String, created_at: i64) -> InternalJ
 fn same_snapshot(job: &InternalJob, record: &JobRecord) -> bool {
     job.status == record.status
         && job.output == record.output
+        && job.reason == record.reason
         && job.error == record.error
         && job.provider == record.provider
         && job.model == record.model

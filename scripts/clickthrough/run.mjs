@@ -652,6 +652,23 @@ async function pass(prefix, compact) {
     await click('.side-menu button', 'Lead chat');
     await waitFor(`!${find('.side-menu')}`, 'closed chat menu');
   });
+  if (!compact) await step('lead-mode', async () => {
+    await panel('lead');
+    const modes = '.lead-mode button';
+    const selected = `${modes}[aria-pressed="true"]`;
+    const dialog = '#lead-mode-confirm[open]';
+    await waitFor(find(selected, 'Manual'), 'initial Manual lead mode');
+    await click(modes, 'LEG IT!');
+    await waitFor(find(dialog), 'LEG IT! confirmation');
+    await waitFor(`document.activeElement === ${find(`${dialog} button`, 'Cancel')}`, 'focused Cancel');
+    await key('Escape');
+    await waitFor(`!${find(dialog)}`, 'closed LEG IT! confirmation');
+    await waitFor(find(selected, 'Manual'), 'Manual after Escape');
+    await click(modes, 'Auto');
+    await waitFor(find(selected, 'Auto'), 'Auto lead mode');
+    await click(modes, 'Manual');
+    await waitFor(find(selected, 'Manual'), 'restored Manual mode');
+  });
   for (const [name, scope, open, form] of [
     ['routine', '.routines-list', 'New routine', '.routines-form'],
     ['goal', '.goals > .panel-head', 'New goal', '.goals > .goal-form'],

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use legate_core::LeadMode;
 use legate_providers::{
     AgentEvent, AgentPlugins, Bin, BridgeInfo, CursorAdapter, FileEdit, GROK_DEFAULT_MODEL,
     InteractiveOptions, JobAccess, LimitError, ModelSource, ProviderAdapter, ProviderId,
@@ -579,6 +580,33 @@ async fn edit_writes_a_permission_file_before_spawn_and_removes_it_after_exit() 
 }
 
 #[tokio::test]
+async fn legit_lead_uses_force_and_permissive_bridge_permissions() {
+    let root = support::Temp::new("ao-cursor-legit");
+    let dir = root.join("lead");
+    let mut running = Running {
+        handle: adapter(&["argv"]).run(
+            "lead",
+            "hello",
+            &dir,
+            &RunOptions {
+                bridge: Some(bridge(&["propose_jobs"])),
+                access: Some(JobAccess::Full),
+                ..RunOptions::default()
+            },
+        ),
+    };
+    let args = support::cli_args(&mut running.handle).await;
+    assert!(args.iter().any(|arg| arg == "--approve-mcps"));
+    assert!(args.iter().any(|arg| arg == "--force"));
+    let permissions: Value =
+        serde_json::from_str(&support::read(&dir.join(".cursor").join("cli.json"))).unwrap();
+    assert_eq!(
+        permissions["permissions"],
+        json!({"allow": ["Mcp(orchestrator:*)", "Shell(*)", "Write(**)", "Read(**)"], "deny": []})
+    );
+}
+
+#[tokio::test]
 async fn full_adds_force_and_does_not_write_a_permission_file() {
     let root = support::Temp::new("ao-cursor-full");
     let adapter = adapter(&["full-report"]);
@@ -661,7 +689,7 @@ async fn full_adds_force_and_does_not_write_a_permission_file() {
             "hello",
             &bridged,
             &RunOptions {
-                access: Some(JobAccess::Full),
+                access: Some(JobAccess::Edit),
                 bridge: Some(bridge(&["send_job"])),
                 ..RunOptions::default()
             },
@@ -805,6 +833,22 @@ async fn list_models_parses_caches_success_and_does_not_cache_failure() {
         }]
     );
     assert_eq!(support::read(&root.join("empty.txt")), "2");
+}
+
+#[test]
+fn interactive_applies_the_lead_mode() {
+    let _lock = support::env_lock();
+    let adapter = CursorAdapter::new(Some(Bin::new("agent")));
+    for (mode, flag) in [
+        (LeadMode::Auto, "--auto-review"),
+        (LeadMode::Legit, "--force"),
+    ] {
+        let spec = adapter.interactive(&InteractiveOptions {
+            mode,
+            ..InteractiveOptions::default()
+        });
+        assert_eq!(spec.args, [flag]);
+    }
 }
 
 #[test]

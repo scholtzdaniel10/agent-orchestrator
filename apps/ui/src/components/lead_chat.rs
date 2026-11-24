@@ -4,10 +4,11 @@ use std::rc::Rc;
 use dioxus::html::{Key, Modifiers};
 use dioxus::prelude::*;
 use legate_core::{
-    CursorModels, JobAccess, JobRecord, JobStatus, LeadMessage, LeadMessageKind, LeadRole,
-    LeadStatus, ModelOption, PROVIDERS, PlanStatus, ProposalStatus, ProposedJob, ProviderId,
-    is_provider_id, plan_of,
+    CursorModels, JobAccess, JobRecord, JobStatus, LeadMessage, LeadMessageKind, LeadMode,
+    LeadRole, LeadStatus, ModelOption, PROVIDERS, PlanStatus, ProposalStatus, ProposedJob,
+    ProviderId, is_provider_id, plan_of,
 };
+use wasm_bindgen::JsCast;
 
 use super::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption, error_text};
 use super::lead_plan::LeadPlan;
@@ -42,6 +43,7 @@ pub fn LeadChat(
     });
     let mut draft_project = use_signal(|| project.clone());
     let mut send_error = use_signal(|| None::<String>);
+    let mut stopping = use_signal(|| false);
     let mut choice = use_signal(|| "auto".to_string());
     let mut plan_error = use_signal(|| None::<String>);
     let mut worker_access = use_signal(|| JobAccess::Read);
@@ -186,6 +188,14 @@ pub fn LeadChat(
     let lead_streaming = shown
         .iter()
         .any(|message| message.role == LeadRole::Lead && message.status == LeadStatus::Streaming);
+    let can_stop = lead_streaming
+        || jobs.iter().any(|job| {
+            matches!(job.status, JobStatus::Queued | JobStatus::Running)
+                && job
+                    .lead_message
+                    .as_ref()
+                    .is_some_and(|id| shown.iter().any(|message| &message.id == id))
+        });
     let draft_empty = draft.read().trim().is_empty();
     let no_plan_ready = plans.as_ref().is_some_and(|list| match direct {
         None => !list.iter().any(|plan| plan.available),
@@ -225,6 +235,9 @@ pub fn LeadChat(
                     h2 { id: "lead-heading", "{heading}" }
                 }
                 div { class: "head-actions",
+                    if direct.is_none() {
+                        LeadModeControl {}
+                    }
                     button {
                         id: "lead-new-chat",
                         r#type: "button",
@@ -430,12 +443,135 @@ pub fn LeadChat(
                     }
                     div { class: "composer-foot",
                         span { class: "composer-hint", "Ctrl+Enter to send" }
+                        if can_stop {
+                            button {
+                                class: "btn btn-quiet", r#type: "button",
+                                title: "Stop the lead and this chat's jobs",
+                                disabled: stopping(),
+                                onclick: move |_| {
+                                    if stopping() { return; }
+                                    stopping.set(true);
+                                    let generation = *store.project_request.peek();
+                                    let chat_id = store.chats.peek().iter().find(|chat| chat.active).map(|chat| chat.id.clone());
+                                    spawn(async move {
+                                        let result = api::stop_lead(chat_id.as_deref()).await;
+                                        stopping.set(false);
+                                        if generation != *store.project_request.peek()
+                                            || chat_id.as_ref().is_some_and(|id| !store.chats.peek().iter().any(|chat| chat.active && &chat.id == id))
+                                        {
+                                            return;
+                                        }
+                                        match result {
+                                            Ok(Some(text)) => {
+                                                if draft.peek().trim().is_empty() {
+                                                    if let Some(project) = store.project.peek().as_ref() {
+                                                        crate::logic::project_workspace::write(&project.path, "draft", &text);
+                                                    }
+                                                    draft.set(text);
+                                                }
+                                                send_error.set(None);
+                                            }
+                                            Ok(None) => {}
+                                            Err(err) => send_error.set(Some(error_text(&err))),
+                                        }
+                                    });
+                                },
+                                "Stop"
+                            }
+                        }
                         button {
                             class: "btn btn-primary",
                             r#type: "submit",
                             disabled: send_disabled,
                             "Send"
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LeadModeControl() -> Element {
+    let mut store = use_store();
+    let mut confirming = use_signal(|| false);
+    let mut saving = use_signal(|| false);
+    let selected = store.prefs.read().lead_mode;
+    let save = Callback::new(move |mode: LeadMode| {
+        if saving() {
+            return;
+        }
+        saving.set(true);
+        spawn(async move {
+            match api::set_prefs(&serde_json::json!({ "leadMode": mode })).await {
+                Ok(prefs) => {
+                    store.prefs.set(prefs);
+                    if mode == LeadMode::Legit {
+                        store.legit_confirmed.set(true);
+                    }
+                }
+                Err(err) => store.error.set(Some(error_text(&err))),
+            }
+            saving.set(false);
+        });
+    });
+    rsx! {
+        div { class: "lead-mode", role: "group", aria_label: "Lead mode",
+            for (mode, label) in [(LeadMode::Manual, "Manual"), (LeadMode::Auto, "Auto"), (LeadMode::Legit, "LEG IT!")] {
+                button {
+                    key: "{label}", r#type: "button", class: "btn btn-quiet",
+                    aria_pressed: if selected == mode { "true" } else { "false" },
+                    disabled: saving(),
+                    onclick: move |_| {
+                        if mode == LeadMode::Legit && selected == mode {
+                            save.call(LeadMode::Manual);
+                        } else if mode == LeadMode::Legit && !*store.legit_confirmed.peek() {
+                            confirming.set(true);
+                        } else if selected != mode {
+                            save.call(mode);
+                        }
+                    },
+                    "{label}"
+                }
+            }
+        }
+        if confirming() {
+            dialog {
+                id: "lead-mode-confirm", class: "new-task lead-mode-confirm",
+                aria_labelledby: "lead-mode-title",
+                onmounted: move |_| {
+                    if let Some(dialog) = web_sys::window()
+                        .and_then(|window| window.document())
+                        .and_then(|document| document.get_element_by_id("lead-mode-confirm"))
+                        .and_then(|element| element.dyn_into::<web_sys::HtmlDialogElement>().ok())
+                    {
+                        let _ = dialog.show_modal();
+                    }
+                },
+                onkeydown: move |event| {
+                    if event.key() == Key::Escape {
+                        event.prevent_default();
+                        event.stop_propagation();
+                        confirming.set(false);
+                    }
+                },
+                h2 { id: "lead-mode-title", "Turn on LEG IT!?" }
+                ul {
+                    li { "The lead's plans start as soon as it proposes them. Nobody presses Run, up to five plans per message." }
+                    li { "Jobs may get full access: they edit files and run commands, each in its own worktree." }
+                    li { "Terminals you open skip every prompt (Claude with bypassPermissions, Cursor with --force), in the folder they open in." }
+                    li { "The lead reports once, when a check shows the work done, not while it works." }
+                }
+                p { "Changes from jobs still wait in Changes until you merge them. Press LEG IT! again to turn it off." }
+                div { class: "new-task-foot",
+                    button { r#type: "button", class: "btn btn-quiet", autofocus: true, onclick: move |_| confirming.set(false), "Cancel" }
+                    button { r#type: "button", class: "btn btn-primary",
+                        onclick: move |_| {
+                            confirming.set(false);
+                            save.call(LeadMode::Legit);
+                        },
+                        "Turn on LEG IT!"
                     }
                 }
             }
@@ -669,6 +805,8 @@ fn message_row(
                             span { class: "dot" }
                             span { class: "dot" }
                         }
+                    } else if text.trim() == "Working." {
+                        span { class: "lead-working", "Still working…" }
                     } else {
                         RichText { text: text.clone() }
                     }
@@ -709,6 +847,9 @@ fn message_row(
                 }
                 if dismissed {
                     p { class: "lead-wait hint", "Plan dismissed. Nothing ran." }
+                }
+                if proposal.as_ref().is_some_and(|plan| plan.status == ProposalStatus::Stopped) {
+                    p { class: "lead-wait hint", "Stopped. Edit your message and send it again." }
                 }
                 if !is_user && waiting_jobs > 0 && message.status != LeadStatus::Streaming {
                     p { class: "lead-wait hint",

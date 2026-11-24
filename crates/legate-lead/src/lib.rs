@@ -57,7 +57,7 @@ pub use ports::{
     BridgeSource, CommandOutput, CommandRun, EmptyJobs, JobRequest, JobSink, LeadAdapter,
     LeadSession, SystemCommand, adapt_provider,
 };
-pub use prompts::{LEAD_DELEGATE_SKILL, LEAD_INSTRUCTIONS};
+pub use prompts::{LEAD_DELEGATE_SKILL, LEAD_INSTRUCTIONS, LEAD_LEG_IT_SKILL};
 pub use routines::{Routine, RoutineAfter, RoutineStore, RoutineWorker, Routines, parse_routine};
 pub use setup::{
     Platform, ProviderSetup, Requirement, RequirementId, RequirementNeed, RequirementState, Setup,

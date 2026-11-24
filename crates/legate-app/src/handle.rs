@@ -571,6 +571,10 @@ impl AppHandle {
         self.invoke(move |world| world.send_lead(text)).await
     }
 
+    pub async fn stop_lead(&self, chat_id: Option<String>) -> Result<Option<String>, AppError> {
+        self.invoke(move |world| world.stop_lead(chat_id)).await
+    }
+
     pub async fn run_lead_proposal(
         &self,
         message_id: impl Into<String>,

@@ -11,8 +11,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use legate_core::{
-    AgentEvent, FileEdit, JobAccess, JobRecord, JobStatus, JobStepStatus, JobType, PlanProblem,
-    ProviderId, RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus, load_rules,
+    AgentEvent, FileEdit, JobAccess, JobRecord, JobStatus, JobStepStatus, JobType, MemoryStatus,
+    PlanProblem, ProviderId, RunOptions, StepPhase, StepTool, UsageWindow, VersionStatus,
+    load_rules,
 };
 use legate_router::{
     ActiveRun, BoxFuture, Clock, CwdSource, ExitStatus, FrozenClock, JOB_HEARTBEAT_MS,
@@ -378,6 +379,7 @@ fn slice_tree(job_id: &str) -> WorktreeCreated {
 struct Opts {
     off_plans: Vec<ProviderId>,
     clock: Option<Rc<dyn Clock>>,
+    memory_status: Option<Rc<dyn Fn() -> Option<MemoryStatus>>>,
     rules: Option<legate_core::RouterRules>,
     cwd: Option<CwdSource>,
     model_for: Option<Rc<dyn Fn(ProviderId) -> Option<String>>>,
@@ -419,6 +421,7 @@ where
             .unwrap_or_else(|| CwdSource::Fixed(CWD.to_string())),
         clock: Some(clock),
         model_for: opts.model_for,
+        memory_status: opts.memory_status,
         workspaces: opts.workspaces,
         on_changes: opts.on_changes,
         owner_id: opts.owner_id,
@@ -2242,6 +2245,7 @@ fn a_finished_job_is_listed_after_restore() {
             rules: load_rules(None).unwrap(),
             cwd: CwdSource::Fixed("/proj".into()),
             clock: Some(clock.clone()),
+            memory_status: None,
             model_for: None,
             workspaces: None,
             on_changes: None,
@@ -2261,6 +2265,7 @@ fn a_finished_job_is_listed_after_restore() {
             rules: load_rules(None).unwrap(),
             cwd: CwdSource::Fixed("/proj".into()),
             clock: Some(clock),
+            memory_status: None,
             model_for: None,
             workspaces: None,
             on_changes: None,
@@ -2672,6 +2677,119 @@ fn cancel_removes_a_queued_job() {
             orch.idle().await;
             assert_eq!(claude.prompts(), ["first"]);
         })
+        .await;
+    });
+}
+
+const GIB: u64 = 1 << 30;
+
+fn memory_opts(clock: &Rc<ManualClock>, total: u64, available: Rc<Cell<u64>>) -> Opts {
+    Opts {
+        clock: Some(clock.clone()),
+        rules: Some(rules_with(2)),
+        memory_status: Some(Rc::new(move || {
+            Some(MemoryStatus {
+                total,
+                available: available.get(),
+            })
+        })),
+        ..Opts::default()
+    }
+}
+
+#[test]
+fn queued_job_waits_until_memory_reaches_reserve_plus_job_size() {
+    drive(async {
+        for (total, required) in [(8 * GIB, 7 * GIB / 2), (20 * GIB + 1, 9 * GIB / 2 + 1)] {
+            let clock = Rc::new(ManualClock::new(0));
+            let available = Rc::new(Cell::new(required - 1));
+            let opts = memory_opts(&clock, total, available.clone());
+            let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("ready")]);
+            with_orch(vec![claude.clone()], opts, |orch, _| async move {
+                let job = go(&orch, JobType::Planning, "held");
+                assert_eq!(job.status, JobStatus::Queued);
+                assert_eq!(job.reason.as_deref(), Some("Waiting for free memory"));
+                clock.tick(2_000);
+                assert!(claude.received.borrow().is_empty());
+                available.set(required);
+                clock.tick(2_000);
+                let running = orch.get(&job.id).unwrap();
+                assert_eq!(running.status, JobStatus::Running);
+                assert_ne!(running.reason.as_deref(), Some("Waiting for free memory"));
+                orch.idle().await;
+            })
+            .await;
+        }
+    });
+}
+
+#[test]
+fn job_starts_are_five_seconds_apart_across_providers() {
+    drive(async {
+        let clock = Rc::new(ManualClock::new(0));
+        let opts = memory_opts(&clock, 16 * GIB, Rc::new(Cell::new(8 * GIB)));
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![ok("first")]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("second")]);
+        with_orch(vec![claude, cursor.clone()], opts, |orch, _| async move {
+            assert_eq!(
+                go_on(&orch, JobType::Planning, "first", ProviderId::Claude).status,
+                JobStatus::Running
+            );
+            clock.tick(321);
+            let second = go_on(&orch, JobType::Planning, "second", ProviderId::Cursor);
+            assert_eq!(second.status, JobStatus::Queued);
+            clock.tick(4_678);
+            assert!(cursor.received.borrow().is_empty());
+            clock.tick(1);
+            assert_eq!(orch.get(&second.id).unwrap().status, JobStatus::Running);
+            orch.idle().await;
+        })
+        .await;
+    });
+}
+
+#[test]
+fn critical_memory_stops_only_the_newest_job_without_failover() {
+    drive(async {
+        let clock = Rc::new(ManualClock::new(0));
+        let available = Rc::new(Cell::new(10 * GIB));
+        let opts = memory_opts(&clock, 20 * GIB, available.clone());
+        let release = Flag::new();
+        let mut first = ok("first");
+        first.gate = Some(release.clone());
+        let second = Script {
+            gate: Some(Flag::new()),
+            exit_code: Some(1),
+            stderr: "usage limit reached".into(),
+            ..Script::default()
+        };
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![first, second]);
+        let cursor = FakeAdapter::new(ProviderId::Cursor, vec![ok("failover")]);
+        with_orch(
+            vec![claude, cursor.clone()],
+            opts,
+            |orch, store| async move {
+                let oldest = go_on(&orch, JobType::Planning, "oldest", ProviderId::Claude);
+                let newest = go(&orch, JobType::Planning, "newest");
+                clock.tick(5_000);
+                assert_eq!(orch.get(&newest.id).unwrap().status, JobStatus::Running);
+                // 1.5 GiB is above the absolute floor and below eight percent of 20 GiB.
+                available.set(3 * GIB / 2);
+                clock.tick(1_000);
+                wait_for(|| orch.get(&newest.id).unwrap().status == JobStatus::Failed).await;
+                let job = orch.get(&newest.id).unwrap();
+                assert_eq!(
+                    job.error.as_deref(),
+                    Some("Stopped to free memory: only 1.5 of 20.0 GB was left.")
+                );
+                assert!(job.failed_over.is_empty());
+                assert!(cursor.received.borrow().is_empty());
+                assert_eq!(store.runs(None).unwrap()[0].outcome, RunOutcome::Error);
+                assert_eq!(orch.get(&oldest.id).unwrap().status, JobStatus::Running);
+                release.trip();
+                orch.idle().await;
+            },
+        )
         .await;
     });
 }
@@ -3179,6 +3297,7 @@ fn saved_steps_come_back_after_restore() {
                 rules: load_rules(None).unwrap(),
                 cwd: CwdSource::Fixed(CWD.into()),
                 clock: Some(clock_at(1_700_000_000_000)),
+                memory_status: None,
                 model_for: None,
                 workspaces: None,
                 on_changes: None,
@@ -3279,6 +3398,7 @@ async fn two_orchs() -> Pair {
         rules: rules.clone(),
         cwd: CwdSource::Fixed("/proj".into()),
         clock: Some(clock_a.clone()),
+        memory_status: None,
         model_for: None,
         workspaces: None,
         on_changes: None,
@@ -3291,6 +3411,7 @@ async fn two_orchs() -> Pair {
         rules,
         cwd: CwdSource::Fixed("/proj".into()),
         clock: Some(clock_b.clone()),
+        memory_status: None,
         model_for: None,
         workspaces: None,
         on_changes: None,

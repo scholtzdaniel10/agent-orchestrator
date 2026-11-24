@@ -1155,7 +1155,7 @@ impl World {
     }
 
     pub fn set_prefs(&self, patch: Value) -> Task<Prefs> {
-        let previous = self.settings.borrow().prefs().off_plans;
+        let previous = self.settings.borrow().prefs();
         let prefs = match self.settings.borrow_mut().set_prefs(&patch) {
             Ok(prefs) => prefs,
             Err(err) => return ready(Err(AppError::message(err.to_string()))),
@@ -1163,14 +1163,24 @@ impl World {
         self.local
             .set_config(legate_providers::LocalConfig::from_prefs(&prefs));
         sync_models(&self.settings.borrow(), &self.models);
+        let off_plans_changed = previous.off_plans != prefs.off_plans;
+        if off_plans_changed {
+            self.orch.set_off_plans(prefs.off_plans.clone());
+            self.current_lead().set_off_plans(prefs.off_plans.clone());
+        }
+        if previous.lead_mode != prefs.lead_mode {
+            *self
+                .terminal_lead_mode
+                .write()
+                .unwrap_or_else(|err| err.into_inner()) = prefs.lead_mode;
+            self.current_lead().set_mode(prefs.lead_mode);
+        }
         let _ = self.events.send(AppEvent::Prefs(prefs.clone()));
-        if previous == prefs.off_plans {
+        if !off_plans_changed {
             return ready(Ok(prefs));
         }
-        self.orch.set_off_plans(prefs.off_plans.clone());
-        self.current_lead().set_off_plans(prefs.off_plans.clone());
         let mut wake_result = Ok(());
-        for plan in previous {
+        for plan in previous.off_plans {
             if !prefs.off_plans.contains(&plan)
                 && let Err(err) = self.wake(plan)
             {
@@ -1302,6 +1312,17 @@ impl World {
         }
         let lead = self.current_lead();
         Box::pin(async move { lead.send(&text).await.map_err(lead_err) })
+    }
+
+    pub fn stop_lead(&self, chat_id: Option<String>) -> Task<Option<String>> {
+        if chat_id
+            .as_ref()
+            .is_some_and(|id| id.is_empty() || id.len() > 64)
+        {
+            return fail("invalid chat id");
+        }
+        let lead = self.current_lead();
+        Box::pin(async move { lead.stop(chat_id.as_deref()).await.map_err(lead_err) })
     }
 
     pub fn run_lead_proposal(

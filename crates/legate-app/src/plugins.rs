@@ -1,14 +1,15 @@
-//! Copy bundled skills into the data folder, then overwrite the delegate skill
-//! with the text embedded in `legate-lead`.
+//! Copy bundled skills into the data folder and install embedded skill text.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use legate_lead::LEAD_DELEGATE_SKILL;
+use legate_lead::{LEAD_DELEGATE_SKILL, LEAD_LEG_IT_SKILL};
 
 const PLUGINS: [&str; 3] = ["legate-core", "legate-worker", "legate-lead"];
+const WORKTREE_SKILL: &str =
+    include_str!("../../../resources/plugins/legate-worker/skills/legate-worktree/SKILL.md");
 
-/// `{data}/resources/plugins`, with `legate-delegate/SKILL.md` replaced.
+/// Install plugins under `{data}/resources/plugins`.
 pub fn install_bundled(data_dir: &Path) {
     let dest = data_dir.join("resources").join("plugins");
     if let Some(source) = find_resources() {
@@ -31,12 +32,15 @@ pub fn install_bundled(data_dir: &Path) {
             let _ = fs::write(&file, body);
         }
     }
-    let skill = dest
-        .join("legate-lead")
-        .join("skills")
-        .join("legate-delegate");
-    if fs::create_dir_all(&skill).is_ok() {
-        let _ = fs::write(skill.join("SKILL.md"), LEAD_DELEGATE_SKILL);
+    for (plugin, name, text) in [
+        ("legate-lead", "legate-delegate", LEAD_DELEGATE_SKILL),
+        ("legate-lead", "legate-leg-it", LEAD_LEG_IT_SKILL),
+        ("legate-worker", "legate-worktree", WORKTREE_SKILL),
+    ] {
+        let skill = dest.join(plugin).join("skills").join(name);
+        if fs::create_dir_all(&skill).is_ok() {
+            let _ = fs::write(skill.join("SKILL.md"), text);
+        }
     }
 }
 

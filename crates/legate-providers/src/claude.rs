@@ -6,8 +6,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use async_trait::async_trait;
 use legate_core::{
-    AgentEvent, BridgeInfo, FileEdit, JobAccess, ModelOption, ProviderId, RunOptions, StepPhase,
-    StepTool, UsageWindow,
+    AgentEvent, BridgeInfo, FileEdit, JobAccess, LeadMode, ModelOption, ProviderId, RunOptions,
+    StepPhase, StepTool, UsageWindow,
 };
 use regex::Regex;
 use serde_json::{Value, value::RawValue};
@@ -36,6 +36,12 @@ static LIMIT_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 const SHELL_TOOLS: &str = "Bash,PowerShell";
 const WRITE_TOOLS: &str = "Edit,Write,NotebookEdit";
+const BYPASS: [&str; 4] = [
+    "--permission-mode",
+    "bypassPermissions",
+    "--settings",
+    r#"{"skipDangerousModePermissionPrompt":true}"#,
+];
 
 pub struct ClaudeAdapter {
     found: Mutex<Option<Bin>>,
@@ -88,6 +94,11 @@ impl ClaudeAdapter {
         if let Some(model) = non_empty(&opts.model) {
             args.push("--model".to_string());
             args.push(model.to_string());
+        }
+        match opts.mode {
+            LeadMode::Manual => {}
+            LeadMode::Auto => args.extend(["--permission-mode", "auto"].map(str::to_string)),
+            LeadMode::Legit => args.extend(BYPASS.map(str::to_string)),
         }
         args.push("--append-system-prompt".to_string());
         args.push(LEGATE_NOTE.to_string());
@@ -180,14 +191,6 @@ impl ClaudeAdapter {
         if let Some(bridge) = &opts.bridge {
             let config = write_mcp_config(cwd, bridge)?;
             let read_dirs = opts.read_dirs.as_deref().unwrap_or(&[]);
-            let mut tools: Vec<String> = bridge
-                .tools
-                .iter()
-                .map(|tool| format!("mcp__orchestrator__{tool}"))
-                .collect();
-            if !read_dirs.is_empty() {
-                tools.extend(["Read".to_string(), "Grep".to_string(), "Glob".to_string()]);
-            }
             for dir in read_dirs {
                 args.push("--add-dir".to_string());
                 args.push(dir.clone());
@@ -195,8 +198,20 @@ impl ClaudeAdapter {
             args.push("--mcp-config".to_string());
             args.push(path_string(&config));
             args.push("--strict-mcp-config".to_string());
-            args.push("--allowedTools".to_string());
-            args.push(tools.join(","));
+            if opts.access == Some(JobAccess::Full) {
+                args.extend(BYPASS.map(str::to_string));
+            } else {
+                let mut tools: Vec<String> = bridge
+                    .tools
+                    .iter()
+                    .map(|tool| format!("mcp__orchestrator__{tool}"))
+                    .collect();
+                if !read_dirs.is_empty() {
+                    tools.extend(["Read", "Grep", "Glob"].map(str::to_string));
+                }
+                args.push("--allowedTools".to_string());
+                args.push(tools.join(","));
+            }
             args.push("--setting-sources".to_string());
             args.push("project".to_string());
         }

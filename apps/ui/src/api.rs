@@ -411,6 +411,9 @@ pub async fn list_lead_chats() -> Result<Vec<LeadChat>, String> {
 pub async fn open_lead_chat(id: &str) -> Result<Vec<LeadMessage>, String> {
     call("open_lead_chat", &json!({ "id": id })).await
 }
+pub async fn stop_lead(chat_id: Option<&str>) -> Result<Option<String>, String> {
+    call("stop_lead", &json!({ "chatId": chat_id })).await
+}
 pub async fn reset_lead(direct: Option<ProviderId>) -> Result<(), String> {
     call("reset_lead", &json!({ "direct": direct })).await
 }

@@ -20,6 +20,7 @@ pub struct Store {
     pub plans: Signal<Option<Vec<PlanStatus>>>,
     pub changes: Signal<Vec<ChangeSet>>,
     pub prefs: Signal<Prefs>,
+    pub legit_confirmed: Signal<bool>,
     pub terminals: Signal<Vec<TerminalInfo>>,
     pub projects: Signal<Vec<ProjectEntry>>,
     pub project: Signal<Option<ProjectInfo>>,
@@ -61,6 +62,7 @@ pub fn provide_store() -> Store {
         plans: use_signal(|| None),
         changes: use_signal(Vec::new),
         prefs: use_signal(default_prefs),
+        legit_confirmed: use_signal(|| false),
         terminals: use_signal(Vec::new),
         projects: use_signal(Vec::new),
         project: use_signal(|| None),
@@ -240,11 +242,22 @@ async fn listen(store: Store) {
     let _ = api::on_popped_panels(move |list| panels.set(list)).await;
     let mut messages = store.messages;
     let chats = store.chats;
-    let _ = api::on_lead(move |LeadUpdate { message, .. }| {
+    let _ = api::on_lead(move |LeadUpdate { message, chat_id }| {
         if *store.project_switching.read() {
             return;
         }
-        messages.with_mut(|list| upsert(list, message, |item| &item.id));
+        // New chats receive their first messages before the refreshed chat list.
+        // Reports from an older chat can also arrive while that new chat is open.
+        let visible = chat_id.as_ref().is_none_or(|id| {
+            let list = chats.peek();
+            match list.iter().find(|chat| chat.active) {
+                Some(active) => &active.id == id,
+                None => !list.iter().any(|chat| &chat.id == id),
+            }
+        });
+        if visible {
+            messages.with_mut(|list| upsert(list, message, |item| &item.id));
+        }
         let chats = chats;
         let generation = *store.project_request.read();
         spawn_local(async move {
@@ -356,6 +369,7 @@ pub fn default_prefs() -> Prefs {
         clone_dir: None,
         ui_scale: 100,
         usage_shows: UsageShows::Left,
+        lead_mode: legate_core::LeadMode::Manual,
         cursor_models: CursorModels::Own,
         usage_check: true,
         off_plans: Vec::new(),

@@ -68,7 +68,7 @@ pub trait Workspaces {
     fn changes(&self, id: &str) -> BoxFuture<'_, Result<Vec<ChangedFile>, String>>;
 }
 
-/// Time and the orchestrator's heartbeat, watch, and step-flush callbacks.
+/// Time and the orchestrator's scheduled callbacks, including memory checks and job starts.
 ///
 /// Callbacks run on the orchestrator's thread. [`ManualClock`] fires them from [`ManualClock::tick`].
 /// [`SystemClock`] sleeps until the deadline and then runs the callback. Neither polls the job queue.

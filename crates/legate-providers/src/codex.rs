@@ -176,7 +176,7 @@ fn chatgpt_login(code: Option<i32>, stdout: &str, stderr: &str) -> bool {
 fn run_args(opts: &RunOptions) -> Vec<String> {
     // Ignore the user's permission/MCP defaults, while retaining the official CLI's saved auth.
     // Codex uses its native sandbox: workspace-write permits commands inside that sandbox.
-    let access = if opts.bridge.is_some() {
+    let access = if opts.bridge.is_some() && opts.access != Some(JobAccess::Full) {
         JobAccess::Read
     } else {
         opts.access.unwrap_or(if opts.edit == Some(true) {

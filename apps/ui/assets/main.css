@@ -4733,7 +4733,8 @@ button.job-step {
   padding: 0;
 }
 
-.app-header-tools .btn[aria-pressed='true'] {
+.app-header-tools .btn[aria-pressed='true'],
+.lead-mode .btn[aria-pressed='true'] {
   border-color: var(--signal);
   background: var(--raised);
 }
@@ -5919,6 +5920,45 @@ button.job-step {
   padding: 6px 8px;
   border-radius: var(--radius);
   background: var(--inset);
+}
+
+.lead-mode {
+  display: inline-flex;
+}
+
+.lead-working {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lead-mode .btn {
+  padding-inline: 6px;
+  white-space: nowrap;
+}
+
+.lead-mode .btn:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.lead-mode .btn:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.lead-mode .btn:focus-visible {
+  z-index: 1;
+}
+
+.lead-mode-confirm {
+  max-width: calc(100vw - 24px);
+  color: var(--text);
+  white-space: normal;
+  text-align: left;
+}
+
+.lead-mode-confirm::backdrop {
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
 }
 
 .lead-options .plan-choice {

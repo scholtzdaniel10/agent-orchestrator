@@ -11,7 +11,7 @@ use legate_bridge::{
     BackendError, Bridge, BridgeBackend, BridgeTool, NewJob, ToolConfig, ToolError, WorkerSnapshot,
     start_bridge,
 };
-use legate_core::{JobAccess, JobRecord, JobStatus, LeadProposal, ProviderId};
+use legate_core::{JobAccess, JobRecord, JobStatus, LeadProposal, ProposalStatus, ProviderId};
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Method};
 use serde_json::{Map, Value, json};
@@ -419,9 +419,13 @@ impl BridgeBackend for Fake {
         }
     }
 
-    async fn propose_jobs(&self, turn: String, proposal: LeadProposal) -> Result<(), BackendError> {
+    async fn propose_jobs(
+        &self,
+        turn: String,
+        proposal: LeadProposal,
+    ) -> Result<ProposalStatus, BackendError> {
         lock(&self.inner).proposals.push((turn, proposal));
-        Ok(())
+        Ok(ProposalStatus::Waiting)
     }
 }
 

@@ -7,8 +7,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use async_trait::async_trait;
 use legate_core::{
-    AgentEvent, BridgeInfo, FileEdit, GROK_DEFAULT_MODEL, JobAccess, ModelOption, ProviderId,
-    RunOptions, StepPhase, StepTool,
+    AgentEvent, BridgeInfo, FileEdit, GROK_DEFAULT_MODEL, JobAccess, LeadMode, ModelOption,
+    ProviderId, RunOptions, StepPhase, StepTool,
 };
 use regex::Regex;
 use serde_json::{Value, value::RawValue};
@@ -116,6 +116,11 @@ impl CursorAdapter {
             args.push("--model".to_string());
             args.push(model);
         }
+        match opts.mode {
+            LeadMode::Manual => {}
+            LeadMode::Auto => args.push("--auto-review".to_string()),
+            LeadMode::Legit => args.push("--force".to_string()),
+        }
         args.extend(plugin_args(&plugins.worker));
         if non_empty(&opts.resume).is_none()
             && let Some(prompt) = non_empty(&opts.prompt)
@@ -191,8 +196,12 @@ impl CursorAdapter {
             None
         };
         if let Some(bridge) = &opts.bridge {
-            write_bridge(cwd, bridge)?;
+            let unrestricted = access == JobAccess::Full;
+            write_bridge(cwd, bridge, unrestricted)?;
             args.push("--approve-mcps".to_string());
+            if unrestricted {
+                args.push("--force".to_string());
+            }
         }
         if let Some(model) = self.cli_model(opts.model.as_deref()) {
             args.push("--model".to_string());
@@ -422,7 +431,7 @@ fn allow_edits(cwd: &Path) -> Result<Option<Box<dyn FnOnce() + Send>>, ProviderE
     })))
 }
 
-fn write_bridge(cwd: &Path, bridge: &BridgeInfo) -> Result<(), ProviderError> {
+fn write_bridge(cwd: &Path, bridge: &BridgeInfo, unrestricted: bool) -> Result<(), ProviderError> {
     let cursor_dir = cwd.join(".cursor");
     std::fs::create_dir_all(&cursor_dir)?;
     // Key order matches JSON.stringify in cursor.ts. serde_json::Map sorts keys.
@@ -433,8 +442,12 @@ fn write_bridge(cwd: &Path, bridge: &BridgeInfo) -> Result<(), ProviderError> {
     );
     const CLI: &str =
         r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}"#;
+    const UNRESTRICTED_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Shell(*)","Write(**)","Read(**)"],"deny":[]}}"#;
     std::fs::write(cursor_dir.join("mcp.json"), mcp)?;
-    std::fs::write(cursor_dir.join("cli.json"), CLI)?;
+    std::fs::write(
+        cursor_dir.join("cli.json"),
+        if unrestricted { UNRESTRICTED_CLI } else { CLI },
+    )?;
     Ok(())
 }
 

@@ -13,8 +13,8 @@ use std::sync::{Arc, RwLock};
 
 use legate_bridge::{ToolConfig, orchestrator_tools, start_bridge};
 use legate_core::{
-    AgentEvent, AppInfo, ChangeSet, JobAccess, JobRecord, JobStatus, PROVIDERS, PlanStatus,
-    PlanWindow, ProviderId, RunOptions, SkillFolderReport, SkillsState, TerminalInfo,
+    AgentEvent, AppInfo, ChangeSet, JobAccess, JobRecord, JobStatus, LeadMode, PROVIDERS,
+    PlanStatus, PlanWindow, ProviderId, RunOptions, SkillFolderReport, SkillsState, TerminalInfo,
 };
 use legate_git::{ListedName, SetupTracker, Worktrees, merge_listed_changes};
 use legate_lead::{
@@ -289,6 +289,7 @@ pub(crate) struct World {
     pub project: Rc<RefCell<String>>,
     pub project_mirror: Arc<RwLock<String>>,
     pub models: Arc<RwLock<HashMap<ProviderId, Option<String>>>>,
+    pub terminal_lead_mode: Arc<RwLock<LeadMode>>,
     pub store: Rc<Store>,
     pub orch: Rc<Orchestrator>,
     pub lead_sessions: Rc<RefCell<HashMap<String, Rc<Lead>>>>,
@@ -514,6 +515,7 @@ async fn boot(
         rules,
         cwd: CwdSource::Dynamic(Rc::new(move || cwd_project.borrow().clone())),
         clock: Some(Rc::new(SystemClock::new())),
+        memory_status: Some(Rc::new(legate_providers::memory_status)),
         model_for: Some(Rc::new(move |id| model_settings.borrow().model(id))),
         workspaces: Some(Rc::new(GitSpaces::new(worktrees_dir.clone()))),
         on_changes: Some(Rc::new(move || on_changes.spawn())),
@@ -717,17 +719,21 @@ async fn boot(
         }
     }));
     reload_project(&lead, &orch, &goals, &project.borrow(), &missed);
+    lead.set_mode(prefs.lead_mode);
 
     let claude_launch = Arc::clone(&claude);
     let codex_launch = Arc::clone(&codex);
     let cursor_launch = Arc::clone(&cursor);
     let grok_launch = Arc::clone(&grok);
+    let terminal_lead_mode = Arc::new(RwLock::new(prefs.lead_mode));
+    let launch_mode = Arc::clone(&terminal_lead_mode);
     let launch = Arc::new(move |provider, opts: &LaunchOpts| {
         let interactive = InteractiveOptions {
             model: opts.model.clone(),
             session_id: opts.session_id.clone(),
             resume: opts.resume.clone(),
             prompt: opts.prompt.clone(),
+            mode: *launch_mode.read().unwrap_or_else(|err| err.into_inner()),
         };
         let spec = match provider {
             ProviderId::Claude => claude_launch.interactive(&interactive),
@@ -893,6 +899,7 @@ async fn boot(
         project,
         project_mirror,
         models,
+        terminal_lead_mode,
         store,
         orch,
         lead_sessions,

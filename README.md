@@ -135,6 +135,13 @@ The `local` plan is last in the router rules and has unlimited headroom. Jobs ma
 
 - Cloud workers are the official CLIs you signed in; Legate does not hold their tokens.
 - Full access runs shell commands in a job’s worktree without asking — only in folders you trust.
+- **Auto** and **LEG IT!** start the lead’s plans without Run. LEG IT! gives editing jobs full access,
+  lets the lead edit the project and run commands, and opens Claude and Cursor terminals with
+  `bypassPermissions` and `--force`, respectively. The first switch to LEG IT! in each window asks
+  for confirmation.
+- On Windows and Linux, Legate starts jobs one at a time when enough memory is available and stops
+  the newest running job if free memory drops critically low. The desktop app and the `legate`
+  command both use this guard.
 - The lead’s MCP bridge listens on loopback only, with a fresh bearer token each start.
 - The Files panel cannot leave the project or worktree folder.
 

@@ -90,6 +90,8 @@ fn answers() -> Map<String, Value> {
     for (cmd, value) in [
         ("get_project", to_value(project)),
         ("get_prefs", to_value(default_prefs())),
+        ("set_prefs", to_value(default_prefs())),
+        ("stop_lead", Ok(Value::Null)),
         ("get_app_info", to_value(info)),
         ("list_files", to_value(files)),
         ("skills_get", to_value(skills)),

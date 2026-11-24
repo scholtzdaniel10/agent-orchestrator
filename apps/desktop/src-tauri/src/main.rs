@@ -128,6 +128,7 @@ fn main() -> anyhow::Result<()> {
             commands::get_lead_access,
             commands::set_lead_access,
             commands::send_lead,
+            commands::stop_lead,
             commands::run_lead_proposal,
             commands::dismiss_lead_proposal,
             commands::list_lead_messages,

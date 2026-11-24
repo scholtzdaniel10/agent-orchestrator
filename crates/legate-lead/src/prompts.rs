@@ -11,6 +11,10 @@ pub const LEAD_INSTRUCTIONS: &str = include_str!("../prompts/lead_instructions.t
 /// The lead skill from commit 6f5ca70. Byte-identical to that blob.
 pub const LEAD_DELEGATE_SKILL: &str = include_str!("../prompts/legate-delegate.SKILL.md");
 
+/// The bundled lead skill used when LEG IT! is enabled.
+pub const LEAD_LEG_IT_SKILL: &str =
+    include_str!("../../../resources/plugins/legate-lead/skills/legate-leg-it/SKILL.md");
+
 #[cfg(test)]
 mod tests {
     use super::{LEAD_DELEGATE_SKILL, LEAD_INSTRUCTIONS};

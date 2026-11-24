@@ -1,6 +1,5 @@
-//! Clocks for the orchestrator. Job dispatch does not use these; only heartbeat, store
-//! watch, and step flush do. [`ManualClock::tick`] runs due callbacks. [`SystemClock`]
-//! sleeps until a deadline. Neither polls the queue.
+//! Clocks for job start spacing, memory checks, heartbeats, store watches, and step
+//! flushes. [`ManualClock::tick`] runs due callbacks. [`SystemClock`] sleeps until a deadline.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;

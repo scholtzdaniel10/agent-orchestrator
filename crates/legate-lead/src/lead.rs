@@ -1,16 +1,18 @@
 //! The lead chat: one session that proposes jobs, and direct chats that do not.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 use legate_core::{
-    JobRecord, JobStatus, LeadChat, LeadMessage, LeadMessageKind, LeadProposal, LeadRole,
-    LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions,
-    needs_usage_credits, plan_of,
+    JobAccess, JobRecord, JobStatus, LeadChat, LeadMessage, LeadMessageKind, LeadMode,
+    LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules,
+    RunOptions, needs_usage_credits, plan_of,
 };
 use legate_router::headroom;
 use legate_store::{ChatRow, NewWindow, RunOutcome, RunRow, Store};
+use tokio::sync::watch;
 
 use crate::error::LeadError;
 use crate::ports::{BridgeSource, EmptyJobs, JobRequest, JobSink, LeadAdapter};
@@ -20,6 +22,8 @@ use crate::text::{fresh_id, tail_chars};
 
 pub const NO_PLAN: &str = "No plan is available for the lead right now.";
 const REPORT_OUTPUT_MAX: usize = 4000;
+const MAX_AUTO_ROUNDS: u64 = 5;
+const AUTO_ROUNDS: &str = "autoRounds";
 
 pub struct LeadOpts {
     pub adapters: Vec<std::sync::Arc<dyn LeadAdapter>>,
@@ -60,12 +64,14 @@ struct State {
     busy: bool,
     draining: bool,
     turn_id: Option<String>,
+    stop_turn: Option<watch::Sender<bool>>,
     chat_id: Option<String>,
     view_chat_id: Option<String>,
     chat_title: String,
     direct: Option<ProviderId>,
     chat_created_at: i64,
     pending: Vec<Pending>,
+    submitting: Option<String>,
     follow_scheduled: HashSet<String>,
     skip_follow: HashSet<String>,
     follow_order: i64,
@@ -74,6 +80,7 @@ struct State {
 
 #[derive(Default)]
 struct Availability {
+    run_mode: Cell<LeadMode>,
     off_plans: std::cell::RefCell<Vec<ProviderId>>,
     available: std::cell::RefCell<Vec<ProviderId>>,
     checking: tokio::sync::Mutex<()>,
@@ -132,12 +139,14 @@ impl Lead {
                 busy: false,
                 draining: false,
                 turn_id: None,
+                stop_turn: None,
                 chat_id: None,
                 view_chat_id: None,
                 chat_title: String::new(),
                 direct: None,
                 chat_created_at: 0,
                 pending: Vec::new(),
+                submitting: None,
                 follow_scheduled: HashSet::new(),
                 skip_follow: HashSet::new(),
                 follow_order: 0,
@@ -175,6 +184,40 @@ impl Lead {
 
     pub fn set_off_plans(&self, plans: Vec<ProviderId>) {
         *self.availability.off_plans.borrow_mut() = plans;
+    }
+
+    pub fn set_mode(&self, mode: LeadMode) {
+        self.availability.run_mode.set(mode);
+        if mode != LeadMode::Legit {
+            return;
+        }
+        let Some(id) = self.view_chat() else {
+            return;
+        };
+        let result = self.with_chat(&id, || {
+            let waiting: Vec<_> = self
+                .state
+                .borrow()
+                .history
+                .iter()
+                .filter(|message| {
+                    message
+                        .proposal
+                        .as_ref()
+                        .is_some_and(|p| p.status == ProposalStatus::Waiting)
+                })
+                .map(|message| message.id.clone())
+                .collect();
+            for turn in waiting {
+                if let Err(err) = self.run_proposal(&turn, None) {
+                    tracing::error!("{err}");
+                }
+            }
+            Ok(())
+        });
+        if let Err(err) = result {
+            tracing::error!("{err}");
+        }
     }
 
     fn is_off(&self, provider: ProviderId) -> bool {
@@ -301,23 +344,62 @@ impl Lead {
         self.state.borrow().busy
     }
 
-    pub fn attach_proposal(&self, turn: &str, proposal: LeadProposal) -> Result<(), LeadError> {
-        let index = self
-            .state
-            .borrow()
-            .history
-            .iter()
-            .position(|item| item.id == turn)
-            .ok_or_else(|| LeadError::message("that lead turn is not open"))?;
-        self.state.borrow_mut().history[index].proposal = Some(proposal);
-        self.emit_id(turn);
-        Ok(())
+    pub fn attach_proposal(
+        &self,
+        turn: &str,
+        proposal: LeadProposal,
+    ) -> Result<ProposalStatus, LeadError> {
+        let mode = self.availability.run_mode.get();
+        let rounds = {
+            let mut state = self.state.borrow_mut();
+            if state.skip_follow.contains(turn) {
+                return Err(LeadError::message("That turn was stopped."));
+            }
+            let message = state
+                .history
+                .iter_mut()
+                .find(|item| item.id == turn)
+                .ok_or_else(|| LeadError::message("that lead turn is not open"))?;
+            if message
+                .proposal
+                .as_ref()
+                .is_some_and(|p| p.status == ProposalStatus::Running)
+            {
+                return Err(LeadError::message(
+                    "This turn's plan is already running. Wait for its report before proposing more.",
+                ));
+            }
+            message.proposal = Some(proposal);
+            message
+                .extra
+                .get(AUTO_ROUNDS)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+        };
+        if mode == LeadMode::Legit || (mode == LeadMode::Auto && rounds < MAX_AUTO_ROUNDS) {
+            let round = (mode == LeadMode::Auto).then(|| rounds + 1);
+            self.start_proposal(turn, None, round)
+                .inspect_err(|_| self.emit_id(turn))?;
+            Ok(ProposalStatus::Running)
+        } else {
+            self.emit_id(turn);
+            Ok(ProposalStatus::Waiting)
+        }
     }
 
     pub fn run_proposal(
         &self,
         message_id: &str,
         jobs: Option<Vec<ProposedJob>>,
+    ) -> Result<Vec<JobRecord>, LeadError> {
+        self.start_proposal(message_id, jobs, None)
+    }
+
+    fn start_proposal(
+        &self,
+        message_id: &str,
+        jobs: Option<Vec<ProposedJob>>,
+        auto_round: Option<u64>,
     ) -> Result<Vec<JobRecord>, LeadError> {
         let (index, proposal) = {
             let state = self.state.borrow();
@@ -336,13 +418,20 @@ impl Lead {
                 "That plan already ran or was dismissed.",
             ));
         }
-        let chosen: Vec<ProposedJob> = jobs
+        let mut chosen: Vec<ProposedJob> = jobs
             .unwrap_or(proposal.jobs)
             .into_iter()
             .filter(|job| !job.prompt.trim().is_empty())
             .collect();
         if chosen.is_empty() {
             return Err(LeadError::message("The plan has no jobs left to run."));
+        }
+        if self.availability.run_mode.get() == LeadMode::Legit {
+            for job in &mut chosen {
+                if job.access == JobAccess::Edit {
+                    job.access = JobAccess::Full;
+                }
+            }
         }
         let chat_id = self.state.borrow().chat_id.clone();
         if let Some(chat_id) = chat_id {
@@ -353,8 +442,10 @@ impl Lead {
         }
         let sink = Rc::clone(&self.jobs.borrow());
         let mut started = Vec::new();
+        let mut failure = None;
+        self.state.borrow_mut().submitting = Some(message_id.to_owned());
         for job in &chosen {
-            started.push(sink.submit(JobRequest {
+            match sink.submit(JobRequest {
                 job_type: job.job_type,
                 prompt: job.prompt.clone(),
                 provider: job.worker,
@@ -362,8 +453,21 @@ impl Lead {
                 title: Some(job.title.clone()),
                 lead_message: Some(message_id.to_string()),
                 ..JobRequest::default()
-            })?);
+            }) {
+                Ok(record) => started.push(record),
+                Err(err) => {
+                    failure = Some(err);
+                    break;
+                }
+            }
         }
+        self.state.borrow_mut().submitting = None;
+        if started.is_empty()
+            && let Some(err) = failure.take()
+        {
+            return Err(err);
+        }
+        chosen.truncate(started.len());
         let ids: Vec<String> = started.iter().map(|job| job.id.clone()).collect();
         {
             let mut state = self.state.borrow_mut();
@@ -373,10 +477,19 @@ impl Lead {
                 stored.jobs = chosen;
                 stored.status = ProposalStatus::Running;
                 stored.job_ids = Some(ids);
+                if let Some(round) = auto_round {
+                    message.extra.insert(AUTO_ROUNDS.into(), round.into());
+                }
             }
         }
         self.persist_message(message_id);
         self.emit_id(message_id);
+        if let Some(job) = started.last() {
+            self.on_job_update(job);
+        }
+        if let Some(err) = failure {
+            return Err(err);
+        }
         Ok(started)
     }
 
@@ -411,12 +524,89 @@ impl Lead {
         self.state.borrow().turn_id.clone()
     }
 
+    /// Stop this chat's CLI and jobs. Return the last user message for the composer.
+    pub async fn stop(&self, chat_id: Option<&str>) -> Result<Option<String>, LeadError> {
+        let Some(chat_id) = chat_id.map(str::to_owned).or_else(|| self.view_chat()) else {
+            return Ok(None);
+        };
+        let stop_turn = {
+            let state = self.state.borrow();
+            state
+                .stop_turn
+                .clone()
+                .filter(|_| state.chat_id.as_deref() == Some(chat_id.as_str()))
+        };
+        let result = self.with_chat(&chat_id, || {
+            let history = self.state.borrow().history.clone();
+            let ids: HashSet<_> = history
+                .iter()
+                .filter(|m| m.role == LeadRole::Lead)
+                .map(|m| m.id.clone())
+                .collect();
+            {
+                let mut state = self.state.borrow_mut();
+                // Suppress reports before cancel: a sink can publish its final update inline.
+                state.skip_follow.extend(ids.iter().cloned());
+                state.pending.retain(|item| item.chat_id != chat_id);
+            }
+            if let Some(signal) = &stop_turn {
+                signal.send_replace(true);
+            }
+            let sink = Rc::clone(&self.jobs.borrow());
+            let mut first_error = None;
+            for job in sink.list() {
+                if matches!(job.status, JobStatus::Queued | JobStatus::Running)
+                    && job.lead_message.as_ref().is_some_and(|id| ids.contains(id))
+                    && let Err(err) = sink.cancel(&job.id)
+                {
+                    first_error.get_or_insert(err);
+                }
+            }
+            let mut stopped = Vec::new();
+            for message in &mut self.state.borrow_mut().history {
+                if let Some(proposal) = &mut message.proposal
+                    && matches!(
+                        proposal.status,
+                        ProposalStatus::Waiting | ProposalStatus::Running
+                    )
+                {
+                    proposal.status = ProposalStatus::Stopped;
+                    stopped.push(message.id.clone());
+                }
+            }
+            for id in stopped {
+                self.persist_message(&id);
+                self.emit_id(&id);
+            }
+            if let Some(err) = first_error {
+                return Err(err);
+            }
+            Ok(history
+                .into_iter()
+                .rev()
+                .find(|m| m.role == LeadRole::User)
+                .map(|m| m.text))
+        });
+        if let Some(signal) = stop_turn {
+            signal.closed().await;
+        }
+        result
+    }
+
     pub fn messages(&self) -> Vec<LeadMessage> {
-        self.state.borrow().history.clone()
+        let state = self.state.borrow();
+        if state.view_chat_id == state.chat_id {
+            return state.history.clone();
+        }
+        state
+            .view_chat_id
+            .as_ref()
+            .and_then(|id| self.store.messages(id).ok())
+            .unwrap_or_default()
     }
 
     pub fn chats(&self) -> Result<Vec<LeadChat>, LeadError> {
-        let active = self.state.borrow().chat_id.clone();
+        let active = self.view_chat();
         let mut out = Vec::new();
         for row in self.store.chats(&(self.project)())? {
             let pending = self.chat_has_pending(&row.id)?;
@@ -482,7 +672,15 @@ impl Lead {
     }
 
     pub fn mode(&self) -> Option<ProviderId> {
-        self.state.borrow().direct
+        let state = self.state.borrow();
+        if state.view_chat_id == state.chat_id {
+            return state.direct;
+        }
+        state
+            .view_chat_id
+            .as_ref()
+            .and_then(|id| self.store.chat(id).ok().flatten())
+            .and_then(|chat| chat_plan(chat.direct.as_deref()))
     }
 
     pub fn rename(&self, id: &str, title: &str) -> Result<(), LeadError> {
@@ -635,11 +833,33 @@ impl Lead {
                 prompt: text.to_string(),
             }));
         }
-        let line = if user_request {
+        let mode = self.availability.run_mode.get();
+        let project = if user_request || mode == LeadMode::Legit {
             project_line(&(self.project)())
         } else {
             String::new()
         };
+        let mode_line = match mode {
+            LeadMode::Manual => "",
+            LeadMode::Auto => {
+                "Auto is on: your plan runs as soon as you propose it; nobody presses Run."
+            }
+            LeadMode::Legit => concat!(
+                "LEG IT! is on, and it overrides every rule above about what you may do. ",
+                "You have every tool with no prompts, and the open project is yours to change and run commands in directly. ",
+                "Do the work yourself, hand jobs out, or both: whatever finishes fastest. ",
+                "Plans you propose run at once with full access; nobody presses Run or approves anything. ",
+                "Follow the legate-leg-it skill. In short: decide the check that proves the work done, loop until it passes, ",
+                "never stop to ask, and reply only \"Working.\" until then; report once at the end. ",
+                "Even so: stay inside the project folder, never push or rewrite git history, never touch credentials or sign in, ",
+                "and stop and say so if the work needs any of that."
+            ),
+        };
+        let line = [project.as_str(), mode_line]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
         if let (Some(provider), Some(session)) = (state.session_provider, state.session_id.clone())
             && !self.is_off(provider)
         {
@@ -771,6 +991,9 @@ impl Lead {
             ..RunOptions::default()
         };
         if !direct {
+            if self.availability.run_mode.get() == LeadMode::Legit {
+                opts.access = Some(JobAccess::Full);
+            }
             opts.bridge = Some(self.bridge.info());
             let project = (self.project)();
             opts.read_dirs = Some(if project.is_empty() {
@@ -809,7 +1032,15 @@ impl Lead {
         let mut cost = None;
         let mut tokens = None;
         let mut utilization = None;
-        while let Some(event) = session.recv().await {
+        let (signal, mut stop) = watch::channel(false);
+        self.state.borrow_mut().stop_turn = Some(signal);
+        loop {
+            let event = tokio::select! {
+                biased;
+                _ = stop.changed() => break,
+                next = session.recv() => next,
+            };
+            let Some(event) = event else { break };
             match event {
                 legate_core::AgentEvent::Init {
                     session_id: id,
@@ -908,10 +1139,35 @@ impl Lead {
                 legate_core::AgentEvent::Step { .. } => {}
             }
         }
-        if limit_resets.is_some() {
+        if limit_resets.is_some() || *stop.borrow() {
             session.kill();
         }
-        let exit = session.exit_status().await;
+        let exit = tokio::select! {
+            biased;
+            _ = stop.changed(), if !*stop.borrow() => {
+                session.kill();
+                session.exit_status().await
+            }
+            exit = session.exit_status() => exit,
+        };
+        self.state.borrow_mut().stop_turn = None;
+        if *stop.borrow() {
+            self.set_status(lead_id, LeadStatus::Done);
+            self.keep_session(plan.provider, session_id.clone());
+            self.append(lead_id, "[Stopped.]");
+            self.record(
+                lead_id,
+                plan.provider,
+                started_at,
+                started,
+                cost,
+                tokens,
+                utilization,
+                session_id,
+                RunOutcome::Ok,
+            );
+            return;
+        }
         let stderr_limit = limit_resets.is_none()
             && result.is_none()
             && exit.code != Some(0)
@@ -1157,7 +1413,8 @@ impl Lead {
         };
         {
             let state = self.state.borrow();
-            if state.skip_follow.contains(&lead_message_id)
+            if state.submitting.as_deref() == Some(lead_message_id.as_str())
+                || state.skip_follow.contains(&lead_message_id)
                 || state.follow_scheduled.contains(&lead_message_id)
             {
                 return;
@@ -1249,7 +1506,7 @@ impl Lead {
         }
         let saved = self.save_context();
         self.state.borrow_mut().busy = true;
-        let lead = LeadMessage {
+        let mut lead = LeadMessage {
             id: fresh_id(),
             role: LeadRole::Lead,
             text: String::new(),
@@ -1261,14 +1518,29 @@ impl Lead {
             extra: Default::default(),
         };
         let lead_id = lead.id.clone();
-        let prompt = build_report(&jobs);
-        if self.load_chat(chat_id, false).is_err() {
+        let prompt = build_report(&jobs, self.availability.run_mode.get() == LeadMode::Legit);
+        if self.load_chat(chat_id, false).is_err()
+            || self
+                .message(source_id)
+                .and_then(|m| m.proposal)
+                .is_some_and(|p| p.status == ProposalStatus::Stopped)
+        {
             self.state.borrow_mut().busy = false;
             self.restore_context(saved);
             return;
         }
         {
             let mut state = self.state.borrow_mut();
+            // A follow-up continues its source request's budget, even when another
+            // user message or another chat intervened.
+            if let Some(rounds) = state
+                .history
+                .iter()
+                .find(|m| m.id == source_id)
+                .and_then(|m| m.extra.get(AUTO_ROUNDS))
+            {
+                lead.extra.insert(AUTO_ROUNDS.into(), rounds.clone());
+            }
             state.history.push(lead);
             state.turn_id = Some(lead_id.clone());
             state.turn_chat.insert(lead_id.clone(), chat_id.to_string());
@@ -1277,9 +1549,11 @@ impl Lead {
         self.turn(&lead_id, &prompt).await;
         self.state.borrow_mut().busy = false;
         self.state.borrow_mut().turn_id = None;
-        if saved.chat_id.as_deref() == Some(chat_id) {
-            let _ = self.load_chat(chat_id, false);
-        } else {
+        if saved
+            .chat_id
+            .as_ref()
+            .is_none_or(|id| self.load_chat(id, false).is_err())
+        {
             self.restore_context(saved);
         }
         self.spawn_drain();
@@ -1324,6 +1598,22 @@ impl Lead {
             chat_created_at: state.chat_created_at,
             direct: state.direct,
         }
+    }
+
+    /// Perform a synchronous operation on another chat without moving the visible selection.
+    fn with_chat<T>(
+        &self,
+        id: &str,
+        f: impl FnOnce() -> Result<T, LeadError>,
+    ) -> Result<T, LeadError> {
+        if self.state.borrow().chat_id.as_deref() == Some(id) {
+            return f();
+        }
+        let saved = self.save_context();
+        self.load_chat(id, false)?;
+        let result = f();
+        self.restore_context(saved);
+        result
     }
 
     fn restore_context(&self, ctx: ChatContext) {
@@ -1474,10 +1764,13 @@ fn chat_title(text: &str) -> String {
     trimmed.chars().take(60).collect()
 }
 
-fn build_report(jobs: &[JobRecord]) -> String {
+fn build_report(jobs: &[JobRecord], legit: bool) -> String {
     let mut lines = vec![
-        "Worker jobs from an earlier turn have finished. Report to the user in a few lines."
-            .to_string(),
+        if legit {
+            "Worker jobs from an earlier turn have finished. LEG IT! is still on: this is not the moment to report unless the work is done."
+        } else {
+            "Worker jobs from an earlier turn have finished. Report to the user in a few lines."
+        }.to_string(),
         String::new(),
     ];
     for job in jobs {
@@ -1508,7 +1801,11 @@ fn build_report(jobs: &[JobRecord]) -> String {
         }
         lines.push(String::new());
     }
-    lines.push("Summarize for the user; keep it short.".to_string());
+    lines.push(if legit {
+        "If the check passed and nothing is left, give your one final report. Otherwise fix it yourself or propose the next plan now, and reply with exactly \"Working.\""
+    } else {
+        "Summarize for the user; keep it short."
+    }.to_string());
     lines.join("\n")
 }
 

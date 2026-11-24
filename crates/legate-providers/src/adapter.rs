@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use futures_core::Stream;
-use legate_core::{AgentEvent, ProviderId, RunOptions};
+use legate_core::{AgentEvent, LeadMode, ProviderId, RunOptions};
 use tokio::sync::{mpsc::UnboundedReceiver, watch};
 
 /// Executable to spawn. Extra args are placed before the per-call args.
@@ -57,6 +57,7 @@ pub struct InteractiveOptions {
     pub session_id: Option<String>,
     pub resume: Option<String>,
     pub prompt: Option<String>,
+    pub mode: LeadMode,
 }
 
 /// Command line for an interactive session. `env` is set only when the CLI needs a filtered environment.

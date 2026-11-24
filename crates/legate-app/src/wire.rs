@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use legate_bridge::{BackendError, BridgeBackend, NewJob, WorkerSnapshot};
-use legate_core::{AgentEvent, JobAccess, JobRecord, ProviderId, RunOptions};
+use legate_core::{
+    AgentEvent, JobAccess, JobRecord, LeadMode, ProposalStatus, ProviderId, RunOptions,
+};
 use legate_git::{WorktreeLoc, Worktrees};
 use legate_lead::{
     ApplyResult, CreatedTree, GoalExtra, JobRequest, JobSink, LeadError, PlannedJob,
@@ -423,7 +425,12 @@ use std::future::Future;
 impl BridgeBackend for AppBackend {
     async fn max_access(&self) -> JobAccess {
         self.ask(move |world| {
-            let access = world.settings.borrow().lead_access();
+            let settings = world.settings.borrow();
+            let access = if settings.prefs().lead_mode == LeadMode::Legit {
+                JobAccess::Full
+            } else {
+                settings.lead_access()
+            };
             Box::pin(async move { Ok(access) })
         })
         .await
@@ -525,7 +532,7 @@ impl BridgeBackend for AppBackend {
         &self,
         turn: String,
         proposal: legate_core::LeadProposal,
-    ) -> Result<(), BackendError> {
+    ) -> Result<ProposalStatus, BackendError> {
         let project = self.project.clone();
         self.ask(move |world| {
             let lead = world.lead_sessions.borrow().get(&project).cloned();

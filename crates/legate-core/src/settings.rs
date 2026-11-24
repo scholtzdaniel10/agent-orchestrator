@@ -9,7 +9,8 @@ use serde_json::{Map, Value};
 
 use crate::types::{
     CursorModels, DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL, JobAccess,
-    LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, PROVIDERS, Prefs, ProviderId, UsageShows, plan_of,
+    LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, LeadMode, PROVIDERS, Prefs, ProviderId, UsageShows,
+    plan_of,
 };
 use crate::util::json_i64;
 
@@ -21,6 +22,7 @@ const PREF_KEYS: &[&str] = &[
     "cloneDir",
     "uiScale",
     "usageShows",
+    "leadMode",
     "cursorModels",
     "usageCheck",
     "offPlans",
@@ -230,6 +232,11 @@ impl Settings {
                 UsageShows::Used
             } else {
                 UsageShows::Left
+            },
+            lead_mode: match get("leadMode").and_then(Value::as_str) {
+                Some("auto") => LeadMode::Auto,
+                Some("legit") => LeadMode::Legit,
+                _ => LeadMode::Manual,
             },
             cursor_models: if get("cursorModels").and_then(Value::as_str) == Some("all") {
                 CursorModels::All
@@ -858,6 +865,7 @@ mod tests {
                 clone_dir: None,
                 ui_scale: 90,
                 usage_shows: UsageShows::Left,
+                lead_mode: LeadMode::Manual,
                 cursor_models: CursorModels::Own,
                 usage_check: true,
                 off_plans: Vec::new(),
@@ -871,7 +879,7 @@ mod tests {
             serde_json::to_string(&defaults).unwrap(),
             concat!(
                 r#"{"maxParallel":null,"terminalFontSize":13,"notify":true,"cloneDir":null,"#,
-                r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true,"#,
+                r#""uiScale":90,"usageShows":"left","leadMode":"manual","cursorModels":"own","usageCheck":true,"#,
                 r#""offPlans":[],"localUrl":"http://127.0.0.1:11434","localModel":"coder-agent","#,
                 r#""localSmallModel":null,"localNumCtx":65536}"#
             )
@@ -973,12 +981,45 @@ mod tests {
     }
 
     #[test]
+    fn lead_mode_round_trips_and_defaults_to_manual() {
+        let temp = Temp::new();
+        let path = temp.file();
+        let mut settings = Settings::open(&path);
+        assert_eq!(settings.prefs().lead_mode, LeadMode::Manual);
+
+        for (name, mode) in [
+            ("auto", LeadMode::Auto),
+            ("legit", LeadMode::Legit),
+            ("manual", LeadMode::Manual),
+        ] {
+            let prefs = settings
+                .set_prefs(&serde_json::json!({"leadMode": name}))
+                .unwrap();
+            assert_eq!(prefs.lead_mode, mode);
+            assert_eq!(Settings::open(&path).prefs().lead_mode, mode);
+            assert_eq!(serde_json::to_value(&prefs).unwrap()["leadMode"], name);
+        }
+
+        let prefs = settings
+            .set_prefs(&serde_json::json!({"leadMode": "unknown"}))
+            .unwrap();
+        assert_eq!(prefs.lead_mode, LeadMode::Manual);
+        let mut wire = serde_json::to_value(&prefs).unwrap();
+        wire["leadMode"] = serde_json::json!("unknown");
+        assert_eq!(
+            serde_json::from_value::<Prefs>(wire).unwrap().lead_mode,
+            LeadMode::Manual
+        );
+    }
+
+    #[test]
     fn local_model_prefs_default_clamp_and_fall_back() {
         let old = concat!(
             r#"{"maxParallel":null,"terminalFontSize":13,"notify":true,"cloneDir":null,"#,
             r#""uiScale":90,"usageShows":"left","cursorModels":"own","usageCheck":true}"#
         );
         let parsed: Prefs = serde_json::from_str(old).unwrap();
+        assert_eq!(parsed.lead_mode, LeadMode::Manual);
         assert_eq!(parsed.local_url, DEFAULT_LOCAL_URL);
         assert_eq!(parsed.local_model, DEFAULT_LOCAL_MODEL);
         assert_eq!(parsed.local_small_model, None);

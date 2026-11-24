@@ -14,8 +14,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use legate_core::{
     AgentEvent, BridgeInfo, JobAccess, JobRecord, JobStatus, JobType, LeadMessage, LeadMessageKind,
-    LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId, RunOptions,
-    UsageWindow, load_rules,
+    LeadMode, LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId,
+    RunOptions, UsageWindow, load_rules,
 };
 use legate_providers::ProcessExit;
 use legate_router::{
@@ -611,6 +611,7 @@ where
         rules: rules.clone(),
         cwd: CwdSource::Fixed("/project".to_string()),
         clock: Some(Rc::new(FrozenClock::new(1_700_000_000_000))),
+        memory_status: None,
         model_for: None,
         workspaces: None,
         on_changes: None,
@@ -702,6 +703,234 @@ fn job(title: &str, prompt: &str) -> ProposedJob {
         worker: None,
         prompt: prompt.to_string(),
     }
+}
+
+fn plan(jobs: Vec<ProposedJob>) -> LeadProposal {
+    LeadProposal {
+        summary: "A plan".into(),
+        status: ProposalStatus::Waiting,
+        jobs,
+        job_ids: None,
+    }
+}
+
+#[test]
+fn auto_starts_five_plans_per_request_and_legit_starts_the_waiting_sixth() {
+    drive(async move {
+        let mut scripts = vec![done("lead", "First plan")];
+        for _ in 0..6 {
+            scripts.push(done("worker", "Checked"));
+            scripts.push(done("lead", "Working."));
+        }
+        scripts.push(done("lead", "New request"));
+        scripts.push(done("worker", "Checked"));
+        scripts.push(done("lead", "Done"));
+        let cursor = Lane::new(ProviderId::Cursor, scripts);
+        let lane = cursor.clone();
+        let claude = Lane::new(ProviderId::Claude, vec![]);
+        claude.set_signed_in(false);
+        with_orch(&cursor, &claude, |lead, orch, _store| async move {
+            lead.set_mode(LeadMode::Auto);
+            let proposal = plan(vec![job("Check", "Check the files")]);
+            let mut turn = lead.send("check this").await.unwrap();
+            for count in 1..=5 {
+                assert_eq!(
+                    lead.attach_proposal(&turn.id, proposal.clone()).unwrap(),
+                    ProposalStatus::Running
+                );
+                assert_eq!(orch.list().len(), count);
+                contains_err(
+                    lead.attach_proposal(&turn.id, proposal.clone())
+                        .unwrap_err(),
+                    "already running",
+                );
+                assert_eq!(orch.list().len(), count);
+                settle(&orch).await;
+                quiet(&lead).await;
+                turn = lead.messages().pop().unwrap();
+                assert_eq!(turn.kind, Some(LeadMessageKind::Report));
+            }
+            assert_eq!(
+                lead.attach_proposal(&turn.id, proposal.clone()).unwrap(),
+                ProposalStatus::Waiting
+            );
+            assert_eq!(orch.list().len(), 5);
+            assert!(lane.calls()[0].prompt.contains("Auto is on:"));
+            lead.set_mode(LeadMode::Legit);
+            assert_eq!(orch.list().len(), 6);
+            settle(&orch).await;
+            quiet(&lead).await;
+            let calls = lane.calls();
+            let report = calls.last().unwrap();
+            assert_eq!(report.opts.access, Some(JobAccess::Full));
+            assert!(report.prompt.contains("LEG IT! is on"));
+            assert!(
+                report.prompt.contains(
+                    "If the check passed and nothing is left, give your one final report."
+                )
+            );
+            assert!(
+                report
+                    .prompt
+                    .contains("Otherwise fix it yourself or propose the next plan now")
+            );
+            assert!(!report.prompt.contains("Summarize for the user"));
+
+            lead.set_mode(LeadMode::Auto);
+            let next = lead.send("a fresh request").await.unwrap();
+            assert_eq!(
+                lead.attach_proposal(&next.id, proposal).unwrap(),
+                ProposalStatus::Running
+            );
+            assert_eq!(orch.list().len(), 7);
+            settle(&orch).await;
+            quiet(&lead).await;
+        })
+        .await;
+    });
+}
+
+#[test]
+fn legit_raises_editing_jobs_and_preserves_read_only_jobs() {
+    drive(async move {
+        let cursor = Lane::new(
+            ProviderId::Cursor,
+            vec![done("s", "Working."), done("w", "ok"), done("s", "done")],
+        );
+        let claude = Lane::new(ProviderId::Claude, vec![]);
+        claude.set_signed_in(false);
+        with_orch(&cursor, &claude, |lead, orch, _store| async move {
+            lead.set_mode(LeadMode::Legit);
+            let turn = lead.send("review and edit").await.unwrap();
+            let mut edit = job("Edit", "Make a change");
+            edit.access = JobAccess::Edit;
+            let proposed = plan(vec![job("Read", "Read the file"), edit]);
+            assert_eq!(
+                lead.attach_proposal(&turn.id, proposed).unwrap(),
+                ProposalStatus::Running
+            );
+            let running = lead.messages().pop().unwrap().proposal.unwrap();
+            assert_eq!(running.jobs[0].access, JobAccess::Read);
+            assert_eq!(running.jobs[1].access, JobAccess::Full);
+            let ids = running.job_ids.unwrap();
+            assert_ne!(orch.get(&ids[0]).unwrap().edit, Some(true));
+            assert_eq!(orch.get(&ids[1]).unwrap().access, Some(JobAccess::Full));
+            settle(&orch).await;
+            quiet(&lead).await;
+        })
+        .await;
+    });
+}
+
+#[test]
+fn stop_kills_the_turn_cancels_its_jobs_and_returns_the_last_message() {
+    drive(async move {
+        let gate = Flag::new();
+        let cursor = Lane::new(
+            ProviderId::Cursor,
+            (0..5).map(|_| gated(&gate, vec![])).collect(),
+        );
+        let lane = cursor.clone();
+        let claude = Lane::new(ProviderId::Claude, vec![]);
+        claude.set_signed_in(false);
+        with_orch(&cursor, &claude, |lead, orch, store| async move {
+            lead.set_mode(LeadMode::Auto);
+            let pending = spawn_send(&lead, "edit me again");
+            parked(&lead).await;
+            let turn = lead.current_turn().unwrap();
+            let chat = lead.view_chat().unwrap();
+            let proposal = plan((0..4).map(|_| job("Read", "Read one file")).collect());
+            lead.attach_proposal(&turn, proposal).unwrap();
+            tokio::task::yield_now().await;
+            let jobs = orch.list();
+            assert!(jobs.iter().any(|j| j.status == JobStatus::Queued));
+            assert!(jobs.iter().any(|j| j.status == JobStatus::Running));
+            let draft = tokio::time::timeout(Duration::from_secs(5), lead.stop(Some(&chat)))
+                .await
+                .expect("stop timed out")
+                .unwrap();
+            assert_eq!(draft.as_deref(), Some("edit me again"));
+            let ended = pending.await.unwrap().unwrap();
+            assert_eq!(ended.status, LeadStatus::Done);
+            assert_eq!(ended.text, "[Stopped.]");
+            settle(&orch).await;
+            quiet(&lead).await;
+            assert!(lane.kills() > 0);
+            assert!(orch.list().iter().all(|job| {
+                job.status == JobStatus::Failed && job.error.as_deref() == Some("stopped")
+            }));
+            assert_eq!(ended.proposal.unwrap().status, ProposalStatus::Stopped);
+            let saved = store.messages(&chat).unwrap();
+            assert_eq!(saved.len(), 2);
+            let saved_plan = saved[1].proposal.as_ref().unwrap();
+            assert_eq!(saved_plan.status, ProposalStatus::Stopped);
+        })
+        .await;
+    });
+}
+
+#[test]
+fn stop_targets_the_viewed_chat_while_another_chat_reports() {
+    drive(async move {
+        let worker = Flag::new();
+        let report = Flag::new();
+        let cursor = Lane::new(
+            ProviderId::Cursor,
+            vec![
+                done("a", "Plan ready"),
+                gated(&worker, vec![result(true, "Checked", Some("w"), 0.0, 0)]),
+                done("b", "Plan ready"),
+                gated(
+                    &report,
+                    vec![result(true, "Report for A", Some("a"), 0.0, 0)],
+                ),
+            ],
+        );
+        let claude = Lane::new(ProviderId::Claude, vec![]);
+        claude.set_signed_in(false);
+        with_orch(&cursor, &claude, |lead, orch, store| async move {
+            let a = lead.send("Work in A").await.unwrap();
+            let chat_a = lead.view_chat().unwrap();
+            let proposal = plan(vec![job("Read", "Read a file")]);
+            lead.attach_proposal(&a.id, proposal.clone()).unwrap();
+            lead.run_proposal(&a.id, None).unwrap();
+            lead.reset(None).unwrap();
+            let b = lead.send("Work in B").await.unwrap();
+            lead.attach_proposal(&b.id, proposal).unwrap();
+            let chat_b = lead.view_chat().unwrap();
+            worker.trip();
+            settle(&orch).await;
+            parked(&lead).await;
+            assert_eq!(
+                lead.chats()
+                    .unwrap()
+                    .into_iter()
+                    .find(|c| c.active)
+                    .unwrap()
+                    .id,
+                chat_b
+            );
+            assert_eq!(lead.stop(None).await.unwrap().as_deref(), Some("Work in B"));
+            assert!(lead.is_busy());
+            report.trip();
+            quiet(&lead).await;
+            assert_eq!(
+                store.messages(&chat_a).unwrap().last().unwrap().text,
+                "Report for A"
+            );
+            assert_eq!(
+                lead.messages()
+                    .last()
+                    .unwrap()
+                    .proposal
+                    .as_ref()
+                    .unwrap()
+                    .status,
+                ProposalStatus::Stopped
+            );
+        })
+        .await;
+    });
 }
 
 #[test]

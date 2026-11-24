@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use legate_core::LeadMode;
 use legate_providers::{
     AgentEvent, BridgeInfo, ClaudeAdapter, InteractiveCommand, InteractiveOptions, JobAccess,
     LimitError, ProviderAdapter, RunOptions, StepPhase, StepTool,
@@ -553,7 +554,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
             &adapter,
             &bridged,
             &RunOptions {
-                access: Some(JobAccess::Full),
+                access: Some(JobAccess::Edit),
                 bridge: Some(bridge),
                 ..RunOptions::default()
             }
@@ -591,6 +592,53 @@ async fn list_models_offers_each_family_by_short_name_and_exact_version() {
         ids.len(),
         ids.iter().collect::<std::collections::BTreeSet<_>>().len()
     );
+}
+
+#[test]
+fn interactive_applies_the_lead_mode() {
+    let adapter = ClaudeAdapter::new(Some(legate_providers::Bin::new("claude")));
+    let opts = |mode| InteractiveOptions {
+        mode,
+        ..InteractiveOptions::default()
+    };
+    assert_eq!(
+        no_note(adapter.interactive(&opts(LeadMode::Auto))).args,
+        ["--permission-mode", "auto"]
+    );
+    assert_eq!(
+        no_note(adapter.interactive(&opts(LeadMode::Legit))).args,
+        [
+            "--permission-mode",
+            "bypassPermissions",
+            "--settings",
+            r#"{"skipDangerousModePermissionPrompt":true}"#,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn legit_lead_runs_with_every_tool_and_skips_the_bypass_prompt() {
+    let root = support::Temp::new("ao-claude-legit");
+    let args = args_no_note(
+        &adapter(&["argv"]),
+        &root.join("lead"),
+        &RunOptions {
+            bridge: Some(bridge(&["propose_jobs"])),
+            access: Some(JobAccess::Full),
+            ..RunOptions::default()
+        },
+    )
+    .await;
+    assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
+    assert!(args.iter().all(|arg| arg != "--allowedTools"));
+    assert!(args.windows(4).any(|args| {
+        args == [
+            "--permission-mode",
+            "bypassPermissions",
+            "--settings",
+            r#"{"skipDangerousModePermissionPrompt":true}"#,
+        ]
+    }));
 }
 
 #[test]

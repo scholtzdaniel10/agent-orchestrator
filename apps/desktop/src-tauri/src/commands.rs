@@ -832,6 +832,18 @@ pub async fn send_lead(
 }
 
 #[tauri::command]
+pub async fn stop_lead(
+    shell: State<'_, Shell>,
+    chat_id: Option<String>,
+) -> Result<Option<String>, String> {
+    shell
+        .backend()?
+        .stop_lead(chat_id)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn run_lead_proposal(
     shell: State<'_, Shell>,
     message_id: String,

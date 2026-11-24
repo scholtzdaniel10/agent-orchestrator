@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use legate_app::{AppError, AppHandle, AppOptions, PoppedOutRegistry, Prefs, app_data_dir};
-use legate_core::{CursorModels, UsageShows};
+use legate_core::{CursorModels, LeadMode, UsageShows};
 
 #[derive(Clone)]
 pub struct Shell {
@@ -141,6 +141,7 @@ fn default_prefs() -> Prefs {
         clone_dir: None,
         ui_scale: 100,
         usage_shows: UsageShows::Left,
+        lead_mode: LeadMode::Manual,
         cursor_models: CursorModels::Own,
         usage_check: true,
         off_plans: Vec::new(),
