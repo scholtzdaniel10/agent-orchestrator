@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-rc.5 - Rust Windows preview
+
+- Each plan in Usage has an on/off switch. Legate never checks or routes to a plan that's off, and turning one back on wakes it. A resting plan has a **Wake now** button.
+- A job that names a plan that is missing, signed out, off or resting goes to the next available plan instead of failing, and says why. When a CLI disappears mid-session, its jobs move to the next plan.
+- A Fable credit limit no longer rests the whole Claude plan.
+- The Layout menu has four presets (Classic, Side, Bottom, Focus). Drag a rail icon to an edge to dock a panel there, or use a panel's Move menu, which can also pop it out into its own window.
+- Settings → Updates shows each CLI's installed and latest version, and can run their own updaters.
+- Design fixes: readable usage window names ("5-hour", "Weekly"), no text under 11 px, one 56 px header, and better contrast in the Paper theme.
+
 ## 0.2.0-rc.4 - Rust Windows preview
 
 - Edit files in the Files panel with a built-in editor: syntax colours, search (Ctrl+F), save (Ctrl+S) and an unsaved-changes dot. Saving refuses to overwrite a file that changed on disk since you opened it, and offers Reload or Overwrite. Line endings and encoding are kept as they were.
