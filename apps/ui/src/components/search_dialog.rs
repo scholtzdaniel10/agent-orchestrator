@@ -136,7 +136,7 @@ pub fn SearchDialog(
                             span { class: "history-search-kind", if hit.kind == legate_core::SearchKind::Chat { "Chat" } else { "Job" } }
                             span { class: "history-search-title", "{hit.title}" }
                             span { class: "history-search-snippet",
-                                for part in hit.snippet {
+                                for part in hit.snippet.iter() {
                                     if part.marked {
                                         mark { "{part.text}" }
                                     } else {
