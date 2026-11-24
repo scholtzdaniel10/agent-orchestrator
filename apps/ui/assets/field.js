@@ -103,8 +103,8 @@
     }
     const fade = (x, y) => {
       if (!clear) return 1;
-      const dx = Math.max(clear.left - 24 - x, 0, x - clear.right - 24), dy = Math.max(clear.top - 24 - y, 0, y - clear.bottom - 24);
-      return Math.min(1, Math.hypot(dx, dy) / 90);
+      const dx = Math.max(clear.left - 16 - x, 0, x - clear.right - 16), dy = Math.max(clear.top - 16 - y, 0, y - clear.bottom - 16);
+      return Math.min(1, Math.hypot(dx, dy) / 60);
     };
 
     const agents = parseAgents(cv.dataset.agents);
@@ -182,7 +182,9 @@
     for (const hl of hills) {
       const tone = hl.a.state === 'error' ? C.bad : hl.a.state === 'resting' ? C.muted : hl.color;
       g.fillStyle = rgba(tone, 0.75 * fade(hl.px, hl.py));
-      g.fillText(`+ ${hl.a.id} · ${LABELS[hl.a.state]}`, hl.px - 4, hl.py + 4);
+      const text = `+ ${hl.a.id} · ${LABELS[hl.a.state]}`;
+      const x = Math.max(6, Math.min(hl.px - 4, W - g.measureText(text).width - 6));
+      g.fillText(text, x, hl.py + 4);
     }
   }
 
