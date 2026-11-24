@@ -3,6 +3,7 @@
 pub mod agent_tabs;
 pub mod commit_graph;
 pub mod diff_lines;
+pub mod field_agents;
 pub mod file_tree;
 pub mod flow_events;
 pub mod history_format;

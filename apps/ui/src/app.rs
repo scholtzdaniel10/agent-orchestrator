@@ -35,6 +35,7 @@ use crate::xterm;
 const MAIN_CSS: manganis::Asset = manganis::asset!("/assets/main.css");
 const XTERM_CSS: manganis::Asset = manganis::asset!("/assets/vendor/xterm.css");
 const XTERM_JS: manganis::Asset = manganis::asset!("/assets/vendor/legate-xterm.js");
+const FIELD_JS: manganis::Asset = manganis::asset!("/assets/field.js");
 
 #[component]
 pub fn App() -> Element {
@@ -2000,6 +2001,15 @@ fn mount_assets() {
         let _ = script.set_attribute("id", "legate-xterm-script");
         let _ = script.set_attribute("type", "module");
         let _ = script.set_attribute("src", &XTERM_JS.to_string());
+        if let Some(root) = document.document_element() {
+            let _ = root.append_child(&script);
+        }
+    }
+    if document.get_element_by_id("legate-field-script").is_none()
+        && let Ok(script) = document.create_element("script")
+    {
+        let _ = script.set_attribute("id", "legate-field-script");
+        let _ = script.set_attribute("src", &FIELD_JS.to_string());
         if let Some(root) = document.document_element() {
             let _ = root.append_child(&script);
         }

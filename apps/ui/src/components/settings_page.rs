@@ -11,6 +11,7 @@ use crate::api;
 use crate::components::bot_avatar::{FieldSelect, SelectOption};
 use crate::components::star::Star;
 use crate::components::updates_section::UpdatesSection;
+use crate::logic::field_agents::BACKGROUND_KEY;
 use crate::logic::theme::{THEMES, ThemeId};
 use crate::state::use_store;
 
@@ -238,6 +239,18 @@ pub fn SettingsPage(
                                                 on_theme.call(next);
                                             }
                                         }),
+                                    }
+                                }
+                            }
+                            if id == "general" || needle_hits(&needle, "Background", "ascii contour map animation") {
+                                Row { label: "Background".to_string(), help: "Behind the empty workspace. Moves with your agents.".to_string(),
+                                    label { class: "settings-check",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: background_on(),
+                                            onchange: move |event| set_background(event.checked()),
+                                        }
+                                        "Contour map"
                                     }
                                 }
                             }
@@ -590,5 +603,21 @@ fn given_to(value: legate_core::GivenTo) -> &'static str {
         legate_core::GivenTo::EveryAgent => "every agent",
         legate_core::GivenTo::Workers => "workers",
         legate_core::GivenTo::Lead => "lead",
+    }
+}
+
+fn background_on() -> bool {
+    web_sys::window()
+        .and_then(|window| window.local_storage().ok().flatten())
+        .and_then(|storage| storage.get_item(BACKGROUND_KEY).ok().flatten())
+        .as_deref()
+        != Some("off")
+}
+
+fn set_background(on: bool) {
+    if let Some(storage) =
+        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+    {
+        let _ = storage.set_item(BACKGROUND_KEY, if on { "on" } else { "off" });
     }
 }

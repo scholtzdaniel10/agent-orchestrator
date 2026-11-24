@@ -1,7 +1,7 @@
 //! Centre of the window: terminal tabs, panes, a live agent, or a review.
 
 use dioxus::prelude::*;
-use legate_core::{ChangeSet, JobRecord, JobStatus, ProviderId, TerminalInfo};
+use legate_core::{ChangeSet, JobRecord, JobStatus, LeadStatus, ProviderId, TerminalInfo};
 
 use crate::api;
 use crate::app::ResizeHandle;
@@ -10,6 +10,7 @@ use crate::components::review_pane::ReviewPane;
 use crate::components::terminal_pane::{PanePlacement, TerminalPane};
 use crate::components::terminal_tabs::{AgentTab, AgentTabs, ReviewTab, TerminalTabs};
 use crate::logic::agent_tabs::{agent_status_label, agent_tab_label};
+use crate::logic::field_agents::field_agents;
 use crate::logic::layout::{
     self, LayoutState, PaneLayoutId, PaneSizes, assign_tab_to_pane, drop_missing_terminals,
     empty_pane_for_terminal, fill_panes, pane_count, place_new_terminal, place_terminal_in_pane,
@@ -19,6 +20,7 @@ use crate::logic::terminal_bus::TerminalBus;
 use crate::logic::worktree_label::{
     NamedChange, terminal_display_title, terminals_in_sidebar_order,
 };
+use crate::state::use_store;
 use crate::xterm;
 
 const AGENTS: [ProviderId; 4] = [
@@ -306,6 +308,7 @@ pub fn Workers(
                 class: if reviewing_on || agent_view.is_some() { "workers-stage is-hidden" } else { "workers-stage" },
                 if visible.is_empty() {
                     div { class: "workspace-empty",
+                        AsciiField {}
                         div { class: "campaign-seal", aria_hidden: "true", "L" }
                         h2 { class: "campaign-title", "Assemble your agents." }
                         p { class: "workspace-empty-copy", "Choose an agent to begin, or open Lead to plan your next task." }
@@ -595,5 +598,20 @@ fn new_worktree_flag() -> Option<String> {
     match storage.get_item("orch.newWorktree").ok()?? {
         value if value == "1" => Some("new".into()),
         _ => None,
+    }
+}
+
+/// Contour-map background drawn by `assets/field.js`; reacts to what each agent is doing.
+#[component]
+fn AsciiField() -> Element {
+    let store = use_store();
+    let lead_busy = store
+        .messages
+        .read()
+        .iter()
+        .any(|message| message.status == LeadStatus::Streaming);
+    let agents = field_agents(&store.jobs.read(), lead_busy);
+    rsx! {
+        canvas { class: "ascii-field", aria_hidden: "true", "data-agents": "{agents}" }
     }
 }
