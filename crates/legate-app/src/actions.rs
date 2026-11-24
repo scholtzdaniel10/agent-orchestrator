@@ -108,6 +108,30 @@ impl World {
         ready(Ok(jobs))
     }
 
+    pub fn search_history(
+        &self,
+        query: String,
+        limit: Option<usize>,
+    ) -> Task<Vec<legate_core::SearchHit>> {
+        ready(
+            self.store
+                .search(
+                    &self.project.borrow(),
+                    &query,
+                    limit.unwrap_or(legate_core::DEFAULT_SEARCH_LIMIT),
+                )
+                .map_err(|err| AppError::message(err.to_string())),
+        )
+    }
+
+    pub fn get_job(&self, id: String) -> Task<Option<JobRecord>> {
+        ready(
+            self.store
+                .get_job(&id)
+                .map_err(|err| AppError::message(err.to_string())),
+        )
+    }
+
     pub fn cancel_job(&self, id: String) -> Task<JobRecord> {
         if id.is_empty() || id.len() > 64 {
             return fail("invalid job id");

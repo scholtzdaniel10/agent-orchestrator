@@ -130,6 +130,19 @@ impl AppHandle {
         self.invoke(|world| world.list_jobs()).await
     }
 
+    pub async fn search_history(
+        &self,
+        query: String,
+        limit: Option<usize>,
+    ) -> Result<Vec<legate_core::SearchHit>, AppError> {
+        self.invoke(move |world| world.search_history(query, limit))
+            .await
+    }
+
+    pub async fn get_job(&self, id: String) -> Result<Option<JobRecord>, AppError> {
+        self.invoke(move |world| world.get_job(id)).await
+    }
+
     pub async fn cancel_job(&self, id: impl Into<String>) -> Result<JobRecord, AppError> {
         let id = id.into();
         self.invoke(move |world| world.cancel_job(id)).await

@@ -318,6 +318,37 @@ async fn jobs_lists_newest_first_and_show_prints_every_step() {
 }
 
 #[tokio::test]
+async fn search_accepts_limit_and_json_and_prints_one_plain_line_per_hit() {
+    let fake = Fake::new();
+    let mut older = job("old", JobStatus::Done);
+    older.output = "draft".into();
+    let mut newer = job("new", JobStatus::Done);
+    newer.title = Some("Review".into());
+    newer.output = "Before\nDRAFT".into();
+    fake.set_jobs(vec![row(1, older.clone()), row(2, newer.clone())]);
+    assert_eq!(go(&["search", "draft", "--limit", "1"], &fake).await, 0);
+    assert_eq!(fake.out(), "job new Review — Before DRAFT\n");
+
+    let json = Fake::new();
+    json.set_jobs(vec![row(1, older), row(2, newer)]);
+    assert_eq!(
+        go(&["search", "draft", "--limit=1", "--json"], &json).await,
+        0
+    );
+    let hits: serde_json::Value = serde_json::from_str(&json.out()).unwrap();
+    assert_eq!(hits.as_array().unwrap().len(), 1);
+    assert_eq!(hits[0]["id"], "new");
+    assert_eq!(
+        hits[0]["snippet"][1],
+        serde_json::json!({"text": "DRAFT", "marked": true})
+    );
+
+    let bad = Fake::new();
+    assert_eq!(go(&["search", "draft", "--limit", "0"], &bad).await, 2);
+    assert!(bad.err().contains("Limit must be a positive whole number."));
+}
+
+#[tokio::test]
 async fn changes_diff_merge_and_discard() {
     let mut listed_change = change("abcd1234");
     listed_change.name = Some("login".to_string());

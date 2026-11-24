@@ -51,6 +51,7 @@ fn allowed(key: &str) -> Option<&'static [&'static str]> {
         | "plans" => &[],
         "job" => &["type", "worker", "access", "json", "quiet", "verbose"],
         "jobs" => &["limit"],
+        "search" => &["limit", "json"],
         "goal" => &["check", "rounds", "yes"],
         "discard" => &["yes"],
         "pr" => &["body"],
@@ -322,6 +323,13 @@ enum Command {
     Jobs {
         #[arg(long)]
         limit: Option<String>,
+    },
+    Search {
+        text: Option<String>,
+        #[arg(long)]
+        limit: Option<String>,
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        json: bool,
     },
     Show {
         id: Option<String>,

@@ -3,6 +3,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
+use legate_core::DEFAULT_SEARCH_LIMIT;
 use legate_core::{ChangeSet, JobAccess, JobRecord, JobStatus, JobType, ProviderId};
 use legate_git::{GitError, GuardJob, ListedName, assert_worktree_idle};
 use legate_providers::TESTED_VERSIONS;
@@ -93,6 +94,7 @@ async fn dispatch<D: Drive>(parsed: Parsed, drive: &D) -> Result<i32, CliError> 
         }
         "job" => submit_job(parsed, drive).await,
         "jobs" => list_jobs(parsed, drive),
+        "search" => search(parsed, drive),
         "show" => show_job(parsed, drive),
         "changes" => {
             if unexpected(&parsed.args, "changes", drive) {
@@ -230,6 +232,50 @@ fn list_jobs<D: Drive>(parsed: Parsed, drive: &D) -> Result<i32, CliError> {
     }
     let cells: Vec<Vec<String>> = rows.iter().map(|row| job_row(now, row)).collect();
     drive.stdout(&format!("{}\n", table(&cells)));
+    Ok(0)
+}
+
+fn search<D: Drive>(parsed: Parsed, drive: &D) -> Result<i32, CliError> {
+    let usage = usage_for(Some("search"));
+    let Some(query) = parsed.args.first().filter(|text| !text.trim().is_empty()) else {
+        drive.stderr(&format!("Missing search text.\n{usage}\n"));
+        return Ok(2);
+    };
+    if unexpected(&parsed.args[1..], "search", drive) {
+        return Ok(2);
+    }
+    let limit = if let Some(raw) = parsed.flags.limit.as_deref() {
+        let Some(limit) = parse_positive(raw).and_then(|value| usize::try_from(value).ok()) else {
+            drive.stderr(&format!(
+                "Limit must be a positive whole number.\n{usage}\n"
+            ));
+            return Ok(2);
+        };
+        limit
+    } else {
+        DEFAULT_SEARCH_LIMIT
+    };
+    let hits = drive.search(query, limit)?;
+    if parsed.flags.json {
+        let json =
+            serde_json::to_string(&hits).map_err(|error| CliError::Message(error.to_string()))?;
+        drive.stdout(&format!("{json}\n"));
+    } else {
+        for hit in hits {
+            let title = hit.title.split_whitespace().collect::<Vec<_>>().join(" ");
+            let snippet = hit
+                .snippet
+                .into_iter()
+                .map(|part| part.text)
+                .collect::<String>();
+            let snippet = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+            drive.stdout(&format!(
+                "{} {} {title} — {snippet}\n",
+                hit.kind.as_str(),
+                hit.id
+            ));
+        }
+    }
     Ok(0)
 }
 

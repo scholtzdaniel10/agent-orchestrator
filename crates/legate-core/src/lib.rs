@@ -8,6 +8,7 @@ pub mod ids;
 pub mod job;
 pub mod paths;
 pub mod rules;
+pub mod search;
 pub mod settings;
 pub mod types;
 
@@ -21,6 +22,7 @@ pub use ids::{IdHit, IdItem, resolve_id};
 pub use job::{JobRecord, JobStatus, JobStep, JobStepStatus};
 pub use paths::{EnvVars, Platform, data_dir, legacy_data_dir, resolve_project};
 pub use rules::{DEFAULT_MAX_PARALLEL, DEFAULT_PACE, RulesError, load_rules};
+pub use search::{DEFAULT_SEARCH_LIMIT, SearchHit, SearchKind, SearchQuery, SnippetPart};
 pub use settings::{DEFAULT_UI_SCALE, Settings, SettingsError, UI_SCALES, is_valid_model};
 pub use types::{
     AgentEvent, AppInfo, BridgeInfo, ChangeSet, ChangedFile, CursorModels, DEFAULT_LOCAL_MODEL,

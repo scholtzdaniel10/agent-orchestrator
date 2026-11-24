@@ -54,6 +54,8 @@ fn main() -> anyhow::Result<()> {
         .invoke_handler(tauri::generate_handler![
             commands::submit_job,
             commands::list_jobs,
+            commands::search_history,
+            commands::get_job,
             commands::cancel_job,
             commands::refresh_usage,
             commands::set_cursor_reading,

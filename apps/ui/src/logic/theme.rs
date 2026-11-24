@@ -11,6 +11,7 @@ pub const THEMES: &[(&str, &str)] = &[
     ("graphite", "Graphite"),
     ("dusk", "Dusk"),
     ("orchid", "Orchid"),
+    ("xp", "Windows XP (experimental)"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ pub enum ThemeId {
     Graphite,
     Dusk,
     Orchid,
+    Xp,
 }
 
 impl ThemeId {
@@ -36,6 +38,7 @@ impl ThemeId {
             Self::Graphite => "graphite",
             Self::Dusk => "dusk",
             Self::Orchid => "orchid",
+            Self::Xp => "xp",
         }
     }
 
@@ -49,6 +52,7 @@ impl ThemeId {
             "graphite" => Self::Graphite,
             "dusk" => Self::Dusk,
             "orchid" => Self::Orchid,
+            "xp" => Self::Xp,
             _ => return None,
         })
     }
@@ -191,26 +195,29 @@ mod tests {
     }
 
     #[test]
-    fn orchid_theme_loads_and_applies() {
-        let mut storage = Memory {
-            data: BTreeMap::from([("orch.theme".into(), "orchid".into())]),
-            fail: false,
-        };
-        assert_eq!(load_theme(&storage), ThemeId::Orchid);
-        let mut root = Attrs {
-            data: BTreeMap::new(),
-        };
-        let mut target = Counter(0);
-        apply_theme(ThemeId::Orchid, &mut storage, &mut root, &mut target);
-        assert_eq!(
-            root.data.get("data-theme").map(String::as_str),
-            Some("orchid")
-        );
-        assert_eq!(
-            storage.data.get("orch.theme").map(String::as_str),
-            Some("orchid")
-        );
-        assert_eq!(target.0, 1);
+    fn orchid_and_xp_load_and_apply() {
+        for (stored, theme) in [("orchid", ThemeId::Orchid), ("xp", ThemeId::Xp)] {
+            let mut storage = Memory {
+                data: BTreeMap::from([("orch.theme".into(), stored.into())]),
+                fail: false,
+            };
+            assert_eq!(load_theme(&storage), theme);
+            let mut root = Attrs {
+                data: BTreeMap::new(),
+            };
+            let mut target = Counter(0);
+            apply_theme(theme, &mut storage, &mut root, &mut target);
+            assert_eq!(
+                root.data.get("data-theme").map(String::as_str),
+                Some(stored)
+            );
+            assert_eq!(
+                storage.data.get("orch.theme").map(String::as_str),
+                Some(stored)
+            );
+            assert_eq!(target.0, 1);
+        }
+        assert!(super::THEMES.contains(&("xp", "Windows XP (experimental)")));
     }
 
     #[test]

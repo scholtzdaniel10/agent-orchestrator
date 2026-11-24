@@ -3,7 +3,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use legate_core::{JobRecord, LeadMessage};
+use legate_core::search::sort_hits;
+use legate_core::{JobRecord, LeadMessage, SearchHit, SearchQuery};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
@@ -675,6 +676,73 @@ impl Store {
         Ok(rows.into_iter().flatten().collect())
     }
 
+    /// Look up a stored job independently of the recent jobs list.
+    pub fn get_job(&self, id: &str) -> Result<Option<JobRecord>, StoreError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT data, created_at, owner_id, heartbeat_at, cancel_requested FROM jobs
+                 WHERE id = ?1",
+                params![id],
+                map_job_row,
+            )
+            .optional()?;
+        Ok(row.flatten().map(|row| row.job))
+    }
+
+    pub fn search(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>, StoreError> {
+        let query = SearchQuery::new(query);
+        if query.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let pattern = query.like_word().and_then(like_pattern);
+        // SQLite LIKE only folds ASCII. Keep rows that may contain Unicode-folded or
+        // JSON-escaped matches for the Rust matcher, along with titles that contain NUL.
+        let chats = self.query_all(
+            r"SELECT c.* FROM chats c
+              WHERE c.project = ?1 AND (
+                ?2 IS NULL OR c.title LIKE ?2 ESCAPE '\' OR c.title GLOB '*[^ -~]*'
+                OR instr(c.title, char(0)) > 0 OR EXISTS (
+                  SELECT 1 FROM messages m WHERE m.chat_id = c.id AND (
+                    m.data LIKE ?2 ESCAPE '\' OR m.data GLOB '*[^ -~]*'
+                    OR instr(m.data, '\u') > 0
+                  )
+                )
+              ) ORDER BY c.updated_at DESC, c.id",
+            params![project, pattern],
+            map_chat,
+        )?;
+        let mut hits = Vec::new();
+        for chat in chats {
+            let messages = self.messages(&chat.id)?;
+            hits.extend(query.chat(&chat.id, &chat.title, chat.updated_at, &messages));
+        }
+
+        let jobs = self.query_all(
+            r"SELECT data, created_at, owner_id, heartbeat_at, cancel_requested FROM jobs
+              WHERE project = ?1 AND (
+                ?2 IS NULL OR data LIKE ?2 ESCAPE '\' OR data GLOB '*[^ -~]*'
+                OR instr(data, '\u') > 0
+              ) ORDER BY created_at DESC, id",
+            params![project, pattern],
+            map_job_row,
+        )?;
+        hits.extend(
+            jobs.into_iter()
+                .flatten()
+                .filter_map(|row| query.job(&row.job, row.created_at)),
+        );
+        sort_hits(&mut hits);
+        hits.truncate(limit);
+        Ok(hits)
+    }
+
     fn exec(&self, sql: &str, params: impl rusqlite::Params) -> Result<(), StoreError> {
         self.conn.execute(sql, params)?;
         Ok(())
@@ -693,6 +761,31 @@ impl Store {
         }
         Ok(out)
     }
+}
+
+fn like_pattern(word: &str) -> Option<String> {
+    // SQLite's default LIKE pattern limit is 50,000 bytes.
+    if word.len() > 24_000 {
+        return None;
+    }
+    let mut pattern = String::from("%");
+    for ch in word.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('%');
+    Some(pattern)
+}
+
+#[cfg(test)]
+#[test]
+fn like_pattern_escapes_sqlite_wildcards_and_the_escape_character() {
+    assert_eq!(
+        like_pattern(r"50%_off\notes").as_deref(),
+        Some(r"%50\%\_off\\notes%")
+    );
 }
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRow> {

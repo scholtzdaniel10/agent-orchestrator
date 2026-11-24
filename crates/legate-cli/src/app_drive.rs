@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use legate_core::SearchHit;
 use legate_core::{ChangeSet, JobRecord, PlanStatus, ProjectInfo, ProviderId};
 use legate_git::{ListedName, MergeOutcome, OpenedPr};
 use legate_lead::{Goal, Routine};
@@ -334,6 +335,13 @@ impl Drive for AppDrive {
                 job: row.job,
             })
             .collect()
+    }
+
+    fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, DriveError> {
+        let project = self.project();
+        lock(&self.store)
+            .search(&project, query, limit)
+            .map_err(|error| DriveError::new(error.to_string()))
     }
 
     fn worktree_names(&self) -> Vec<ListedName> {

@@ -54,6 +54,8 @@ pub struct Store {
     pub booted: Signal<bool>,
     pub project_request: Signal<u64>,
     pub project_switching: Signal<bool>,
+    pub sidebar_filter: Signal<String>,
+    pub lead_search_target: Signal<Option<String>>,
 }
 
 pub fn provide_store() -> Store {
@@ -96,6 +98,8 @@ pub fn provide_store() -> Store {
         booted: use_signal(|| false),
         project_request: use_signal(|| 0),
         project_switching: use_signal(|| false),
+        sidebar_filter: use_signal(String::new),
+        lead_search_target: use_signal(|| None),
     };
     use_context_provider(|| store)
 }

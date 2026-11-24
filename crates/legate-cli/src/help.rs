@@ -8,6 +8,7 @@ legate ui
 legate status
 legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|codex|cursor|grok|local] [--access read|edit|full] [--json] [--quiet] [--verbose]
 legate jobs [--limit N]
+legate search \"<text>\" [--limit N] [--json]
 legate show <job-id>
 legate changes
 legate diff <change-id>
@@ -33,6 +34,7 @@ pub fn usage_for(key: Option<&str>) -> &'static str {
             "legate job \"<prompt>\" [--type planning|debugging|review|refactor|boilerplate] [--worker auto|claude|codex|cursor|grok|local] [--access read|edit|full] [--json] [--quiet] [--verbose]"
         }
         Some("jobs") => "legate jobs [--limit N]",
+        Some("search") => "legate search \"<text>\" [--limit N] [--json]",
         Some("show") => "legate show <job-id>",
         Some("changes") => "legate changes",
         Some("diff") => "legate diff <change-id>",

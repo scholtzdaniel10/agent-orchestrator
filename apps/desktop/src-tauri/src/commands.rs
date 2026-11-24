@@ -91,6 +91,27 @@ pub async fn list_jobs(shell: State<'_, Shell>) -> Result<Vec<legate_core::JobRe
 }
 
 #[tauri::command]
+pub async fn search_history(
+    shell: State<'_, Shell>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<legate_core::SearchHit>, String> {
+    shell
+        .backend()?
+        .search_history(query, limit)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn get_job(
+    shell: State<'_, Shell>,
+    id: String,
+) -> Result<Option<legate_core::JobRecord>, String> {
+    shell.backend()?.get_job(id).await.map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn cancel_job(
     shell: State<'_, Shell>,
     id: String,

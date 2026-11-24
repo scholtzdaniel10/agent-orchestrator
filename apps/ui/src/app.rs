@@ -12,6 +12,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::api;
+use crate::components::SearchDialog;
 use crate::components::{
     ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
     MenuEntry, NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, SidebarMenu,
@@ -44,6 +45,7 @@ pub fn App() -> Element {
     let mut applied = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
     let mut task_open = use_signal(|| false);
+    let mut search_open = use_signal(|| false);
     // A rail icon being dragged to a dock, and whether the click that ends a drag is swallowed.
     let mut rail_drag = use_signal(|| None::<RailDrag>);
     let mut rail_dragged = use_signal(|| false);
@@ -78,13 +80,18 @@ pub fn App() -> Element {
         mount_assets();
         xterm::install_assets();
         state::boot(store);
-        install_keys(store, layout, settings_open, task_open);
+        install_keys(store, layout, settings_open, task_open, search_open);
         if query("terminal").is_none() && query("panel").is_none() {
             start_update_check(updates_newer);
         }
     });
 
     let owns_workspace = query("terminal").is_none() && query("panel").is_none();
+    use_effect(move || {
+        if *store.project_switching.read() {
+            search_open.set(false);
+        }
+    });
     use_effect(move || {
         if !owns_workspace || !*store.booted.read() || *store.project_switching.read() {
             return;
@@ -406,7 +413,7 @@ pub fn App() -> Element {
                                 on_github_clone: Callback::new(move |_| refresh_projects(store, layout)),
                                 on_switch: Callback::new(move |(path, worktree): (String, Option<String>)| switch_project(store, layout, path, worktree)),
                                 on_remove: Callback::new(move |path: String| remove_project(store, path)),
-                                on_open_chat: Callback::new(move |id: String| open_chat(store, layout, id)),
+                                on_open_chat: Callback::new(move |id: String| open_chat(store, layout, id, None)),
                                 on_new_chat: Callback::new(move |_| reset_chat(store, layout)),
                                 on_rename_chat: Callback::new(move |(id, title): (String, String)| rename_chat(id, title)),
                                 on_remove_chat: Callback::new(move |id: String| remove_chat(store, id)),
@@ -432,6 +439,7 @@ pub fn App() -> Element {
                                 }),
                                 on_new_task: Callback::new(move |_| task_open.set(true)),
                                 on_open_goals: Callback::new(move |_| open_tab(layout, store, DrawerTab::Goals)),
+                                on_search_history: Callback::new(move |_| search_open.set(true)),
                                 on_open_automations: Callback::new(move |_| {
                                     open_tab(layout, store, DrawerTab::Goals);
                                     spawn(async move {
@@ -588,6 +596,16 @@ pub fn App() -> Element {
                     task_open.set(false);
                     open_tab(layout, store, if kind == "goal" { DrawerTab::Goals } else { DrawerTab::Jobs });
                 }),
+            }
+            if search_open() {
+                SearchDialog {
+                    initial_query: store.sidebar_filter.peek().clone(),
+                    on_close: Callback::new(move |_| search_open.set(false)),
+                    on_open: Callback::new(move |hit: legate_core::SearchHit| {
+                        search_open.set(false);
+                        open_search_hit(store, layout, hit);
+                    }),
+                }
             }
             footer { class: "status-bar",
                 for plan in meter_plans(plans.as_deref().unwrap_or(&[])) {
@@ -1519,6 +1537,7 @@ fn begin_project_switch(mut store: Store, layout: Signal<LayoutState>) -> u64 {
     let generation = (store.project_request)().wrapping_add(1);
     store.project_request.set(generation);
     store.project_switching.set(true);
+    store.lead_search_target.set(None);
     generation
 }
 
@@ -1689,7 +1708,12 @@ fn open_terminal(
     });
 }
 
-fn open_chat(mut store: Store, layout: Signal<LayoutState>, id: String) {
+fn open_chat(
+    mut store: Store,
+    layout: Signal<LayoutState>,
+    id: String,
+    message_id: Option<String>,
+) {
     if *store.project_switching.read() {
         return;
     }
@@ -1709,10 +1733,54 @@ fn open_chat(mut store: Store, layout: Signal<LayoutState>, id: String) {
                 if let Ok(chats) = chats {
                     store.chats.set(chats);
                 }
+                store.lead_search_target.set(message_id);
                 open_tab(layout, store, DrawerTab::Lead);
             }
             Err(error) => store.error.set(Some(error)),
         }
+    });
+}
+
+fn open_search_hit(mut store: Store, layout: Signal<LayoutState>, hit: legate_core::SearchHit) {
+    if *store.project_switching.peek() {
+        return;
+    }
+    if hit.kind == legate_core::SearchKind::Chat {
+        open_chat(store, layout, hit.id, hit.message_id);
+        return;
+    }
+
+    let generation = *store.project_request.peek();
+    spawn(async move {
+        let id = hit.id;
+        if !store.jobs.peek().iter().any(|job| job.id == id) {
+            let job = api::get_job(&id).await;
+            if *store.project_request.peek() != generation {
+                return;
+            }
+            match job {
+                Ok(Some(job)) => {
+                    store.jobs.with_mut(|jobs| {
+                        if !jobs.iter().any(|job| job.id == id) {
+                            jobs.insert(0, job);
+                        }
+                    });
+                }
+                Ok(None) => {
+                    store
+                        .error
+                        .set(Some("This saved job is no longer available.".into()));
+                    return;
+                }
+                Err(error) => {
+                    store.error.set(Some(error));
+                    return;
+                }
+            }
+        }
+        store.selected_job.set(Some(id.clone()));
+        store.show_job.set(Some((id, state::now_ms())));
+        open_tab(layout, store, DrawerTab::Jobs);
     });
 }
 
@@ -1804,9 +1872,10 @@ fn install_keys(
     layout: Signal<LayoutState>,
     mut settings_open: Signal<bool>,
     mut task_open: Signal<bool>,
+    mut search_open: Signal<bool>,
 ) {
     let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-        if in_terminal(&event) {
+        if search_open() || in_terminal(&event) {
             return;
         }
         let key = event.key();
@@ -1867,6 +1936,35 @@ fn install_keys(
     if let Some(window) = web_sys::window() {
         let _ =
             window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+
+        // Capture this shortcut before an editor or terminal can consume it.
+        let search_key = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+            if event.ctrl_key()
+                && event.shift_key()
+                && !event.alt_key()
+                && !event.meta_key()
+                && event.key().eq_ignore_ascii_case("f")
+                && query("terminal").is_none()
+                && query("panel").is_none()
+                && !settings_open()
+                && !task_open()
+                && !*store.setup_open.peek()
+                && !*store.project_switching.peek()
+                && store.project.peek().is_some()
+            {
+                event.prevent_default();
+                event.stop_propagation();
+                search_open.set(true);
+            }
+        }) as Box<dyn FnMut(_)>);
+        let target = window.add_event_listener_with_callback_and_bool(
+            "keydown",
+            search_key.as_ref().unchecked_ref(),
+            true,
+        );
+        if target.is_ok() {
+            search_key.forget();
+        }
     }
     closure.forget();
 }

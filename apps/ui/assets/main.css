@@ -8456,6 +8456,162 @@ input, textarea {
 }
 
 /* Settings → Updates */
+/* Saved chat and job search */
+.history-search {
+  width: min(580px, 100%);
+  max-height: calc(100dvh - 64px);
+}
+
+.history-search-field {
+  flex: none;
+  flex-direction: row;
+  gap: var(--space-8);
+}
+
+.history-search-field input {
+  min-width: 0;
+}
+
+.history-search-results {
+  min-height: 0;
+  overflow: auto;
+  padding: 3px;
+}
+
+.history-search-results[hidden] {
+  display: none;
+}
+
+.history-search-hit {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px var(--space-8);
+  width: 100%;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-search-hit:is(:hover, .is-selected) {
+  border-color: var(--border-strong);
+  background: var(--selected);
+}
+
+.history-search-hit:focus-visible {
+  outline-offset: -2px;
+}
+
+.history-search-kind,
+.history-search-snippet {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-search-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-search-snippet {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+
+.history-search-snippet mark {
+  border-radius: var(--radius-sm);
+  background: #ffde83;
+  color: #251900;
+}
+
+.history-search-flash .lead-msg {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+  background: var(--selected);
+}
+
+/* Windows XP (experimental) */
+:root[data-theme='xp'] {
+  color-scheme: light;
+  --bg: #ece9d8;
+  --text: #201e16;
+  --brand: #154a94;
+  --on-accent: #fff;
+  --ray: #174881;
+  --signal: #174881;
+  --muted: #464331;
+  --faint: #565140;
+  --border: #a49d84;
+  --border-strong: #6c6a59;
+  --tint: #ece9d8;
+  --inset: #f7f4e7;
+  --deep: #e2dec9;
+  --raised: #fcfaf2;
+  --selected: #d3e1fc;
+  --bad: #93201b;
+  --diff-add: #0a572b;
+  --diff-del: #93201b;
+  --bot-claude: #833b14;
+  --bot-cursor: #09553d;
+  --bot-grok: #5b3b90;
+  --font-ui: Tahoma, 'Segoe UI', sans-serif;
+  --font-serif: var(--font-ui);
+  --xp-title-bar: linear-gradient(to bottom, #1147a8 0%, #1b58b6 42%, #07347f 100%);
+  --xp-button: linear-gradient(to bottom, #fff 0%, #f6f3e9 52%, #e2dcc5 100%);
+}
+
+:root[data-theme='xp'] .roman-workspace {
+  --standard: #154a94;
+}
+
+:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) {
+  --text: #fff;
+  --muted: #f0f5ff;
+  --faint: #e3edff;
+  --standard: #fff;
+  --accent: #fff;
+  --signal: #fff;
+  --border: #9dbef8;
+  --selected: #2458a6;
+  background: var(--xp-title-bar);
+  color: var(--text);
+}
+
+:root[data-theme='xp'] .app-name {
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select) {
+  border-color: #687895;
+  border-radius: 5px;
+  background: var(--xp-button);
+  color: #201e16;
+}
+
+:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select):hover:not(:disabled) {
+  border-color: #103f8c;
+  box-shadow: inset 0 0 0 1px #8fb0e8;
+}
+
+:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select):active:not(:disabled) {
+  background: #d3e1fc;
+}
+
+:root[data-theme='xp'] :is(.btn-primary, .sidebar-new-task) {
+  border-color: #154a94;
+  box-shadow: inset 0 0 0 1px #8fb0e8;
+}
+
+/* Settings → Updates */
 .updates { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
 .updates-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .updates-summary { margin: 0; color: var(--text); font-size: 13px; }

@@ -123,6 +123,18 @@ pub async fn submit_job(
 pub async fn list_jobs() -> Result<Vec<JobRecord>, String> {
     call("list_jobs", &json!({})).await
 }
+
+pub async fn search_history(
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<legate_core::SearchHit>, String> {
+    call("search_history", &json!({ "query": query, "limit": limit })).await
+}
+
+pub async fn get_job(id: &str) -> Result<Option<JobRecord>, String> {
+    call("get_job", &json!({ "id": id })).await
+}
+
 pub async fn cancel_job(id: &str) -> Result<JobRecord, String> {
     call("cancel_job", &json!({ "id": id })).await
 }

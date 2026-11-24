@@ -299,7 +299,7 @@ async function choose(selector, label, client = main) {
 }
 
 async function key(key, code = key, modifiers = 0, client = main) {
-  const virtual = { Enter: 13, Escape: 27, End: 35, ArrowRight: 39, '\\': 220, b: 66, n: 78, s: 83 }[key];
+  const virtual = { Enter: 13, Escape: 27, End: 35, ArrowRight: 39, '\\': 220, b: 66, F: 70, n: 78, s: 83 }[key];
   const params = { key, code, modifiers, windowsVirtualKeyCode: virtual };
   await client.call('Input.dispatchKeyEvent', { type: 'keyDown', ...params });
   await client.call('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
@@ -481,6 +481,26 @@ async function settings() {
   await waitFor(find('.settings-page'), 'Settings');
 }
 
+const searchJobWord = 'Proofreading';
+
+async function seedSearchJob() {
+  assert(process.env.LEGATE_DATA, 'Missing click-through data directory');
+  const { DatabaseSync } = await import('node:sqlite');
+  const { path: project } = await main.evaluate("window.__TAURI__.core.invoke('get_project')");
+  const job = {
+    id: 'clickthrough-search-job', type: 'review', status: 'done',
+    title: `${searchJobWord} fixture`, prompt: 'Review the sample document', output: 'Reviewed.',
+  };
+  const db = new DatabaseSync(join(process.env.LEGATE_DATA, 'orchestrator.sqlite'));
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.prepare('INSERT OR IGNORE INTO jobs (id, project, created_at, data) VALUES (?, ?, ?, ?)')
+      .run(job.id, project, 1, JSON.stringify(job));
+  } finally {
+    db.close();
+  }
+}
+
 async function setupCheck(client = main) {
   await waitFor(`ct.all('.setup-row').length >= 5 && ${find('.setup-check button', 'Re-check')}`, 'completed Setup checks', client, 30_000);
   const rows = await client.evaluate(`ct.all('.setup-row').map(row => ({ label: ct.text(row.querySelector('.setup-label')), state: ct.text(row.querySelector('.setup-mark')) }))`);
@@ -548,6 +568,7 @@ async function pass(prefix, compact) {
     await click('.setup-footer button', 'Skip for now');
     await waitFor(`!${find('.setup-screen')} && ${find('.project-group.is-open .project-name', 'clickthrough-fixture')}`, 'fixture workspace');
     assert.equal(await main.evaluate(`ct.text(ct.find('.project-group.is-open .project-branch'))`), 'main');
+    if (!compact) await seedSearchJob();
     return JSON.stringify(await main.evaluate(`({ width: innerWidth, height: innerHeight })`));
   });
 
@@ -571,6 +592,15 @@ async function pass(prefix, compact) {
     await key('n', 'KeyN', 2);
     await waitFor(find('.new-task-overlay'), 'Ctrl+N New task');
     await click('.new-task-actions button', 'Cancel');
+  });
+
+  if (!compact) await step(`${prefix}-search`, async () => {
+    await key('F', 'KeyF', 10);
+    await waitFor(find('.history-search [role="status"]', 'Search saved chats and jobs in this project.'), 'empty history search');
+    await value('#history-search-input', searchJobWord);
+    await waitFor(find('.history-search-hit mark', searchJobWord), 'marked result from the saved job');
+    await key('Escape');
+    await waitFor(`!${find('.history-search-overlay')}`, 'closed history search');
   });
 
   for (const tab of inventory.tabs) await step(`${prefix}-panel-${tab.id}`, () => panel(tab.id));
@@ -746,13 +776,33 @@ async function pass(prefix, compact) {
     await value('[aria-label="Search settings"]', '');
     await click('.settings-head button', 'Close');
   });
-  for (const theme of inventory.themes) await step(`${prefix}-theme-${theme.id}`, async () => {
+  for (const theme of inventory.themes.filter(({ id }) => id !== 'xp')) await step(`${prefix}-theme-${theme.id}`, async () => {
     await settings();
     await choose('button.select[aria-label="Look"]', theme.label);
     await waitFor(`document.documentElement.getAttribute('data-theme') === ${JSON.stringify(theme.id === 'system' ? null : theme.id)}`, 'applied theme');
     await click('.settings-head button', 'Close');
     await waitFor(`!${find('.settings-page')}`, 'themed workspace');
   });
+  if (!compact) {
+    const previous = await main.evaluate("document.documentElement.getAttribute('data-theme')");
+    const look = 'button.select[aria-label="Look"]';
+    const xp = inventory.themes.find(({ id }) => id === 'xp');
+    try {
+      await step(`${prefix}-theme-xp`, async () => {
+        assert(xp, 'Windows XP must appear in the theme list');
+        await settings();
+        await choose(look, xp.label);
+        await waitFor("document.documentElement.getAttribute('data-theme') === 'xp'", 'applied Windows XP theme');
+        await click('.settings-head button', 'Close');
+        await waitFor(`!${find('.settings-page')}`, 'Windows XP workspace');
+      });
+    } finally {
+      await settings();
+      await choose(look, inventory.themes.find(({ id }) => id === (previous ?? 'system')).label);
+      await waitFor(`document.documentElement.getAttribute('data-theme') === ${JSON.stringify(previous)}`, 'restored previous theme');
+      await click('.settings-head button', 'Close');
+    }
+  }
   await step(`${prefix}-settings-setup`, async () => {
     await settings();
     await click('.settings-nav-item', 'Agents');

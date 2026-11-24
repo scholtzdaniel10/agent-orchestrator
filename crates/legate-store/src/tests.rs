@@ -13,6 +13,66 @@ use crate::{
     TerminalRow, WorktreeNameRow,
 };
 
+#[test]
+fn search_matches_literal_punctuation_and_falls_back_for_unicode_and_backslashes() {
+    let store = Store::open(":memory:").unwrap();
+    for (id, output) in [
+        ("literal", "Apply 50%_off in C:\\notes"),
+        ("lookalike", "Apply 50XXoff in C:notes"),
+        ("accented", "CAFÉ"),
+        ("folded", "Kelvin"),
+    ] {
+        let mut job = job(id);
+        job.output = output.into();
+        store.save_job("project", 1, &job).unwrap();
+    }
+    for (query, expected) in [
+        ("50%_off", "literal"),
+        (r"C:\notes", "literal"),
+        ("café", "accented"),
+        ("kelvin", "folded"),
+    ] {
+        let hits = store.search("project", query, 10).unwrap();
+        assert_eq!(
+            hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+            [expected]
+        );
+    }
+}
+
+#[test]
+fn search_limits_matching_project_rows_after_ordering_chats_and_jobs() {
+    let store = Store::open(":memory:").unwrap();
+    for (id, at, prompt) in [
+        ("old", 1, "draft"),
+        ("new", 4, "draft"),
+        ("partial", 5, "draft"),
+    ] {
+        let mut job = job(id);
+        job.prompt = prompt.into();
+        job.output = if id == "partial" { "waiting" } else { "ready" }.into();
+        store.save_job("project", at, &job).unwrap();
+    }
+    store
+        .save_chat(&chat_row("chat", "project", "Draft", 1, 3))
+        .unwrap();
+    store
+        .save_message("chat", 0, &message("msg", LeadRole::User, "Ready"))
+        .unwrap();
+    store
+        .save_chat(&chat_row("other", "elsewhere", "Draft ready", 1, 6))
+        .unwrap();
+    let hits = store.search("project", "draft ready", 2).unwrap();
+    assert_eq!(
+        hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+        ["new", "chat"]
+    );
+    assert_eq!(hits[1].message_id.as_deref(), Some("msg"));
+    assert!(store.search("project", "draft", 0).unwrap().is_empty());
+    assert_eq!(store.get_job("old").unwrap().unwrap().id, "old");
+    assert!(store.get_job("missing").unwrap().is_none());
+}
+
 fn run(provider: &str, started_at: i64) -> RunRow {
     RunRow {
         id: None,

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use legate_core::SearchHit;
 use legate_core::{ChangeSet, JobAccess, JobRecord, JobType, ProjectInfo, ProviderId};
 use legate_git::{ListedName, MergeOutcome, OpenedPr};
 use legate_lead::{Goal, Routine};
@@ -124,6 +125,7 @@ pub trait Drive: Send + Sync {
     fn cancel(&self, id: &str) -> impl Future<Output = Result<JobRecord, DriveError>> + Send;
     fn on_job(&self, cb: Listener<JobRecord>) -> Unsub;
     fn jobs_newest(&self, limit: i64) -> Vec<JobRow>;
+    fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, DriveError>;
     fn worktree_names(&self) -> Vec<ListedName>;
     fn set_worktree_name(&self, row: ListedName);
     fn delete_worktree_name(&self, id: &str);

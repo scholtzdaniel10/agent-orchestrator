@@ -68,12 +68,13 @@ pub fn ProjectBar(
     on_new_task: Callback,
     on_open_goals: Callback,
     on_open_automations: Callback,
+    on_search_history: Callback,
     goals_needing_you: i64,
     on_open_setup: Callback,
 ) -> Element {
     let _ = on_open_setup;
     let mut store = use_store();
-    let mut search = use_signal(String::new);
+    let mut search = store.sidebar_filter;
     let options = use_signal(stored_options);
     let mut folds = use_signal(stored_folds);
     let mut chats_open = use_signal(|| stored_bool("legate.sidebar.chatsOpen", true));
@@ -112,6 +113,13 @@ pub fn ProjectBar(
                     "New task"
                 }
                 nav { class: "sidebar-nav", aria_label: "Sidebar",
+                    button {
+                        class: "sidebar-nav-row",
+                        r#type: "button",
+                        aria_keyshortcuts: "Control+Shift+F",
+                        onclick: move |_| on_search_history.call(()),
+                        "Search"
+                    }
                     button {
                         class: "sidebar-nav-row",
                         r#type: "button",

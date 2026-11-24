@@ -4,10 +4,12 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use legate_core::search::sort_hits;
 use legate_core::{
     ChangeSet, JobAccess, JobRecord, JobStatus, JobStep, JobStepStatus, JobType, ProjectInfo,
     ProviderId, StepTool,
 };
+use legate_core::{SearchHit, SearchQuery};
 use legate_git::{ListedName, MergeOutcome, OpenedPr};
 use legate_lead::{Goal, GoalProposal, GoalStatus, PlannedJob, Routine, RoutineWorker};
 use legate_providers::InteractiveCommand;
@@ -570,6 +572,17 @@ impl Drive for Fake {
     fn jobs_newest(&self, limit: i64) -> Vec<JobRow> {
         *lock(&self.0.limit) = limit;
         lock(&self.0.jobs).clone()
+    }
+
+    fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, DriveError> {
+        let query = SearchQuery::new(query);
+        let mut hits = lock(&self.0.jobs)
+            .iter()
+            .filter_map(|row| query.job(&row.job, row.created_at.unwrap_or_default()))
+            .collect::<Vec<_>>();
+        sort_hits(&mut hits);
+        hits.truncate(limit);
+        Ok(hits)
     }
 
     fn worktree_names(&self) -> Vec<ListedName> {

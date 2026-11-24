@@ -32,6 +32,7 @@ const ROOT: &str = "app-smoke-root";
 fn answers() -> Map<String, Value> {
     let empty_lists = [
         "list_jobs",
+        "search_history",
         "list_plans",
         "list_projects",
         "list_changes",
@@ -89,6 +90,7 @@ fn answers() -> Map<String, Value> {
     };
     for (cmd, value) in [
         ("get_project", to_value(project)),
+        ("get_job", Ok(Value::Null)),
         ("get_prefs", to_value(default_prefs())),
         ("set_prefs", to_value(default_prefs())),
         ("stop_lead", Ok(Value::Null)),

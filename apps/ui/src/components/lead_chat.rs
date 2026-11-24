@@ -183,6 +183,15 @@ pub fn LeadChat(
         let _ = stamp_sig();
         scroll_bottom("lead-log");
     });
+    let mut search_target = store.lead_search_target;
+    use_effect(move || {
+        let _ = stamp_sig();
+        if let Some(id) = search_target()
+            && super::search_dialog::reveal_message(&id)
+        {
+            search_target.set(None);
+        }
+    });
 
     let direct = mode_live();
     let lead_streaming = shown
@@ -791,7 +800,7 @@ fn message_row(
         .map(|(_, text)| text);
 
     rsx! {
-        div { key: "{message_id}", class: "{row_class}",
+        div { key: "{message_id}", id: "lead-message-{message_id}", class: "{row_class}",
             div { class: "{msg_class}",
                 span { class: "lead-meta",
                     if is_user { "You" } else { {meta_line(&meta)} }
