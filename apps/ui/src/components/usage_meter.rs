@@ -5,7 +5,7 @@ use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption};
 use crate::components::model_picker::ModelPicker;
 use crate::logic::usage_format::{
-    has_usage_reading, reset_choices, usage_figure, visible_usage_plans,
+    has_usage_reading, reset_choices, usage_figure, visible_usage_plans, window_label,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -160,7 +160,7 @@ pub fn UsageMeter(
                                                             rsx! {
                                                                 div { class: "usage-window", key: "{index}",
                                                                     div { class: "usage-window-top",
-                                                                        span { class: "usage-window-label", "{slot.name}" }
+                                                                        span { class: "usage-window-label", "{window_label(&slot.name)}" }
                                                                         span { "{slot_figure}%" }
                                                                     }
                                                                     if let Some(phrase) = phrase {

@@ -378,3 +378,55 @@ pub fn has_usage_reading(plan: &legate_core::PlanStatus) -> bool {
     plan.id != legate_core::ProviderId::Local
         && (plan.usage_at.is_some() || !plan.windows.is_empty())
 }
+
+/// What a usage window is called on screen. The CLIs name their windows in code
+/// (`five_hour`, `seven_day`, `seven_day_opus`); Cursor's dashboard reading is a billing cycle.
+pub fn window_label(name: &str) -> String {
+    match name {
+        "five_hour" => return "5-hour".to_string(),
+        "seven_day" => return "Weekly".to_string(),
+        "dashboard" => return "This month".to_string(),
+        _ => {}
+    }
+    if let Some(model) = name.strip_prefix("seven_day_") {
+        return format!("Weekly ({})", capitalise(&model.replace('_', " ")));
+    }
+    // `<n>_hour` / `<n>_day` → "<n>-hour"; anything else: underscores to spaces, first letter up.
+    let mut parts = name.splitn(2, '_');
+    if let (Some(count), Some(unit)) = (parts.next(), parts.next())
+        && count.chars().all(|c| c.is_ascii_digit())
+        && !count.is_empty()
+        && !unit.contains('_')
+    {
+        return format!("{count}-{unit}");
+    }
+    capitalise(&name.replace('_', " "))
+}
+
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod window_label_tests {
+    use super::window_label;
+
+    #[test]
+    fn known_windows_read_as_people_say_them() {
+        assert_eq!(window_label("five_hour"), "5-hour");
+        assert_eq!(window_label("seven_day"), "Weekly");
+        assert_eq!(window_label("dashboard"), "This month");
+        assert_eq!(window_label("seven_day_opus"), "Weekly (Opus)");
+    }
+
+    #[test]
+    fn unknown_windows_are_still_readable() {
+        assert_eq!(window_label("1_day"), "1-day");
+        assert_eq!(window_label("monthly_credits"), "Monthly credits");
+        assert_eq!(window_label(""), "");
+    }
+}
