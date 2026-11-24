@@ -8584,6 +8584,14 @@ input, textarea {
   color: var(--text);
 }
 
+:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet {
+  color: #201e16;
+}
+
+:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet:hover:not(:disabled) {
+  background: #d3e1fc;
+}
+
 :root[data-theme='xp'] .app-name {
   font-weight: 700;
   letter-spacing: normal;

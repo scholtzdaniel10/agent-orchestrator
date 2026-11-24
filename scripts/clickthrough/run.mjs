@@ -599,6 +599,8 @@ async function pass(prefix, compact) {
     await waitFor(find('.history-search [role="status"]', 'Search saved chats and jobs in this project.'), 'empty history search');
     await value('#history-search-input', searchJobWord);
     await waitFor(find('.history-search-hit mark', searchJobWord), 'marked result from the saved job');
+  });
+  if (!compact) await step(`${prefix}-search-close`, async () => {
     await key('Escape');
     await waitFor(`!${find('.history-search-overlay')}`, 'closed history search');
   });
