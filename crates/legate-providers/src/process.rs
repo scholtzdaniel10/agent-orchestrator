@@ -449,7 +449,7 @@ async fn read_to_string(pipe: Option<impl AsyncReadExt + Unpin>) -> String {
     out
 }
 
-fn hide_window(cmd: &mut Command) {
+pub(crate) fn hide_window(cmd: &mut Command) {
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;

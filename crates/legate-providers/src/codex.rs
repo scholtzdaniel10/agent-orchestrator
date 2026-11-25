@@ -6,8 +6,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use legate_core::{
     AgentEvent, FileEdit, JobAccess, ModelOption, ProviderId, RunOptions, StepPhase, StepTool,
+    UsageWindow,
 };
 use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::adapter::{
     Bin, InteractiveCommand, InteractiveOptions, LimitError, ProviderAdapter, RunHandle,
@@ -70,6 +72,59 @@ impl CodexAdapter {
                 })
             })
             .collect()
+    }
+
+    /// The plan's 5-hour and weekly windows, asked from `codex app-server`. Runs no turn.
+    pub async fn rate_limits(&self) -> Result<Vec<UsageWindow>, String> {
+        let mut cmd = tokio::process::Command::new(&self.bin.command);
+        cmd.args(&self.bin.args)
+            .arg("app-server")
+            .env_clear()
+            .envs(codex_env())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        process::hide_window(&mut cmd);
+        let mut child = cmd.spawn().map_err(|err| err.to_string())?;
+        let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+            return Err("codex app-server has no pipes".into());
+        };
+        // Stdin stays open until the answer comes: the server quits on EOF.
+        let ask = concat!(
+            r#"{"method":"initialize","id":0,"params":{"clientInfo":{"name":"legate","title":"Legate","version":"0"}}}"#,
+            "\n",
+            r#"{"method":"initialized"}"#,
+            "\n",
+            r#"{"method":"account/rateLimits/read","id":1}"#,
+            "\n",
+        );
+        stdin
+            .write_all(ask.as_bytes())
+            .await
+            .map_err(|err| err.to_string())?;
+        let mut lines = tokio::io::BufReader::new(stdout).lines();
+        let answer = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(message) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                if message["id"].as_i64() == Some(1) {
+                    return Some(message);
+                }
+            }
+            None
+        })
+        .await;
+        let _ = child.start_kill();
+        match answer {
+            Err(_) => Err("Codex took too long to report its usage.".into()),
+            Ok(None) => Err("Codex closed before reporting its usage.".into()),
+            Ok(Some(message)) => match message["error"]["message"].as_str() {
+                Some(error) => Err(error.into()),
+                None => Ok(rate_limit_windows(&message["result"])),
+            },
+        }
     }
 
     pub fn interactive(&self, opts: &InteractiveOptions) -> InteractiveCommand {
@@ -153,6 +208,26 @@ fn resolve_bin() -> Bin {
     }
     Bin::new("codex")
 }
+/// `result.rateLimits` from `account/rateLimits/read`, named the way Claude's windows are.
+fn rate_limit_windows(result: &Value) -> Vec<UsageWindow> {
+    ["primary", "secondary"]
+        .iter()
+        .filter_map(|key| {
+            let window = &result["rateLimits"][key];
+            let name = match window["windowDurationMins"].as_i64()? {
+                240..=360 => "five_hour",
+                9_000..=11_000 => "seven_day",
+                _ => return None,
+            };
+            Some(UsageWindow {
+                name: name.into(),
+                utilization: window["usedPercent"].as_f64()? / 100.0,
+                resets_at: window["resetsAt"].as_i64(),
+            })
+        })
+        .collect()
+}
+
 fn codex_env() -> BTreeMap<String, String> {
     subscription_env(std::env::vars().collect())
 }
@@ -416,6 +491,34 @@ fn is_limit(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rate_limits_become_five_hour_and_seven_day_windows() {
+        let result = serde_json::json!({ "rateLimits": {
+            "primary": { "usedPercent": 2, "windowDurationMins": 300, "resetsAt": 1_795_595_847 },
+            "secondary": { "usedPercent": 16.5, "windowDurationMins": 10080, "resetsAt": 1_796_107_261 },
+        }});
+        let windows = rate_limit_windows(&result);
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].name, "five_hour");
+        assert!((windows[0].utilization - 0.02).abs() < 1e-9);
+        assert_eq!(windows[0].resets_at, Some(1_795_595_847));
+        assert_eq!(windows[1].name, "seven_day");
+        assert!((windows[1].utilization - 0.165).abs() < 1e-9);
+        assert!(
+            rate_limit_windows(&serde_json::json!({ "rateLimits": { "primary": null } }))
+                .is_empty()
+        );
+    }
+
+    /// Talks to the real CLI: `cargo test -p legate-providers live_codex -- --ignored`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_codex_rate_limits() {
+        let windows = CodexAdapter::new(None).rate_limits().await.unwrap();
+        assert!(!windows.is_empty(), "{windows:?}");
+        eprintln!("{windows:?}");
+    }
+
     #[test]
     fn codex_parses_thread_messages_and_token_usage() {
         let adapter = CodexAdapter::new(None);

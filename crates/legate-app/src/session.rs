@@ -862,6 +862,7 @@ async fn boot(
     let usage_settings = Rc::clone(&settings);
     let usage_store = Rc::clone(&store);
     let usage_claude = Arc::clone(&claude);
+    let usage_codex = Arc::clone(&codex);
     let usage_events = events.clone();
     let usage_sight = Rc::clone(&sight);
     let usage_stamp = Rc::clone(&usage_last);
@@ -874,6 +875,7 @@ async fn boot(
             settings: usage_settings,
             store: usage_store,
             claude: usage_claude,
+            codex: usage_codex,
             events: usage_events,
             sight: usage_sight,
             usage_last: usage_stamp,
@@ -1096,6 +1098,18 @@ pub(crate) fn plan_list(
         .collect()
 }
 
+fn save_usage(store: &Store, plan: &str, windows: &[legate_core::UsageWindow]) {
+    let rows = windows
+        .iter()
+        .map(|window| NewWindow {
+            name: window.name.clone(),
+            utilization: window.utilization,
+            resets_at: window.resets_at.map(|seconds| seconds.saturating_mul(1000)),
+        })
+        .collect::<Vec<_>>();
+    let _ = store.save_windows(plan, &rows, system_now_ms());
+}
+
 fn usage_at(store: &Store, id: ProviderId) -> Option<i64> {
     let rows = store.windows(legate_core::plan_of(id).as_str()).ok()?;
     rows.iter().map(|window| window.observed_at).max()
@@ -1111,6 +1125,7 @@ struct UsageBits {
     settings: Rc<RefCell<legate_core::Settings>>,
     store: Rc<Store>,
     claude: Arc<ClaudeAdapter>,
+    codex: Arc<CodexAdapter>,
     events: broadcast::Sender<AppEvent>,
     sight: Rc<Cell<WindowSight>>,
     usage_last: Rc<Cell<Option<i64>>>,
@@ -1147,6 +1162,7 @@ impl UsageBits {
             settings: Rc::clone(&self.settings),
             store: Rc::clone(&self.store),
             claude: Arc::clone(&self.claude),
+            codex: Arc::clone(&self.codex),
             events: self.events.clone(),
             sight: Rc::clone(&self.sight),
             usage_last: Rc::clone(&self.usage_last),
@@ -1158,10 +1174,21 @@ impl UsageBits {
     async fn probe(&self, trigger: UsageTrigger) -> crate::options::UsageOutcome {
         let automatic = !matches!(trigger, UsageTrigger::Manual);
         let prefs = self.settings.borrow().prefs();
-        if prefs.off_plans.contains(&ProviderId::Claude) || (automatic && !prefs.usage_check) {
+        let signed_in = |id: ProviderId| {
+            self.orch
+                .workers()
+                .iter()
+                .any(|worker| worker.id == id && worker.available)
+        };
+        // Codex answers from `codex app-server` without a turn, so the Claude-only switch skips it.
+        let codex = !prefs.off_plans.contains(&ProviderId::Codex) && signed_in(ProviderId::Codex);
+        let claude =
+            !prefs.off_plans.contains(&ProviderId::Claude) && (!automatic || prefs.usage_check);
+        if !codex && !claude {
             return crate::options::UsageOutcome::success();
         }
-        let reported = usage_at(&self.store, ProviderId::Claude);
+        let reported =
+            usage_at(&self.store, ProviderId::Claude).max(usage_at(&self.store, ProviderId::Codex));
         let last = match (self.usage_last.get(), reported) {
             (None, other) => other,
             (Some(stamp), None) => Some(stamp),
@@ -1171,12 +1198,23 @@ impl UsageBits {
         if !usage_check_due(trigger, now, last, self.sight.get()) {
             return crate::options::UsageOutcome::success();
         }
-        let claude_open = self
-            .orch
-            .workers()
-            .iter()
-            .any(|worker| worker.id == ProviderId::Claude && worker.available);
-        if !claude_open {
+        let mut codex_error = None;
+        if codex {
+            self.usage_last.set(Some(now));
+            match self.codex.rate_limits().await {
+                Ok(windows) => save_usage(&self.store, "codex", &windows),
+                Err(err) => codex_error = Some(err),
+            }
+            let plans = plan_list(&self.orch, &self.settings.borrow(), &self.store);
+            let _ = self.events.send(AppEvent::Plans(plans));
+        }
+        if !claude {
+            return codex_error.map_or_else(
+                crate::options::UsageOutcome::success,
+                crate::options::UsageOutcome::failure,
+            );
+        }
+        if !signed_in(ProviderId::Claude) {
             return crate::options::UsageOutcome::failure("Claude is not signed in.");
         }
         self.usage_last.set(Some(now));
@@ -1193,15 +1231,7 @@ impl UsageBits {
             } = event
             {
                 saw = true;
-                let rows = windows
-                    .iter()
-                    .map(|window| NewWindow {
-                        name: window.name.clone(),
-                        utilization: window.utilization,
-                        resets_at: window.resets_at.map(|seconds| seconds.saturating_mul(1000)),
-                    })
-                    .collect::<Vec<_>>();
-                let _ = self.store.save_windows("claude", &rows, system_now_ms());
+                save_usage(&self.store, "claude", &windows);
             }
         }
         let _ = handle.exit().await;
@@ -1235,6 +1265,7 @@ impl World {
             settings: Rc::clone(&self.settings),
             store: Rc::clone(&self.store),
             claude: Arc::clone(&self.claude),
+            codex: Arc::clone(&self.codex),
             events: self.events.clone(),
             sight: Rc::clone(&self.sight),
             usage_last: Rc::clone(&self.usage_last),
