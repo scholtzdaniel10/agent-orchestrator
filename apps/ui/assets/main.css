@@ -8554,12 +8554,13 @@ input, textarea {
   background: var(--selected);
 }
 
-/* Windows XP (experimental) */
+/* Windows XP: the Luna look. Blue title bars on the header and panel heads, panels framed like
+   windows, a task pane down the left, a taskbar for a status bar and a Start-green New task. */
 :root[data-theme='xp'] {
   color-scheme: light;
   --bg: #ece9d8;
-  --text: #201e16;
-  --brand: #154a94;
+  --text: #1b1a14;
+  --brand: #2355b8;
   --on-accent: #fff;
   --ray: #174881;
   --signal: #174881;
@@ -8567,6 +8568,7 @@ input, textarea {
   --faint: #565140;
   --border: #a49d84;
   --border-strong: #6c6a59;
+  --frame: #0055ea;
   --tint: #ece9d8;
   --inset: #f7f4e7;
   --deep: #e2dec9;
@@ -8579,15 +8581,29 @@ input, textarea {
   --bot-cursor: #09553d;
   --bot-grok: #5b3b90;
   --font-ui: Tahoma, 'Segoe UI', sans-serif;
-  --font-serif: var(--font-ui);
-  --xp-title-bar: linear-gradient(to bottom, #1147a8 0%, #1b58b6 42%, #07347f 100%);
-  --xp-button: linear-gradient(to bottom, #fff 0%, #f6f3e9 52%, #e2dcc5 100%);
+  --font-serif: 'Trebuchet MS', Tahoma, sans-serif;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 8px;
+  --xp-title-bar: linear-gradient(to bottom, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7 100%);
+  --xp-button: linear-gradient(to bottom, #fff 0%, #f7f7f4 45%, #ecebe6 80%, #d6d0c5 100%);
+  --xp-button-down: linear-gradient(to bottom, #e3e1d6 0%, #ecebe6 30%, #fff 100%);
+  --xp-hot: inset 0 1px 0 #fff0cf, inset 0 -2px 0 #e5a01a, inset 2px 0 0 #fcd590, inset -2px 0 0 #f8b330;
+  --xp-start: linear-gradient(to bottom, #6fbf5a 0%, #3a9230 18%, #2e7d23 50%, #2a7420 85%, #3c8f30 100%);
+  --xp-pick: #316ac5;
+  --xp-task-pane: linear-gradient(to bottom, #7ba2e7 0%, #6375d6 100%);
+  --xp-taskbar: linear-gradient(to bottom, #3168d5 0%, #4993e6 4%, #2157d7 8%, #2663e0 12%, #245dd7 88%, #1941a5 100%);
+}
+
+:root[data-theme='xp'] * {
+  scrollbar-color: #a7bff0 #f4f3ee;
 }
 
 :root[data-theme='xp'] .roman-workspace {
   --standard: #154a94;
 }
 
+/* Title bars: the header, Settings' head and each panel's head. */
 :root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) {
   --text: #fff;
   --muted: #f0f5ff;
@@ -8599,41 +8615,490 @@ input, textarea {
   --selected: #2458a6;
   background: var(--xp-title-bar);
   color: var(--text);
+  text-shadow: 1px 1px 0 rgba(10, 24, 131, 0.55);
+}
+
+:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn {
+  text-shadow: none;
 }
 
 :root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet {
-  color: #201e16;
+  color: #1b1a14;
 }
 
 :root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet:hover:not(:disabled) {
   background: #d3e1fc;
 }
 
-:root[data-theme='xp'] .app-name {
+/* Menus that open from a title bar read like the rest of the window, not like the bar. */
+:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) :is(.side-menu, .select-list, .workspace-layout-controls) {
+  --text: #1b1a14;
+  --muted: #464331;
+  --faint: #565140;
+  --standard: #154a94;
+  --accent: var(--brand);
+  --signal: #174881;
+  --border: #a49d84;
+  --selected: #d3e1fc;
+  color: var(--text);
+  text-shadow: none;
+}
+
+:root[data-theme='xp'] .app-name,
+:root[data-theme='xp'] .inspector-heading {
+  font-family: var(--font-serif);
   font-weight: 700;
+}
+
+:root[data-theme='xp'] .app-name {
+  font-size: 21px;
   letter-spacing: normal;
   text-transform: none;
 }
 
-:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select) {
-  border-color: #687895;
-  border-radius: 5px;
+/* Panels framed like windows: a blue frame with rounded top corners. */
+:root[data-theme='xp'] :is(.workspace, .drawer, .dock, .new-task, .history-search, .lead-mode-confirm) {
+  border: 3px solid var(--frame);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 0 0 1px #0831d9;
+}
+
+:root[data-theme='xp'] .workspace .tab-bar {
+  border-radius: 5px 5px 0 0;
+  border-bottom: 1px solid #d8d2bd;
+  background: linear-gradient(to bottom, #fcfcf9 0%, #ece9d8 100%);
+}
+
+:root[data-theme='xp'] .inspector-heading {
+  border-radius: 5px 5px 0 0;
+}
+
+/* The task pane: the projects sidebar on Explorer's blue, each section in its own box. */
+:root[data-theme='xp'] .roman-workspace .sidebar-slot,
+:root[data-theme='xp'] .roman-workspace .project-bar {
+  background: var(--xp-task-pane);
+}
+
+:root[data-theme='xp'] .project-bar :is(.sidebar-scroll, .sidebar-chats) > .project-chats-head {
+  --text: #215dc6;
+  --muted: #215dc6;
+  margin: 0 12px;
+  padding-inline: 10px 6px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(to right, #fff 0%, #c6d3f7 100%);
+  color: var(--text);
+  font-weight: 700;
+}
+
+:root[data-theme='xp'] .project-bar :is(.project-tree, .project-chat-list) {
+  margin: 0 12px 12px;
+  border: 1px solid #fff;
+  border-top: 0;
+  background: #d6dff7;
+}
+
+:root[data-theme='xp'] .command-rail {
+  border-right: 1px solid #d8d2bd;
+  background: linear-gradient(to right, #fff 0%, #f1efe2 100%);
+}
+
+:root[data-theme='xp'] .command-destination:hover,
+:root[data-theme='xp'] .command-destination.is-active {
+  border-color: #2a5fb8;
+  background: var(--xp-pick);
+  color: #fff;
+}
+
+:root[data-theme='xp'] .command-count {
+  background: #c63d0f;
+}
+
+/* The taskbar. */
+:root[data-theme='xp'] .status-bar {
+  --text: #fff;
+  --muted: #e8efff;
+  --faint: #dfe8fb;
+  --bad: #ffe6e1;
+  --signal: #fff;
+  border-top: 1px solid #0c2f8f;
+  background: var(--xp-taskbar);
+  color: var(--text);
+}
+
+/* Buttons: Luna's cream gradient, an orange glow on hover. */
+:root[data-theme='xp'] .btn:not(.btn-quiet) {
+  border: 1px solid #003c74;
+  border-radius: 3px;
   background: var(--xp-button);
-  color: #201e16;
+  color: #1b1a14;
 }
 
-:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select):hover:not(:disabled) {
-  border-color: #103f8c;
-  box-shadow: inset 0 0 0 1px #8fb0e8;
+:root[data-theme='xp'] .btn:not(.btn-quiet):hover:not(:disabled) {
+  border-color: #003c74;
+  box-shadow: var(--xp-hot);
 }
 
-:root[data-theme='xp'] :is(.btn:not(.btn-quiet), .select):active:not(:disabled) {
-  background: #d3e1fc;
+:root[data-theme='xp'] .btn:not(.btn-quiet):active:not(:disabled) {
+  background: var(--xp-button-down);
+  box-shadow: none;
 }
 
-:root[data-theme='xp'] :is(.btn-primary, .sidebar-new-task) {
-  border-color: #154a94;
-  box-shadow: inset 0 0 0 1px #8fb0e8;
+/* The default button of a dialog: a blue ring inside the frame. */
+:root[data-theme='xp'] :is(.btn.btn-primary, .btn.sidebar-new-task) {
+  box-shadow: inset 0 0 0 1px #8fb0e8, inset 0 0 0 2px #c7d8f6;
+}
+
+/* New task is the Start button. */
+:root[data-theme='xp'] .btn.command-new-task {
+  padding-right: 18px;
+  border-color: #1f5f17;
+  border-radius: 4px 14px 14px 4px;
+  background: var(--xp-start);
+  color: #fff;
+  font-style: italic;
+  font-weight: 700;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+:root[data-theme='xp'] .btn.command-new-task:hover:not(:disabled) {
+  border-color: #1f5f17;
+  background: var(--xp-start);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 1px #8fd17d;
+  filter: brightness(1.08);
+}
+
+/* Fields: white boxes with the steel-blue edge. */
+:root[data-theme='xp'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select) {
+  border-color: #7f9db9;
+  border-radius: 0;
+  background: #fff;
+  color: #1b1a14;
+}
+
+:root[data-theme='xp'] .select:hover:not(:disabled) {
+  border-color: var(--xp-pick);
+}
+
+/* Tabs: cream, the open one white with an orange top edge. */
+:root[data-theme='xp'] :is(.tab-item, .drawer-tabs .tab) {
+  border: 1px solid #919b9c;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to bottom, #fff 0%, #ecebe6 100%);
+}
+
+:root[data-theme='xp'] :is(.tab-item, .drawer-tabs .tab):hover {
+  box-shadow: inset 0 2px 0 #f8b330;
+}
+
+:root[data-theme='xp'] :is(.tab-item.is-selected, .drawer-tabs .tab.is-selected) {
+  border-color: #919b9c;
+  background: #fff;
+  box-shadow: inset 0 3px 0 #ffc83c;
+}
+
+/* Selection: Explorer's blue with white text. */
+:root[data-theme='xp'] :is(
+  .project-row.is-selected,
+  .project-chat-row.is-selected,
+  .project-worktree-row.is-selected,
+  .settings-nav-item.is-selected,
+  .job-row.is-selected,
+  .files-row.is-selected,
+  .history-row.is-selected,
+  .history-file.is-selected,
+  .goal-row.is-selected,
+  .new-task-choice.is-selected,
+  .select-option.is-active,
+  .side-menu-item:hover:not(:disabled)
+) {
+  --text: #fff;
+  --muted: #f0f4fd;
+  --faint: #d0dcf5;
+  --signal: #fff;
+  --standard: #fff;
+  --diff-add: #d4f7de;
+  --diff-del: #ffd6d0;
+  --border: #a9c2f0;
+  border-color: var(--xp-pick);
+  background: var(--xp-pick);
+  color: var(--text);
+}
+
+/* Menus: white, square, a hard shadow. */
+:root[data-theme='xp'] :is(.side-menu, .select-list, .workspace-layout-controls) {
+  border: 1px solid #aca899;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Meters: the block progress bar. */
+:root[data-theme='xp'] .meter {
+  border: 1px solid #8f8f8f;
+  border-radius: 3px;
+  background: #fff;
+}
+
+:root[data-theme='xp'] .meter:not(.meter-thin) {
+  height: 10px;
+  padding: 1px;
+}
+
+:root[data-theme='xp'] .meter-fill {
+  border-radius: 0;
+  background-image:
+    repeating-linear-gradient(to right, transparent 0 7px, #fff 7px 9px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0%, transparent 45%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+/* Frutiger Aero (Windows Vista): glass panels over a bright sky, glossy buttons, a black glass
+   taskbar for a status bar. The glass stays mostly opaque so text keeps its contrast over any
+   part of the sky. */
+:root[data-theme='aero'] {
+  color-scheme: light;
+  --bg: #f3f8fc;
+  --text: #0f2236;
+  --brand: #1565b3;
+  --on-accent: #fff;
+  --ray: #2f8fdc;
+  --signal: #865400;
+  --bad: #ad2419;
+  --diff-add: #0b6b34;
+  --diff-del: #ad2419;
+  --bot-claude: #9e4718;
+  --bot-cursor: #006f51;
+  --bot-grok: #6e3cc8;
+  --tint: #f3f8fc;
+  --inset: #eaf3fa;
+  --deep: #dfeaf4;
+  --raised: #e5f3fc;
+  --selected: #d3ecfb;
+  --muted: #3c5268;
+  --faint: #56697c;
+  --border: #a9c3da;
+  --border-strong: #6f8fae;
+  --frame: #8fb2d0;
+  --font-ui: 'Segoe UI', 'Segoe UI Variable Text', system-ui, sans-serif;
+  --font-serif: 'Segoe UI Light', 'Segoe UI', sans-serif;
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --aero-glass: rgba(246, 251, 255, 0.8);
+  --aero-glass-solid: rgba(248, 252, 255, 0.93);
+  --aero-glass-edge: 0 0 0 1px rgba(16, 58, 98, 0.38), 0 10px 30px rgba(0, 38, 84, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --aero-blur: blur(18px) saturate(1.6);
+  --aero-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(240, 248, 254, 0.85) 49%, rgba(219, 236, 249, 0.85) 50%, rgba(232, 244, 252, 0.9) 100%);
+  --aero-button: linear-gradient(to bottom, #f2f2f2 0%, #ebebeb 49%, #dddddd 50%, #cfcfcf 100%);
+  --aero-button-hover: linear-gradient(to bottom, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%);
+  --aero-button-down: linear-gradient(to bottom, #e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%);
+  --aero-orb: linear-gradient(to bottom, #6cc6fb 0%, #2a8fd6 49%, #0868b0 50%, #1f86cd 100%);
+  --aero-pick: linear-gradient(to bottom, #f1f8fd 0%, #d5effc 100%);
+}
+
+:root[data-theme='aero'] * {
+  scrollbar-color: #9cbfdc transparent;
+}
+
+:root[data-theme='aero'] .roman-workspace {
+  --standard: #1565b3;
+}
+
+/* The sky behind the glass: deep blue at the top, haze, a green hill, a few bubbles. */
+:root[data-theme='aero'] .app {
+  background:
+    radial-gradient(circle at 7% 24%, rgba(255, 255, 255, 0.75) 0 9px, rgba(255, 255, 255, 0.2) 10px 24px, transparent 25px),
+    radial-gradient(circle at 93% 62%, rgba(255, 255, 255, 0.6) 0 7px, rgba(255, 255, 255, 0.16) 8px 19px, transparent 20px),
+    radial-gradient(circle at 76% 13%, rgba(255, 255, 255, 0.5) 0 5px, rgba(255, 255, 255, 0.14) 6px 14px, transparent 15px),
+    radial-gradient(circle at 38% 88%, rgba(255, 255, 255, 0.55) 0 6px, rgba(255, 255, 255, 0.15) 7px 16px, transparent 17px),
+    radial-gradient(ellipse 70% 28% at 58% 36%, rgba(255, 255, 255, 0.5), transparent 70%),
+    radial-gradient(ellipse 120% 38% at 28% 112%, #3f9d2f 0%, #6cc24a 45%, transparent 70%),
+    linear-gradient(to bottom, #0b5fa8 0%, #2c95dd 30%, #86cdf1 60%, #c7ebf8 78%, #a4dc7c 100%);
+}
+
+:root[data-theme='aero'] .app-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.75);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0) 51%),
+    rgba(220, 239, 252, 0.8);
+  box-shadow: 0 1px 0 rgba(16, 58, 98, 0.3);
+  backdrop-filter: var(--aero-blur);
+}
+
+:root[data-theme='aero'] .app-name {
+  color: #0b2a45;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-shadow: 0 0 10px #fff, 0 0 2px #fff;
+}
+
+:root[data-theme='aero'] .command-rail {
+  border-right: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(240, 248, 254, 0.8);
+  box-shadow: 1px 0 0 rgba(16, 58, 98, 0.25);
+  backdrop-filter: var(--aero-blur);
+}
+
+:root[data-theme='aero'] .roman-workspace .sidebar-slot {
+  background: rgba(244, 250, 254, 0.8);
+  backdrop-filter: var(--aero-blur);
+}
+
+:root[data-theme='aero'] .roman-workspace .project-bar {
+  background: transparent;
+}
+
+/* Glass panels. */
+:root[data-theme='aero'] :is(.workspace, .drawer, .dock) {
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  background: var(--aero-glass);
+  box-shadow: var(--aero-glass-edge);
+  backdrop-filter: var(--aero-blur);
+}
+
+:root[data-theme='aero'] :is(.settings-page, .setup-screen, .new-task, .history-search, .lead-mode-confirm) {
+  border-radius: 8px;
+  background: var(--aero-glass-solid);
+  box-shadow: var(--aero-glass-edge);
+  backdrop-filter: var(--aero-blur);
+}
+
+:root[data-theme='aero'] :is(.tab-bar, .inspector-heading, .drawer-tabs, .settings-head, .output-head) {
+  border-bottom: 1px solid var(--border);
+  background: var(--aero-sheen);
+}
+
+:root[data-theme='aero'] :is(.workspace .tab-bar, .inspector-heading) {
+  border-radius: 7px 7px 0 0;
+}
+
+/* The taskbar: black glass. */
+:root[data-theme='aero'] .status-bar {
+  --text: #fff;
+  --muted: #d3e2ef;
+  --faint: #b8cad9;
+  --bad: #ffb4a8;
+  --signal: #ffd66b;
+  --diff-add: #a6efc0;
+  --diff-del: #ffb4a8;
+  --border: rgba(255, 255, 255, 0.25);
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 50%, rgba(0, 0, 0, 0) 51%),
+    rgba(8, 18, 30, 0.86);
+  color: var(--text);
+  backdrop-filter: blur(12px);
+}
+
+/* Buttons: Vista's two-tone gloss, light blue on hover. */
+:root[data-theme='aero'] .btn:not(.btn-quiet) {
+  border: 1px solid #707070;
+  border-radius: 3px;
+  background: var(--aero-button);
+  color: #10202f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+}
+
+:root[data-theme='aero'] .btn:not(.btn-quiet):hover:not(:disabled) {
+  border-color: #3c7fb1;
+  background: var(--aero-button-hover);
+}
+
+:root[data-theme='aero'] .btn:not(.btn-quiet):active:not(:disabled) {
+  border-color: #2c628b;
+  background: var(--aero-button-down);
+}
+
+:root[data-theme='aero'] .btn-quiet:hover:not(:disabled) {
+  background: var(--aero-pick);
+  box-shadow: inset 0 0 0 1px #b8e3fb;
+}
+
+/* Primary buttons: the glossy blue orb. */
+:root[data-theme='aero'] :is(.btn.btn-primary, .btn.sidebar-new-task) {
+  border-color: #0a4f86;
+  background: var(--aero-orb);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 30, 60, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 10px rgba(70, 170, 255, 0.55);
+}
+
+:root[data-theme='aero'] :is(.btn.btn-primary, .btn.sidebar-new-task):hover:not(:disabled) {
+  border-color: #0a4f86;
+  background: var(--aero-orb);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 14px rgba(70, 190, 255, 0.8);
+  filter: brightness(1.08);
+}
+
+:root[data-theme='aero'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select) {
+  border-color: #abadb3;
+  border-top-color: #8e8f8f;
+  border-radius: 2px;
+  background: #fff;
+}
+
+:root[data-theme='aero'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select):hover:not(:disabled) {
+  border-color: #5794bf;
+}
+
+:root[data-theme='aero'] :is(input, textarea):focus {
+  border-color: #3d7bad;
+}
+
+/* Selection and hover in lists: Explorer's pale blue pill. */
+:root[data-theme='aero'] :is(
+  .project-row.is-selected,
+  .project-chat-row.is-selected,
+  .project-worktree-row.is-selected,
+  .settings-nav-item.is-selected,
+  .job-row.is-selected,
+  .files-row.is-selected,
+  .files-row.is-focused,
+  .history-row.is-selected,
+  .history-file.is-selected,
+  .goal-row.is-selected,
+  .tab.is-selected,
+  .tab-item.is-selected,
+  .new-task-choice.is-selected,
+  .select-option.is-active,
+  .side-menu-item:hover:not(:disabled),
+  .command-destination.is-active
+) {
+  border-color: #84c6ed;
+  border-radius: 3px;
+  background: var(--aero-pick);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+:root[data-theme='aero'] .command-destination:hover:not(.is-active) {
+  border-color: #b8e3fb;
+  background: linear-gradient(to bottom, #f5fbfe 0%, #e1f2fc 100%);
+}
+
+:root[data-theme='aero'] :is(.side-menu, .select-list, .workspace-layout-controls) {
+  border: 1px solid #979797;
+  border-radius: 4px;
+  background: rgba(250, 252, 255, 0.95);
+  box-shadow: 3px 4px 10px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+}
+
+/* Meters: a glossy bar. */
+:root[data-theme='aero'] .meter {
+  border: 1px solid #b2b2b2;
+  background: linear-gradient(to bottom, #e6e6e6 0%, #f7f7f7 100%);
+}
+
+:root[data-theme='aero'] .meter-fill {
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(0, 0, 0, 0.06) 51%, rgba(255, 255, 255, 0.2) 100%);
+}
+
+:root[data-theme='aero'] :focus-visible {
+  outline-color: #2b8ae0;
 }
 
 /* Settings → Updates */
