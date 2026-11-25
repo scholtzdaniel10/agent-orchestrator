@@ -242,7 +242,7 @@ fn open_page(
 ) -> Result<(), String> {
     let asked = size.unwrap_or((1400, 820));
     let placed = place_from(from, asked);
-    let url = page_url(query)?;
+    let url = page_url(app, query)?;
     let mut builder = WebviewWindowBuilder::new(app, label, url)
         .title(title)
         .inner_size(asked.0 as f64, asked.1 as f64);
@@ -304,16 +304,9 @@ fn place_from(from: &WebviewWindow, asked: (i64, i64)) -> Option<Bounds> {
     ))
 }
 
-fn page_url(query: Option<&str>) -> Result<WebviewUrl, String> {
+fn page_url(app: &tauri::AppHandle, query: Option<&str>) -> Result<WebviewUrl, String> {
     if cfg!(debug_assertions) {
-        let mut text = "http://127.0.0.1:8080/".to_string();
-        if let Some(query) = query {
-            text.push('?');
-            text.push_str(query);
-        }
-        let url = text
-            .parse()
-            .map_err(|err: url::ParseError| err.to_string())?;
+        let url = dev_page_url(app.config().build.dev_url.as_ref(), query)?;
         Ok(WebviewUrl::External(url))
     } else {
         let path = match query {
@@ -322,6 +315,21 @@ fn page_url(query: Option<&str>) -> Result<WebviewUrl, String> {
         };
         Ok(WebviewUrl::App(path.into()))
     }
+}
+
+/// A dev build's page for a new window: the dev server the app was started with (`devUrl`,
+/// which a `--config` override can move off 8080), never a fixed port.
+fn dev_page_url(dev_url: Option<&url::Url>, query: Option<&str>) -> Result<url::Url, String> {
+    let mut url = match dev_url {
+        Some(url) => url.clone(),
+        None => "http://127.0.0.1:8080/"
+            .parse()
+            .map_err(|err: url::ParseError| err.to_string())?,
+    };
+    url.set_path("/");
+    url.set_query(query);
+    url.set_fragment(None);
+    Ok(url)
 }
 
 fn file_path_string(path: FilePath) -> Option<String> {
@@ -339,4 +347,28 @@ pub fn close_terminal_window(app: &tauri::AppHandle, shell: &Shell, id: &str) {
     }
     shell.terminals().remove(id);
     let _ = app.emit("terminals:popped", shell.terminals().list());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dev_page_url;
+
+    #[test]
+    fn new_windows_use_the_dev_server_the_app_started_with() {
+        let moved: url::Url = "http://127.0.0.1:8090".parse().unwrap();
+        assert_eq!(
+            dev_page_url(Some(&moved), Some("panel=usage"))
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8090/?panel=usage"
+        );
+        assert_eq!(
+            dev_page_url(Some(&moved), None).unwrap().as_str(),
+            "http://127.0.0.1:8090/"
+        );
+        assert_eq!(
+            dev_page_url(None, None).unwrap().as_str(),
+            "http://127.0.0.1:8080/"
+        );
+    }
 }
