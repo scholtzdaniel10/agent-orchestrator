@@ -228,25 +228,7 @@ pub fn plan_word(plan: &PlanView, now: i64) -> String {
 }
 
 pub fn version_phrase(plan: &PlanView, tested: &str) -> String {
-    // Local is not a CLI. `version` is the Ollama or llama-server build.
-    // The router marks that status unknown because there is no tested CLI build,
-    // which used to hide the server version behind "CLI version unknown".
-    if plan.id == ProviderId::Local {
-        return match plan.version.as_deref().filter(|text| !text.is_empty()) {
-            Some(version) => format!("CLI {version}"),
-            None => "CLI version unknown".to_string(),
-        };
-    }
-    match (&plan.version, plan.version_status) {
-        (None, _) | (_, VersionStatus::Unknown) => "CLI version unknown".to_string(),
-        (Some(version), VersionStatus::Tested) => format!("CLI {version}"),
-        (Some(version), VersionStatus::Newer) => {
-            format!("CLI {version} · newer than tested ({tested})")
-        }
-        (Some(version), VersionStatus::Older) => {
-            format!("CLI {version} · older than tested ({tested}) — update it")
-        }
-    }
+    legate_core::version_text(plan.version.as_deref(), plan.version_status, tested)
 }
 
 fn problem_sentence(id: ProviderId, problem: PlanProblem) -> Option<&'static str> {

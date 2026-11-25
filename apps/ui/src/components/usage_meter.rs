@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, VersionStatus};
+use legate_core::{PlanProblem, PlanStatus, ProviderId, UsageShows, version_text};
 
 use crate::api;
 use crate::components::bot_avatar::{BotAvatar, BotName, BotState, FieldSelect, SelectOption};
@@ -341,20 +341,11 @@ fn problem_notice(plan: &PlanStatus) -> Option<&'static str> {
 }
 
 fn version_line(plan: &PlanStatus) -> String {
-    match (&plan.version, plan.version_status) {
-        (None, _) | (_, VersionStatus::Unknown) => "CLI version unknown".into(),
-        (Some(version), VersionStatus::Tested) => format!("CLI {version}"),
-        (Some(version), VersionStatus::Newer) => format!(
-            "CLI {version} · newer than tested ({})",
-            plan.tested_version
-        ),
-        (Some(version), VersionStatus::Older) => {
-            format!(
-                "CLI {version} · older than tested ({}) — update it",
-                plan.tested_version
-            )
-        }
-    }
+    version_text(
+        plan.version.as_deref(),
+        plan.version_status,
+        &plan.tested_version,
+    )
 }
 
 fn avatar(word: PlanWord) -> BotState {

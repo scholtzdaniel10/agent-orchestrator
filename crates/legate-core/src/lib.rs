@@ -33,5 +33,5 @@ pub use types::{
     ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions, SetupState, StepPhase,
     StepTool, TerminalInfo, TerminalProvider, TerminalStatus, UsageShows, UsageWindow,
     VersionStatus, access_of, is_job_access, is_job_type, is_provider_id, needs_usage_credits,
-    plan_of,
+    plan_of, version_text,
 };

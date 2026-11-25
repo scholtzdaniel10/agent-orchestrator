@@ -185,6 +185,21 @@ pub enum VersionStatus {
     Unknown,
 }
 
+/// How a plan's CLI build reads in Usage and `legate plans`. A build with nothing to
+/// compare against (local's Ollama or llama-server, an untried Codex) is still shown.
+pub fn version_text(version: Option<&str>, status: VersionStatus, tested: &str) -> String {
+    let Some(version) = version.filter(|text| !text.is_empty()) else {
+        return "CLI version unknown".to_string();
+    };
+    match status {
+        VersionStatus::Tested | VersionStatus::Unknown => format!("CLI {version}"),
+        VersionStatus::Newer => format!("CLI {version} · newer than tested ({tested})"),
+        VersionStatus::Older => {
+            format!("CLI {version} · older than tested ({tested}) — update it")
+        }
+    }
+}
+
 /// One allowance window of a plan, as its CLI reports it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -708,6 +723,26 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_version_with_nothing_to_compare_against_is_still_shown() {
+        assert_eq!(
+            version_text(Some("0.6.5"), VersionStatus::Unknown, "unknown"),
+            "CLI 0.6.5"
+        );
+        assert_eq!(
+            version_text(None, VersionStatus::Unknown, "1.0"),
+            "CLI version unknown"
+        );
+        assert_eq!(
+            version_text(Some(""), VersionStatus::Tested, "1.0"),
+            "CLI version unknown"
+        );
+        assert_eq!(
+            version_text(Some("1.0.0"), VersionStatus::Older, "2.1.292"),
+            "CLI 1.0.0 · older than tested (2.1.292) — update it"
+        );
+    }
 
     #[test]
     fn providers_keep_display_order_and_local_spends_itself() {
