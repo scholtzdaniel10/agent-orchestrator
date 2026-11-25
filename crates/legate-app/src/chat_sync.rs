@@ -1,18 +1,21 @@
-//! Mirrors Claude Code sessions into the open project's chat list, both ways and as they
-//! happen. Every few seconds it looks at the project's Claude Code session files (the project
-//! folder and its Claude worktrees):
+//! Mirrors Claude Code sessions and Cursor CLI chats into the open project's chat list, both
+//! ways and as they happen. Every few seconds it looks at the project's session files:
+//! Claude Code's `~/.claude/projects/<slug>` (the project folder and its Claude worktrees) and
+//! the Cursor CLI's `~/.cursor/chats/<md5 of folder>` (the project folder and folders under it).
 //!
-//! - a session started in the Claude app or the interactive CLI becomes a direct Claude chat;
-//! - a chat that follows a session (mirrored, or one of Legate's own direct Claude chats) gets
-//!   the session's turns again whenever its file changes, so turns typed in the Claude app or
-//!   the CLI show up in Legate.
+//! - a session started in the Claude app, the interactive Claude Code CLI or the interactive
+//!   Cursor CLI becomes a direct chat with that plan;
+//! - a chat that follows a session (mirrored, or one of Legate's own direct Claude or Cursor
+//!   chats) gets the session's turns again whenever its files change, so turns typed elsewhere
+//!   show up in Legate.
 //!
-//! The other direction needs nothing here: Legate's direct Claude chats are ordinary Claude
-//! Code sessions in the project folder, so `claude --resume` and the IDE extensions list them,
-//! and "Open in Claude app" (`claude --desktop --resume`) puts one in the app's sidebar.
+//! The other direction needs nothing here: Legate's direct chats are ordinary CLI sessions in
+//! the project folder, so each CLI's own resume list shows them; "Open in Claude app"
+//! (`claude --desktop --resume`) and "Open in terminal" (`cursor-agent --resume`) hand one over.
 //!
-//! Headless sessions (`sdk-cli`: Legate's jobs, other tools' automation) are only followed when
-//! a chat already owns them. A chat the user deletes stays deleted. Session files are only read.
+//! Headless sessions (Claude's `sdk-cli`, Cursor's untitled `-p` runs: Legate's jobs, other
+//! tools' automation) are only followed when a chat already owns them. A chat the user deletes
+//! stays deleted. Session files are only read.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,8 +23,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
+use legate_core::LeadMessage;
 use legate_lead::Lead;
-use legate_providers::claude_history::{self, ClaudeSession};
+use legate_providers::{claude_history, cursor_history};
 use legate_store::{ChatRow, Store};
 use tokio::sync::broadcast;
 
@@ -29,20 +33,63 @@ use crate::event::AppEvent;
 
 /// How often the session files are checked.
 const TICK: Duration = Duration::from_secs(3);
-/// A session file written this recently, by something other than Legate, is still busy in
-/// another app.
+/// A session written this recently, by something other than Legate, is still busy in another
+/// app.
 const BUSY_MS: i64 = 5_000;
+
+/// Where each CLI keeps its sessions. `None` turns that CLI's mirror off.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Roots {
+    pub claude: Option<PathBuf>,
+    pub cursor: Option<PathBuf>,
+}
+
+impl Roots {
+    pub fn from_home() -> Self {
+        Self {
+            claude: claude_history::projects_root(),
+            cursor: cursor_history::chats_root(),
+        }
+    }
+}
 
 pub(crate) struct ChatSync {
     store: Rc<Store>,
     project: Rc<RefCell<String>>,
     leads: Rc<RefCell<HashMap<String, Rc<Lead>>>>,
     events: broadcast::Sender<AppEvent>,
-    root: Option<PathBuf>,
-    /// The signature each file had when it was last looked at, so unchanged files are skipped.
+    roots: Roots,
+    /// The signature each session had when it was last looked at, so unchanged ones are skipped.
     seen: RefCell<HashMap<PathBuf, String>>,
+    /// The folder each Cursor folder directory belongs to (read once from a chat's meta.json).
+    cursor_folders: RefCell<HashMap<PathBuf, String>>,
     /// When Legate last had a turn running in a chat, epoch ms.
     legate_turns: RefCell<HashMap<String, i64>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Claude,
+    Cursor,
+}
+
+/// A session found on disk: a Claude Code file or a Cursor chat directory.
+struct Found {
+    path: PathBuf,
+    sig: String,
+    kind: Kind,
+}
+
+/// A session from either CLI, in the shape a chat needs.
+struct External {
+    provider: &'static str,
+    id: String,
+    cwd: Option<String>,
+    title: String,
+    /// Where it started (`claude-app`, `claude-code`, `cursor-cli`); `None` for a headless run.
+    source: Option<&'static str>,
+    messages: Vec<LeadMessage>,
+    modified: i64,
 }
 
 enum Outcome {
@@ -58,15 +105,16 @@ impl ChatSync {
         project: Rc<RefCell<String>>,
         leads: Rc<RefCell<HashMap<String, Rc<Lead>>>>,
         events: broadcast::Sender<AppEvent>,
-        root: Option<PathBuf>,
+        roots: Roots,
     ) -> Rc<Self> {
         Rc::new(Self {
             store,
             project,
             leads,
             events,
-            root,
+            roots,
             seen: RefCell::new(HashMap::new()),
+            cursor_folders: RefCell::new(HashMap::new()),
             legate_turns: RefCell::new(HashMap::new()),
         })
     }
@@ -91,15 +139,23 @@ impl ChatSync {
     /// `Some(reason)` when the chat's session was written to moments ago by another app, so
     /// sending now would have two programs driving one session.
     pub fn busy_elsewhere(&self, chat_id: &str) -> Option<String> {
-        let root = self.root.as_ref()?;
         let row = self.store.chat(chat_id).ok().flatten()?;
-        if row.direct.as_deref() != Some("claude") {
-            return None;
-        }
         let session = row.session_id.as_deref()?;
         let cwd = row.cwd.clone().unwrap_or_else(|| row.project.clone());
-        let modified =
-            claude_history::file_modified_ms(&claude_history::session_file(root, &cwd, session))?;
+        let modified = match row.direct.as_deref()? {
+            "claude" => claude_history::file_modified_ms(&claude_history::session_file(
+                self.roots.claude.as_ref()?,
+                &cwd,
+                session,
+            ))?,
+            "cursor" => self
+                .cursor_folders
+                .borrow()
+                .iter()
+                .filter(|(_, folder)| same_folder(folder, &cwd))
+                .find_map(|(dir, _)| cursor_history::chat_modified_ms(&dir.join(session)))?,
+            _ => return None,
+        };
         let legate = self
             .legate_turns
             .borrow()
@@ -113,12 +169,9 @@ impl ChatSync {
         })
     }
 
-    /// One pass over the open project's session files. Returns the chats it changed.
+    /// One pass over the open project's sessions. Returns the chats it changed.
     pub async fn tick(&self) -> Vec<String> {
         let project = self.project.borrow().clone();
-        let Some(root) = self.root.clone() else {
-            return Vec::new();
-        };
         if project.is_empty() {
             return Vec::new();
         }
@@ -126,33 +179,38 @@ impl ChatSync {
         if let Some(chat) = lead.as_ref().and_then(|lead| lead.busy_chat()) {
             self.note_legate_turn(&chat);
         }
+        let roots = self.roots.clone();
         let scan_project = project.clone();
-        let files = tokio::task::spawn_blocking(move || list_files(&root, &scan_project))
-            .await
-            .unwrap_or_default();
+        let known = self.cursor_folders.borrow().clone();
+        let Ok((found, folders)) =
+            tokio::task::spawn_blocking(move || list_sessions(&roots, &scan_project, known)).await
+        else {
+            return Vec::new();
+        };
+        *self.cursor_folders.borrow_mut() = folders;
         let mut changed = Vec::new();
-        for (path, sig) in files {
-            if self.seen.borrow().get(&path) == Some(&sig) {
+        for item in found {
+            if self.seen.borrow().get(&item.path) == Some(&item.sig) {
                 continue;
             }
-            let read_path = path.clone();
+            let read_path = item.path.clone();
+            let kind = item.kind;
             let Ok(Some(session)) =
-                tokio::task::spawn_blocking(move || claude_history::read_session(&read_path)).await
+                tokio::task::spawn_blocking(move || read_session(kind, &read_path)).await
             else {
-                self.seen.borrow_mut().insert(path, sig);
+                self.seen.borrow_mut().insert(item.path, item.sig);
                 continue;
             };
             if *self.project.borrow() != project {
                 return changed;
             }
-            let modified = claude_history::file_modified_ms(&path).unwrap_or_else(now_ms);
-            match self.apply(&project, lead.as_deref(), &session, &sig, modified) {
+            match self.apply(&project, lead.as_deref(), &session, &item.sig) {
                 Outcome::Changed(id) => {
                     changed.push(id);
-                    self.seen.borrow_mut().insert(path, sig);
+                    self.seen.borrow_mut().insert(item.path, item.sig);
                 }
                 Outcome::Skipped => {
-                    self.seen.borrow_mut().insert(path, sig);
+                    self.seen.borrow_mut().insert(item.path, item.sig);
                 }
                 Outcome::Later => {}
             }
@@ -165,14 +223,7 @@ impl ChatSync {
         changed
     }
 
-    fn apply(
-        &self,
-        project: &str,
-        lead: Option<&Lead>,
-        session: &ClaudeSession,
-        sig: &str,
-        modified: i64,
-    ) -> Outcome {
+    fn apply(&self, project: &str, lead: Option<&Lead>, session: &External, sig: &str) -> Outcome {
         if session.messages.is_empty() {
             return Outcome::Skipped;
         }
@@ -184,7 +235,8 @@ impl ChatSync {
         let cwd = session.cwd.clone().filter(|dir| !same_folder(dir, project));
         let row = match existing {
             Some(row) => {
-                if row.direct.as_deref() != Some("claude") || row.source_sig.as_deref() == Some(sig)
+                if row.direct.as_deref() != Some(session.provider)
+                    || row.source_sig.as_deref() == Some(sig)
                 {
                     return Outcome::Skipped;
                 }
@@ -192,30 +244,28 @@ impl ChatSync {
                     return Outcome::Later;
                 }
                 ChatRow {
-                    updated_at: row.updated_at.max(modified),
+                    updated_at: row.updated_at.max(session.modified),
                     cwd: row.cwd.clone().or(cwd),
                     source_sig: Some(sig.to_string()),
                     ..row
                 }
             }
             None => {
-                let source = match session.entrypoint.as_deref() {
-                    Some("claude-desktop") => "claude-app",
-                    Some("cli") => "claude-code",
-                    _ => return Outcome::Skipped,
+                let Some(source) = session.source else {
+                    return Outcome::Skipped;
                 };
                 if self.store.is_session_dismissed(&session.id).unwrap_or(true) {
                     return Outcome::Skipped;
                 }
                 ChatRow {
-                    id: chat_id_for(&session.id),
+                    id: chat_id_for(session.provider, &session.id),
                     project: project.to_string(),
-                    title: session.display_title(),
-                    created_at: modified,
-                    updated_at: modified,
+                    title: session.title.clone(),
+                    created_at: session.modified,
+                    updated_at: session.modified,
                     session_id: Some(session.id.clone()),
-                    session_provider: Some("claude".to_string()),
-                    direct: Some("claude".to_string()),
+                    session_provider: Some(session.provider.to_string()),
+                    direct: Some(session.provider.to_string()),
                     cwd,
                     source: Some(source.to_string()),
                     source_sig: Some(sig.to_string()),
@@ -237,31 +287,112 @@ impl ChatSync {
     }
 }
 
-/// The project's session files with their signatures.
-fn list_files(root: &Path, project: &str) -> Vec<(PathBuf, String)> {
-    claude_history::session_dirs(root, project)
-        .iter()
-        .flat_map(|dir| claude_history::session_files(dir))
-        .filter_map(|path| {
-            let sig = claude_history::file_sig(&path)?;
-            Some((path, sig))
-        })
-        .collect()
+/// The project's sessions with their signatures, and the Cursor folder map grown by any folder
+/// directory seen for the first time.
+fn list_sessions(
+    roots: &Roots,
+    project: &str,
+    mut folders: HashMap<PathBuf, String>,
+) -> (Vec<Found>, HashMap<PathBuf, String>) {
+    let mut found = Vec::new();
+    if let Some(root) = &roots.claude {
+        for dir in claude_history::session_dirs(root, project) {
+            for path in claude_history::session_files(&dir) {
+                if let Some(sig) = claude_history::file_sig(&path) {
+                    found.push(Found {
+                        path,
+                        sig,
+                        kind: Kind::Claude,
+                    });
+                }
+            }
+        }
+    }
+    if let Some(root) = &roots.cursor {
+        for dir in cursor_history::folder_dirs(root) {
+            if !folders.contains_key(&dir) {
+                match cursor_history::folder_cwd(&dir) {
+                    Some(cwd) => {
+                        folders.insert(dir.clone(), cwd);
+                    }
+                    None => continue,
+                }
+            }
+            if !in_project(&folders[&dir], project) {
+                continue;
+            }
+            for chat in cursor_history::chat_dirs(&dir) {
+                if let Some(sig) = cursor_history::chat_sig(&chat) {
+                    found.push(Found {
+                        path: chat,
+                        sig,
+                        kind: Kind::Cursor,
+                    });
+                }
+            }
+        }
+    }
+    (found, folders)
+}
+
+fn read_session(kind: Kind, path: &Path) -> Option<External> {
+    match kind {
+        Kind::Claude => {
+            let session = claude_history::read_session(path)?;
+            let source = match session.entrypoint.as_deref() {
+                Some("claude-desktop") => Some("claude-app"),
+                Some("cli") => Some("claude-code"),
+                _ => None,
+            };
+            Some(External {
+                provider: "claude",
+                title: session.display_title(),
+                id: session.id,
+                cwd: session.cwd,
+                source,
+                messages: session.messages,
+                modified: claude_history::file_modified_ms(path).unwrap_or_else(now_ms),
+            })
+        }
+        Kind::Cursor => {
+            let chat = cursor_history::read_chat(path)?;
+            Some(External {
+                provider: "cursor",
+                title: chat.display_title(),
+                source: chat.interactive.then_some("cursor-cli"),
+                modified: chat
+                    .updated_at
+                    .or_else(|| cursor_history::chat_modified_ms(path))
+                    .unwrap_or_else(now_ms),
+                id: chat.id,
+                cwd: chat.cwd,
+                messages: chat.messages,
+            })
+        }
+    }
 }
 
 /// A stable chat id for a mirrored session (chat ids are at most 64 characters).
-fn chat_id_for(session_id: &str) -> String {
-    let id = format!("claude-{session_id}");
+fn chat_id_for(provider: &str, session_id: &str) -> String {
+    let id = format!("{provider}-{session_id}");
     id.chars().take(64).collect()
 }
 
+fn norm(path: &str) -> String {
+    path.trim_end_matches(['\\', '/'])
+        .replace('/', "\\")
+        .to_lowercase()
+}
+
 fn same_folder(a: &str, b: &str) -> bool {
-    let norm = |path: &str| {
-        path.trim_end_matches(['\\', '/'])
-            .replace('/', "\\")
-            .to_lowercase()
-    };
     norm(a) == norm(b)
+}
+
+/// The folder is the project or inside it (a worktree under `.claude/worktrees`, a subfolder).
+fn in_project(folder: &str, project: &str) -> bool {
+    let folder = norm(folder);
+    let project = norm(project);
+    folder == project || folder.starts_with(&format!("{project}\\"))
 }
 
 fn now_ms() -> i64 {
@@ -306,6 +437,16 @@ mod tests {
     }
 
     fn sync_for(project: &str, root: &Path) -> (Rc<ChatSync>, Rc<Store>) {
+        sync_with(
+            project,
+            Roots {
+                claude: Some(root.to_path_buf()),
+                cursor: None,
+            },
+        )
+    }
+
+    fn sync_with(project: &str, roots: Roots) -> (Rc<ChatSync>, Rc<Store>) {
         let store = Rc::new(Store::open(":memory:").unwrap());
         let (events, _) = broadcast::channel(16);
         let sync = ChatSync::new(
@@ -313,9 +454,127 @@ mod tests {
             Rc::new(RefCell::new(project.to_string())),
             Rc::new(RefCell::new(HashMap::new())),
             events,
-            Some(root.to_path_buf()),
+            roots,
         );
         (sync, store)
+    }
+
+    /// Writes a Cursor CLI chat the way `cursor-agent` stores it.
+    fn write_cursor_chat(
+        root: &Path,
+        folder: &str,
+        cwd: &str,
+        id: &str,
+        name: &str,
+        turns: &[(&str, &str)],
+    ) -> PathBuf {
+        let dir = root.join(folder).join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("meta.json"),
+            serde_json::json!({ "schemaVersion": 1, "hasConversation": true, "updatedAtMs": 7, "cwd": cwd })
+                .to_string(),
+        )
+        .unwrap();
+        let db_path = dir.join("store.db");
+        let _ = std::fs::remove_file(&db_path);
+        let db = rusqlite::Connection::open(&db_path).unwrap();
+        db.execute_batch(
+            "CREATE TABLE blobs (id TEXT PRIMARY KEY, data BLOB); CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);",
+        )
+        .unwrap();
+        let mut root_bytes = Vec::new();
+        let mut n = 0u8;
+        let mut put = |json: String| {
+            n += 1;
+            let id = format!("{n:02x}").repeat(32);
+            db.execute(
+                "INSERT INTO blobs VALUES (?1, ?2)",
+                rusqlite::params![id, json.into_bytes()],
+            )
+            .unwrap();
+            root_bytes.extend([0x0a, 0x20]);
+            root_bytes.extend(std::iter::repeat_n(n, 32));
+        };
+        for (prompt, reply) in turns {
+            put(serde_json::json!({ "role": "user", "content": format!("<user_query>{prompt}</user_query>") }).to_string());
+            put(serde_json::json!({ "role": "assistant", "content": reply }).to_string());
+        }
+        let root_id = "ff".repeat(32);
+        db.execute(
+            "INSERT INTO blobs VALUES (?1, ?2)",
+            rusqlite::params![root_id, root_bytes],
+        )
+        .unwrap();
+        let meta = serde_json::json!({ "latestRootBlobId": root_id, "name": name }).to_string();
+        let hex = meta.bytes().map(|b| format!("{b:02x}")).collect::<String>();
+        db.execute("INSERT INTO meta VALUES ('0', ?1)", [hex])
+            .unwrap();
+        dir
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_interactive_cursor_chat_becomes_a_chat_and_headless_runs_stay_out() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let root = temp_root("cursor");
+                let project = r"C:\work\app";
+                write_cursor_chat(
+                    &root,
+                    "aaaa",
+                    project,
+                    "c-1",
+                    "Fix Login",
+                    &[("Fix login", "Done")],
+                );
+                write_cursor_chat(
+                    &root,
+                    "aaaa",
+                    project,
+                    "c-2",
+                    "New Agent",
+                    &[("Job prompt", "Job reply")],
+                );
+                write_cursor_chat(
+                    &root,
+                    "bbbb",
+                    r"C:\work\other",
+                    "c-3",
+                    "Other",
+                    &[("Hi", "Hello")],
+                );
+                let (sync, store) = sync_with(
+                    project,
+                    Roots {
+                        claude: None,
+                        cursor: Some(root.clone()),
+                    },
+                );
+                assert_eq!(sync.tick().await, vec!["cursor-c-1".to_string()]);
+                let row = store.chat("cursor-c-1").unwrap().unwrap();
+                assert_eq!(row.source.as_deref(), Some("cursor-cli"));
+                assert_eq!(row.direct.as_deref(), Some("cursor"));
+                assert_eq!(row.session_provider.as_deref(), Some("cursor"));
+                assert_eq!(row.title, "Fix Login");
+                assert_eq!(store.messages("cursor-c-1").unwrap().len(), 2);
+                assert_eq!(store.chats(project).unwrap().len(), 1);
+
+                std::thread::sleep(Duration::from_millis(20));
+                write_cursor_chat(
+                    &root,
+                    "aaaa",
+                    project,
+                    "c-1",
+                    "Fix Login",
+                    &[("Fix login", "Done"), ("Also logout", "Done too")],
+                );
+                assert_eq!(sync.tick().await, vec!["cursor-c-1".to_string()]);
+                assert_eq!(store.messages("cursor-c-1").unwrap().len(), 4);
+                assert!(sync.busy_elsewhere("cursor-c-1").is_some());
+                let _ = std::fs::remove_dir_all(&root);
+            })
+            .await;
     }
 
     fn temp_root(name: &str) -> PathBuf {
@@ -449,6 +708,11 @@ mod tests {
     fn folders_compare_without_case_or_trailing_slashes() {
         assert!(same_folder(r"C:\Work\App\", r"c:\work\app"));
         assert!(!same_folder(r"C:\work\app2", r"C:\work\app"));
-        assert_eq!(chat_id_for("s-1"), "claude-s-1");
+        assert_eq!(chat_id_for("claude", "s-1"), "claude-s-1");
+        assert!(in_project(
+            r"C:\work\app\.claude\worktrees\x",
+            r"C:\Work\App"
+        ));
+        assert!(!in_project(r"C:\work\app2", r"C:\work\app"));
     }
 }

@@ -485,6 +485,9 @@ pub struct LeadChat {
     /// The chat is a Claude Code session, so it can be opened in the Claude app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_session: Option<bool>,
+    /// The chat is a Cursor CLI chat, so it can be opened in an interactive Cursor terminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_session: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

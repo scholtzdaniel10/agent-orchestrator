@@ -5,6 +5,7 @@ mod claude;
 pub mod claude_history;
 mod codex;
 mod cursor;
+pub mod cursor_history;
 mod edit_size;
 mod error;
 mod lenient;

@@ -614,9 +614,13 @@ impl Lead {
         for row in self.store.chats(&(self.project)())? {
             let pending = self.chat_has_pending(&row.id)?;
             let id = row.id;
-            let claude_session = row.session_id.is_some()
-                && row.direct.as_deref() == Some("claude")
-                && row.session_provider.as_deref() == Some("claude");
+            let session_of = |plan: &str| {
+                row.session_id.is_some()
+                    && row.direct.as_deref() == Some(plan)
+                    && row.session_provider.as_deref() == Some(plan)
+            };
+            let claude_session = session_of("claude");
+            let cursor_session = session_of("cursor");
             out.push(LeadChat {
                 active: Some(id.as_str()) == active.as_deref(),
                 id,
@@ -626,6 +630,7 @@ impl Lead {
                 direct: chat_plan(row.direct.as_deref()),
                 source: row.source,
                 claude_session: claude_session.then_some(true),
+                cursor_session: cursor_session.then_some(true),
             });
         }
         Ok(out)

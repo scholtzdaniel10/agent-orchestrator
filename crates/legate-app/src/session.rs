@@ -902,7 +902,7 @@ async fn boot(
         Rc::clone(&project),
         Rc::clone(&lead_sessions),
         events.clone(),
-        legate_providers::claude_history::projects_root(),
+        crate::chat_sync::Roots::from_home(),
     );
     chat_sync.spawn();
     Ok(World {

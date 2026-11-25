@@ -57,6 +57,7 @@ pub fn ProjectBar(
     on_rename_chat: Callback<(String, String)>,
     on_remove_chat: Callback<String>,
     on_open_chat_in_app: Callback<String>,
+    on_open_chat_in_terminal: Callback<String>,
     on_select_worktree: Callback<(Option<String>, String)>,
     on_select_all_worktrees: Callback,
     on_create_worktree: WorktreeCreate,
@@ -422,6 +423,7 @@ pub fn ProjectBar(
                                     on_rename: on_rename_chat,
                                     on_remove: on_remove_chat,
                                     on_open_in_app: on_open_chat_in_app,
+                                    on_open_in_terminal: on_open_chat_in_terminal,
                                 }
                             }
                         }
@@ -1095,6 +1097,7 @@ fn ChatRow(
     on_rename: Callback<(String, String)>,
     on_remove: Callback<String>,
     on_open_in_app: Callback<String>,
+    on_open_in_terminal: Callback<String>,
 ) -> Element {
     let mut mode = use_signal(|| "idle");
     let draft = use_signal(|| chat.title.clone());
@@ -1165,10 +1168,13 @@ fn ChatRow(
     }
     let open_id = id.clone();
     let app_id = id.clone();
+    let terminal_id = id.clone();
     let in_claude = chat.claude_session == Some(true);
+    let in_cursor = chat.cursor_session == Some(true);
     let source = match chat.source.as_deref() {
         Some("claude-app") => Some(("App", "Started in the Claude app")),
         Some("claude-code") => Some(("CLI", "Started in Claude Code in a terminal")),
+        Some("cursor-cli") => Some(("Cursor", "Started in the Cursor CLI in a terminal")),
         _ => None,
     };
     rsx! {
@@ -1201,6 +1207,16 @@ fn ChatRow(
                         title: "Open in the Claude app",
                         onclick: move |_| on_open_in_app.call(app_id.clone()),
                         "Claude app"
+                    }
+                }
+                if in_cursor {
+                    button {
+                        class: "project-chat-action",
+                        r#type: "button",
+                        aria_label: "Open {title} in a Cursor terminal",
+                        title: "Open in a Cursor terminal (cursor-agent --resume)",
+                        onclick: move |_| on_open_in_terminal.call(terminal_id.clone()),
+                        "Terminal"
                     }
                 }
                 button {

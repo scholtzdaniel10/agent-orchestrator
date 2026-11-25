@@ -12,6 +12,7 @@ futures-core = "0.3"
 legate-core = { path = "../legate-core" }
 liteagent = { path = "../liteagent" }
 regex = "1"
+rusqlite = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

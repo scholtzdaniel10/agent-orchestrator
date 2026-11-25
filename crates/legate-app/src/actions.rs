@@ -1336,9 +1336,10 @@ impl World {
         }
         let lead = self.current_lead();
         if let Some(chat) = lead.chats().ok().and_then(|chats| {
-            chats
-                .into_iter()
-                .find(|chat| chat.active && chat.claude_session == Some(true))
+            chats.into_iter().find(|chat| {
+                chat.active
+                    && (chat.claude_session == Some(true) || chat.cursor_session == Some(true))
+            })
         }) {
             if let Some(reason) = self.chat_sync.busy_elsewhere(&chat.id) {
                 return fail(reason);
@@ -1346,6 +1347,51 @@ impl World {
             self.chat_sync.note_legate_turn(&chat.id);
         }
         Box::pin(async move { lead.send(&text).await.map_err(lead_err) })
+    }
+
+    /// Opens a direct chat's session as an interactive terminal (`cursor-agent --resume`,
+    /// `claude --resume`) in the folder it ran in, so it can be continued by hand.
+    pub fn open_chat_in_terminal(&self, id: String, cols: i64, rows: i64) -> Task<TerminalInfo> {
+        if id.is_empty() || id.len() > 64 {
+            return fail("invalid chat id");
+        }
+        let row = match self.store.chat(&id) {
+            Ok(Some(row)) if row.project == *self.project.borrow() => row,
+            Ok(_) => return fail("unknown chat"),
+            Err(err) => return fail(err.to_string()),
+        };
+        let provider = match row.direct.as_deref() {
+            Some("claude") => ProviderId::Claude,
+            Some("cursor") => ProviderId::Cursor,
+            _ => return fail("Only a direct Claude or Cursor chat opens in a terminal."),
+        };
+        let Some(session) = row
+            .session_id
+            .clone()
+            .filter(|_| row.session_provider.as_deref() == row.direct.as_deref())
+        else {
+            return fail("This chat has no session yet. Send a message first.");
+        };
+        if let Some(reason) = self.chat_sync.busy_elsewhere(&id) {
+            return fail(reason);
+        }
+        let cwd = row
+            .cwd
+            .clone()
+            .filter(|dir| std::path::Path::new(dir).is_dir())
+            .unwrap_or_else(|| row.project.clone());
+        let terms = self.terms.clone();
+        Box::pin(async move {
+            let opts = OpenOptions {
+                resume: Some(session),
+                cwd: Some(cwd),
+                ..OpenOptions::default()
+            };
+            terms
+                .open(provider, cols as f64, rows as f64, opts)
+                .await
+                .map_err(|err| AppError::message(err.to_string()))
+        })
     }
 
     /// Opens a direct Claude chat's session in the Claude app (`claude --desktop --resume`),

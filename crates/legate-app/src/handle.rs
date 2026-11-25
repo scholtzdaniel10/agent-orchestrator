@@ -642,6 +642,17 @@ impl AppHandle {
             .await
     }
 
+    pub async fn open_chat_in_terminal(
+        &self,
+        id: impl Into<String>,
+        cols: i64,
+        rows: i64,
+    ) -> Result<TerminalInfo, AppError> {
+        let id = id.into();
+        self.invoke(move |world| world.open_chat_in_terminal(id, cols, rows))
+            .await
+    }
+
     pub async fn open_chat_in_claude_app(&self, id: impl Into<String>) -> Result<(), AppError> {
         let id = id.into();
         self.invoke(move |world| world.open_chat_in_claude_app(id))

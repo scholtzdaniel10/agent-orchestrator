@@ -947,6 +947,20 @@ pub async fn rename_lead_chat(
 }
 
 #[tauri::command]
+pub async fn open_chat_in_terminal(
+    shell: State<'_, Shell>,
+    id: String,
+    cols: f64,
+    rows: f64,
+) -> Result<legate_core::TerminalInfo, String> {
+    shell
+        .backend()?
+        .open_chat_in_terminal(id, cells(cols), cells(rows))
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn open_chat_in_claude_app(shell: State<'_, Shell>, id: String) -> Result<(), String> {
     shell
         .backend()?

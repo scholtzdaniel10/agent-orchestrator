@@ -426,6 +426,13 @@ pub async fn open_lead_chat(id: &str) -> Result<Vec<LeadMessage>, String> {
 pub async fn open_chat_in_claude_app(id: &str) -> Result<(), String> {
     call("open_chat_in_claude_app", &json!({ "id": id })).await
 }
+pub async fn open_chat_in_terminal(id: &str, cols: f64, rows: f64) -> Result<TerminalInfo, String> {
+    call(
+        "open_chat_in_terminal",
+        &json!({ "id": id, "cols": cols, "rows": rows }),
+    )
+    .await
+}
 pub async fn stop_lead(chat_id: Option<&str>) -> Result<Option<String>, String> {
     call("stop_lead", &json!({ "chatId": chat_id })).await
 }
