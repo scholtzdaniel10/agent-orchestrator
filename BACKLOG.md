@@ -1,47 +1,25 @@
 # Backlog
 
-Ordered. The top item is the next one to build.
+Ordered. The top item is the next one to build. Shipped work is in `CHANGELOG.md`.
 
-## Done
+The rule: finish the product first, then cut one release at the end. Until then everything lands on `main` and is checked locally (fmt, clippy for native and wasm, tests).
 
-- Workspace-first window: terminals in the centre, a right-hand panel for Files, Lead, Jobs, Changes, Routines, Usage and Activity, and a status bar.
-- Worker access: read, edit, or full. Full access may run commands, still in a worktree; the person sets a ceiling for jobs the lead hands out.
-- Saved chats and jobs, per project, with past chats listed in the sidebar.
-- Parallel jobs per plan (`maxParallel` in `rules.json`).
-- First-run check. Say clearly when the `claude` or Cursor CLI is missing or signed out, and how to fix it. The app works with only one of them.
-- Stop a job. A button to cancel a running or queued job.
-- GitHub through `gh`: clone a repo into the projects list (hidden when `gh` is missing or signed out).
-- Delete and rename chats.
-- Open a pull request from a merged change via `gh`.
-- CI on pull requests; Windows installer and auto-update from GitHub Releases.
-- Tested CLI versions are stated; a readable error when a CLI's output changes.
-- Terminal sessions are saved per project and come back after a restart.
-- Reviewed what a worker may do and the Electron security settings; Claude workers are denied a shell and the person's MCP servers.
-- Seven looks for the window, chosen in the header.
-- Open a terminal in its own git worktree, from the Workers header or from Changes.
-- Live step list for each job: every file a worker reads or edits and every command it runs, with the diff of each edited file.
-- Free layout: resizable and hidable panels, a workers focus mode, and a grid of terminal panes.
-- Worktrees in the sidebar: name them, open several, and work in each one.
-- More than one window, and a terminal in a window of its own.
-- Routines (saved jobs, optional follow-on after a job type) and worktree setup commands.
-- Files panel: tree of a project or worktree, preview, and open in the default program.
-- Terminals mode (pane grid beside the project sidebar) and selecting or creating several worktrees at once.
-- Command line: `legate` runs the same jobs, changes, and routines from a terminal.
-- Terminal UI: `legate` with no arguments, or `legate ui`, hands out jobs, watches every step, and reviews changes.
-- Job ownership so the app and the `legate` command share jobs safely.
-- New worktrees can start Claude or Cursor on a task so the agent is already working.
-- First-run setup screen: install and sign in to Git, Claude Code, the Cursor CLI, and optionally the GitHub CLI without leaving the app.
+## Now
 
-## Next
+- Decide what the benchmarks should show: Legate against the plain CLIs, a public scoreboard, or numbers for tuning the router.
+- Decide whether a cancelled plan (today, Cursor) stays as a plan that's switched off or is hidden by default.
+
+## Release (once Now is empty)
 
 1. Publish 1.0.0 and check the installer on a clean machine.
-2. Sign the Windows installer so SmartScreen stops warning.
-3. macOS and Linux builds.
-4. Open a pull request against real GitHub from an installed build.
+2. Turn on auto-update (`UPDATER_ENABLED` in `apps/desktop/src-tauri`; needs a release endpoint and signing key).
+3. Sign the Windows installer so SmartScreen stops warning.
+4. macOS and Linux builds.
+5. Open a pull request against real GitHub from an installed build.
 
-## Later
+## Later (not decided for 1.0)
 
-- Codex as a third worker (needs its own subscription).
 - Run agents on a remote machine over SSH.
-- Search across chats and jobs.
-- Browser tools, Linear, a mobile companion.
+- Browser tools.
+- Linear.
+- A mobile companion.

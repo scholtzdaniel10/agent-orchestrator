@@ -86,9 +86,7 @@ Same inputs: one planning pick, 10,000 runs, two windows (`five_hour` at 0.2, `s
 
 ## Follow-ups for phase 4
 
-- A `maxParallel` change in Settings does not retune the running router; it needs a rules setter on the orchestrator.
 - `JobRecord` has no created-at, so `legate jobs` prints `-` for age.
-- `legate plans` shows "CLI version unknown" for local; show the Ollama or llama-server version.
 - `Workspaces::remove` / `changes` are stubs (the orchestrator does not call them today).
 - The updater is compiled into the shell but left off (`UPDATER_ENABLED` is false, and `bundle.createUpdaterArtifacts` is false). Turn it on when a release endpoint and pubkey exist. Notifications, UI zoom, and the single-instance lock are already wired.
 
