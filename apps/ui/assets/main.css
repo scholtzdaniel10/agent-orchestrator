@@ -8852,9 +8852,11 @@ input, textarea {
     linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0%, transparent 45%, rgba(0, 0, 0, 0.12) 100%);
 }
 
-/* Frutiger Aero (Windows Vista): glass panels over a bright sky, glossy buttons, a black glass
-   taskbar for a status bar. The glass stays mostly opaque so text keeps its contrast over any
-   part of the sky. */
+/* Frutiger Aero (Windows Vista) and Dark Aero. Both share the rules below; each theme sets only
+   the palette and the materials (--aero-*). The glass stays mostly opaque so text keeps its
+   contrast over any part of the backdrop. Only the rail, the status bar and menus blur what is
+   behind them: a backdrop-filter makes its element the containing block for fixed descendants
+   and a stacking context, which would move dropdown lists and hide header menus behind panels. */
 :root[data-theme='aero'] {
   color-scheme: light;
   --bg: #f3f8fc;
@@ -8879,34 +8881,8 @@ input, textarea {
   --border: #a9c3da;
   --border-strong: #6f8fae;
   --frame: #8fb2d0;
-  --font-ui: 'Segoe UI', 'Segoe UI Variable Text', system-ui, sans-serif;
-  --font-serif: 'Segoe UI Light', 'Segoe UI', sans-serif;
-  --radius-sm: 3px;
-  --radius: 4px;
-  --radius-lg: 8px;
-  --aero-glass: rgba(246, 251, 255, 0.8);
-  --aero-glass-solid: rgba(248, 252, 255, 0.93);
-  --aero-glass-edge: 0 0 0 1px rgba(16, 58, 98, 0.38), 0 10px 30px rgba(0, 38, 84, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --aero-blur: blur(18px) saturate(1.6);
-  --aero-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(240, 248, 254, 0.85) 49%, rgba(219, 236, 249, 0.85) 50%, rgba(232, 244, 252, 0.9) 100%);
-  --aero-button: linear-gradient(to bottom, #f2f2f2 0%, #ebebeb 49%, #dddddd 50%, #cfcfcf 100%);
-  --aero-button-hover: linear-gradient(to bottom, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%);
-  --aero-button-down: linear-gradient(to bottom, #e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%);
-  --aero-orb: linear-gradient(to bottom, #6cc6fb 0%, #2a8fd6 49%, #0868b0 50%, #1f86cd 100%);
-  --aero-pick: linear-gradient(to bottom, #f1f8fd 0%, #d5effc 100%);
-}
-
-:root[data-theme='aero'] * {
-  scrollbar-color: #9cbfdc transparent;
-}
-
-:root[data-theme='aero'] .roman-workspace {
-  --standard: #1565b3;
-}
-
-/* The sky behind the glass: deep blue at the top, haze, a green hill, a few bubbles. */
-:root[data-theme='aero'] .app {
-  background:
+  /* The sky: deep blue at the top, haze, a green hill, a few bubbles. */
+  --aero-backdrop:
     radial-gradient(circle at 7% 24%, rgba(255, 255, 255, 0.75) 0 9px, rgba(255, 255, 255, 0.2) 10px 24px, transparent 25px),
     radial-gradient(circle at 93% 62%, rgba(255, 255, 255, 0.6) 0 7px, rgba(255, 255, 255, 0.16) 8px 19px, transparent 20px),
     radial-gradient(circle at 76% 13%, rgba(255, 255, 255, 0.5) 0 5px, rgba(255, 255, 255, 0.14) 6px 14px, transparent 15px),
@@ -8914,70 +8890,207 @@ input, textarea {
     radial-gradient(ellipse 70% 28% at 58% 36%, rgba(255, 255, 255, 0.5), transparent 70%),
     radial-gradient(ellipse 120% 38% at 28% 112%, #3f9d2f 0%, #6cc24a 45%, transparent 70%),
     linear-gradient(to bottom, #0b5fa8 0%, #2c95dd 30%, #86cdf1 60%, #c7ebf8 78%, #a4dc7c 100%);
+  --aero-glass: rgba(246, 251, 255, 0.8);
+  --aero-glass-solid: rgba(248, 252, 255, 0.93);
+  --aero-glass-border: rgba(255, 255, 255, 0.85);
+  --aero-glass-edge: 0 0 0 1px rgba(16, 58, 98, 0.38), 0 10px 30px rgba(0, 38, 84, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --aero-bar: rgba(220, 239, 252, 0.8);
+  --aero-bar-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0) 51%);
+  --aero-bar-edge: rgba(255, 255, 255, 0.75);
+  --aero-bar-shadow: rgba(16, 58, 98, 0.3);
+  --aero-side: rgba(240, 248, 254, 0.8);
+  --aero-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(240, 248, 254, 0.85) 49%, rgba(219, 236, 249, 0.85) 50%, rgba(232, 244, 252, 0.9) 100%);
+  --aero-wordmark: #0b2a45;
+  --aero-wordmark-glow: 0 0 10px #fff, 0 0 2px #fff;
+  --aero-button: linear-gradient(to bottom, #f2f2f2 0%, #ebebeb 49%, #dddddd 50%, #cfcfcf 100%);
+  --aero-button-border: #707070;
+  --aero-button-text: #10202f;
+  --aero-button-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+  --aero-button-hover: linear-gradient(to bottom, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%);
+  --aero-button-hover-border: #3c7fb1;
+  --aero-button-hover-glow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+  --aero-button-down: linear-gradient(to bottom, #e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%);
+  --aero-button-down-border: #2c628b;
+  --aero-orb: linear-gradient(to bottom, #6cc6fb 0%, #2a8fd6 49%, #0868b0 50%, #1f86cd 100%);
+  --aero-orb-border: #0a4f86;
+  --aero-orb-glow: rgba(70, 170, 255, 0.55);
+  --aero-field: #fff;
+  --aero-field-border: #abadb3;
+  --aero-field-top: #8e8f8f;
+  --aero-field-hover: #5794bf;
+  --aero-field-focus: #3d7bad;
+  --aero-pick: linear-gradient(to bottom, #f1f8fd 0%, #d5effc 100%);
+  --aero-pick-border: #84c6ed;
+  --aero-pick-inner: rgba(255, 255, 255, 0.7);
+  --aero-hover: linear-gradient(to bottom, #f5fbfe 0%, #e1f2fc 100%);
+  --aero-hover-border: #b8e3fb;
+  --aero-menu: rgba(250, 252, 255, 0.95);
+  --aero-menu-border: #979797;
+  --aero-menu-shadow: 3px 4px 10px rgba(0, 0, 0, 0.28);
+  --aero-track: linear-gradient(to bottom, #e6e6e6 0%, #f7f7f7 100%);
+  --aero-track-border: #b2b2b2;
+  --aero-focus: #2b8ae0;
+  --aero-scroll: #9cbfdc;
 }
 
-:root[data-theme='aero'] .app-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.75);
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0) 51%),
-    rgba(220, 239, 252, 0.8);
-  box-shadow: 0 1px 0 rgba(16, 58, 98, 0.3);
-  backdrop-filter: var(--aero-blur);
+/* Dark Aero: black glass over a night sky with aqua light, glossy dark buttons that glow aqua. */
+:root[data-theme='aero-dark'] {
+  color-scheme: dark;
+  --bg: #0b1420;
+  --text: #e8f4fb;
+  --brand: #2f9be4;
+  --on-accent: #fff;
+  --ray: #7ec8e3;
+  --signal: #ffd66b;
+  --bad: #ff8f86;
+  --diff-add: #7fe0a8;
+  --diff-del: #ff8f86;
+  --bot-claude: #ffaa70;
+  --bot-cursor: #5fe3c0;
+  --bot-grok: #c2a4ff;
+  --tint: #0b1420;
+  --inset: #0f1c2a;
+  --deep: #13263a;
+  --raised: #18304a;
+  --selected: #133a58;
+  --muted: #a6bccc;
+  --faint: #8aa1b3;
+  --border: #2a4258;
+  --border-strong: #4f7290;
+  --frame: #2a4258;
+  /* The night: aqua light streaks, a glowing horizon, a few bubbles with aqua rims. */
+  --aero-backdrop:
+    radial-gradient(circle at 9% 22%, rgba(150, 230, 255, 0.3) 0 8px, rgba(126, 200, 227, 0.12) 9px 22px, transparent 23px),
+    radial-gradient(circle at 91% 60%, rgba(150, 230, 255, 0.24) 0 6px, rgba(126, 200, 227, 0.1) 7px 18px, transparent 19px),
+    radial-gradient(circle at 74% 12%, rgba(150, 230, 255, 0.2) 0 4px, rgba(126, 200, 227, 0.08) 5px 13px, transparent 14px),
+    radial-gradient(ellipse 60% 16% at 34% 30%, rgba(60, 200, 255, 0.3), transparent 70%),
+    radial-gradient(ellipse 48% 12% at 70% 52%, rgba(80, 255, 210, 0.16), transparent 70%),
+    radial-gradient(ellipse 140% 45% at 50% 120%, rgba(40, 170, 255, 0.5), transparent 62%),
+    linear-gradient(to bottom, #02060d 0%, #071a2e 45%, #0a2a40 70%, #03101c 100%);
+  --aero-glass: rgba(10, 20, 32, 0.8);
+  --aero-glass-solid: rgba(9, 17, 27, 0.94);
+  --aero-glass-border: rgba(126, 200, 227, 0.28);
+  --aero-glass-edge: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 18px rgba(60, 180, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --aero-bar: rgba(6, 14, 24, 0.84);
+  --aero-bar-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0) 51%);
+  --aero-bar-edge: rgba(126, 200, 227, 0.3);
+  --aero-bar-shadow: rgba(0, 0, 0, 0.6);
+  --aero-side: rgba(8, 16, 26, 0.82);
+  --aero-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 49%, rgba(0, 0, 0, 0.15) 50%, rgba(255, 255, 255, 0.03) 100%), rgba(16, 32, 48, 0.6);
+  --aero-wordmark: #fff;
+  --aero-wordmark-glow: 0 0 10px rgba(126, 200, 227, 0.8), 0 0 2px rgba(126, 200, 227, 0.9);
+  --aero-button: linear-gradient(to bottom, #3a4c5e 0%, #26364a 49%, #18263a 50%, #22344a 100%);
+  --aero-button-border: #0a121c;
+  --aero-button-text: #e8f4fb;
+  --aero-button-inner: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --aero-button-hover: linear-gradient(to bottom, #3f6a8e 0%, #24496c 49%, #173a5c 50%, #20507a 100%);
+  --aero-button-hover-border: #4fb6ef;
+  --aero-button-hover-glow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 8px rgba(80, 190, 255, 0.55);
+  --aero-button-down: linear-gradient(to bottom, #173a5c 0%, #12304e 49%, #0d2640 50%, #143a5e 100%);
+  --aero-button-down-border: #2d8fd0;
+  --aero-orb: linear-gradient(to bottom, #5fd0ff 0%, #1a8fd8 49%, #0a63a8 50%, #1679c0 100%);
+  --aero-orb-border: #04304f;
+  --aero-orb-glow: rgba(60, 180, 255, 0.6);
+  --aero-field: #08111b;
+  --aero-field-border: #34506a;
+  --aero-field-top: #1e3246;
+  --aero-field-hover: #4fb6ef;
+  --aero-field-focus: #7ec8e3;
+  --aero-pick: linear-gradient(to bottom, rgba(126, 200, 227, 0.28) 0%, rgba(60, 150, 220, 0.18) 100%);
+  --aero-pick-border: rgba(126, 200, 227, 0.55);
+  --aero-pick-inner: rgba(126, 200, 227, 0.25);
+  --aero-hover: rgba(126, 200, 227, 0.12);
+  --aero-hover-border: rgba(126, 200, 227, 0.35);
+  --aero-menu: rgba(10, 20, 32, 0.95);
+  --aero-menu-border: rgba(126, 200, 227, 0.35);
+  --aero-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --aero-track: #08111b;
+  --aero-track-border: #26394c;
+  --aero-focus: #7ec8e3;
+  --aero-scroll: #3d5a74;
 }
 
-:root[data-theme='aero'] .app-name {
-  color: #0b2a45;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) {
+  --font-ui: 'Segoe UI', 'Segoe UI Variable Text', system-ui, sans-serif;
+  --font-serif: 'Segoe UI Light', 'Segoe UI', sans-serif;
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --aero-blur: blur(18px) saturate(1.6);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) * {
+  scrollbar-color: var(--aero-scroll) transparent;
+}
+
+:root[data-theme='aero'] .roman-workspace {
+  --standard: #1565b3;
+}
+
+:root[data-theme='aero-dark'] .roman-workspace {
+  --standard: #7ec8e3;
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .app {
+  background: var(--aero-backdrop);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .app-header {
+  border-bottom: 1px solid var(--aero-bar-edge);
+  background: var(--aero-bar-sheen), var(--aero-bar);
+  box-shadow: 0 1px 0 var(--aero-bar-shadow);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .app-name {
+  color: var(--aero-wordmark);
   font-family: var(--font-serif);
   font-size: 22px;
   font-weight: 300;
   letter-spacing: 0.02em;
   text-transform: none;
-  text-shadow: 0 0 10px #fff, 0 0 2px #fff;
+  text-shadow: var(--aero-wordmark-glow);
 }
 
-:root[data-theme='aero'] .command-rail {
-  border-right: 1px solid rgba(255, 255, 255, 0.75);
-  background: rgba(240, 248, 254, 0.8);
-  box-shadow: 1px 0 0 rgba(16, 58, 98, 0.25);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .command-rail {
+  border-right: 1px solid var(--aero-bar-edge);
+  background: var(--aero-side);
+  box-shadow: 1px 0 0 var(--aero-bar-shadow);
   backdrop-filter: var(--aero-blur);
 }
 
-:root[data-theme='aero'] .roman-workspace .sidebar-slot {
-  background: rgba(244, 250, 254, 0.8);
-  backdrop-filter: var(--aero-blur);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .roman-workspace .sidebar-slot {
+  background: var(--aero-side);
 }
 
-:root[data-theme='aero'] .roman-workspace .project-bar {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .roman-workspace .project-bar {
   background: transparent;
 }
 
 /* Glass panels. */
-:root[data-theme='aero'] :is(.workspace, .drawer, .dock) {
-  border: 1px solid rgba(255, 255, 255, 0.85);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.workspace, .drawer, .dock) {
+  border: 1px solid var(--aero-glass-border);
   border-radius: 8px;
   background: var(--aero-glass);
   box-shadow: var(--aero-glass-edge);
-  backdrop-filter: var(--aero-blur);
 }
 
-:root[data-theme='aero'] :is(.settings-page, .setup-screen, .new-task, .history-search, .lead-mode-confirm) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.settings-page, .setup-screen, .new-task, .history-search, .lead-mode-confirm) {
   border-radius: 8px;
   background: var(--aero-glass-solid);
   box-shadow: var(--aero-glass-edge);
-  backdrop-filter: var(--aero-blur);
 }
 
-:root[data-theme='aero'] :is(.tab-bar, .inspector-heading, .drawer-tabs, .settings-head, .output-head) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.tab-bar, .inspector-heading, .drawer-tabs, .settings-head, .output-head) {
   border-bottom: 1px solid var(--border);
   background: var(--aero-sheen);
 }
 
-:root[data-theme='aero'] :is(.workspace .tab-bar, .inspector-heading) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.workspace .tab-bar, .inspector-heading) {
   border-radius: 7px 7px 0 0;
 }
 
-/* The taskbar: black glass. */
-:root[data-theme='aero'] .status-bar {
+/* The taskbar: black glass in both. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .status-bar {
   --text: #fff;
   --muted: #d3e2ef;
   --faint: #b8cad9;
@@ -8994,63 +9107,71 @@ input, textarea {
   backdrop-filter: blur(12px);
 }
 
-/* Buttons: Vista's two-tone gloss, light blue on hover. */
-:root[data-theme='aero'] .btn:not(.btn-quiet) {
-  border: 1px solid #707070;
+:root[data-theme='aero-dark'] .status-bar {
+  border-top-color: rgba(126, 200, 227, 0.45);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 50%, rgba(0, 0, 0, 0) 51%),
+    rgba(2, 6, 12, 0.9);
+}
+
+/* Buttons: the two-tone gloss. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet) {
+  border: 1px solid var(--aero-button-border);
   border-radius: 3px;
   background: var(--aero-button);
-  color: #10202f;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+  color: var(--aero-button-text);
+  box-shadow: var(--aero-button-inner);
 }
 
-:root[data-theme='aero'] .btn:not(.btn-quiet):hover:not(:disabled) {
-  border-color: #3c7fb1;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet):hover:not(:disabled) {
+  border-color: var(--aero-button-hover-border);
   background: var(--aero-button-hover);
+  box-shadow: var(--aero-button-hover-glow);
 }
 
-:root[data-theme='aero'] .btn:not(.btn-quiet):active:not(:disabled) {
-  border-color: #2c628b;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet):active:not(:disabled) {
+  border-color: var(--aero-button-down-border);
   background: var(--aero-button-down);
 }
 
-:root[data-theme='aero'] .btn-quiet:hover:not(:disabled) {
-  background: var(--aero-pick);
-  box-shadow: inset 0 0 0 1px #b8e3fb;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn-quiet:hover:not(:disabled) {
+  background: var(--aero-hover);
+  box-shadow: inset 0 0 0 1px var(--aero-hover-border);
 }
 
-/* Primary buttons: the glossy blue orb. */
-:root[data-theme='aero'] :is(.btn.btn-primary, .btn.sidebar-new-task) {
-  border-color: #0a4f86;
+/* Primary buttons: the glossy orb. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.btn.btn-primary, .btn.sidebar-new-task) {
+  border-color: var(--aero-orb-border);
   background: var(--aero-orb);
   color: #fff;
   text-shadow: 0 1px 1px rgba(0, 30, 60, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 10px rgba(70, 170, 255, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 10px var(--aero-orb-glow);
 }
 
-:root[data-theme='aero'] :is(.btn.btn-primary, .btn.sidebar-new-task):hover:not(:disabled) {
-  border-color: #0a4f86;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.btn.btn-primary, .btn.sidebar-new-task):hover:not(:disabled) {
+  border-color: var(--aero-orb-border);
   background: var(--aero-orb);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 14px rgba(70, 190, 255, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 16px var(--aero-orb-glow);
   filter: brightness(1.08);
 }
 
-:root[data-theme='aero'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select) {
-  border-color: #abadb3;
-  border-top-color: #8e8f8f;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select) {
+  border-color: var(--aero-field-border);
+  border-top-color: var(--aero-field-top);
   border-radius: 2px;
-  background: #fff;
+  background: var(--aero-field);
 }
 
-:root[data-theme='aero'] :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select):hover:not(:disabled) {
-  border-color: #5794bf;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select):hover:not(:disabled) {
+  border-color: var(--aero-field-hover);
 }
 
-:root[data-theme='aero'] :is(input, textarea):focus {
-  border-color: #3d7bad;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input, textarea):focus {
+  border-color: var(--aero-field-focus);
 }
 
-/* Selection and hover in lists: Explorer's pale blue pill. */
-:root[data-theme='aero'] :is(
+/* Selection and hover in lists: Explorer's pill. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(
   .project-row.is-selected,
   .project-chat-row.is-selected,
   .project-worktree-row.is-selected,
@@ -9068,37 +9189,41 @@ input, textarea {
   .side-menu-item:hover:not(:disabled),
   .command-destination.is-active
 ) {
-  border-color: #84c6ed;
+  border-color: var(--aero-pick-border);
   border-radius: 3px;
   background: var(--aero-pick);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px var(--aero-pick-inner);
 }
 
-:root[data-theme='aero'] .command-destination:hover:not(.is-active) {
-  border-color: #b8e3fb;
-  background: linear-gradient(to bottom, #f5fbfe 0%, #e1f2fc 100%);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .command-destination:hover:not(.is-active) {
+  border-color: var(--aero-hover-border);
+  background: var(--aero-hover);
 }
 
-:root[data-theme='aero'] :is(.side-menu, .select-list, .workspace-layout-controls) {
-  border: 1px solid #979797;
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.side-menu, .select-list, .workspace-layout-controls) {
+  border: 1px solid var(--aero-menu-border);
   border-radius: 4px;
-  background: rgba(250, 252, 255, 0.95);
-  box-shadow: 3px 4px 10px rgba(0, 0, 0, 0.28);
+  background: var(--aero-menu);
+  box-shadow: var(--aero-menu-shadow);
   backdrop-filter: blur(14px);
 }
 
 /* Meters: a glossy bar. */
-:root[data-theme='aero'] .meter {
-  border: 1px solid #b2b2b2;
-  background: linear-gradient(to bottom, #e6e6e6 0%, #f7f7f7 100%);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .meter {
+  border: 1px solid var(--aero-track-border);
+  background: var(--aero-track);
 }
 
-:root[data-theme='aero'] .meter-fill {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .meter-fill {
   background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(0, 0, 0, 0.06) 51%, rgba(255, 255, 255, 0.2) 100%);
 }
 
-:root[data-theme='aero'] :focus-visible {
-  outline-color: #2b8ae0;
+:root[data-theme='aero-dark'] .meter-fill {
+  box-shadow: 0 0 6px rgba(126, 200, 227, 0.55);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :focus-visible {
+  outline-color: var(--aero-focus);
 }
 
 /* Settings → Updates */
