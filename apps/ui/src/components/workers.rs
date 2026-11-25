@@ -104,6 +104,18 @@ pub fn Workers(
         && seen_place() != Some(nonce)
     {
         seen_place.set(Some(nonce));
+        // Seat it in the focused pane (or a free one) the way "+ Claude" does, unless a pane
+        // already shows it, then focus it.
+        if terminals.iter().any(|info| info.id == id)
+            && !slots.peek().iter().flatten().any(|seated| *seated == id)
+        {
+            let next = place_new_terminal(&slots.peek(), focused(), &id);
+            if !next.is_empty() {
+                slots.set(next);
+            }
+        }
+        viewing.set(None);
+        reviewing.set(None);
         focus_id.set(Some(id));
         focus_tick.set(focus_tick() + 1);
     }

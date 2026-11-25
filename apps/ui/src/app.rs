@@ -481,7 +481,7 @@ pub fn App() -> Element {
                             changes: changes.clone(),
                             selected_worktree: store.primary.read().clone(),
                             selected_worktrees: store.selected.read().clone(),
-                            place_terminal: None,
+                            place_terminal: store.place_terminal.read().clone(),
                             on_select_worktree: Callback::new(move |id: Option<String>| select_worktree(store, id, "only")),
                             project: project.as_ref().map(|item| item.path.clone()).unwrap_or_default(),
                             bus: store.bus.read().clone(),
@@ -1842,7 +1842,11 @@ fn open_chat_in_app(mut store: Store, id: String) {
 fn open_chat_in_terminal(mut store: Store, id: String) {
     spawn(async move {
         match api::open_chat_in_terminal(&id, 100.0, 30.0).await {
-            Ok(info) => remember_terminal(store, info),
+            Ok(info) => {
+                let nonce = js_sys::Date::now() as i64;
+                store.place_terminal.set(Some((info.id.clone(), nonce)));
+                remember_terminal(store, info);
+            }
             Err(error) => store.error.set(Some(error)),
         }
     });

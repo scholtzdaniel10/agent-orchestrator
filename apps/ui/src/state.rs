@@ -32,6 +32,9 @@ pub struct Store {
     pub now: Signal<i64>,
     pub setup_open: Signal<bool>,
     pub active_terminal: Signal<String>,
+    /// A terminal opened outside the workspace (from a chat) to bring into view: its id and a
+    /// nonce, so opening the same one twice still moves it.
+    pub place_terminal: Signal<Option<(String, i64)>>,
     pub opening: Signal<bool>,
     pub activity: Signal<HashMap<String, i64>>,
     pub selected: Signal<Vec<Option<String>>>,
@@ -76,6 +79,7 @@ pub fn provide_store() -> Store {
         now: use_signal(now_ms),
         setup_open: use_signal(|| false),
         active_terminal: use_signal(String::new),
+        place_terminal: use_signal(|| None),
         opening: use_signal(|| false),
         activity: use_signal(HashMap::new),
         selected: use_signal(|| vec![None]),
