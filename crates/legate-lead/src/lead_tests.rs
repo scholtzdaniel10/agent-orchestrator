@@ -1483,6 +1483,82 @@ fn a_limit_on_stderr_uses_the_default_rest_hours() {
 }
 
 #[test]
+fn a_limit_before_any_answer_hands_the_message_to_the_next_plan() {
+    let now = 5_000_000;
+    drive(async move {
+        let cursor = Lane::new(
+            ProviderId::Cursor,
+            vec![Script {
+                events: Vec::new(),
+                exit_code: Some(1),
+                stderr: "usage limit reached".into(),
+                ..Script::default()
+            }],
+        );
+        let codex = Lane::new(ProviderId::Codex, vec![done("fresh", "on codex")]);
+        let codex_lane = codex.clone();
+        with_lead(&[cursor, codex], at(now), |lead, store| async move {
+            seed(&store, ProviderId::Cursor, 0.1, now);
+            seed(&store, ProviderId::Codex, 0.6, now);
+            let message = lead.send("do it").await.unwrap();
+            assert_eq!(message.status, LeadStatus::Done);
+            assert_eq!(message.provider, Some(ProviderId::Codex));
+            assert_eq!(message.text, "on codex");
+            assert_eq!(codex_lane.calls().len(), 1);
+            assert!(store.resting_until("cursor").unwrap().is_some());
+            assert_eq!(
+                lead_runs(&store)
+                    .iter()
+                    .map(|row| row.outcome)
+                    .collect::<Vec<_>>(),
+                vec![RunOutcome::Limit, RunOutcome::Ok]
+            );
+        })
+        .await;
+    });
+}
+
+#[test]
+fn a_plan_that_keeps_hitting_its_limit_rests_twice_as_long() {
+    let now = 50_000_000;
+    drive(async move {
+        let claude = Lane::new(
+            ProviderId::Claude,
+            vec![Script {
+                events: Vec::new(),
+                exit_code: Some(1),
+                stderr: "usage limit reached".into(),
+                ..Script::default()
+            }],
+        );
+        with_lead(&[claude], at(now), |lead, store| async move {
+            store
+                .insert_run(&RunRow {
+                    id: None,
+                    job_id: "earlier".into(),
+                    provider: "claude".into(),
+                    job_type: "lead".into(),
+                    started_at: now - 1_000,
+                    duration_ms: Some(10),
+                    cost_usd: None,
+                    tokens: None,
+                    utilization: None,
+                    outcome: RunOutcome::Limit,
+                    session_id: None,
+                })
+                .unwrap();
+            lead.send("do it").await.unwrap();
+            let hours = load_rules(None).unwrap().default_rest_hours;
+            assert_eq!(
+                store.resting_until("claude").unwrap(),
+                Some(now + (2.0 * hours * 3_600_000.0) as i64)
+            );
+        })
+        .await;
+    });
+}
+
+#[test]
 fn a_failed_result_and_a_stderr_tail_become_errors() {
     drive(async move {
         let stderr = format!(" {}END ", "b".repeat(600));

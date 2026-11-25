@@ -11,7 +11,7 @@
 use legate_core::{
     DEFAULT_PACE, JobType, PROVIDERS, PaceRules, PlanAllowance, ProviderId, RouterRules,
 };
-use legate_store::{RunRow, Store, StoredWindow};
+use legate_store::{RunOutcome, RunRow, Store, StoredWindow};
 use serde_json::Value;
 
 use crate::ids::{
@@ -716,6 +716,37 @@ pub fn headroom(
     Ok(PaceSnap::from_summary(summary, resting).headroom)
 }
 
+/// When a plan that hit a limit without a reset time is tried again: `default_hours` from
+/// `now`, doubled for each limit in a row it hit before this one, up to a week. A plan whose
+/// usage is spent for the month, or cancelled, stops being retried every few hours.
+pub fn rest_after_limit(
+    source: &impl UsageSource,
+    plan: ProviderId,
+    default_hours: f64,
+    now: i64,
+) -> Result<i64, RouterError> {
+    let mut runs = Vec::new();
+    for provider in PROVIDERS
+        .into_iter()
+        .filter(|id| legate_core::plan_of(*id) == plan)
+    {
+        runs.extend(source.runs_since(provider, now.saturating_sub(DASHBOARD_MS))?);
+    }
+    runs.sort_by_key(|run| run.started_at);
+    let streak = runs
+        .iter()
+        .rev()
+        .take_while(|run| run.outcome == RunOutcome::Limit)
+        .count();
+    Ok(now.saturating_add(limit_backoff_ms(streak, default_hours)))
+}
+
+fn limit_backoff_ms(streak: usize, default_hours: f64) -> i64 {
+    let base = default_hours * 3_600_000.0;
+    let ms = (base * 2f64.powi(streak.min(16) as i32)).min(base.max(SEVEN_DAY_MS as f64));
+    if ms.is_finite() { ms as i64 } else { 0 }
+}
+
 pub fn plan_usage(
     provider: ProviderId,
     source: &impl UsageSource,
@@ -824,4 +855,19 @@ pub fn dashboard_reading_value(
         _ => None,
     };
     dashboard_reading(used, resets, now)
+}
+
+#[cfg(test)]
+mod limit_rest_tests {
+    use super::limit_backoff_ms;
+
+    #[test]
+    fn repeated_limits_double_the_rest_up_to_a_week() {
+        const HOUR: i64 = 3_600_000;
+        assert_eq!(limit_backoff_ms(0, 5.0), 5 * HOUR);
+        assert_eq!(limit_backoff_ms(1, 5.0), 10 * HOUR);
+        assert_eq!(limit_backoff_ms(3, 5.0), 40 * HOUR);
+        assert_eq!(limit_backoff_ms(9, 5.0), 168 * HOUR);
+        assert_eq!(limit_backoff_ms(2, 200.0), 200 * HOUR);
+    }
 }

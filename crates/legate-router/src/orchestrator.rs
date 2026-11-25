@@ -1640,10 +1640,18 @@ impl Orchestrator {
             .is_some_and(|job| needs_usage_credits(provider, job.model.as_deref()));
         if !credits {
             let now = self.clock.now_ms();
+            let plan = plan_of(provider);
             let until = resets_at_seconds
                 .map(|seconds| seconds.saturating_mul(1000))
-                .unwrap_or_else(|| self.rest_until(now));
-            let plan = plan_of(provider);
+                .unwrap_or_else(|| {
+                    crate::usage::rest_after_limit(
+                        &*self.store,
+                        plan,
+                        self.rules.default_rest_hours,
+                        now,
+                    )
+                    .unwrap_or_else(|_| self.rest_until(now))
+                });
             if let Err(err) = self.store.set_resting(plan.as_str(), until) {
                 tracing::error!("{err}");
             }

@@ -10,7 +10,7 @@ use legate_core::{
     LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules,
     RunOptions, needs_usage_credits, plan_of,
 };
-use legate_router::headroom;
+use legate_router::{headroom, rest_after_limit};
 use legate_store::{ChatRow, NewWindow, RunOutcome, RunRow, Store};
 use tokio::sync::watch;
 
@@ -76,6 +76,8 @@ struct State {
     skip_follow: HashSet<String>,
     follow_order: i64,
     turn_chat: HashMap<String, String>,
+    /// A turn whose plan hit its limit before answering; it goes to the next plan.
+    retry_turn: Option<String>,
 }
 
 #[derive(Default)]
@@ -151,6 +153,7 @@ impl Lead {
                 skip_follow: HashSet::new(),
                 follow_order: 0,
                 turn_chat: HashMap::new(),
+                retry_turn: None,
             }),
             this: this.clone(),
         })
@@ -291,7 +294,7 @@ impl Lead {
             lead: self.this.clone(),
         };
         self.emit_id(&user.id);
-        self.turn(&lead_id, text).await;
+        self.turn_with_failover(&lead_id, text).await;
         Ok(self.message(&lead_id).unwrap_or(user))
     }
 
@@ -929,6 +932,41 @@ impl Lead {
         Ok(best.map(|(id, _)| id))
     }
 
+    async fn turn_with_failover(&self, lead_id: &str, text: &str) {
+        self.turn(lead_id, text).await;
+        // Each limit rests its plan, so this ends; the cap only guards a store that won't save.
+        for _ in 0..legate_core::PROVIDERS.len() {
+            if !self.retry_on_next_plan(lead_id) {
+                break;
+            }
+            self.turn(lead_id, text).await;
+        }
+    }
+
+    /// Clear a turn that hit a limit before answering, when another plan can take it.
+    fn retry_on_next_plan(&self, lead_id: &str) -> bool {
+        if self.state.borrow_mut().retry_turn.take().as_deref() != Some(lead_id) {
+            return false;
+        }
+        if !matches!(self.choose_provider(), Ok(Some(_))) {
+            return false;
+        }
+        if let Some(message) = self
+            .state
+            .borrow_mut()
+            .history
+            .iter_mut()
+            .find(|item| item.id == lead_id)
+        {
+            message.status = LeadStatus::Streaming;
+            message.text.clear();
+            message.provider = None;
+            message.model = None;
+        }
+        self.emit_id(lead_id);
+        true
+    }
+
     async fn turn(&self, lead_id: &str, text: &str) {
         let user_request =
             self.message(lead_id).and_then(|message| message.kind) != Some(LeadMessageKind::Report);
@@ -1288,9 +1326,17 @@ impl Lead {
         let notice = if credits {
             "[Fable is out of usage credits. Pick another Claude model to continue.]".to_string()
         } else {
+            let now = (self.now)();
+            let default = now + (self.rules.default_rest_hours * 3_600_000.0) as i64;
             let until = match resets_at {
                 Some(seconds) if seconds != 0 => seconds.saturating_mul(1000),
-                _ => (self.now)() + (self.rules.default_rest_hours * 3_600_000.0) as i64,
+                _ => rest_after_limit(
+                    self.store.as_ref(),
+                    plan_of(provider),
+                    self.rules.default_rest_hours,
+                    now,
+                )
+                .unwrap_or(default),
             };
             if let Err(err) = self.store.set_resting(plan_of(provider).as_str(), until) {
                 tracing::error!("{err}");
@@ -1300,6 +1346,7 @@ impl Lead {
                 provider.as_str()
             )
         };
+        let mut answered = false;
         if let Some(message) = self
             .state
             .borrow_mut()
@@ -1307,6 +1354,7 @@ impl Lead {
             .iter_mut()
             .find(|item| item.id == lead_id)
         {
+            answered = !message.text.is_empty();
             message.status = LeadStatus::Error;
             message.text = if credits || message.text.is_empty() {
                 notice
@@ -1316,6 +1364,9 @@ impl Lead {
         }
         {
             let mut state = self.state.borrow_mut();
+            if !credits && !answered && state.direct.is_none() {
+                state.retry_turn = Some(lead_id.to_string());
+            }
             state.session_id = None;
             state.session_provider = None;
         }
@@ -1546,7 +1597,7 @@ impl Lead {
             state.turn_chat.insert(lead_id.clone(), chat_id.to_string());
         }
         self.emit_id(&lead_id);
-        self.turn(&lead_id, &prompt).await;
+        self.turn_with_failover(&lead_id, &prompt).await;
         self.state.borrow_mut().busy = false;
         self.state.borrow_mut().turn_id = None;
         if saved

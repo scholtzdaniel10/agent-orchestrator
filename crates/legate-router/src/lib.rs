@@ -28,6 +28,6 @@ pub use usage::{
     CompiledRules, DASHBOARD_WINDOW, DashboardReading, Pick, PlanUsage, REASON_BEHIND,
     REASON_EXPIRING, REASON_FIRST, REASON_HEADROOM, REASON_ONLY, RouterError, Score, UsageSource,
     WindowState, add_months, dashboard_reading, dashboard_reading_value, headroom, pick_provider,
-    pick_with_reason, plan_usage, run_weight, score_providers,
+    pick_with_reason, plan_usage, rest_after_limit, run_weight, score_providers,
 };
 pub use versions::{compare_to_tested, stderr_is_limit, tested_version, unknown_format_message};
