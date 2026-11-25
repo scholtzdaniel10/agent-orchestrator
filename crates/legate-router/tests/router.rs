@@ -322,8 +322,15 @@ fn headroom_uses_windows_else_weight_and_rest_is_zero() {
     insert(&store, ProviderId::Claude, NOW - 1, None, Some(5));
     insert(&store, ProviderId::Claude, NOW - 1, None, None);
     assert_eq!(
+        plan_usage(ProviderId::Claude, &store, &rules, NOW)
+            .unwrap()
+            .used,
+        6.0 / 15.0
+    );
+    // Runs alone are a guess, so headroom stops at half.
+    assert_eq!(
         headroom(ProviderId::Claude, &store, &rules, NOW).unwrap(),
-        1.0 - 6.0 / 15.0
+        0.5
     );
     agree(&store, &rules, NOW);
 
@@ -338,8 +345,10 @@ fn headroom_uses_windows_else_weight_and_rest_is_zero() {
     );
     insert(&store, ProviderId::Claude, NOW - window_ms, Some(3.0), None);
     assert_eq!(
-        headroom(ProviderId::Claude, &store, &rules, NOW).unwrap(),
-        1.0 - 3.0 / 15.0
+        plan_usage(ProviderId::Claude, &store, &rules, NOW)
+            .unwrap()
+            .used,
+        3.0 / 15.0
     );
 
     save(
@@ -505,7 +514,7 @@ fn pick_prefers_first_choice_then_fit_times_headroom() {
     save(
         &store,
         ProviderId::Claude,
-        &[window("reported", 0.75, NOW + 1)],
+        &[window("reported", 0.9, NOW + 1)],
         NOW,
     );
     assert_eq!(
@@ -778,7 +787,7 @@ fn pace_changes_who_wins_and_why() {
     let scores = score_providers(JobType::Planning, &both, &store, &rules, PACE_NOW, &[]).unwrap();
     assert_eq!(scores[0].pace_factor, 1.75);
     assert_eq!(scores[0].score, 1.75);
-    assert_eq!(scores[1].score, 0.5);
+    assert_eq!(scores[1].score, 0.25);
     agree(&store, &rules, PACE_NOW);
 
     let store = memory();
@@ -867,7 +876,7 @@ fn pace_changes_who_wins_and_why() {
     save(
         &store,
         ProviderId::Claude,
-        &[window("reported", 0.75, PACE_NOW + 1)],
+        &[window("reported", 0.9, PACE_NOW + 1)],
         PACE_NOW,
     );
     let pick = pick_with_reason(

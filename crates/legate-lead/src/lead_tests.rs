@@ -969,6 +969,23 @@ fn picks_the_provider_with_more_headroom() {
 }
 
 #[test]
+fn a_plan_with_a_real_reading_beats_one_that_never_reported() {
+    let now = 1_700_000_000_000;
+    drive(async move {
+        let cursor = Lane::new(ProviderId::Cursor, vec![done("u", "ok")]);
+        let codex = Lane::new(ProviderId::Codex, vec![done("x", "ok")]);
+        let cursor_lane = cursor.clone();
+        with_lead(&[cursor, codex], at(now), |lead, store| async move {
+            seed(&store, ProviderId::Codex, 0.16, now);
+            let msg = lead.send("plan this").await.unwrap();
+            assert_eq!(msg.provider, Some(ProviderId::Codex));
+            assert_eq!(cursor_lane.calls().len(), 0);
+        })
+        .await;
+    });
+}
+
+#[test]
 fn a_headroom_tie_goes_to_cursor() {
     let now = 1_700_000_000_000;
     drive(async move {

@@ -353,7 +353,7 @@ impl RouterState {
             return match self.rules.allowance_at(slot) {
                 Some(allowance) => {
                     let used = weight_used(self.plans[slot].allowance_sum, allowance.units);
-                    Summary::flat(crate::usage::clamp01(used), None)
+                    Summary::guess(crate::usage::clamp01(used))
                 }
                 None => Summary::flat(0.0, None),
             };

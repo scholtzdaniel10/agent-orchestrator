@@ -245,6 +245,8 @@ pub(crate) struct Summary {
     pub slack: Option<f64>,
     pub pace_factor: f64,
     pub at_risk: bool,
+    /// Estimated from Legate's own runs: the plan never reported a reading.
+    pub guess: bool,
 }
 
 impl Summary {
@@ -255,9 +257,21 @@ impl Summary {
             slack: None,
             pace_factor: 1.0,
             at_risk: false,
+            guess: false,
+        }
+    }
+
+    pub(crate) fn guess(used: f64) -> Self {
+        Self {
+            guess: true,
+            ..Self::flat(used, None)
         }
     }
 }
+
+/// Most headroom a plan with no reading gets. Its real usage is unknown (it may be spent or
+/// cancelled), so a plan known to have more than half its allowance left is picked first.
+pub(crate) const UNREAD_HEADROOM: f64 = 0.5;
 
 /// One pass over resolved windows. Holds only the worst window and the longest open one.
 #[derive(Clone, Copy)]
@@ -320,6 +334,7 @@ impl SummaryAcc {
             slack: Some(slack),
             pace_factor,
             at_risk,
+            guess: false,
         }
     }
 }
@@ -461,6 +476,8 @@ impl PaceSnap {
     pub(crate) fn from_summary(summary: Summary, resting: bool) -> Self {
         let headroom = if resting {
             0.0
+        } else if summary.guess {
+            clamp01(1.0 - summary.used).min(UNREAD_HEADROOM)
         } else {
             clamp01(1.0 - summary.used)
         };
@@ -662,7 +679,7 @@ fn plan_summary(
             Some(allowance) => {
                 let since = now - allowance.window_ms;
                 let weight = weight_of_rows(&runs_on_plan(source, plan, since)?);
-                Summary::flat(clamp01(weight_used(weight, allowance.units)), None)
+                Summary::guess(clamp01(weight_used(weight, allowance.units)))
             }
             None => Summary::flat(0.0, None),
         };
