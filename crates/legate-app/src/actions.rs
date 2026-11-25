@@ -1192,6 +1192,10 @@ impl World {
             self.orch.set_off_plans(prefs.off_plans.clone());
             self.current_lead().set_off_plans(prefs.off_plans.clone());
         }
+        if previous.max_parallel != prefs.max_parallel {
+            self.orch
+                .set_max_parallel(prefs.max_parallel.unwrap_or(self.rules_max));
+        }
         if previous.lead_mode != prefs.lead_mode {
             *self
                 .terminal_lead_mode

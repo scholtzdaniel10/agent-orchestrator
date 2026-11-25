@@ -2516,6 +2516,34 @@ fn max_parallel_1_queues_a_second_job() {
 }
 
 #[test]
+fn raising_max_parallel_starts_a_queued_job_without_a_restart() {
+    drive(async {
+        let held = Flag::new();
+        let second = Flag::new();
+        let mut first = ok("a");
+        first.gate = Some(held.clone());
+        let mut next = ok("b");
+        let flag = second.clone();
+        next.on_start = Some(Rc::new(move || flag.trip()));
+        let claude = FakeAdapter::new(ProviderId::Claude, vec![first, next]);
+        let mut opts = Opts::default();
+        opts.rules = Some(rules_with(1));
+        with_orch(vec![claude.clone()], opts, |orch, _| async move {
+            go(&orch, JobType::Planning, "one");
+            go(&orch, JobType::Planning, "two");
+            assert_eq!(orch.workers()[0].queued, 1);
+            orch.set_max_parallel(2);
+            second.wait().await;
+            assert_eq!(claude.prompts(), ["one", "two"]);
+            assert_eq!(orch.workers()[0].running, 2);
+            held.trip();
+            orch.idle().await;
+        })
+        .await;
+    });
+}
+
+#[test]
 fn auto_routing_skips_a_plan_at_its_parallel_limit() {
     drive(async {
         let held = Flag::new();

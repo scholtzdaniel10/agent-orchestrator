@@ -308,6 +308,14 @@ impl Orchestrator {
         *self.off_plans.borrow_mut() = plans;
     }
 
+    /// Retune "jobs at once per plan" without a restart. A higher limit starts queued jobs now.
+    pub fn set_max_parallel(&self, max: i64) {
+        self.state.borrow_mut().set_max_parallel(max);
+        for id in self.runners.iter().map(|runner| runner.id()) {
+            self.pump(id);
+        }
+    }
+
     fn is_off(&self, provider: ProviderId) -> bool {
         self.off_plans.borrow().contains(&plan_of(provider))
     }
@@ -841,7 +849,8 @@ impl Orchestrator {
     }
 
     fn pump(&self, provider: ProviderId) {
-        let limit = u32::try_from(self.rules.max_parallel.max(0)).unwrap_or(u32::MAX);
+        let max = self.state.borrow().compiled().max_parallel;
+        let limit = u32::try_from(max.max(0)).unwrap_or(u32::MAX);
         loop {
             if self.is_off(provider) || self.plan_running(provider) >= limit {
                 return;

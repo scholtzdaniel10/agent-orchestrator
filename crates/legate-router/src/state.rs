@@ -211,6 +211,10 @@ impl RouterState {
         &self.rules
     }
 
+    pub fn set_max_parallel(&mut self, max: i64) {
+        self.rules.max_parallel = max;
+    }
+
     fn absorb_loaded(&mut self, row: &RunRow) {
         let Some(provider) = ProviderId::parse(&row.provider) else {
             return;
