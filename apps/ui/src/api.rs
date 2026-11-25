@@ -423,6 +423,9 @@ pub async fn list_lead_chats() -> Result<Vec<LeadChat>, String> {
 pub async fn open_lead_chat(id: &str) -> Result<Vec<LeadMessage>, String> {
     call("open_lead_chat", &json!({ "id": id })).await
 }
+pub async fn open_chat_in_claude_app(id: &str) -> Result<(), String> {
+    call("open_chat_in_claude_app", &json!({ "id": id })).await
+}
 pub async fn stop_lead(chat_id: Option<&str>) -> Result<Option<String>, String> {
     call("stop_lead", &json!({ "chatId": chat_id })).await
 }
@@ -549,6 +552,11 @@ pub async fn on_prefs(on_event: impl FnMut(Prefs) + 'static) -> Result<(), Strin
 }
 pub async fn on_lead(on_event: impl FnMut(LeadUpdate) + 'static) -> Result<(), String> {
     listen("lead:update", on_event).await
+}
+/// Chats the chat sync changed: mirrored from Claude Code sessions, or given new turns typed
+/// in the Claude app or the CLI.
+pub async fn on_chats(on_event: impl FnMut(Vec<String>) + 'static) -> Result<(), String> {
+    listen("chats:update", on_event).await
 }
 pub async fn on_terminal_data(on_event: impl FnMut(TerminalData) + 'static) -> Result<(), String> {
     listen("terminals:data", on_event).await

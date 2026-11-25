@@ -139,6 +139,7 @@ fn main() -> anyhow::Result<()> {
             commands::reset_lead,
             commands::get_lead_mode,
             commands::rename_lead_chat,
+            commands::open_chat_in_claude_app,
             commands::remove_lead_chat,
             commands::open_terminal,
             commands::write_terminal,

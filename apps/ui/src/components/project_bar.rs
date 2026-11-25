@@ -56,6 +56,7 @@ pub fn ProjectBar(
     on_new_chat: Callback,
     on_rename_chat: Callback<(String, String)>,
     on_remove_chat: Callback<String>,
+    on_open_chat_in_app: Callback<String>,
     on_select_worktree: Callback<(Option<String>, String)>,
     on_select_all_worktrees: Callback,
     on_create_worktree: WorktreeCreate,
@@ -420,6 +421,7 @@ pub fn ProjectBar(
                                     on_open: on_open_chat,
                                     on_rename: on_rename_chat,
                                     on_remove: on_remove_chat,
+                                    on_open_in_app: on_open_chat_in_app,
                                 }
                             }
                         }
@@ -1092,6 +1094,7 @@ fn ChatRow(
     on_open: Callback<String>,
     on_rename: Callback<(String, String)>,
     on_remove: Callback<String>,
+    on_open_in_app: Callback<String>,
 ) -> Element {
     let mut mode = use_signal(|| "idle");
     let draft = use_signal(|| chat.title.clone());
@@ -1161,6 +1164,13 @@ fn ChatRow(
         };
     }
     let open_id = id.clone();
+    let app_id = id.clone();
+    let in_claude = chat.claude_session == Some(true);
+    let source = match chat.source.as_deref() {
+        Some("claude-app") => Some(("App", "Started in the Claude app")),
+        Some("claude-code") => Some(("CLI", "Started in Claude Code in a terminal")),
+        _ => None,
+    };
     rsx! {
         li { class: "project-chat-item",
             button {
@@ -1176,10 +1186,23 @@ fn ChatRow(
                             span { class: "status-dot", aria_hidden: "true" }
                         }
                     }
+                    if let Some((label, hint)) = source {
+                        span { class: "project-chat-source", title: "{hint}", "{label}" }
+                    }
                     span { class: "project-chat-age", "{relative_age(chat.updated_at, now)}" }
                 }
             }
             div { class: "project-chat-actions",
+                if in_claude {
+                    button {
+                        class: "project-chat-action",
+                        r#type: "button",
+                        aria_label: "Open {title} in the Claude app",
+                        title: "Open in the Claude app",
+                        onclick: move |_| on_open_in_app.call(app_id.clone()),
+                        "Claude app"
+                    }
+                }
                 button {
                     class: "project-chat-action",
                     r#type: "button",

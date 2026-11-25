@@ -9,6 +9,7 @@
 //! the Tauri shell. Opening OS windows, folder dialogs, and `shell.openPath` do not.
 
 mod actions;
+mod chat_sync;
 mod debounce;
 mod error;
 mod event;

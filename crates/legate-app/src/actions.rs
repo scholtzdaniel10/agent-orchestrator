@@ -1335,7 +1335,65 @@ impl World {
             return fail("empty message");
         }
         let lead = self.current_lead();
+        if let Some(chat) = lead.chats().ok().and_then(|chats| {
+            chats
+                .into_iter()
+                .find(|chat| chat.active && chat.claude_session == Some(true))
+        }) {
+            if let Some(reason) = self.chat_sync.busy_elsewhere(&chat.id) {
+                return fail(reason);
+            }
+            self.chat_sync.note_legate_turn(&chat.id);
+        }
         Box::pin(async move { lead.send(&text).await.map_err(lead_err) })
+    }
+
+    /// Opens a direct Claude chat's session in the Claude app (`claude --desktop --resume`),
+    /// which also adds it to the app's sidebar. Runs in a hidden terminal: `--desktop` refuses
+    /// to run with redirected output.
+    pub fn open_chat_in_claude_app(&self, id: String) -> Task<()> {
+        if id.is_empty() || id.len() > 64 {
+            return fail("invalid chat id");
+        }
+        let row = match self.store.chat(&id) {
+            Ok(Some(row)) if row.project == *self.project.borrow() => row,
+            Ok(_) => return fail("unknown chat"),
+            Err(err) => return fail(err.to_string()),
+        };
+        let Some(session) = row
+            .session_id
+            .clone()
+            .filter(|_| row.session_provider.as_deref() == Some("claude"))
+        else {
+            return fail("This chat has no Claude Code session yet. Send a message first.");
+        };
+        let cwd = row
+            .cwd
+            .clone()
+            .filter(|dir| std::path::Path::new(dir).is_dir())
+            .unwrap_or_else(|| row.project.clone());
+        let bin = self.claude.resolved_bin();
+        Box::pin(async move {
+            let mut args = bin.args.clone();
+            args.extend(["--desktop".to_string(), "--resume".to_string(), session]);
+            let ran = tokio::task::spawn_blocking(move || {
+                legate_pty::run_once(
+                    &bin.command,
+                    &args,
+                    &cwd,
+                    std::time::Duration::from_secs(30),
+                )
+            })
+            .await
+            .map_err(|err| AppError::message(err.to_string()))?
+            .map_err(|err| AppError::message(err.to_string()))?;
+            match ran.exit_code {
+                Some(0) => Ok(()),
+                Some(_) if !ran.output.is_empty() => Err(AppError::message(ran.output)),
+                Some(code) => Err(AppError::message(format!("claude exited with {code}"))),
+                None => Err(AppError::message("The Claude app did not answer in time.")),
+            }
+        })
     }
 
     pub fn stop_lead(&self, chat_id: Option<String>) -> Task<Option<String>> {

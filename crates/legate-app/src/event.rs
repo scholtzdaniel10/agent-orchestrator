@@ -34,4 +34,6 @@ pub enum AppEvent {
     TerminalData { id: String, data: String },
     /// `terminals:update`
     TerminalUpdate { info: TerminalInfo, removed: bool },
+    /// `chats:update` — chats the chat sync changed (mirrored from Claude Code sessions).
+    Chats { changed: Vec<String> },
 }

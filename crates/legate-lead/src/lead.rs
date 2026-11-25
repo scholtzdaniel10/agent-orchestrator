@@ -614,6 +614,9 @@ impl Lead {
         for row in self.store.chats(&(self.project)())? {
             let pending = self.chat_has_pending(&row.id)?;
             let id = row.id;
+            let claude_session = row.session_id.is_some()
+                && row.direct.as_deref() == Some("claude")
+                && row.session_provider.as_deref() == Some("claude");
             out.push(LeadChat {
                 active: Some(id.as_str()) == active.as_deref(),
                 id,
@@ -621,9 +624,40 @@ impl Lead {
                 updated_at: row.updated_at,
                 pending: pending.then_some(true),
                 direct: chat_plan(row.direct.as_deref()),
+                source: row.source,
+                claude_session: claude_session.then_some(true),
             });
         }
         Ok(out)
+    }
+
+    /// The chat a turn is running in, if any.
+    pub fn busy_chat(&self) -> Option<String> {
+        let state = self.state.borrow();
+        if state.busy {
+            state.chat_id.clone()
+        } else {
+            None
+        }
+    }
+
+    /// Reloads a chat whose stored messages changed underneath the lead (the chat sync mirrored
+    /// new turns from another app). Does nothing while a turn runs.
+    pub fn refresh_chat(&self, id: &str) {
+        let (busy, open, viewed) = {
+            let state = self.state.borrow();
+            (
+                state.busy,
+                state.chat_id.as_deref() == Some(id),
+                state.view_chat_id.as_deref() == Some(id),
+            )
+        };
+        if busy || !open {
+            return;
+        }
+        if let Err(err) = self.load_chat(id, viewed) {
+            tracing::error!("{err}");
+        }
     }
 
     pub fn open(&self, id: &str) -> Result<(), LeadError> {
@@ -1040,8 +1074,16 @@ impl Lead {
                 vec![project]
             });
         }
+        // A direct chat runs where its session lives: the project, or, for a chat mirrored from a
+        // session that ran in one of the project's worktrees, that folder. Claude Code finds a
+        // session to resume by the folder it runs in.
         let cwd = if direct {
-            (self.project)()
+            let chat_id = self.state.borrow().chat_id.clone();
+            chat_id
+                .and_then(|id| self.store.chat(&id).ok().flatten())
+                .and_then(|row| row.cwd)
+                .filter(|dir| std::path::Path::new(dir).is_dir())
+                .unwrap_or_else(|| (self.project)())
         } else {
             self.dir.clone()
         };
@@ -1726,7 +1768,12 @@ impl Lead {
         let Some(id) = state.chat_id.clone() else {
             return;
         };
+        // What the chat sync owns (folder, source, file signature) is kept as it was.
+        let kept = self.store.chat(&id).ok().flatten();
         let row = ChatRow {
+            cwd: kept.as_ref().and_then(|row| row.cwd.clone()),
+            source: kept.as_ref().and_then(|row| row.source.clone()),
+            source_sig: kept.and_then(|row| row.source_sig),
             id,
             project: (self.project)(),
             title: state.chat_title.clone(),

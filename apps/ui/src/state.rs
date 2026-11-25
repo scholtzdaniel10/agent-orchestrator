@@ -274,6 +274,36 @@ async fn listen(store: Store) {
         });
     })
     .await;
+    let _ = api::on_chats(move |changed: Vec<String>| {
+        if *store.project_switching.read() {
+            return;
+        }
+        let open_changed = chats
+            .peek()
+            .iter()
+            .any(|chat| chat.active && changed.contains(&chat.id));
+        let generation = *store.project_request.read();
+        spawn_local(async move {
+            let list = api::list_lead_chats().await;
+            let shown = if open_changed {
+                api::list_lead_messages().await.ok()
+            } else {
+                None
+            };
+            if *store.project_request.read() != generation {
+                return;
+            }
+            if let Ok(list) = list {
+                let mut chats = chats;
+                chats.set(list);
+            }
+            if let Some(shown) = shown {
+                let mut messages = store.messages;
+                messages.set(shown);
+            }
+        });
+    })
+    .await;
     let mut waiting = store.goals_waiting;
     let _ = api::on_goals(move |goal: Goal| {
         waiting.with_mut(|ids| {

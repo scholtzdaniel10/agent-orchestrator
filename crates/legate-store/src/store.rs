@@ -92,6 +92,13 @@ pub struct ChatRow {
     pub session_id: Option<String>,
     pub session_provider: Option<String>,
     pub direct: Option<String>,
+    /// The folder a direct chat runs in when it is not the project: a chat mirrored from a
+    /// session that ran in one of the project's worktrees.
+    pub cwd: Option<String>,
+    /// Where a mirrored chat started: `claude-app` or `claude-code`. `None` for Legate's own.
+    pub source: Option<String>,
+    /// Size and time of the session file when the chat was last mirrored from it.
+    pub source_sig: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -310,8 +317,9 @@ impl Store {
     pub fn save_chat(&self, row: &ChatRow) -> Result<(), StoreError> {
         self.exec(
             "INSERT INTO chats (
-               id, project, title, created_at, updated_at, session_id, session_provider, direct
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+               id, project, title, created_at, updated_at, session_id, session_provider, direct,
+               cwd, source, source_sig
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(id) DO UPDATE SET
                project = excluded.project,
                title = excluded.title,
@@ -319,7 +327,10 @@ impl Store {
                updated_at = excluded.updated_at,
                session_id = excluded.session_id,
                session_provider = excluded.session_provider,
-               direct = excluded.direct",
+               direct = excluded.direct,
+               cwd = excluded.cwd,
+               source = excluded.source,
+               source_sig = excluded.source_sig",
             params![
                 row.id,
                 row.project,
@@ -329,6 +340,9 @@ impl Store {
                 row.session_id,
                 row.session_provider,
                 row.direct,
+                row.cwd,
+                row.source,
+                row.source_sig,
             ],
         )
     }
@@ -344,7 +358,8 @@ impl Store {
     /// Newest first.
     pub fn chats(&self, project: &str) -> Result<Vec<ChatRow>, StoreError> {
         self.query_all(
-            "SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct
+            "SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct,
+                    cwd, source, source_sig
              FROM chats WHERE project = ?1 ORDER BY updated_at DESC",
             params![project],
             map_chat,
@@ -355,7 +370,8 @@ impl Store {
         Ok(self
             .conn
             .query_row(
-                "SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct
+                "SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct,
+                    cwd, source, source_sig
                  FROM chats WHERE id = ?1",
                 params![id],
                 map_chat,
@@ -370,10 +386,86 @@ impl Store {
         )
     }
 
-    /// Deletes the chat and its messages. Jobs are kept.
+    /// The project's chat that follows `session_id`, if any.
+    pub fn chat_by_session(
+        &self,
+        project: &str,
+        session_id: &str,
+    ) -> Result<Option<ChatRow>, StoreError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, project, title, created_at, updated_at, session_id, session_provider, direct,
+                    cwd, source, source_sig
+                 FROM chats WHERE project = ?1 AND session_id = ?2
+                 ORDER BY updated_at DESC LIMIT 1",
+                params![project, session_id],
+                map_chat,
+            )
+            .optional()?)
+    }
+
+    /// Replaces every message of a chat with `messages`, in order, in one transaction.
+    pub fn replace_messages(
+        &self,
+        chat_id: &str,
+        messages: &[LeadMessage],
+    ) -> Result<(), StoreError> {
+        self.conn.execute_batch("BEGIN")?;
+        let replaced = (|| -> Result<(), StoreError> {
+            self.exec("DELETE FROM messages WHERE chat_id = ?1", params![chat_id])?;
+            for (seq, message) in messages.iter().enumerate() {
+                self.exec(
+                    "INSERT INTO messages (id, chat_id, seq, data) VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(id) DO UPDATE SET
+                       chat_id = excluded.chat_id,
+                       seq = excluded.seq,
+                       data = excluded.data",
+                    params![
+                        message.id,
+                        chat_id,
+                        seq as i64,
+                        serde_json::to_string(message)?
+                    ],
+                )?;
+            }
+            self.conn.execute_batch("COMMIT")?;
+            Ok(())
+        })();
+        if replaced.is_err() {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+        replaced
+    }
+
+    /// Whether the user deleted the chat mirrored from this session, so it stays gone.
+    pub fn is_session_dismissed(&self, session_id: &str) -> Result<bool, StoreError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT 1 FROM dismissed_sessions WHERE session_id = ?1",
+                params![session_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    /// Deletes the chat and its messages. Jobs are kept. A chat mirrored from another app's
+    /// session is remembered as dismissed, so the next sync does not bring it back.
     pub fn delete_chat(&self, id: &str) -> Result<(), StoreError> {
+        let mirrored = self
+            .chat(id)?
+            .filter(|row| row.source.is_some())
+            .and_then(|row| row.session_id);
         self.conn.execute_batch("BEGIN")?;
         let deleted = (|| -> Result<(), StoreError> {
+            if let Some(session) = &mirrored {
+                self.exec(
+                    "INSERT OR IGNORE INTO dismissed_sessions (session_id) VALUES (?1)",
+                    params![session],
+                )?;
+            }
             self.exec("DELETE FROM messages WHERE chat_id = ?1", params![id])?;
             self.exec("DELETE FROM chats WHERE id = ?1", params![id])?;
             self.conn.execute_batch("COMMIT")?;
@@ -823,6 +915,9 @@ fn map_chat(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatRow> {
         session_id: row.get("session_id")?,
         session_provider: row.get("session_provider")?,
         direct: row.get("direct")?,
+        cwd: row.get("cwd")?,
+        source: row.get("source")?,
+        source_sig: row.get("source_sig")?,
     })
 }
 

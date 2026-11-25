@@ -2,6 +2,7 @@
 
 mod adapter;
 mod claude;
+pub mod claude_history;
 mod codex;
 mod cursor;
 mod edit_size;

@@ -947,6 +947,15 @@ pub async fn rename_lead_chat(
 }
 
 #[tauri::command]
+pub async fn open_chat_in_claude_app(shell: State<'_, Shell>, id: String) -> Result<(), String> {
+    shell
+        .backend()?
+        .open_chat_in_claude_app(id)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn remove_lead_chat(shell: State<'_, Shell>, id: String) -> Result<(), String> {
     shell
         .backend()?

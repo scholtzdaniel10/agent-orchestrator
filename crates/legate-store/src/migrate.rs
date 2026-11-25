@@ -1,9 +1,9 @@
 //! Schema migrations, in the same order as `src/core/router/store.ts`.
-//! `user_version` is the count of applied migrations. A current file is version 11.
+//! `user_version` is the count of applied migrations. A current file is version 12.
 
 use rusqlite::{Connection, Result};
 
-const MIGRATIONS: [&str; 11] = [
+const MIGRATIONS: [&str; 12] = [
     "
       CREATE TABLE IF NOT EXISTS runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +118,14 @@ const MIGRATIONS: [&str; 11] = [
         id TEXT PRIMARY KEY,
         project TEXT NOT NULL,
         data TEXT NOT NULL
+      );
+    ",
+    "
+      ALTER TABLE chats ADD COLUMN cwd TEXT;
+      ALTER TABLE chats ADD COLUMN source TEXT;
+      ALTER TABLE chats ADD COLUMN source_sig TEXT;
+      CREATE TABLE dismissed_sessions (
+        session_id TEXT PRIMARY KEY
       );
     ",
 ];

@@ -52,6 +52,7 @@ fn forward(app: &tauri::AppHandle, shell: &Shell, event: AppEvent) {
             }
             emit(app, "terminals:update", &UpdatePayload { info, removed });
         }
+        AppEvent::Chats { changed } => emit(app, "chats:update", &changed),
     }
 }
 

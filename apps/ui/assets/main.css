@@ -760,6 +760,16 @@ textarea {
   font-size: 11px;
 }
 
+.project-chat-source {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .project-chat-age {
   flex: none;
   color: var(--muted);
@@ -775,6 +785,9 @@ textarea {
   display: none;
   align-items: center;
   gap: var(--space-2);
+  padding-left: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--raised);
 }
 
 .project-chat-item:hover .project-chat-actions,
@@ -791,9 +804,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  min-width: 22px;
   height: 22px;
-  padding: 0;
+  padding: 0 6px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--raised);

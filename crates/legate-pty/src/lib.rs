@@ -45,6 +45,7 @@ mod env;
 mod error;
 mod host;
 mod launch;
+mod once;
 mod process;
 mod schedule;
 mod syncutil;
@@ -60,6 +61,7 @@ pub use host::{
     CloseWait, ExistsFn, LaunchFn, PtyHost, PtyHostOptions, Subscription, TerminalChunk, fixed_cwd,
 };
 pub use launch::{ChatFn, Launch, LaunchOpts, OpenOptions, ShellOptions, chat_fn, setup_launch};
+pub use once::{OnceOutput, run_once};
 pub use process::{KillTree, PtyProcess, QueuedPty, SpawnOpts, SpawnPty, spawn_pty};
 pub use schedule::Scheduler;
 

@@ -309,6 +309,7 @@ pub(crate) struct World {
     pub grok: Arc<CursorAdapter>,
     pub local: Arc<LocalAdapter>,
     pub events: broadcast::Sender<AppEvent>,
+    pub chat_sync: Rc<crate::chat_sync::ChatSync>,
     pub changes: Rc<ChangeRefresh>,
     pub change_push: ChangePush,
     pub rules_max: i64,
@@ -896,6 +897,14 @@ async fn boot(
         project.borrow().clone(),
         lead.clone(),
     )])));
+    let chat_sync = crate::chat_sync::ChatSync::new(
+        Rc::clone(&store),
+        Rc::clone(&project),
+        Rc::clone(&lead_sessions),
+        events.clone(),
+        legate_providers::claude_history::projects_root(),
+    );
+    chat_sync.spawn();
     Ok(World {
         settings,
         project,
@@ -921,6 +930,7 @@ async fn boot(
         grok,
         local,
         events,
+        chat_sync,
         changes,
         change_push,
         rules_max,

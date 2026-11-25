@@ -642,6 +642,12 @@ impl AppHandle {
             .await
     }
 
+    pub async fn open_chat_in_claude_app(&self, id: impl Into<String>) -> Result<(), AppError> {
+        let id = id.into();
+        self.invoke(move |world| world.open_chat_in_claude_app(id))
+            .await
+    }
+
     pub async fn remove_lead_chat(&self, id: impl Into<String>) -> Result<(), AppError> {
         let id = id.into();
         self.invoke(move |world| world.remove_lead_chat(id)).await

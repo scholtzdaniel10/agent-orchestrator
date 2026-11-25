@@ -479,6 +479,12 @@ pub struct LeadChat {
     pub pending: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct: Option<ProviderId>,
+    /// Where a chat mirrored from another app started: `claude-app` or `claude-code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The chat is a Claude Code session, so it can be opened in the Claude app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_session: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

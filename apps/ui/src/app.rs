@@ -418,6 +418,7 @@ pub fn App() -> Element {
                                 on_new_chat: Callback::new(move |_| reset_chat(store, layout)),
                                 on_rename_chat: Callback::new(move |(id, title): (String, String)| rename_chat(id, title)),
                                 on_remove_chat: Callback::new(move |id: String| remove_chat(store, id)),
+                                on_open_chat_in_app: Callback::new(move |id: String| open_chat_in_app(store, id)),
                                 on_select_worktree: Callback::new(move |(id, mode): (Option<String>, String)| select_worktree(store, id, &mode)),
                                 on_select_all_worktrees: Callback::new(move |_| select_all(store)),
                                 on_create_worktree: Callback::new(move |(name, count, start, prompt): (Option<String>, i64, Option<ProviderId>, Option<String>)| {
@@ -1825,6 +1826,14 @@ fn remove_chat(mut store: Store, id: String) {
         let _ = api::remove_lead_chat(&id).await;
         if let Ok(chats) = api::list_lead_chats().await {
             store.chats.set(chats);
+        }
+    });
+}
+
+fn open_chat_in_app(mut store: Store, id: String) {
+    spawn(async move {
+        if let Err(error) = api::open_chat_in_claude_app(&id).await {
+            store.error.set(Some(error));
         }
     });
 }

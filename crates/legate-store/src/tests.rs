@@ -99,7 +99,71 @@ fn chat_row(id: &str, project: &str, title: &str, created_at: i64, updated_at: i
         session_id: None,
         session_provider: None,
         direct: None,
+        cwd: None,
+        source: None,
+        source_sig: None,
     }
+}
+
+#[test]
+fn mirrored_chats_keep_their_source_and_replace_their_messages() {
+    let store = Store::open(":memory:").unwrap();
+    let mut row = chat_row("c1", "/p", "From the app", 1, 2);
+    row.session_id = Some("s-1".into());
+    row.session_provider = Some("claude".into());
+    row.direct = Some("claude".into());
+    row.cwd = Some("/p/.claude/worktrees/w".into());
+    row.source = Some("claude-app".into());
+    row.source_sig = Some("10:5".into());
+    store.save_chat(&row).unwrap();
+    assert_eq!(store.chat("c1").unwrap(), Some(row.clone()));
+    assert_eq!(
+        store.chat_by_session("/p", "s-1").unwrap(),
+        Some(row.clone())
+    );
+    assert_eq!(store.chat_by_session("/other", "s-1").unwrap(), None);
+
+    let message = |id: &str, text: &str| legate_core::LeadMessage {
+        id: id.into(),
+        role: legate_core::LeadRole::User,
+        text: text.into(),
+        provider: None,
+        model: None,
+        status: legate_core::LeadStatus::Done,
+        kind: None,
+        proposal: None,
+        extra: Default::default(),
+    };
+    store
+        .replace_messages("c1", &[message("a", "one"), message("b", "two")])
+        .unwrap();
+    store
+        .replace_messages("c1", &[message("b", "two"), message("c", "three")])
+        .unwrap();
+    let texts = store
+        .messages("c1")
+        .unwrap()
+        .into_iter()
+        .map(|message| message.text)
+        .collect::<Vec<_>>();
+    assert_eq!(texts, vec!["two", "three"]);
+}
+
+#[test]
+fn deleting_a_mirrored_chat_dismisses_its_session_but_not_legates_own() {
+    let store = Store::open(":memory:").unwrap();
+    let mut mirrored = chat_row("c1", "/p", "From the app", 1, 2);
+    mirrored.session_id = Some("s-1".into());
+    mirrored.source = Some("claude-code".into());
+    store.save_chat(&mirrored).unwrap();
+    let mut own = chat_row("c2", "/p", "Legate's", 1, 2);
+    own.session_id = Some("s-2".into());
+    store.save_chat(&own).unwrap();
+    store.delete_chat("c1").unwrap();
+    store.delete_chat("c2").unwrap();
+    assert!(store.is_session_dismissed("s-1").unwrap());
+    assert!(!store.is_session_dismissed("s-2").unwrap());
+    assert_eq!(store.chat("c1").unwrap(), None);
 }
 
 fn terminal(id: &str, project: &str) -> TerminalRow {
@@ -474,7 +538,7 @@ fn opens_an_old_database_keeps_its_rows_and_reaches_the_latest_schema() {
     let version: i64 = check
         .query_row("PRAGMA user_version", (), |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 11);
+    assert_eq!(version, 12);
     for name in ["terminals", "worktree_names", "project_setup", "routines"] {
         let found: String = check
             .query_row(
