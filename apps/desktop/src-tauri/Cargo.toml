@@ -29,6 +29,10 @@ tauri-plugin-updater = "2"
 tokio = { workspace = true }
 url = "2"
 
+[target.'cfg(windows)'.dependencies]
+# The same version and features Tauri builds, for shaped windows (SetWindowRgn).
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

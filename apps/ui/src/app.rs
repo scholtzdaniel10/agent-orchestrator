@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use dioxus::web::WebEventExt;
 use legate_core::{
     JobRecord, JobStatus, LeadStatus, PlanProblem, ProjectInfo, ProviderId, TerminalInfo,
-    TerminalProvider, UsageShows, plan_of,
+    TerminalProvider, TerminalStatus, UsageShows, plan_of,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
@@ -14,10 +14,10 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api;
 use crate::components::SearchDialog;
 use crate::components::{
-    ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
-    MenuEntry, NewTaskDialog, PlaceSwitch, ProjectBar, Routines, SettingsPage, SetupScreen,
-    SidebarMenu, SourceControlPanel, Star, TabIcon, TerminalWindow, UsageMeter, WindowBar,
-    WindowControls, Workers, drag_window,
+    ChangesTab, CrabdForehead, CrabdLegs, CrabdShape, ErrorBoundary, FilesPanel, FlowView,
+    GoalsPanel, HistoryPanel, JobsPanel, LeadChat, MenuEntry, NewTaskDialog, PlaceSwitch,
+    ProjectBar, Routines, SettingsPage, SetupScreen, SidebarMenu, SourceControlPanel, Star,
+    TabIcon, TerminalWindow, UsageMeter, WindowBar, WindowControls, Workers, drag_window,
 };
 use crate::logic::agent_tabs::agent_jobs;
 use crate::logic::flow_events::FlowEvent;
@@ -185,6 +185,11 @@ pub fn App() -> Element {
         .collect();
     let pane = PaneLayoutId::parse(&store.pane_layout.read()).unwrap_or(frame.pane_layout);
     let app_class = app_class(flags, overlay && flags.drawer_open);
+    let crab = theme() == ThemeId::Crabd && crate::api::in_desktop();
+    // The crab blinks while anything works: a job, the lead, or an agent in a terminal.
+    let agents_working = terminals.iter().any(|info| {
+        info.provider != TerminalProvider::Shell && info.status == TerminalStatus::Running
+    });
     let app_style = format!(
         "--layout-sidebar: {}px; --layout-drawer: {}px;",
         if flags.sidebar_shown {
@@ -223,6 +228,9 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "{app_class} roman-workspace", style: "{app_style}",
+            if crab {
+                CrabdForehead { busy: running > 0 || lead_busy || agents_working }
+            }
             header { class: "app-header", onmousedown: move |event| drag_window(&event),
                 div { class: "app-brand",
                     span { class: "app-mark roman-standard", aria_hidden: "true",
@@ -659,6 +667,10 @@ pub fn App() -> Element {
                     "No activity yet"
                 }
             }
+            if crab {
+                CrabdLegs { plans: plans.clone().unwrap_or_default() }
+            }
+            CrabdShape { active: crab, busy: running > 0 || lead_busy || agents_working }
             if settings_open() && !setup_open {
                 ErrorBoundary { class_name: Some("setup-slot".into()),
                     SettingsPage {

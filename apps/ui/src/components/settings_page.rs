@@ -242,6 +242,11 @@ pub fn SettingsPage(
                                     }
                                 }
                             }
+                            if theme == ThemeId::Crabd && (id == "general" || needle_hits(&needle, "Crab legs", "crabd usage meters")) {
+                                Row { label: "Crab legs".to_string(), help: "What each leg measures, left to right.".to_string(),
+                                    CrabdLegPicker { plans: plans.clone() }
+                                }
+                            }
                             if id == "general" || needle_hits(&needle, "Background", "ascii contour map animation") {
                                 Row { label: "Background".to_string(), help: "Behind the empty workspace. Moves with your agents.".to_string(),
                                     label { class: "settings-check",
@@ -619,5 +624,47 @@ fn set_background(on: bool) {
         web_sys::window().and_then(|window| window.local_storage().ok().flatten())
     {
         let _ = storage.set_item(BACKGROUND_KEY, if on { "on" } else { "off" });
+    }
+}
+
+/// The four Crabd legs, each set to one plan's usage window.
+#[component]
+fn CrabdLegPicker(plans: Vec<PlanStatus>) -> Element {
+    let mut nonce = use_signal(|| 0u32);
+    let _ = nonce();
+    let options = crate::logic::crabd::leg_options(&plans);
+    let legs = crate::logic::crabd::legs(
+        crate::components::crabd::read_saved_legs().as_deref(),
+        &options,
+    );
+    let mut choices: Vec<SelectOption> = vec![SelectOption::new("", "Nothing")];
+    choices.extend(
+        options
+            .iter()
+            .map(|(key, label)| SelectOption::new(key.clone(), label.clone())),
+    );
+    rsx! {
+        div { class: "crabd-leg-picker",
+            for index in 0..crate::logic::crabd::LEG_COUNT {
+                {
+                    let legs = legs.clone();
+                    rsx! {
+                        FieldSelect {
+                            key: "{index}",
+                            class: "settings-select".to_string(),
+                            aria_label: format!("Leg {}", index + 1),
+                            value: legs[index].clone().unwrap_or_default(),
+                            options: choices.clone(),
+                            on_change: Callback::new(move |value: String| {
+                                let mut next = legs.clone();
+                                next[index] = (!value.is_empty()).then_some(value);
+                                crate::components::crabd::write_saved_legs(&crate::logic::crabd::save_legs(&next));
+                                nonce.with_mut(|count| *count += 1);
+                            }),
+                        }
+                    }
+                }
+            }
+        }
     }
 }

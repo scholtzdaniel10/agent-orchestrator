@@ -1201,6 +1201,25 @@ pub async fn window_control(window: Window, action: String) -> Result<bool, Stri
     window.is_maximized().map_err(|err| err.to_string())
 }
 
+/// Cuts the calling window to `keep` minus `cut` (physical pixels from the client area's
+/// corner); an empty `keep` restores the plain rectangle. The Crabd theme's silhouette.
+#[tauri::command]
+pub async fn set_window_shape(
+    window: Window,
+    keep: Vec<crate::shape::ShapeRect>,
+    cut: Vec<crate::shape::ShapeRect>,
+) -> Result<(), String> {
+    let target = window.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    window
+        .run_on_main_thread(move || {
+            let _ = tx.send(crate::shape::apply(&target, &keep, &cut));
+        })
+        .map_err(|err| err.to_string())?;
+    rx.recv()
+        .map_err(|_| "The window closed before it was shaped.".to_string())?
+}
+
 #[tauri::command]
 pub async fn new_window(
     app: tauri::AppHandle,

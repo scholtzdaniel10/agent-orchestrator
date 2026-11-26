@@ -14,6 +14,7 @@ pub const THEMES: &[(&str, &str)] = &[
     ("xp", "Windows XP (experimental)"),
     ("aero", "Frutiger Aero (experimental)"),
     ("aero-dark", "Dark Aero (experimental)"),
+    ("crabd", "Crabd (experimental)"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub enum ThemeId {
     Xp,
     Aero,
     AeroDark,
+    Crabd,
 }
 
 impl ThemeId {
@@ -45,6 +47,7 @@ impl ThemeId {
             Self::Xp => "xp",
             Self::Aero => "aero",
             Self::AeroDark => "aero-dark",
+            Self::Crabd => "crabd",
         }
     }
 
@@ -61,6 +64,7 @@ impl ThemeId {
             "xp" => Self::Xp,
             "aero" => Self::Aero,
             "aero-dark" => Self::AeroDark,
+            "crabd" => Self::Crabd,
             _ => return None,
         })
     }
@@ -203,12 +207,13 @@ mod tests {
     }
 
     #[test]
-    fn orchid_xp_and_both_aeros_load_and_apply() {
+    fn orchid_xp_both_aeros_and_crabd_load_and_apply() {
         for (stored, theme) in [
             ("orchid", ThemeId::Orchid),
             ("xp", ThemeId::Xp),
             ("aero", ThemeId::Aero),
             ("aero-dark", ThemeId::AeroDark),
+            ("crabd", ThemeId::Crabd),
         ] {
             let mut storage = Memory {
                 data: BTreeMap::from([("orch.theme".into(), stored.into())]),
@@ -233,6 +238,7 @@ mod tests {
         assert!(super::THEMES.contains(&("xp", "Windows XP (experimental)")));
         assert!(super::THEMES.contains(&("aero", "Frutiger Aero (experimental)")));
         assert!(super::THEMES.contains(&("aero-dark", "Dark Aero (experimental)")));
+        assert!(super::THEMES.contains(&("crabd", "Crabd (experimental)")));
     }
 
     #[test]

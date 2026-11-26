@@ -525,6 +525,12 @@ pub async fn window_control(action: &str) -> Result<bool, String> {
     call("window_control", &json!({ "action": action })).await
 }
 
+/// Cuts this window to `keep` minus `cut` (physical pixels from the page's corner); empty
+/// `keep` gives back the plain rectangle.
+pub async fn set_window_shape<T: Serialize>(keep: &[T], cut: &[T]) -> Result<(), String> {
+    call("set_window_shape", &json!({ "keep": keep, "cut": cut })).await
+}
+
 /// True inside the desktop shell; false in a plain browser, which has its own frame.
 pub fn in_desktop() -> bool {
     web_sys::window()

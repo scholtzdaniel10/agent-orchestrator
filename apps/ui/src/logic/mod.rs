@@ -2,6 +2,7 @@
 
 pub mod agent_tabs;
 pub mod commit_graph;
+pub mod crabd;
 pub mod diff_lines;
 pub mod field_agents;
 pub mod file_tree;

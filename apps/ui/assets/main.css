@@ -9629,3 +9629,226 @@ input, textarea {
     display: none;
   }
 }
+
+/* Crabd (experimental): the window cut to a pixel crab. Light shell-orange outside, cream inside;
+   square corners like pixel art. */
+:root[data-theme='crabd'] {
+  color-scheme: light;
+  --bg: #fdf6f0;
+  --brand: #b4492a;
+  --text: #2a1a12;
+  --ray: #d97757;
+  --on-accent: #fff;
+  --signal: #865400;
+  --bad: #a02018;
+  --diff-add: #006432;
+  --diff-del: #a02018;
+  --bot-claude: #9e4718;
+  --bot-cursor: #006f51;
+  --bot-grok: #6e3cc8;
+  --tint: #fdf6f0;
+  --inset: #faefe6;
+  --deep: #f6e5d9;
+  --raised: #f8e9de;
+  --selected: #f3d9c9;
+  --muted: #5e4538;
+  --faint: #6f5446;
+  --border: #e2c6b4;
+  --border-strong: #b98e76;
+  --frame: #d0a58c;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --crabd-shell: #d97757;
+  --crabd-shell-deep: #c4653f;
+  --crabd-shell-text: #2a1206;
+  --crabd-meter: #8f3b1f;
+  --crabd-meter-warm: #74270f;
+  --crabd-meter-high: #4f1405;
+}
+
+/* The shell: forehead, header, rail, status bar and legs, with dark text on the orange. */
+:root[data-theme='crabd'] :is(.crabd-forehead, .app-header, .command-rail, .roman-workspace > .status-bar, .crabd-legs) {
+  --text: var(--crabd-shell-text);
+  --muted: #3b1709;
+  --faint: #4a1f0f;
+  --standard: var(--crabd-shell-text);
+  --border: #a8553a;
+  --raised: #e58d6f;
+  --selected: #eaa085;
+  --inset: #e38a6b;
+  background: var(--crabd-shell);
+  color: var(--text);
+}
+
+/* Menus opened from the shell read like the inside again. */
+:root[data-theme='crabd'] :is(.app-header, .command-rail, .status-bar) :is(.side-menu, .select-list, .workspace-layout-controls, .place-switch-menu) {
+  --text: #2a1a12;
+  --muted: #5e4538;
+  --faint: #6f5446;
+  --border: #e2c6b4;
+  --raised: #f8e9de;
+  --selected: #f3d9c9;
+  --inset: #faefe6;
+  background: var(--inset);
+  color: var(--text);
+}
+
+/* The crab's layout, only in the main window with the forehead on: the body in the middle,
+   the side panels as arms halfway down, the legs underneath. */
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) {
+  /* Short arms, like the crab's: a side panel is capped to a slice of the window. */
+  --crabd-arm-left: min(var(--layout-sidebar, 0px), 18vw);
+  --crabd-arm-right: min(var(--layout-drawer, 0px), 24vw);
+  --crabd-arm-height: 62%;
+  grid-template-rows: 44px 56px minmax(0, 1fr) 28px 64px;
+  grid-template-areas:
+    'forehead'
+    'header'
+    'body'
+    'status'
+    'legs';
+  background: transparent;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > :is(.crabd-forehead, .app-header, .status-bar, .crabd-legs) {
+  margin-right: var(--crabd-arm-right);
+  margin-left: var(--crabd-arm-left);
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-header {
+  border-bottom: 0;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .status-bar {
+  padding-left: 10px;
+  border-top: 0;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body {
+  background: transparent;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .sidebar-slot { order: -2; width: var(--crabd-arm-left); }
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .drawer { width: var(--crabd-arm-right); }
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) .command-status { display: none; }
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .layout-handle-sidebar { order: -1; }
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > :is(.sidebar-slot, .drawer, .layout-handle-sidebar, .layout-handle-drawer) {
+  align-self: center;
+  height: var(--crabd-arm-height);
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > :is(.sidebar-slot, .drawer) {
+  margin: 0;
+  border: 6px solid var(--crabd-shell);
+  border-radius: 0;
+  background: var(--inset);
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .sidebar-slot { border-right: 0; }
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .drawer { border-left: 0; }
+
+/* The body's own frame: shell around the workspace, between the arms. */
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .command-rail {
+  border-right: 0;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .workspace {
+  margin: 0;
+  border: 8px solid var(--crabd-shell);
+  border-left-width: 0;
+  border-radius: 0;
+}
+
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) .workspace .tab-bar {
+  border-radius: 0;
+}
+
+/* The forehead: a strip of shell with two eyes the desktop shows through (the window is cut
+   there; the lid colour shows only while they blink). */
+.crabd-forehead {
+  grid-area: forehead;
+  position: relative;
+  user-select: none;
+}
+
+.crabd-eye {
+  position: absolute;
+  top: 8px;
+  width: 8.4%;
+  max-width: 30px;
+  height: 32px;
+  background: var(--crabd-shell);
+}
+
+.crabd-eye.is-left { left: 16.8%; }
+.crabd-eye.is-right { left: 75.1%; }
+
+/* The legs: usage meters that fill from the ground up. */
+.crabd-legs {
+  grid-area: legs;
+  position: relative;
+  background: transparent !important;
+}
+
+.crabd-leg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 30px;
+  max-width: 56px;
+  padding: 4px 0;
+  overflow: hidden;
+  background: var(--crabd-shell);
+  color: var(--crabd-shell-text);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.crabd-leg-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--crabd-meter);
+}
+
+.crabd-leg.is-warm .crabd-leg-fill { background: var(--crabd-meter-warm); }
+.crabd-leg.is-high .crabd-leg-fill { background: var(--crabd-meter-high); }
+
+.crabd-leg-name,
+.crabd-leg-value {
+  position: relative;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: var(--crabd-shell);
+  line-height: 15px;
+}
+
+.crabd-leg-name {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.crabd-leg-plan {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.crabd-leg.is-empty {
+  justify-content: center;
+}
+
+.crabd-leg-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}

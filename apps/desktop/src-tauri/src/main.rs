@@ -5,6 +5,7 @@
 
 mod commands;
 mod events;
+mod shape;
 mod state;
 mod windows;
 
@@ -160,6 +161,7 @@ fn main() -> anyhow::Result<()> {
             commands::set_window_sight,
             commands::new_window,
             commands::window_control,
+            commands::set_window_shape,
             commands::pop_out_terminal,
             commands::popped_out,
             commands::pop_out_panel,
