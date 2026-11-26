@@ -1067,8 +1067,18 @@ impl Lead {
                 .and_then(|model_for| model_for(plan.provider)),
             ..RunOptions::default()
         };
-        if !direct {
-            if self.availability.run_mode.get() == LeadMode::Legit {
+        let mode = self.availability.run_mode.get();
+        if direct {
+            // A direct chat (one of Legate's, or a session mirrored from the Claude app or a CLI)
+            // works as far as the Lead mode lets it. A headless turn can't ask for approval, so
+            // Manual stays read-only.
+            opts.access = match mode {
+                LeadMode::Manual => None,
+                LeadMode::Auto => Some(JobAccess::Edit),
+                LeadMode::Legit => Some(JobAccess::Full),
+            };
+        } else {
+            if mode == LeadMode::Legit {
                 opts.access = Some(JobAccess::Full);
             }
             opts.bridge = Some(self.bridge.info());

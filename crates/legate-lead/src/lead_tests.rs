@@ -2597,6 +2597,29 @@ fn a_direct_chat_talks_to_the_chosen_plan() {
 }
 
 #[test]
+fn a_direct_chat_gets_the_access_its_lead_mode_allows() {
+    drive(async move {
+        let claude = Lane::new(
+            ProviderId::Claude,
+            vec![done("d", "a"), done("d", "b"), done("d", "c")],
+        );
+        let lane = claude.clone();
+        with_lead(&[claude], LeadEnv::default(), |lead, _store| async move {
+            lead.reset(Some(ProviderId::Claude)).unwrap();
+            lead.send("manual").await.unwrap();
+            lead.set_mode(LeadMode::Auto);
+            lead.send("auto").await.unwrap();
+            lead.set_mode(LeadMode::Legit);
+            lead.send("leg it").await.unwrap();
+            let access: Vec<_> = lane.calls().iter().map(|call| call.opts.access).collect();
+            assert_eq!(access, [None, Some(JobAccess::Edit), Some(JobAccess::Full)]);
+            assert!(lane.calls().iter().all(|call| call.opts.bridge.is_none()));
+        })
+        .await;
+    });
+}
+
+#[test]
 fn a_proposed_plan_waits_for_run() {
     drive(async move {
         let lead_held = Flag::new();
