@@ -642,6 +642,20 @@ impl AppHandle {
             .await
     }
 
+    /// Debug builds only: blocks the backend's thread for `seconds`, to check the hang detector.
+    /// Release builds refuse.
+    pub async fn debug_block_backend(&self, seconds: u64) -> Result<(), AppError> {
+        if !cfg!(debug_assertions) {
+            return Err(AppError::message("only in debug builds"));
+        }
+        let seconds = seconds.min(120);
+        self.invoke(move |_world| {
+            std::thread::sleep(std::time::Duration::from_secs(seconds));
+            crate::session::ready(Ok(()))
+        })
+        .await
+    }
+
     pub async fn open_chat_in_terminal(
         &self,
         id: impl Into<String>,
@@ -786,10 +800,14 @@ where
     T: Send + 'static,
     F: for<'a> FnOnce(&'a World) -> crate::session::Task<T> + Send + 'static,
 {
-    Command::Run(Box::new(move |world: &World| {
-        let task = call(world);
-        Box::pin(async move {
-            let _ = tx.send(task.await);
-        })
-    }))
+    let name = crate::watchdog::call_name(std::any::type_name::<F>());
+    Command::Run(
+        name,
+        Box::new(move |world: &World| {
+            let task = call(world);
+            Box::pin(async move {
+                let _ = tx.send(task.await);
+            })
+        }),
+    )
 }

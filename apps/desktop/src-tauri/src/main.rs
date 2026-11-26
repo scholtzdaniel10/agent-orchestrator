@@ -141,6 +141,7 @@ fn main() -> anyhow::Result<()> {
             commands::rename_lead_chat,
             commands::open_chat_in_claude_app,
             commands::open_chat_in_terminal,
+            commands::debug_block_backend,
             commands::remove_lead_chat,
             commands::open_terminal,
             commands::write_terminal,

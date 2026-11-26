@@ -193,6 +193,7 @@ impl ChatSync {
             if self.seen.borrow().get(&item.path) == Some(&item.sig) {
                 continue;
             }
+            crate::watchdog::mark(format!("chat sync: read {}", item.path.display()));
             let read_path = item.path.clone();
             let kind = item.kind;
             let Ok(Some(session)) =
@@ -204,6 +205,11 @@ impl ChatSync {
             if *self.project.borrow() != project {
                 return changed;
             }
+            crate::watchdog::mark(format!(
+                "chat sync: apply {} ({} messages)",
+                session.id,
+                session.messages.len()
+            ));
             match self.apply(&project, lead.as_deref(), &session, &item.sig) {
                 Outcome::Changed(id) => {
                     changed.push(id);

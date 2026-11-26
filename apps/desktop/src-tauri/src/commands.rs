@@ -946,6 +946,16 @@ pub async fn rename_lead_chat(
         .map_err(err_string)
 }
 
+/// Debug builds only: blocks the backend for `seconds`, to check the hang detector.
+#[tauri::command]
+pub async fn debug_block_backend(shell: State<'_, Shell>, seconds: u64) -> Result<(), String> {
+    shell
+        .backend()?
+        .debug_block_backend(seconds)
+        .await
+        .map_err(err_string)
+}
+
 #[tauri::command]
 pub async fn open_chat_in_terminal(
     shell: State<'_, Shell>,

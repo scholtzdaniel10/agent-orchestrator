@@ -405,12 +405,15 @@ impl AppBackend {
         let tx = self.tx.clone();
         Box::pin(async move {
             let (reply_tx, reply_rx) = oneshot::channel();
-            tx.send(Command::Run(Box::new(move |world| {
-                let fut = f(world);
-                Box::pin(async move {
-                    let _ = reply_tx.send(fut.await);
-                })
-            })))
+            tx.send(Command::Run(
+                crate::watchdog::call_name(std::any::type_name::<F>()),
+                Box::new(move |world| {
+                    let fut = f(world);
+                    Box::pin(async move {
+                        let _ = reply_tx.send(fut.await);
+                    })
+                }),
+            ))
             .map_err(|_| BackendError::new("legate is shutting down"))?;
             reply_rx
                 .await

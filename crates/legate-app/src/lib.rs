@@ -19,6 +19,7 @@ mod paths;
 mod plugins;
 mod session;
 mod usage;
+mod watchdog;
 mod windows;
 mod wire;
 

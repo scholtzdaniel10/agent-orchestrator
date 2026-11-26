@@ -51,9 +51,12 @@ pub(crate) type LocalTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
 pub(crate) type Call = Box<dyn FnOnce(&World) -> LocalTask + Send>;
 
 pub(crate) enum Command {
-    Run(Call),
+    /// A call into the backend, named for the hang detector (`watchdog`).
+    Run(&'static str, Call),
     Shutdown,
 }
+
+const TERMINAL_DATA: &str = "terminal data";
 
 pub(crate) type Task<T> = Pin<Box<dyn Future<Output = Result<T, AppError>> + 'static>>;
 
@@ -370,15 +373,20 @@ pub(crate) fn spawn_service(
 async fn run_loop(world: World, mut rx: mpsc::UnboundedReceiver<Command>) {
     let world = Rc::new(world);
     *world.this.borrow_mut() = Rc::downgrade(&world);
+    crate::watchdog::start(&world.data_dir, crate::watchdog::Timing::default());
     loop {
         let Some(command) = rx.recv().await else {
             break;
         };
         match command {
             Command::Shutdown => break,
-            Command::Run(call) => {
+            Command::Run(name, call) => {
                 let world = Rc::clone(&world);
                 tokio::task::spawn_local(async move {
+                    // Terminal output arrives in many small calls; they would crowd the trail.
+                    let _running = (name != TERMINAL_DATA)
+                        .then(|| crate::watchdog::begin(name))
+                        .flatten();
                     let task = call(&world);
                     task.await;
                 });
@@ -810,18 +818,21 @@ async fn boot(
             data: data.to_string(),
         });
         let id = id.to_string();
-        let _ = data_tx.send(Command::Run(Box::new(move |world| {
-            if let Some(change) = world
-                .terms
-                .list()
-                .into_iter()
-                .find(|info| info.id == id)
-                .and_then(|info| info.change)
-            {
-                world.changes.note(&change);
-            }
-            Box::pin(async {})
-        })));
+        let _ = data_tx.send(Command::Run(
+            TERMINAL_DATA,
+            Box::new(move |world| {
+                if let Some(change) = world
+                    .terms
+                    .list()
+                    .into_iter()
+                    .find(|info| info.id == id)
+                    .and_then(|info| info.change)
+                {
+                    world.changes.note(&change);
+                }
+                Box::pin(async {})
+            }),
+        ));
     });
     let update_tx = tx.clone();
     let update_events = events.clone();
@@ -831,12 +842,15 @@ async fn boot(
             removed,
         });
         let info = info.clone();
-        let _ = update_tx.send(Command::Run(Box::new(move |world| {
-            let watch = TerminalWatch::from_world(world);
-            Box::pin(async move {
-                watch.note(&info, removed).await;
-            })
-        })));
+        let _ = update_tx.send(Command::Run(
+            "terminal update",
+            Box::new(move |world| {
+                let watch = TerminalWatch::from_world(world);
+                Box::pin(async move {
+                    watch.note(&info, removed).await;
+                })
+            }),
+        ));
     });
 
     let timers: Rc<RefCell<dyn crate::debounce::Timers>> =
