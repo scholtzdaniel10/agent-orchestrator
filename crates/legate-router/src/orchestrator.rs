@@ -2475,16 +2475,10 @@ fn failure_message(result_text: Option<&str>, stderr: &str) -> String {
 }
 
 fn unrecognized_model(text: &str) -> Option<String> {
-    let marker = "unrecognized_model]";
-    let start = text.find(marker)? + marker.len();
-    let rest = text[start..].trim_start();
-    let prefix = "{\"model\":\"";
-    let after = rest.strip_prefix(prefix)?;
-    let end = after.find('"')?;
-    if end == 0 || end > 80 {
-        return None;
-    }
-    Some(after[..end].to_string())
+    let (_, rest) = text.split_once("unrecognized_model]")?;
+    let rest = rest.trim_start().strip_prefix(r#"{"model":""#)?;
+    let (name, _) = rest.split_once('"')?;
+    (1..=80).contains(&name.len()).then(|| name.to_owned())
 }
 
 fn to_record(job: &InternalJob) -> JobRecord {
@@ -2674,4 +2668,33 @@ enum Applied {
     Quiet,
     Used(f64),
     Result(HeldResult),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unrecognized_model;
+
+    #[test]
+    fn extracts_unrecognized_model_names() {
+        let valid = "[claude-code:unrecognized_model]\t {\"model\":\"claude-opus-5-5\"}";
+        assert_eq!(
+            unrecognized_model(valid).as_deref(),
+            Some("claude-opus-5-5")
+        );
+        assert_eq!(unrecognized_model(r#"{"model":"claude-opus-5-5"}"#), None);
+        assert_eq!(
+            unrecognized_model(r#"unrecognized_model] {"model":""}"#),
+            None
+        );
+
+        let name = "a".repeat(80);
+        let at_limit = format!(r#"unrecognized_model] {{"model":"{name}"}}"#);
+        assert_eq!(
+            unrecognized_model(&at_limit).as_deref(),
+            Some(name.as_str())
+        );
+
+        let over_limit = format!(r#"unrecognized_model] {{"model":"{name}a"}}"#);
+        assert_eq!(unrecognized_model(&over_limit), None);
+    }
 }

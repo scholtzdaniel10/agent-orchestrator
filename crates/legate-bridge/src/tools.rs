@@ -178,17 +178,19 @@ async fn approve_tool(
 
 /// The part of a tool's input a person needs to decide: the command, the file, or the URL.
 fn approval_detail(tool: &str, input: &Value) -> String {
-    let field = [
+    const KEYS: [&str; 6] = [
         "command",
         "file_path",
         "notebook_path",
         "url",
         "path",
         "pattern",
-    ]
-    .into_iter()
-    .find_map(|key| input.get(key).and_then(Value::as_str));
-    let text = match field {
+    ];
+
+    let first_string = KEYS
+        .into_iter()
+        .find_map(|key| input.get(key).and_then(Value::as_str));
+    let text = match first_string {
         Some(text) => text.to_string(),
         None if input.as_object().is_some_and(Map::is_empty) => tool.to_string(),
         None => input.to_string(),
@@ -766,9 +768,22 @@ struct ProposeOut {
 mod tests {
     use super::{
         GET_RESULT_SCHEMA, GET_STATUS_SCHEMA, LIST_WORKERS_SCHEMA, PROPOSE_JOBS_SCHEMA,
-        SEND_JOB_SCHEMA, iso_millis, rounded_number,
+        SEND_JOB_SCHEMA, approval_detail, iso_millis, rounded_number,
     };
     use serde_json::json;
+
+    #[test]
+    fn approval_detail_prefers_a_command_and_uses_the_expected_fallbacks() {
+        assert_eq!(
+            approval_detail("Bash", &json!({"command": "git status", "path": "/tmp"})),
+            "git status"
+        );
+        assert_eq!(approval_detail("Bash", &json!({})), "Bash");
+        assert_eq!(
+            approval_detail("Bash", &json!({"command": 42})),
+            r#"{"command":42}"#
+        );
+    }
 
     #[test]
     fn schemas_match_the_typescript_shapes() {

@@ -389,29 +389,20 @@ fn default_cursor_bin() -> Bin {
 }
 
 fn newest_in(dir: &Path) -> Option<Bin> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    let mut names = Vec::new();
-    for entry in entries {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let Ok(kind) = entry.file_type() else {
-            continue;
-        };
-        if kind.is_dir() {
-            names.push(entry.file_name());
-        }
-    }
-    names.sort_by(|left, right| right.cmp(left));
-    for name in names {
+    let mut names = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.file_name())
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    names.into_iter().rev().find_map(|name| {
         let dir = dir.join(name);
         let node = dir.join("node.exe");
         let index = dir.join("index.js");
-        if node.exists() && index.exists() {
-            return Some(Bin::with_args(path_string(&node), [path_string(&index)]));
-        }
-    }
-    None
+        (node.exists() && index.exists())
+            .then(|| Bin::with_args(path_string(&node), [path_string(&index)]))
+    })
 }
 
 fn resume_flag(opts: &InteractiveOptions) -> Option<String> {

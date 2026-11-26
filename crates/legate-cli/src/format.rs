@@ -46,24 +46,13 @@ pub fn paint(text: &str, code: &str, color: bool) -> String {
 
 pub fn format_duration(ms: i64) -> String {
     let seconds = (ms as f64 / 1000.0).round().max(0.0) as i64;
-    if seconds < 60 {
-        return format!("{seconds}s");
-    }
     let minutes = seconds / 60;
-    let rem = seconds % 60;
-    if minutes < 60 {
-        return if rem == 0 {
-            format!("{minutes}m")
-        } else {
-            format!("{minutes}m {rem}s")
-        };
-    }
-    let hours = minutes / 60;
-    let min_rem = minutes % 60;
-    if min_rem == 0 {
-        format!("{hours}h")
-    } else {
-        format!("{hours}h {min_rem}m")
+    match (minutes / 60, minutes % 60, seconds % 60) {
+        (0, 0, seconds) => format!("{seconds}s"),
+        (0, minutes, 0) => format!("{minutes}m"),
+        (0, minutes, seconds) => format!("{minutes}m {seconds}s"),
+        (hours, 0, _) => format!("{hours}h"),
+        (hours, minutes, _) => format!("{hours}h {minutes}m"),
     }
 }
 
