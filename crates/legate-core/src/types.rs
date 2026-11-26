@@ -442,6 +442,45 @@ pub enum ProposalStatus {
     Stopped,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ApprovalStatus {
+    Waiting,
+    Allowed,
+    Denied,
+}
+
+/// The Lead's CLI asking the person before it uses a tool (Manual mode). Kept on the turn's
+/// message under [`LeadMessage::APPROVALS`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeadApproval {
+    pub id: String,
+    /// The tool the CLI wants to use, such as `Bash` or `Edit`.
+    pub tool: String,
+    /// What it would do: the command, the file, or the tool's input.
+    pub detail: String,
+    pub status: ApprovalStatus,
+}
+
+impl LeadMessage {
+    /// Key in [`LeadMessage::extra`] holding the turn's [`LeadApproval`]s.
+    pub const APPROVALS: &'static str = "approvals";
+
+    pub fn approvals(&self) -> Vec<LeadApproval> {
+        self.extra
+            .get(Self::APPROVALS)
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn set_approvals(&mut self, approvals: &[LeadApproval]) {
+        if let Ok(value) = serde_json::to_value(approvals) {
+            self.extra.insert(Self::APPROVALS.to_string(), value);
+        }
+    }
+}
+
 /// One job in a lead's plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

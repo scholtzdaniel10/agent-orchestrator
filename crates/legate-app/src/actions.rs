@@ -1481,6 +1481,24 @@ impl World {
         }
     }
 
+    pub fn answer_lead_approval(
+        &self,
+        message_id: String,
+        approval_id: String,
+        allow: bool,
+    ) -> Task<()> {
+        if message_id.is_empty() || message_id.len() > 64 || approval_id.len() > 64 {
+            return fail("invalid message id");
+        }
+        match self
+            .current_lead()
+            .answer_approval(&message_id, &approval_id, allow)
+        {
+            Ok(()) => ready(Ok(())),
+            Err(err) => ready(Err(lead_err(err))),
+        }
+    }
+
     pub fn list_lead_messages(&self) -> Task<Vec<LeadMessage>> {
         ready(Ok(self.current_lead().messages()))
     }

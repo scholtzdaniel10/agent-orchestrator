@@ -624,7 +624,13 @@ async fn with_propose_the_lead_gets_propose_jobs_instead_of_send_job_and_nothing
     let bridge = start_orch(Arc::clone(&fake), ToolConfig { propose: true }).await;
     assert_eq!(
         bridge.info().tools,
-        ["list_workers", "propose_jobs", "get_status", "get_result"]
+        [
+            "list_workers",
+            "propose_jobs",
+            "get_status",
+            "get_result",
+            "approve"
+        ]
     );
     let http = client();
     let listed = rpc(&http, &bridge, json!({"id": 1, "method": "tools/list"})).await;
@@ -801,4 +807,27 @@ fn sorted_keys(value: &Value) -> Vec<&str> {
         .collect();
     keys.sort_unstable();
     keys
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn approve_answers_in_claudes_permission_shape_and_refuses_with_nobody_to_ask() {
+    let fake = Fake::new();
+    fake.set_lead_turn(Some("m-turn".to_string()));
+    let bridge = start_orch(Arc::clone(&fake), ToolConfig { propose: true }).await;
+    let http = client();
+    let answer = call_ok(
+        &http,
+        &bridge,
+        "approve",
+        json!({"tool_name": "Bash", "input": {"command": "cargo test"}, "tool_use_id": "t1"}),
+    )
+    .await;
+    assert_eq!(answer["behavior"], json!("deny"));
+    assert!(
+        answer["message"]
+            .as_str()
+            .unwrap()
+            .contains("did not allow")
+    );
+    bridge.close().await.unwrap();
 }

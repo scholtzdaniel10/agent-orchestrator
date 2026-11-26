@@ -384,6 +384,9 @@ impl legate_lead::GoalWorktrees for GitGoals {
     }
 }
 
+/// How long the Lead's CLI waits for the person to Allow or Deny a tool.
+const APPROVAL_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// Hop from the bridge's thread onto the orchestrator's `LocalSet`.
 pub struct AppBackend {
     tx: mpsc::UnboundedSender<Command>,
@@ -526,6 +529,31 @@ impl BridgeBackend for AppBackend {
                     return Ok(Some(job));
                 }
                 Ok(wait_job(&orch, &id, wait).await)
+            })
+        })
+        .await
+    }
+
+    async fn ask_permission(
+        &self,
+        turn: String,
+        tool: String,
+        detail: String,
+    ) -> Result<bool, BackendError> {
+        let project = self.project.clone();
+        self.ask(move |world| {
+            let lead = world.lead_sessions.borrow().get(&project).cloned();
+            let waiting = lead
+                .ok_or_else(|| BackendError::new("project session is unavailable"))
+                .and_then(|lead| {
+                    lead.ask_approval(&turn, &tool, &detail)
+                        .map_err(|err| BackendError::new(err.to_string()))
+                });
+            Box::pin(async move {
+                // ponytail: an unanswered question counts as Deny after APPROVAL_WAIT, but its
+                // card keeps its buttons until the turn ends; clear it then if that confuses.
+                let answer = tokio::time::timeout(APPROVAL_WAIT, waiting?).await;
+                Ok(matches!(answer, Ok(Ok(true))))
             })
         })
         .await

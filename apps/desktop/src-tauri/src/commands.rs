@@ -890,6 +890,20 @@ pub async fn dismiss_lead_proposal(
 }
 
 #[tauri::command]
+pub async fn answer_lead_approval(
+    shell: State<'_, Shell>,
+    message_id: String,
+    approval_id: String,
+    allow: bool,
+) -> Result<(), String> {
+    shell
+        .backend()?
+        .answer_lead_approval(message_id, approval_id, allow)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn list_lead_messages(
     shell: State<'_, Shell>,
 ) -> Result<Vec<legate_core::LeadMessage>, String> {

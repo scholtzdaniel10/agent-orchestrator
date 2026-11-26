@@ -13,9 +13,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use legate_core::{
-    AgentEvent, BridgeInfo, JobAccess, JobRecord, JobStatus, JobType, LeadMessage, LeadMessageKind,
-    LeadMode, LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId,
-    RunOptions, UsageWindow, load_rules,
+    AgentEvent, ApprovalStatus, BridgeInfo, JobAccess, JobRecord, JobStatus, JobType, LeadMessage,
+    LeadMessageKind, LeadMode, LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob,
+    ProviderId, RunOptions, UsageWindow, load_rules,
 };
 use legate_providers::ProcessExit;
 use legate_router::{
@@ -2584,7 +2584,8 @@ fn a_direct_chat_talks_to_the_chosen_plan() {
                 let calls = claude_lane.calls();
                 assert_eq!(calls[0].prompt, "what does this repo do");
                 assert_eq!(calls[0].cwd, "/project");
-                assert!(calls[0].opts.bridge.is_none());
+                assert!(calls[0].opts.bridge.is_some());
+                assert!(calls[0].opts.read_dirs.is_none());
                 assert_eq!(calls[1].opts.resume.as_deref(), Some("sess-d"));
                 let chat = lead.chats().unwrap().into_iter().next().unwrap();
                 assert_eq!(chat.direct, Some(ProviderId::Claude));
@@ -2615,9 +2616,72 @@ fn a_direct_chat_gets_the_access_its_lead_mode_allows() {
             lead.send("leg it").await.unwrap();
             let access: Vec<_> = lane.calls().iter().map(|call| call.opts.access).collect();
             assert_eq!(access, [None, Some(JobAccess::Edit), Some(JobAccess::Full)]);
-            assert!(lane.calls().iter().all(|call| call.opts.bridge.is_none()));
+            assert!(lane.calls().iter().all(|call| call.opts.bridge.is_some()));
             let auto: Vec<_> = lane.calls().iter().map(|call| call.opts.auto).collect();
             assert_eq!(auto, [None, Some(true), None]);
+        })
+        .await;
+    });
+}
+
+#[test]
+fn a_tool_question_waits_on_the_turn_until_the_person_answers() {
+    drive(async move {
+        let held = Flag::new();
+        let claude = Lane::new(
+            ProviderId::Claude,
+            vec![gated(
+                &held,
+                vec![init("s", None), result(true, "ran it", Some("s"), 0.0, 0)],
+            )],
+        );
+        with_lead(&[claude], LeadEnv::default(), |lead, _store| async move {
+            let pending = spawn_send(&lead, "run the tests");
+            parked(&lead).await;
+            let turn = lead.current_turn().unwrap();
+            let allowed = lead.ask_approval(&turn, "Bash", "cargo test").unwrap();
+            let denied = lead.ask_approval(&turn, "Write", "notes.md").unwrap();
+            let asked = lead.messages().pop().unwrap().approvals();
+            assert_eq!(asked.len(), 2);
+            assert_eq!(asked[0].detail, "cargo test");
+            assert!(
+                asked
+                    .iter()
+                    .all(|item| item.status == ApprovalStatus::Waiting)
+            );
+            lead.answer_approval(&turn, &asked[0].id, true).unwrap();
+            lead.answer_approval(&turn, &asked[1].id, false).unwrap();
+            assert!(allowed.await.unwrap());
+            assert!(!denied.await.unwrap());
+            contains_err(
+                lead.answer_approval(&turn, &asked[0].id, true).unwrap_err(),
+                "no longer waiting",
+            );
+            let answered = lead.messages().pop().unwrap().approvals();
+            assert_eq!(
+                answered.iter().map(|item| item.status).collect::<Vec<_>>(),
+                [ApprovalStatus::Allowed, ApprovalStatus::Denied]
+            );
+            contains_err(
+                lead.ask_approval("nope", "Bash", "ls").unwrap_err(),
+                "not open",
+            );
+            held.trip();
+            pending.await.unwrap().unwrap();
+        })
+        .await;
+    });
+}
+
+#[test]
+fn a_direct_cursor_chat_gets_no_job_tools_so_nothing_lands_in_the_project() {
+    drive(async move {
+        let cursor = Lane::new(ProviderId::Cursor, vec![done("c", "hi")]);
+        let lane = cursor.clone();
+        with_lead(&[cursor], LeadEnv::default(), |lead, _store| async move {
+            lead.reset(Some(ProviderId::Cursor)).unwrap();
+            lead.send("hello").await.unwrap();
+            assert!(lane.calls()[0].opts.bridge.is_none());
         })
         .await;
     });

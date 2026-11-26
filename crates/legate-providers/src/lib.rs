@@ -23,7 +23,7 @@ pub use adapter::{
     Bin, EventStream, InteractiveCommand, InteractiveOptions, LimitError, ProcessExit,
     ProviderAdapter, RunHandle,
 };
-pub use claude::ClaudeAdapter;
+pub use claude::{ClaudeAdapter, orchestrator_mcp_path};
 pub use codex::CodexAdapter;
 pub use cursor::{
     CursorAdapter, ModelSource, cursor_env, cursor_version_dirs, node_platform,

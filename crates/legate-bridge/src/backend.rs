@@ -89,6 +89,7 @@ pub struct NewJob {
 /// | `get_status` | [`list_jobs`](Self::list_jobs), [`get_job`](Self::get_job) |
 /// | `get_result` | [`get_job`](Self::get_job), [`wait_for_job`](Self::wait_for_job) |
 /// | `propose_jobs` | [`max_access`](Self::max_access), [`lead_turn`](Self::lead_turn), [`propose_jobs`](Self::propose_jobs) |
+/// | `approve` | [`lead_turn`](Self::lead_turn), [`ask_permission`](Self::ask_permission) |
 #[async_trait]
 pub trait BridgeBackend: Send + Sync {
     /// Access ceiling for this call. The default is `read`.
@@ -138,6 +139,19 @@ pub trait BridgeBackend: Send + Sync {
         id: &str,
         wait: Duration,
     ) -> Result<Option<JobRecord>, BackendError>;
+
+    /// Ask the person before the Lead's CLI uses a tool, and wait for the answer: `true` allows.
+    /// `turn` is the Lead message the question shows on. The default refuses, for backends
+    /// with nobody to ask.
+    #[allow(clippy::unused_async)]
+    async fn ask_permission(
+        &self,
+        _turn: String,
+        _tool: String,
+        _detail: String,
+    ) -> Result<bool, BackendError> {
+        Ok(false)
+    }
 
     /// Store a plan for the person to run.
     ///

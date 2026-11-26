@@ -414,6 +414,17 @@ pub async fn run_lead_proposal(
 pub async fn dismiss_lead_proposal(message_id: &str) -> Result<(), String> {
     call("dismiss_lead_proposal", &json!({ "messageId": message_id })).await
 }
+pub async fn answer_lead_approval(
+    message_id: &str,
+    approval_id: &str,
+    allow: bool,
+) -> Result<(), String> {
+    call(
+        "answer_lead_approval",
+        &json!({ "messageId": message_id, "approvalId": approval_id, "allow": allow }),
+    )
+    .await
+}
 pub async fn list_lead_messages() -> Result<Vec<LeadMessage>, String> {
     call("list_lead_messages", &json!({})).await
 }

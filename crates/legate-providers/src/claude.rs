@@ -196,7 +196,8 @@ impl ClaudeAdapter {
             args.push(resume.to_string());
         }
         if let Some(bridge) = &opts.bridge {
-            let config = write_mcp_config(cwd, bridge)?;
+            std::fs::create_dir_all(cwd)?;
+            let config = write_mcp_config(bridge)?;
             let read_dirs = opts.read_dirs.as_deref().unwrap_or(&[]);
             for dir in read_dirs {
                 args.push("--add-dir".to_string());
@@ -211,6 +212,10 @@ impl ClaudeAdapter {
             } else {
                 if opts.auto == Some(true) {
                     args.extend(["--permission-mode", "auto"].map(str::to_string));
+                } else if bridge.tools.iter().any(|tool| tool == "approve") {
+                    // Manual: anything your settings don't allow is asked in Legate's Lead panel.
+                    args.push("--permission-prompt-tool".to_string());
+                    args.push("mcp__orchestrator__approve".to_string());
                 }
                 let mut tools: Vec<String> = bridge
                     .tools
@@ -337,16 +342,33 @@ fn worker_args(access: JobAccess) -> Vec<String> {
     args
 }
 
-fn write_mcp_config(cwd: &Path, bridge: &BridgeInfo) -> Result<PathBuf, ProviderError> {
-    std::fs::create_dir_all(cwd)?;
-    let path = cwd.join("orchestrator-mcp.json");
+/// Where a Claude run's orchestrator MCP config goes: Legate's temp folder, never the run's own
+/// folder, because a direct chat runs in the person's project.
+pub fn orchestrator_mcp_path(bridge: &BridgeInfo) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    bridge.url.hash(&mut hash);
+    bridge.token.hash(&mut hash);
+    std::env::temp_dir()
+        .join("legate")
+        .join(format!("orchestrator-mcp-{:016x}.json", hash.finish()))
+}
+
+fn write_mcp_config(bridge: &BridgeInfo) -> Result<PathBuf, ProviderError> {
+    let path = orchestrator_mcp_path(bridge);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     // Key order matches JSON.stringify in claude.ts. serde_json::Map sorts keys.
     let url = serde_json::to_string(&bridge.url)?;
     let auth = serde_json::to_string(&format!("Bearer {}", bridge.token))?;
     let body = format!(
         r#"{{"mcpServers":{{"orchestrator":{{"type":"http","url":{url},"headers":{{"Authorization":{auth}}}}}}}}}"#
     );
-    std::fs::write(&path, body)?;
+    // Runs share the file; rewriting identical bytes would let a starting run read it half-written.
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(body.as_str()) {
+        std::fs::write(&path, body)?;
+    }
     Ok(path)
 }
 

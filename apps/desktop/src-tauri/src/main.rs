@@ -133,6 +133,7 @@ fn main() -> anyhow::Result<()> {
             commands::stop_lead,
             commands::run_lead_proposal,
             commands::dismiss_lead_proposal,
+            commands::answer_lead_approval,
             commands::list_lead_messages,
             commands::list_lead_chats,
             commands::open_lead_chat,

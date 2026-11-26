@@ -7458,6 +7458,19 @@ label,
   overflow: visible;
 }
 
+/* The Lead's CLI asking before it uses a tool (Manual), with Allow and Deny */
+.lead-approval {
+  margin-top: 10px;
+}
+
+.lead-approval-detail {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 /* A lead plan: the jobs it proposes, editable, with Run and Dismiss */
 .lead-plan {
   display: flex;

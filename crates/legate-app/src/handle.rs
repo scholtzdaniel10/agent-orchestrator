@@ -607,6 +607,17 @@ impl AppHandle {
             .await
     }
 
+    pub async fn answer_lead_approval(
+        &self,
+        message_id: impl Into<String>,
+        approval_id: impl Into<String>,
+        allow: bool,
+    ) -> Result<(), AppError> {
+        let (message_id, approval_id) = (message_id.into(), approval_id.into());
+        self.invoke(move |world| world.answer_lead_approval(message_id, approval_id, allow))
+            .await
+    }
+
     pub async fn list_lead_messages(&self) -> Result<Vec<LeadMessage>, AppError> {
         self.invoke(|world| world.list_lead_messages()).await
     }

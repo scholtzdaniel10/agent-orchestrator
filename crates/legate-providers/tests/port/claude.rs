@@ -3,7 +3,7 @@ use std::path::Path;
 use legate_core::LeadMode;
 use legate_providers::{
     AgentEvent, BridgeInfo, ClaudeAdapter, InteractiveCommand, InteractiveOptions, JobAccess,
-    LimitError, ProviderAdapter, RunOptions, StepPhase, StepTool,
+    LimitError, ProviderAdapter, RunOptions, StepPhase, StepTool, orchestrator_mcp_path,
 };
 
 use super::support::{self, Running};
@@ -290,9 +290,11 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
         r#"{{"mcpServers":{{"orchestrator":{{"type":"http","url":"{url}","headers":{{"Authorization":"Bearer {token}"}}}}}}}}"#
     );
     let mcp = |cwd: &Path| -> Vec<String> {
+        // The config lives in Legate's temp folder, never in the run's folder.
+        assert!(!cwd.join("orchestrator-mcp.json").exists());
         vec![
             "--mcp-config".to_string(),
-            support::path_text(&cwd.join("orchestrator-mcp.json")),
+            support::path_text(&orchestrator_mcp_path(&bridge)),
             "--allowedTools".to_string(),
             "mcp__orchestrator__send_job,mcp__orchestrator__get_result".to_string(),
         ]
@@ -341,7 +343,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
         [owned(&start), mcp(&bridged)].concat()
     );
     assert_eq!(
-        support::read(&bridged.join("orchestrator-mcp.json")),
+        support::read(&orchestrator_mcp_path(&bridge)),
         expected_config
     );
 
@@ -360,7 +362,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
         [owned(&start), owned(&["--resume", "sess-2"]), mcp(&both)].concat()
     );
     assert_eq!(
-        support::read(&both.join("orchestrator-mcp.json")),
+        support::read(&orchestrator_mcp_path(&bridge)),
         expected_config
     );
 
@@ -448,7 +450,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
             owned(&["--add-dir", "/work/project"]),
             vec![
                 "--mcp-config".to_string(),
-                support::path_text(&reading.join("orchestrator-mcp.json")),
+                support::path_text(&orchestrator_mcp_path(&bridge)),
                 "--allowedTools".to_string(),
                 "mcp__orchestrator__send_job,mcp__orchestrator__get_result,Read,Grep,Glob"
                     .to_string(),
@@ -567,7 +569,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
             &bridged,
             &RunOptions {
                 access: Some(JobAccess::Edit),
-                bridge: Some(bridge),
+                bridge: Some(bridge.clone()),
                 ..RunOptions::default()
             }
         )
@@ -888,4 +890,36 @@ async fn the_lead_loads_your_own_setup_with_the_job_tools_on_top() {
             auto == Some(true)
         );
     }
+}
+
+#[tokio::test]
+async fn a_manual_lead_asks_the_person_through_the_approve_tool() {
+    let root = support::Temp::new("ao-claude-approve");
+    let run = |auto: Option<bool>, tools: &[&str]| RunOptions {
+        bridge: Some(bridge(tools)),
+        auto,
+        ..RunOptions::default()
+    };
+    let prompt_tool = ["--permission-prompt-tool", "mcp__orchestrator__approve"];
+    let manual = args_no_note(
+        &adapter(&["argv"]),
+        &root.join("manual"),
+        &run(None, &["propose_jobs", "approve"]),
+    )
+    .await;
+    assert!(manual.windows(2).any(|pair| pair == prompt_tool));
+    let auto = args_no_note(
+        &adapter(&["argv"]),
+        &root.join("auto"),
+        &run(Some(true), &["propose_jobs", "approve"]),
+    )
+    .await;
+    assert!(!auto.windows(2).any(|pair| pair == prompt_tool));
+    let without = args_no_note(
+        &adapter(&["argv"]),
+        &root.join("without"),
+        &run(None, &["propose_jobs"]),
+    )
+    .await;
+    assert!(without.iter().all(|arg| arg != "--permission-prompt-tool"));
 }

@@ -4,9 +4,9 @@ use std::rc::Rc;
 use dioxus::html::{Key, Modifiers};
 use dioxus::prelude::*;
 use legate_core::{
-    CursorModels, JobAccess, JobRecord, JobStatus, LeadMessage, LeadMessageKind, LeadMode,
-    LeadRole, LeadStatus, ModelOption, PROVIDERS, PlanStatus, ProposalStatus, ProposedJob,
-    ProviderId, is_provider_id, plan_of,
+    ApprovalStatus, CursorModels, JobAccess, JobRecord, JobStatus, LeadApproval, LeadMessage,
+    LeadMessageKind, LeadMode, LeadRole, LeadStatus, ModelOption, PROVIDERS, PlanStatus,
+    ProposalStatus, ProposedJob, ProviderId, is_provider_id, plan_of,
 };
 use wasm_bindgen::JsCast;
 
@@ -793,6 +793,8 @@ fn message_row(
             .as_ref()
             .is_some_and(|item| item.status == ProposalStatus::Dismissed);
     let message_id = message.id.clone();
+    let approvals = message.approvals();
+    let live = message.status == LeadStatus::Streaming;
     let problem = action_error
         .read()
         .clone()
@@ -819,6 +821,9 @@ fn message_row(
                     } else {
                         RichText { text: text.clone() }
                     }
+                }
+                for approval in approvals {
+                    {approval_card(&message_id, approval, live, action_error)}
                 }
                 if show_plan {
                     if let Some(proposal) = proposal.clone() {
@@ -877,6 +882,52 @@ fn message_row(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The Lead's CLI asking before it uses a tool (Manual), with Allow and Deny while it waits.
+fn approval_card(
+    message_id: &str,
+    approval: LeadApproval,
+    live: bool,
+    mut action_error: Signal<Option<(String, String)>>,
+) -> Element {
+    let waiting = live && approval.status == ApprovalStatus::Waiting;
+    let outcome = match approval.status {
+        ApprovalStatus::Allowed => "Allowed",
+        ApprovalStatus::Denied => "Denied",
+        ApprovalStatus::Waiting => "Not answered",
+    };
+    let approval_id = approval.id.clone();
+    let message_id = message_id.to_string();
+    let answer = move |allow: bool| {
+        let (message_id, approval_id) = (message_id.clone(), approval_id.clone());
+        move |_| {
+            let (message_id, approval_id) = (message_id.clone(), approval_id.clone());
+            spawn(async move {
+                if let Err(err) = api::answer_lead_approval(&message_id, &approval_id, allow).await
+                {
+                    action_error.set(Some((message_id, error_text(&err))));
+                }
+            });
+        }
+    };
+    rsx! {
+        div { key: "{approval.id}", class: "lead-plan-card lead-approval", role: "group",
+            aria_label: "Permission request",
+            div { class: "lead-plan-row",
+                span { class: "lead-plan-title", "Allow {approval.tool}?" }
+            }
+            p { class: "lead-approval-detail", "{approval.detail}" }
+            if waiting {
+                div { class: "lead-plan-actions",
+                    button { r#type: "button", class: "btn btn-primary", onclick: answer(true), "Allow" }
+                    button { r#type: "button", class: "btn btn-quiet", onclick: answer(false), "Deny" }
+                }
+            } else {
+                p { class: "hint", "{outcome}" }
             }
         }
     }

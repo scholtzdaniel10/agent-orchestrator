@@ -6,9 +6,9 @@ use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 use legate_core::{
-    JobAccess, JobRecord, JobStatus, LeadChat, LeadMessage, LeadMessageKind, LeadMode,
-    LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob, ProviderId, RouterRules,
-    RunOptions, needs_usage_credits, plan_of,
+    ApprovalStatus, JobAccess, JobRecord, JobStatus, LeadApproval, LeadChat, LeadMessage,
+    LeadMessageKind, LeadMode, LeadProposal, LeadRole, LeadStatus, ProposalStatus, ProposedJob,
+    ProviderId, RouterRules, RunOptions, needs_usage_credits, plan_of,
 };
 use legate_router::{headroom, rest_after_limit};
 use legate_store::{ChatRow, NewWindow, RunOutcome, RunRow, Store};
@@ -78,6 +78,8 @@ struct State {
     turn_chat: HashMap<String, String>,
     /// A turn whose plan hit its limit before answering; it goes to the next plan.
     retry_turn: Option<String>,
+    /// Questions the Lead's CLI is waiting on, by approval id.
+    approvals: HashMap<String, tokio::sync::oneshot::Sender<bool>>,
 }
 
 #[derive(Default)]
@@ -154,6 +156,7 @@ impl Lead {
                 follow_order: 0,
                 turn_chat: HashMap::new(),
                 retry_turn: None,
+                approvals: HashMap::new(),
             }),
             this: this.clone(),
         })
@@ -519,6 +522,67 @@ impl Lead {
             proposal.status = ProposalStatus::Dismissed;
         }
         self.persist_message(message_id);
+        self.emit_id(message_id);
+        Ok(())
+    }
+
+    /// The Lead's CLI asks before it uses a tool (Manual). The question shows on the turn's
+    /// message with Allow and Deny, and the answer arrives on the returned channel. A channel
+    /// dropped unanswered (the turn ended) counts as Deny.
+    pub fn ask_approval(
+        &self,
+        turn: &str,
+        tool: &str,
+        detail: &str,
+    ) -> Result<tokio::sync::oneshot::Receiver<bool>, LeadError> {
+        let id = fresh_id();
+        let (answer, waiting) = tokio::sync::oneshot::channel();
+        {
+            let mut state = self.state.borrow_mut();
+            let Some(message) = state.history.iter_mut().find(|item| item.id == turn) else {
+                return Err(LeadError::message("That turn is not open."));
+            };
+            let mut approvals = message.approvals();
+            approvals.push(LeadApproval {
+                id: id.clone(),
+                tool: tool.to_string(),
+                detail: detail.to_string(),
+                status: ApprovalStatus::Waiting,
+            });
+            message.set_approvals(&approvals);
+            state.approvals.insert(id, answer);
+        }
+        self.emit_id(turn);
+        Ok(waiting)
+    }
+
+    pub fn answer_approval(
+        &self,
+        message_id: &str,
+        approval_id: &str,
+        allow: bool,
+    ) -> Result<(), LeadError> {
+        let Some(answer) = self.state.borrow_mut().approvals.remove(approval_id) else {
+            return Err(LeadError::message("That question is no longer waiting."));
+        };
+        if let Some(message) = self
+            .state
+            .borrow_mut()
+            .history
+            .iter_mut()
+            .find(|item| item.id == message_id)
+        {
+            let mut approvals = message.approvals();
+            for approval in approvals.iter_mut().filter(|item| item.id == approval_id) {
+                approval.status = if allow {
+                    ApprovalStatus::Allowed
+                } else {
+                    ApprovalStatus::Denied
+                };
+            }
+            message.set_approvals(&approvals);
+        }
+        let _ = answer.send(allow);
         self.emit_id(message_id);
         Ok(())
     }
@@ -1081,6 +1145,12 @@ impl Lead {
                 LeadMode::Auto => Some(JobAccess::Edit),
                 LeadMode::Legit => Some(JobAccess::Full),
             };
+            // Legate's job tools come along, with the person's own setup. Cursor reads MCP
+            // config only from the folder it runs in, the person's project here, so it goes
+            // without rather than writing Legate's files there.
+            if matches!(plan.provider, ProviderId::Claude | ProviderId::Codex) {
+                opts.bridge = Some(self.bridge.info());
+            }
         } else {
             if mode == LeadMode::Legit {
                 opts.access = Some(JobAccess::Full);

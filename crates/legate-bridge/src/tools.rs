@@ -29,6 +29,8 @@ pub const GET_STATUS: &str = "get_status";
 pub const GET_RESULT: &str = "get_result";
 /// `propose_jobs`
 pub const PROPOSE_JOBS: &str = "propose_jobs";
+/// `approve`: Claude Code's permission prompt tool (`--permission-prompt-tool`).
+pub const APPROVE: &str = "approve";
 
 /// Description of [`LIST_WORKERS`], byte-identical to `tools.ts`.
 pub const LIST_WORKERS_DESCRIPTION: &str = "Who can run jobs right now, how much allowance each has left, and the access ceiling the person set (read, edit, or full). A job cannot be given more than that.";
@@ -41,6 +43,10 @@ pub const GET_RESULT_DESCRIPTION: &str = "Wait until a job is done or failed, or
 /// Description of [`PROPOSE_JOBS`].
 pub const PROPOSE_JOBS_DESCRIPTION: &str = "Propose up to 4 jobs. The lead mode determines whether the plan starts immediately or waits for the person to press Run. Each job needs a short title (a few words), a type, an access level (read, edit or full; above the ceiling it is lowered), and a self-contained prompt, because the worker sees nothing else. Leave worker out to let the router choose, or name claude, cursor or grok. Call it once per turn with the whole plan and a one-line summary.";
 
+/// Description of [`APPROVE`].
+pub const APPROVE_DESCRIPTION: &str =
+    "Legate uses this to ask the person before a tool runs. Never call it yourself.";
+
 /// JSON schema for [`LIST_WORKERS`].
 pub const LIST_WORKERS_SCHEMA: &str =
     r#"{"type":"object","properties":{},"additionalProperties":false}"#;
@@ -51,6 +57,8 @@ pub const GET_STATUS_SCHEMA: &str =
     r#"{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"}}}"#;
 /// JSON schema for [`GET_RESULT`].
 pub const GET_RESULT_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string"},"wait_seconds":{"type":"number","minimum":0,"maximum":300}}}"#;
+/// JSON schema for [`APPROVE`]: what Claude Code sends its permission prompt tool.
+pub const APPROVE_SCHEMA: &str = r#"{"type":"object","required":["tool_name"],"properties":{"tool_name":{"type":"string"},"input":{"type":"object"},"tool_use_id":{"type":"string"}}}"#;
 /// JSON schema for [`PROPOSE_JOBS`].
 pub const PROPOSE_JOBS_SCHEMA: &str = r#"{"type":"object","additionalProperties":false,"required":["summary","jobs"],"properties":{"summary":{"type":"string","minLength":1,"maxLength":600},"jobs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","additionalProperties":false,"required":["title","type","prompt"],"properties":{"title":{"type":"string","minLength":1,"maxLength":80},"type":{"type":"string","enum":["planning","debugging","review","refactor","boilerplate"]},"access":{"type":"string","enum":["read","edit","full"]},"worker":{"type":"string","enum":["claude","cursor","grok"]},"prompt":{"type":"string","minLength":1,"maxLength":20000}}}}}}"#;
 
@@ -116,10 +124,76 @@ pub fn orchestrator_tools(backend: Arc<dyn BridgeBackend>, config: ToolConfig) -
         GET_RESULT,
         GET_RESULT_DESCRIPTION,
         GET_RESULT_SCHEMA,
-        backend,
+        backend.clone(),
         get_result,
     ));
+    if config.propose {
+        tools.push(raw_tool(
+            APPROVE,
+            APPROVE_DESCRIPTION,
+            APPROVE_SCHEMA,
+            backend,
+            approve_tool,
+        ));
+    }
     tools
+}
+
+const MAX_APPROVAL_DETAIL: usize = 400;
+
+/// Claude Code's permission prompt: show the request on the Lead's turn, wait for Allow or
+/// Deny, and answer in the shape Claude expects.
+async fn approve_tool(
+    backend: Arc<dyn BridgeBackend>,
+    args: Map<String, Value>,
+) -> Result<Value, ToolError> {
+    let tool = args
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or("a tool")
+        .to_string();
+    let input = args
+        .get("input")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    let allowed = match backend.lead_turn().await {
+        Some(turn) => {
+            let detail = approval_detail(&tool, &input);
+            backend
+                .ask_permission(turn, tool, detail)
+                .await
+                .unwrap_or(false)
+        }
+        None => false,
+    };
+    if allowed {
+        render(&serde_json::json!({ "behavior": "allow", "updatedInput": input }))
+    } else {
+        render(&serde_json::json!({
+            "behavior": "deny",
+            "message": "The person did not allow this in Legate.",
+        }))
+    }
+}
+
+/// The part of a tool's input a person needs to decide: the command, the file, or the URL.
+fn approval_detail(tool: &str, input: &Value) -> String {
+    let field = [
+        "command",
+        "file_path",
+        "notebook_path",
+        "url",
+        "path",
+        "pattern",
+    ]
+    .into_iter()
+    .find_map(|key| input.get(key).and_then(Value::as_str));
+    let text = match field {
+        Some(text) => text.to_string(),
+        None if input.as_object().is_some_and(Map::is_empty) => tool.to_string(),
+        None => input.to_string(),
+    };
+    js_prefix(&text, MAX_APPROVAL_DETAIL)
 }
 
 /// A plan the person edited, checked like the lead's own proposal.

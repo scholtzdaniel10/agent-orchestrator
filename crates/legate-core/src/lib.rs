@@ -25,13 +25,13 @@ pub use rules::{DEFAULT_MAX_PARALLEL, DEFAULT_PACE, RulesError, load_rules};
 pub use search::{DEFAULT_SEARCH_LIMIT, SearchHit, SearchKind, SearchQuery, SnippetPart};
 pub use settings::{DEFAULT_UI_SCALE, Settings, SettingsError, UI_SCALES, is_valid_model};
 pub use types::{
-    AgentEvent, AppInfo, BridgeInfo, ChangeSet, ChangedFile, CursorModels, DEFAULT_LOCAL_MODEL,
-    DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL, FileEdit, GROK_DEFAULT_MODEL, GithubRepo, JobAccess,
-    JobRules, JobType, LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, LeadChat, LeadMessage,
-    LeadMessageKind, LeadMode, LeadProposal, LeadRole, LeadStatus, MemoryStatus, ModelOption,
-    PROVIDERS, PaceRules, PlanAllowance, Prefs, ProjectEntry, ProjectInfo, ProjectWorktree,
-    ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions, SetupState, StepPhase,
-    StepTool, TerminalInfo, TerminalProvider, TerminalStatus, UsageShows, UsageWindow,
-    VersionStatus, access_of, is_job_access, is_job_type, is_provider_id, needs_usage_credits,
-    plan_of, version_text,
+    AgentEvent, AppInfo, ApprovalStatus, BridgeInfo, ChangeSet, ChangedFile, CursorModels,
+    DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_NUM_CTX, DEFAULT_LOCAL_URL, FileEdit, GROK_DEFAULT_MODEL,
+    GithubRepo, JobAccess, JobRules, JobType, LOCAL_NUM_CTX_MAX, LOCAL_NUM_CTX_MIN, LeadApproval,
+    LeadChat, LeadMessage, LeadMessageKind, LeadMode, LeadProposal, LeadRole, LeadStatus,
+    MemoryStatus, ModelOption, PROVIDERS, PaceRules, PlanAllowance, Prefs, ProjectEntry,
+    ProjectInfo, ProjectWorktree, ProposalStatus, ProposedJob, ProviderId, RouterRules, RunOptions,
+    SetupState, StepPhase, StepTool, TerminalInfo, TerminalProvider, TerminalStatus, UsageShows,
+    UsageWindow, VersionStatus, access_of, is_job_access, is_job_type, is_provider_id,
+    needs_usage_credits, plan_of, version_text,
 };
