@@ -332,7 +332,7 @@ pub fn ProjectBar(
                                                     if !entry.is_repo {
                                                         span { class: "project-note", "not a git repository" }
                                                     } else if let Some(branch) = entry.branch.clone() {
-                                                        span { class: "project-branch", "{branch}" }
+                                                        span { class: "project-branch", title: "Branch {branch}", "{entry_branch_label(&entry, &branch)}" }
                                                     } else {
                                                         span { class: "project-note", "no commits yet" }
                                                     }
@@ -929,7 +929,12 @@ fn WorktreeRow(
             button {
                 class: if selected { "project-worktree-row is-selected" } else { "project-worktree-row" },
                 r#type: "button",
-                title: if key.is_none() { "Project folder".to_string() } else { title.clone() },
+                title: match (key.as_ref(), card.input.branch.as_ref()) {
+                    (None, _) => "Project folder".to_string(),
+                    (Some(_), Some(branch)) => format!("{title}
+    Branch {branch}"),
+                    (Some(_), None) => title.clone(),
+                },
                 aria_current: if selected { "true" } else { "" },
                 onclick: move |event| {
                     let mods = event.modifiers();
@@ -977,7 +982,9 @@ fn WorktreeRow(
                     }
                     if !compact {
                         span { class: "project-worktree-meta",
-                            if let Some(branch) = card.input.branch.clone().filter(|_branch| key.is_some()) {
+                            if let Some(branch) = card.input.branch.clone().filter(|branch| {
+                                key.as_deref().is_some_and(|id| worktree_label::telling_branch(branch, id).is_some())
+                            }) {
                                 span { class: "project-worktree-branch", "{branch}" }
                             }
                             if let Some(item) = item {
@@ -1062,6 +1069,8 @@ fn OtherWorktrees(
                             button {
                                 class: "project-worktree-row",
                                 r#type: "button",
+                                title: "{name}
+    Branch {item.branch}",
                                 onclick: move |_| on_open.call((path.clone(), Some(id.clone()))),
                                 span { class: "worktree-dot is-{status}", aria_hidden: "true" }
                                 span { class: "project-worktree-body",
@@ -1069,7 +1078,9 @@ fn OtherWorktrees(
                                         span { class: if item.name.is_empty() { "project-worktree-id" } else { "project-worktree-name" }, "{name}" }
                                     }
                                     span { class: "project-worktree-meta",
-                                        span { class: "project-worktree-branch", "{item.branch}" }
+                                        if let Some(branch) = worktree_label::telling_branch(&item.branch, &item.id) {
+                                            span { class: "project-worktree-branch", "{branch}" }
+                                        }
                                         if item.files > 0 {
                                             span {
                                                 span { class: "stat-add", "+{item.insertions}" }
@@ -1987,4 +1998,19 @@ async fn copy_text(text: &str) -> bool {
         return false;
     };
     function.call1(&clipboard, &text.into()).is_ok()
+}
+
+/// The project folder's branch as words: a worktree's name when the folder sits on one of
+/// Legate's `orch/<id>` branches.
+fn entry_branch_label(entry: &ProjectEntry, branch: &str) -> String {
+    let named: Vec<NamedChange> = entry
+        .worktrees
+        .iter()
+        .flatten()
+        .map(|item| NamedChange {
+            id: item.id.clone(),
+            name: (!item.name.is_empty()).then(|| item.name.clone()),
+        })
+        .collect();
+    worktree_label::branch_place_label(branch, &named)
 }

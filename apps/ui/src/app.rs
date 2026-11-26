@@ -15,8 +15,9 @@ use crate::api;
 use crate::components::SearchDialog;
 use crate::components::{
     ChangesTab, ErrorBoundary, FilesPanel, FlowView, GoalsPanel, HistoryPanel, JobsPanel, LeadChat,
-    MenuEntry, NewTaskDialog, ProjectBar, Routines, SettingsPage, SetupScreen, SidebarMenu,
-    SourceControlPanel, Star, TabIcon, TerminalWindow, UsageMeter, Workers,
+    MenuEntry, NewTaskDialog, PlaceSwitch, ProjectBar, Routines, SettingsPage, SetupScreen,
+    SidebarMenu, SourceControlPanel, Star, TabIcon, TerminalWindow, UsageMeter, WindowBar,
+    WindowControls, Workers, drag_window,
 };
 use crate::logic::agent_tabs::agent_jobs;
 use crate::logic::flow_events::FlowEvent;
@@ -205,6 +206,7 @@ pub fn App() -> Element {
         let state = frame.clone();
         return rsx! {
             div { class: "app is-solo", style: "{app_style}",
+                WindowBar { title: format!("{} · Legate", DrawerTab::parse(&tab).map(|item| item.label()).unwrap_or("Panel")) }
                 section { class: "solo-panel", aria_label: "{DrawerTab::parse(&tab).map(|item| item.label()).unwrap_or(\"Panel\")}",
                     div { class: "drawer-page",
                         ErrorBoundary { class_name: None,
@@ -221,7 +223,7 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "{app_class} roman-workspace", style: "{app_style}",
-            header { class: "app-header",
+            header { class: "app-header", onmousedown: move |event| drag_window(&event),
                 div { class: "app-brand",
                     span { class: "app-mark roman-standard", aria_hidden: "true",
                         svg { view_box: "0 0 32 32", width: "30", height: "30", fill: "none", stroke: "currentColor", stroke_width: "1.4",
@@ -231,10 +233,15 @@ pub fn App() -> Element {
                     }
                     div { class: "app-name", "Legate" }
                     if !folder.is_empty() {
-                        p { class: "app-context",
+                        div { class: "app-context",
                             span { class: "app-context-project", "{folder}" }
-                            if let Some(branch) = branch.clone() {
-                                span { class: "app-context-branch", "{branch}" }
+                            if project.as_ref().is_some_and(|item| item.is_repo) {
+                                PlaceSwitch {
+                                    branch: branch.clone(),
+                                    changes: changes.clone(),
+                                    primary: store.primary.read().clone(),
+                                    on_pick: Callback::new(move |id: Option<String>| select_worktree(store, id, "only")),
+                                }
                             }
                         }
                     }
@@ -290,6 +297,7 @@ pub fn App() -> Element {
                         }
                     }
                 }
+                WindowControls {}
             }
             div { class: "app-body",
                 nav { class: "command-rail", aria_label: "Workspace tools",

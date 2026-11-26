@@ -245,6 +245,8 @@ fn open_page(
     let url = page_url(app, query)?;
     let mut builder = WebviewWindowBuilder::new(app, label, url)
         .title(title)
+        // Legate draws its own title bar and window buttons, like the main window.
+        .decorations(false)
         .inner_size(asked.0 as f64, asked.1 as f64);
     let main = app
         .config()

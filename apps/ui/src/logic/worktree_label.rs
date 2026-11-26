@@ -29,6 +29,23 @@ pub fn worktree_label(change: &NamedChange) -> String {
     }
 }
 
+/// A worktree's branch only when it says something its name does not: Legate's own
+/// `orch/<id>` is just the id again, so it is left to tooltips and the place menu.
+pub fn telling_branch<'a>(branch: &'a str, id: &str) -> Option<&'a str> {
+    let own = branch.strip_prefix("orch/").is_some_and(|rest| rest == id);
+    (!own && !branch.is_empty()).then_some(branch)
+}
+
+/// The words for a branch the project folder is on: a worktree's name when it is one of
+/// Legate's `orch/<id>` branches, the branch itself otherwise.
+pub fn branch_place_label(branch: &str, changes: &[NamedChange]) -> String {
+    branch
+        .strip_prefix("orch/")
+        .and_then(|id| changes.iter().find(|change| change.id == id))
+        .map(worktree_label)
+        .unwrap_or_else(|| branch.to_string())
+}
+
 pub fn terminal_display_title(
     title: &str,
     change: Option<&str>,
@@ -86,6 +103,47 @@ mod tests {
         NamedChange, terminal_display_title, terminals_in_sidebar_order, worktree_label,
         worktree_name_from_task,
     };
+
+    #[test]
+    fn own_orch_branches_are_not_repeated_under_the_name() {
+        assert_eq!(super::telling_branch("orch/3fa9c1d2", "3fa9c1d2"), None);
+        assert_eq!(
+            super::telling_branch("orch/pr-fix-login-1a2b", "3fa9c1d2"),
+            Some("orch/pr-fix-login-1a2b")
+        );
+        assert_eq!(
+            super::telling_branch("feature/login", "3fa9c1d2"),
+            Some("feature/login")
+        );
+        assert_eq!(super::telling_branch("", "3fa9c1d2"), None);
+    }
+
+    #[test]
+    fn a_project_on_a_worktree_branch_reads_as_that_worktree() {
+        let changes = vec![
+            NamedChange {
+                id: "3fa9c1d2".into(),
+                name: Some("Fix the login form".into()),
+            },
+            NamedChange {
+                id: "77aa0011".into(),
+                name: None,
+            },
+        ];
+        assert_eq!(
+            super::branch_place_label("orch/3fa9c1d2", &changes),
+            "Fix the login form"
+        );
+        assert_eq!(
+            super::branch_place_label("orch/77aa0011", &changes),
+            "77aa0011"
+        );
+        assert_eq!(
+            super::branch_place_label("orch/deadbeef", &changes),
+            "orch/deadbeef"
+        );
+        assert_eq!(super::branch_place_label("main", &changes), "main");
+    }
 
     #[test]
     fn names_take_the_first_32_characters_at_a_word() {

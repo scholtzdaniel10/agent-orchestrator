@@ -159,6 +159,7 @@ fn main() -> anyhow::Result<()> {
             commands::note_window_focus,
             commands::set_window_sight,
             commands::new_window,
+            commands::window_control,
             commands::pop_out_terminal,
             commands::popped_out,
             commands::pop_out_panel,

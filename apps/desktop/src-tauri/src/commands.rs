@@ -1175,6 +1175,32 @@ pub async fn set_window_sight(
         .map_err(err_string)
 }
 
+/// The window buttons and the drag area of Legate's own title bar (the windows have no system
+/// frame). Answers whether the window is maximized afterwards, so the UI can swap the
+/// maximize and restore glyphs; `state` only asks.
+#[tauri::command]
+pub async fn window_control(window: Window, action: String) -> Result<bool, String> {
+    match action.as_str() {
+        "minimize" => window.minimize().map_err(|err| err.to_string())?,
+        "toggle_maximize" => {
+            if window.is_maximized().map_err(|err| err.to_string())? {
+                window.unmaximize().map_err(|err| err.to_string())?;
+            } else {
+                window.maximize().map_err(|err| err.to_string())?;
+            }
+        }
+        // Goes through CloseRequested like the system close button would.
+        "close" => {
+            window.close().map_err(|err| err.to_string())?;
+            return Ok(false);
+        }
+        "drag" => window.start_dragging().map_err(|err| err.to_string())?,
+        "state" => {}
+        _ => return Err(format!("unknown window action: {action}")),
+    }
+    window.is_maximized().map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub async fn new_window(
     app: tauri::AppHandle,

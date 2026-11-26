@@ -519,6 +519,21 @@ pub async fn set_window_sight(focused: bool, visible: bool) -> Result<(), String
     )
     .await
 }
+/// `minimize`, `toggle_maximize`, `close`, `drag` or `state`. Answers whether the window is
+/// now maximized.
+pub async fn window_control(action: &str) -> Result<bool, String> {
+    call("window_control", &json!({ "action": action })).await
+}
+
+/// True inside the desktop shell; false in a plain browser, which has its own frame.
+pub fn in_desktop() -> bool {
+    web_sys::window()
+        .map(|window| {
+            js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__")).unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
 pub async fn new_window() -> Result<(), String> {
     call("new_window", &json!({})).await
 }

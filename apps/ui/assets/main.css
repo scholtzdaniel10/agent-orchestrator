@@ -393,6 +393,250 @@ textarea {
   color: var(--muted);
 }
 
+/* The header holds the place menu, so it must not clip; the project name ellipsizes itself. */
+.app-context {
+  overflow: visible;
+}
+
+/* Legate's own window frame (the windows have no system title bar). The header moves the
+   window; the buttons sit flush in its top-right corner, as in the Claude and Teams apps. */
+.app-brand {
+  margin-right: auto;
+}
+
+.app-header:has(> .window-controls),
+.roman-workspace .app-header:has(> .window-controls) {
+  padding-right: 0;
+}
+
+.app-header,
+.window-bar {
+  user-select: none;
+}
+
+/* Above the body (panels, the setup screen), so menus opened from the header are never under them. */
+.app-header {
+  position: relative;
+  z-index: 35;
+}
+
+.window-controls {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  margin-left: var(--space-4);
+}
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.window-control svg {
+  display: block;
+}
+
+.window-control:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
+.window-control:active {
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.window-control.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.window-control.is-close:active {
+  background: #b22a1b;
+  color: #fff;
+}
+
+.window-control:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Popped-out terminal and panel windows get a slim bar of their own. */
+.window-bar {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  justify-content: space-between;
+  height: 32px;
+  padding-left: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+  color: var(--text);
+}
+
+.window-bar-title {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app.is-solo {
+  flex-direction: column;
+}
+
+.app.is-solo .solo-panel {
+  height: auto;
+  min-height: 0;
+}
+
+/* Where you are working: the project folder or a worktree, by name, with git's branch names
+   kept to the list. */
+.place-switch {
+  position: relative;
+  min-width: 0;
+}
+
+.place-switch-button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.place-switch-button:hover,
+.place-switch-button.is-open {
+  background: var(--raised);
+}
+
+.place-switch-kind {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.place-switch-label {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.place-switch-count {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.place-switch-caret {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.place-switch-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+}
+
+.place-switch-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(440px, 80vw);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: var(--text);
+  box-shadow: 0 12px 30px #0005;
+  text-shadow: none;
+}
+
+.place-switch-heading {
+  margin: 6px 8px 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.place-switch-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-12);
+  align-items: baseline;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.place-switch-item:hover {
+  background: var(--raised);
+}
+
+.place-switch-item.is-current {
+  background: var(--selected);
+}
+
+.place-switch-item-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.place-switch-item.is-current .place-switch-item-name {
+  font-weight: 600;
+}
+
+.place-switch-item-stat {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.place-switch-item-branch {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .app-body {
   grid-area: body;
   position: relative;
@@ -8630,7 +8874,7 @@ input, textarea {
 }
 
 /* Title bars: the header, Settings' head and each panel's head. */
-:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) {
+:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) {
   --text: #fff;
   --muted: #f0f5ff;
   --faint: #e3edff;
@@ -8644,20 +8888,20 @@ input, textarea {
   text-shadow: 1px 1px 0 rgba(10, 24, 131, 0.55);
 }
 
-:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn {
+:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn {
   text-shadow: none;
 }
 
-:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet {
+:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn-quiet {
   color: #1b1a14;
 }
 
-:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) .btn-quiet:hover:not(:disabled) {
+:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn-quiet:hover:not(:disabled) {
   background: #d3e1fc;
 }
 
 /* Menus that open from a title bar read like the rest of the window, not like the bar. */
-:root[data-theme='xp'] :is(.app-header, .settings-head, .inspector-heading, .output-head) :is(.side-menu, .select-list, .workspace-layout-controls) {
+:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) :is(.side-menu, .select-list, .workspace-layout-controls, .place-switch-menu) {
   --text: #1b1a14;
   --muted: #464331;
   --faint: #565140;
@@ -8852,7 +9096,7 @@ input, textarea {
 }
 
 /* Menus: white, square, a hard shadow. */
-:root[data-theme='xp'] :is(.side-menu, .select-list, .workspace-layout-controls) {
+:root[data-theme='xp'] :is(.side-menu, .select-list, .workspace-layout-controls, .place-switch-menu) {
   border: 1px solid #aca899;
   border-radius: 0;
   background: #fff;
@@ -9063,7 +9307,7 @@ input, textarea {
   background: var(--aero-backdrop);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) .app-header {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.app-header, .window-bar) {
   border-bottom: 1px solid var(--aero-bar-edge);
   background: var(--aero-bar-sheen), var(--aero-bar);
   box-shadow: 0 1px 0 var(--aero-bar-shadow);
@@ -9228,7 +9472,7 @@ input, textarea {
   background: var(--aero-hover);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.side-menu, .select-list, .workspace-layout-controls) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.side-menu, .select-list, .workspace-layout-controls, .place-switch-menu) {
   border: 1px solid var(--aero-menu-border);
   border-radius: 4px;
   background: var(--aero-menu);
@@ -9279,3 +9523,109 @@ input, textarea {
 .updates-status.is-missing { color: var(--muted); }
 .updates-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .updates-actions .hint { margin: 0; color: var(--muted); font-size: 12px; }
+
+/* The place switch on a title bar: a light wash, not a panel colour under white text. */
+:root[data-theme='xp'] .app-header .place-switch-button:is(:hover, .is-open) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Window buttons in the experimental themes. */
+:root[data-theme='xp'] .window-controls {
+  align-self: center;
+  gap: 2px;
+  margin-right: 6px;
+}
+
+:root[data-theme='xp'] .window-control {
+  width: 21px;
+  height: 21px;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  background: linear-gradient(to bottom right, #6d9cf9 0%, #2a66e6 45%, #1d52d3 100%);
+  box-shadow: inset -1px -1px 1px rgba(0, 0, 0, 0.25), inset 1px 1px 1px rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+
+:root[data-theme='xp'] .window-control :is(path, rect) {
+  stroke-width: 2;
+}
+
+:root[data-theme='xp'] .window-control:hover {
+  background: linear-gradient(to bottom right, #8db4ff 0%, #3c7cf5 45%, #2b62e6 100%);
+  color: #fff;
+}
+
+:root[data-theme='xp'] .window-control.is-close {
+  background: linear-gradient(to bottom right, #f0a080 0%, #de5a35 45%, #c3391a 100%);
+}
+
+:root[data-theme='xp'] .window-control.is-close:hover {
+  background: linear-gradient(to bottom right, #ffb89c 0%, #f06c45 45%, #d4431f 100%);
+}
+
+:root[data-theme='xp'] .window-control:active,
+:root[data-theme='xp'] .window-control.is-close:active {
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='xp'] .window-bar .window-controls {
+  margin-right: 4px;
+}
+
+/* Vista's caption buttons: a glass strip hanging from the top edge, a red close. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-controls {
+  align-self: flex-start;
+  height: 21px;
+  margin-right: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 6px rgba(255, 255, 255, 0.25);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control {
+  width: 27px;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.2) 49%, rgba(0, 0, 0, 0.12) 50%, rgba(255, 255, 255, 0.3) 100%);
+  color: #fff;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control + .window-control {
+  border-left: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control :is(path, rect) {
+  stroke-width: 1.6;
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control:hover {
+  background: linear-gradient(to bottom, rgba(196, 238, 255, 0.85) 0%, rgba(94, 190, 240, 0.6) 49%, rgba(20, 120, 200, 0.6) 50%, rgba(110, 220, 255, 0.8) 100%);
+  color: #fff;
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control.is-close {
+  width: 46px;
+  background: linear-gradient(to bottom, #eba597 0%, #d85a43 49%, #c2341c 50%, #e0745a 100%);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control.is-close:hover {
+  background: linear-gradient(to bottom, #ffc4b4 0%, #f0664a 49%, #d83a1e 50%, #ff8a60 100%);
+  box-shadow: 0 0 10px rgba(255, 90, 50, 0.8);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-control:active {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) brightness(0.85);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .window-bar {
+  height: 34px;
+}
+
+@media (max-width: 1000px) {
+  .place-switch-count,
+  .place-switch-kind {
+    display: none;
+  }
+}

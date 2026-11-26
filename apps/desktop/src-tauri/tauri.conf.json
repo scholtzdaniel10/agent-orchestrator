@@ -24,6 +24,7 @@
         "width": 1400,
         "height": 820,
         "resizable": true,
+        "decorations": false,
         "visible": true
       }
     ],

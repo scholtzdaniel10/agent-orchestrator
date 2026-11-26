@@ -6,6 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 
 use crate::api::{self, TerminalUpdate};
 use crate::components::terminal_pane::{PanePlacement, TerminalPane};
+use crate::components::window_frame::WindowBar;
 use crate::state::{use_store, use_subscriptions};
 
 #[component]
@@ -85,8 +86,13 @@ pub fn TerminalWindow(id: String) -> Element {
     let current = info.read().clone();
     let gone = missing();
     let bus = store.bus.read().clone();
+    let bar_title = current
+        .as_ref()
+        .map(|term| format!("{} · Legate", term.title))
+        .unwrap_or_else(|| "Legate".into());
     rsx! {
         div { class: "terminal-window",
+            WindowBar { title: bar_title }
             if let Some(term) = current {
                 TerminalPane {
                     info: term,
