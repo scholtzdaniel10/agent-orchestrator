@@ -1077,6 +1077,7 @@ impl Lead {
                 LeadMode::Auto => Some(JobAccess::Edit),
                 LeadMode::Legit => Some(JobAccess::Full),
             };
+            opts.auto = (mode == LeadMode::Auto).then_some(true);
         } else {
             if mode == LeadMode::Legit {
                 opts.access = Some(JobAccess::Full);

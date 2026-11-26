@@ -182,7 +182,14 @@ impl ClaudeAdapter {
             "--verbose".to_string(),
         ];
         if opts.bridge.is_none() {
-            args.extend(worker_args(job_access(opts)));
+            let access = job_access(opts);
+            if opts.auto == Some(true) && access != JobAccess::Full {
+                args.extend(
+                    ["--strict-mcp-config", "--permission-mode", "auto"].map(str::to_string),
+                );
+            } else {
+                args.extend(worker_args(access));
+            }
         }
         if let Some(resume) = non_empty(&opts.resume) {
             args.push("--resume".to_string());

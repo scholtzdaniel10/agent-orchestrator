@@ -2614,6 +2614,8 @@ fn a_direct_chat_gets_the_access_its_lead_mode_allows() {
             let access: Vec<_> = lane.calls().iter().map(|call| call.opts.access).collect();
             assert_eq!(access, [None, Some(JobAccess::Edit), Some(JobAccess::Full)]);
             assert!(lane.calls().iter().all(|call| call.opts.bridge.is_none()));
+            let auto: Vec<_> = lane.calls().iter().map(|call| call.opts.auto).collect();
+            assert_eq!(auto, [None, Some(true), None]);
         })
         .await;
     });

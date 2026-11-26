@@ -394,6 +394,24 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
         owned(&base)
     );
 
+    assert_eq!(
+        args_no_note(
+            &adapter,
+            &plain,
+            &RunOptions {
+                access: Some(JobAccess::Edit),
+                auto: Some(true),
+                ..RunOptions::default()
+            }
+        )
+        .await,
+        [
+            start.as_slice(),
+            &["--strict-mcp-config", "--permission-mode", "auto"]
+        ]
+        .concat()
+    );
+
     let all = root.join("all");
     assert_eq!(
         args_no_note(

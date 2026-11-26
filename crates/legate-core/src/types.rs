@@ -328,6 +328,10 @@ pub struct RunOptions {
     pub access: Option<JobAccess>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub read_dirs: Option<Vec<String>>,
+    /// Lead Auto on a direct chat: a CLI with its own safety check (Claude's auto permission
+    /// mode) uses it instead of `access`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto: Option<bool>,
 }
 
 /// Physical memory, in bytes.
