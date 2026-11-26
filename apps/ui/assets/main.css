@@ -8952,7 +8952,9 @@ input, textarea {
   --bg: #0b1420;
   --text: #e8f4fb;
   --brand: #2f9be4;
-  --on-accent: #fff;
+  /* Dark text on the aqua-blue brand: white was 3.0:1 (the rail's count badges). Primary buttons
+     keep white text on their own darker orb. */
+  --on-accent: #04121e;
   --ray: #7ec8e3;
   --signal: #ffd66b;
   --bad: #ff8f86;
