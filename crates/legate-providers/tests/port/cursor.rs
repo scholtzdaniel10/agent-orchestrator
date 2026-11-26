@@ -324,8 +324,7 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
     let mcp_json = format!(
         r#"{{"mcpServers":{{"orchestrator":{{"url":"{url}","headers":{{"Authorization":"Bearer {token}"}}}}}}}}"#
     );
-    let cli_json =
-        r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}"#;
+    let cli_json = r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":[]}}"#;
     let plain = root.join("plain");
     let resume_dir = root.join("resume");
     support::mkdir(&plain);

@@ -445,10 +445,10 @@ fn allow_edits(cwd: &Path) -> Result<Option<Box<dyn FnOnce() + Send>>, ProviderE
     })))
 }
 
-/// Lead permissions. Manual can only read: Cursor has no way to ask, and print mode may write
-/// unless told not to. Auto may edit but not run commands. LEG IT! may do anything.
-const LEAD_CLI: &str =
-    r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}"#;
+/// Lead permissions, added to the person's own Cursor permissions. Manual adds only the job
+/// tools, so it does what their allowlist allows and nothing else (Cursor has no way to ask).
+/// Auto may edit but not run commands. LEG IT! may do anything.
+const LEAD_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":[]}}"#;
 const AUTO_LEAD_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Read(**)","Write(**)"],"deny":["Shell(*)"]}}"#;
 const UNRESTRICTED_LEAD_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Shell(*)","Write(**)","Read(**)"],"deny":[]}}"#;
 

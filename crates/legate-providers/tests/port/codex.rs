@@ -35,7 +35,7 @@ async fn codex_spawns_the_official_protocol_and_forwards_stdin() {
 }
 
 #[tokio::test]
-async fn codex_lead_stays_read_only_and_keeps_bridge_token_off_argv() {
+async fn a_manual_codex_lead_uses_your_sandbox_and_keeps_bridge_token_off_argv() {
     let temp = support::Temp::new("codex-lead");
     let adapter = CodexAdapter::new(Some(support::fake(&["argv"])));
     let opts = RunOptions {
@@ -51,7 +51,8 @@ async fn codex_lead_stays_read_only_and_keeps_bridge_token_off_argv() {
     };
     let mut run = adapter.run("job", "plan", temp.path(), &opts);
     let args = support::cli_args(&mut run).await;
-    assert!(args.windows(2).any(|a| a == ["--sandbox", "read-only"]));
+    assert!(args.iter().all(|a| a != "--sandbox"));
+    assert!(args.iter().any(|a| a == "approval_policy=\"never\""));
     assert!(args.windows(2).any(|a| a == ["--model", "test-model"]));
     assert!(args.windows(2).any(|a| a == ["resume", "known-thread"]));
     assert!(args.iter().any(|a| a.contains("LEGATE_MCP_TOKEN")));

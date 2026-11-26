@@ -249,8 +249,9 @@ fn chatgpt_login(code: Option<i32>, stdout: &str, stderr: &str) -> bool {
             .contains("chatgpt")
 }
 fn run_args(opts: &RunOptions) -> Vec<String> {
-    // A Lead (a bridged run) loads the person's own Codex config (MCP servers, sandbox backend,
-    // skills) with Legate's job tools added, and Auto uses Codex's own automatic review. Workers
+    // A Lead (a bridged run) loads the person's own Codex config (MCP servers, sandbox, skills)
+    // with Legate's job tools added. Manual runs in the sandbox that config sets; nothing can ask,
+    // so anything needing approval is refused. Auto uses Codex's own automatic review. Workers
     // ignore that config, keeping the official CLI's saved auth: their access is Legate's to set.
     // Codex uses its native sandbox: workspace-write permits commands inside that sandbox.
     let lead = opts.bridge.is_some();
@@ -280,16 +281,16 @@ fn run_args(opts: &RunOptions) -> Vec<String> {
     if lead && access == JobAccess::Edit {
         // Codex's automatic review picks workspace-write itself and refuses `--sandbox`.
         args.push("--approve-for-me".into());
+    } else {
+        if !(lead && access == JobAccess::Read) {
+            args.extend(["--sandbox".into(), sandbox.into()]);
+        }
+        args.extend(["-c".into(), "approval_policy=\"never\"".into()]);
+    }
+    if lead && access != JobAccess::Full {
         for dir in opts.read_dirs.as_deref().unwrap_or(&[]) {
             args.extend(["--add-dir".into(), dir.clone()]);
         }
-    } else {
-        args.extend([
-            "--sandbox".into(),
-            sandbox.into(),
-            "-c".into(),
-            "approval_policy=\"never\"".into(),
-        ]);
     }
     if !lead {
         args.extend(["-c".into(), "mcp_servers={}".into()]);
@@ -595,8 +596,13 @@ mod tests {
             );
         }
         let manual = lead(None, None);
-        assert!(manual.windows(2).any(|a| a == ["--sandbox", "read-only"]));
+        assert!(manual.iter().all(|a| a != "--sandbox"));
         assert!(manual.iter().any(|a| a == "approval_policy=\"never\""));
+        assert!(
+            manual
+                .windows(2)
+                .any(|a| a == ["--add-dir", "/work/project"])
+        );
         let auto = lead(None, Some(true));
         assert!(auto.iter().any(|a| a == "--approve-for-me"));
         assert!(auto.iter().all(|a| a != "--sandbox"));
