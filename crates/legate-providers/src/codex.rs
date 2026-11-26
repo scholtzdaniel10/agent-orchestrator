@@ -249,10 +249,17 @@ fn chatgpt_login(code: Option<i32>, stdout: &str, stderr: &str) -> bool {
             .contains("chatgpt")
 }
 fn run_args(opts: &RunOptions) -> Vec<String> {
-    // Ignore the user's permission/MCP defaults, while retaining the official CLI's saved auth.
+    // A Lead (a bridged run) loads the person's own Codex config (MCP servers, sandbox backend,
+    // skills) with Legate's job tools added, and Auto uses Codex's own automatic review. Workers
+    // ignore that config, keeping the official CLI's saved auth: their access is Legate's to set.
     // Codex uses its native sandbox: workspace-write permits commands inside that sandbox.
-    let access = if opts.bridge.is_some() && opts.access != Some(JobAccess::Full) {
-        JobAccess::Read
+    let lead = opts.bridge.is_some();
+    let access = if lead {
+        match opts.access {
+            Some(JobAccess::Full) => JobAccess::Full,
+            _ if opts.auto == Some(true) => JobAccess::Edit,
+            _ => JobAccess::Read,
+        }
     } else {
         opts.access.unwrap_or(if opts.edit == Some(true) {
             JobAccess::Edit
@@ -265,27 +272,32 @@ fn run_args(opts: &RunOptions) -> Vec<String> {
         JobAccess::Edit => "workspace-write",
         JobAccess::Full => "danger-full-access",
     };
-    let mut args: Vec<String> = [
-        "exec",
-        "--json",
-        "--ignore-user-config",
-        "--skip-git-repo-check",
-        "--color",
-        "never",
-        "--sandbox",
-        sandbox,
-        "-c",
-        "approval_policy=\"never\"",
-        "-c",
-        "mcp_servers={}",
-    ]
-    .iter()
-    .map(|s| (*s).into())
-    .collect();
-    // The native Windows CLI requires an explicit backend when user config is ignored.
-    // Use the supported legacy backend; MXC is not available on all installations.
-    if cfg!(windows) {
-        args.extend(["-c".into(), "windows.sandbox=\"unelevated\"".into()]);
+    let mut args: Vec<String> = vec!["exec".into(), "--json".into()];
+    if !lead {
+        args.push("--ignore-user-config".into());
+    }
+    args.extend(["--skip-git-repo-check", "--color", "never"].map(String::from));
+    if lead && access == JobAccess::Edit {
+        // Codex's automatic review picks workspace-write itself and refuses `--sandbox`.
+        args.push("--approve-for-me".into());
+        for dir in opts.read_dirs.as_deref().unwrap_or(&[]) {
+            args.extend(["--add-dir".into(), dir.clone()]);
+        }
+    } else {
+        args.extend([
+            "--sandbox".into(),
+            sandbox.into(),
+            "-c".into(),
+            "approval_policy=\"never\"".into(),
+        ]);
+    }
+    if !lead {
+        args.extend(["-c".into(), "mcp_servers={}".into()]);
+        // The native Windows CLI requires an explicit backend when user config is ignored.
+        // Use the supported legacy backend; MXC is not available on all installations.
+        if cfg!(windows) {
+            args.extend(["-c".into(), "windows.sandbox=\"unelevated\"".into()]);
+        }
     }
     if let Some(model) = &opts.model {
         args.extend(["--model".into(), model.clone()]);
@@ -491,6 +503,7 @@ fn is_limit(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use legate_core::BridgeInfo;
     #[test]
     fn rate_limits_become_five_hour_and_seven_day_windows() {
         let result = serde_json::json!({ "rateLimits": {
@@ -551,6 +564,51 @@ mod tests {
                 cfg!(windows)
             );
         }
+    }
+    #[test]
+    fn a_codex_lead_loads_your_own_config_and_maps_the_lead_modes() {
+        let bridge = BridgeInfo {
+            url: "http://127.0.0.1:9/mcp".into(),
+            token: "t".into(),
+            tools: vec!["propose_jobs".into()],
+        };
+        let lead = |access: Option<JobAccess>, auto: Option<bool>| {
+            run_args(&RunOptions {
+                bridge: Some(bridge.clone()),
+                access,
+                auto,
+                read_dirs: Some(vec!["/work/project".into()]),
+                ..RunOptions::default()
+            })
+        };
+        for args in [
+            lead(None, None),
+            lead(None, Some(true)),
+            lead(Some(JobAccess::Full), None),
+        ] {
+            assert!(args.iter().all(|a| a != "--ignore-user-config"));
+            assert!(args.iter().all(|a| a != "mcp_servers={}"));
+            assert!(args.iter().all(|a| a != "windows.sandbox=\"unelevated\""));
+            assert!(
+                args.iter()
+                    .any(|a| a.starts_with("mcp_servers.orchestrator.url="))
+            );
+        }
+        let manual = lead(None, None);
+        assert!(manual.windows(2).any(|a| a == ["--sandbox", "read-only"]));
+        assert!(manual.iter().any(|a| a == "approval_policy=\"never\""));
+        let auto = lead(None, Some(true));
+        assert!(auto.iter().any(|a| a == "--approve-for-me"));
+        assert!(auto.iter().all(|a| a != "--sandbox"));
+        assert!(auto.iter().all(|a| a != "approval_policy=\"never\""));
+        assert!(auto.windows(2).any(|a| a == ["--add-dir", "/work/project"]));
+        let legit = lead(Some(JobAccess::Full), Some(true));
+        assert!(
+            legit
+                .windows(2)
+                .any(|a| a == ["--sandbox", "danger-full-access"])
+        );
+        assert!(legit.iter().all(|a| a != "--approve-for-me"));
     }
     #[test]
     fn codex_only_accepts_chatgpt_subscription_authentication() {
