@@ -196,9 +196,23 @@ impl CursorAdapter {
             None
         };
         if let Some(bridge) = &opts.bridge {
+            // The Lead keeps the person's own Cursor setup (global MCP servers and permissions)
+            // and adds Legate's job tools. The project is an extra workspace root so Auto and
+            // LEG IT! can change it.
             let unrestricted = access == JobAccess::Full;
-            write_bridge(cwd, bridge, unrestricted)?;
+            let permissions = if unrestricted {
+                UNRESTRICTED_LEAD_CLI
+            } else if opts.auto == Some(true) {
+                AUTO_LEAD_CLI
+            } else {
+                LEAD_CLI
+            };
+            write_bridge(cwd, bridge, permissions)?;
             args.push("--approve-mcps".to_string());
+            for dir in opts.read_dirs.as_deref().unwrap_or(&[]) {
+                args.push("--add-dir".to_string());
+                args.push(dir.clone());
+            }
             if unrestricted {
                 args.push("--force".to_string());
             }
@@ -431,7 +445,14 @@ fn allow_edits(cwd: &Path) -> Result<Option<Box<dyn FnOnce() + Send>>, ProviderE
     })))
 }
 
-fn write_bridge(cwd: &Path, bridge: &BridgeInfo, unrestricted: bool) -> Result<(), ProviderError> {
+/// Lead permissions. Manual can only read: Cursor has no way to ask, and print mode may write
+/// unless told not to. Auto may edit but not run commands. LEG IT! may do anything.
+const LEAD_CLI: &str =
+    r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}"#;
+const AUTO_LEAD_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Read(**)","Write(**)"],"deny":["Shell(*)"]}}"#;
+const UNRESTRICTED_LEAD_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Shell(*)","Write(**)","Read(**)"],"deny":[]}}"#;
+
+fn write_bridge(cwd: &Path, bridge: &BridgeInfo, permissions: &str) -> Result<(), ProviderError> {
     let cursor_dir = cwd.join(".cursor");
     std::fs::create_dir_all(&cursor_dir)?;
     // Key order matches JSON.stringify in cursor.ts. serde_json::Map sorts keys.
@@ -440,14 +461,8 @@ fn write_bridge(cwd: &Path, bridge: &BridgeInfo, unrestricted: bool) -> Result<(
     let mcp = format!(
         r#"{{"mcpServers":{{"orchestrator":{{"url":{url},"headers":{{"Authorization":{auth}}}}}}}}}"#
     );
-    const CLI: &str =
-        r#"{"permissions":{"allow":["Mcp(orchestrator:*)"],"deny":["Shell(*)","Write(**)"]}}"#;
-    const UNRESTRICTED_CLI: &str = r#"{"permissions":{"allow":["Mcp(orchestrator:*)","Shell(*)","Write(**)","Read(**)"],"deny":[]}}"#;
     std::fs::write(cursor_dir.join("mcp.json"), mcp)?;
-    std::fs::write(
-        cursor_dir.join("cli.json"),
-        if unrestricted { UNRESTRICTED_CLI } else { CLI },
-    )?;
+    std::fs::write(cursor_dir.join("cli.json"), permissions)?;
     Ok(())
 }
 

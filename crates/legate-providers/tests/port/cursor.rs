@@ -607,6 +607,37 @@ async fn legit_lead_uses_force_and_permissive_bridge_permissions() {
 }
 
 #[tokio::test]
+async fn an_auto_lead_may_edit_the_project_but_not_run_commands() {
+    let root = support::Temp::new("ao-cursor-auto-lead");
+    let dir = root.join("lead");
+    let mut running = Running {
+        handle: adapter(&["argv"]).run(
+            "lead",
+            "hello",
+            &dir,
+            &RunOptions {
+                bridge: Some(bridge(&["propose_jobs"])),
+                auto: Some(true),
+                read_dirs: Some(vec!["/work/project".to_string()]),
+                ..RunOptions::default()
+            },
+        ),
+    };
+    let args = support::cli_args(&mut running.handle).await;
+    assert!(args.iter().all(|arg| arg != "--force"));
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--add-dir", "/work/project"])
+    );
+    let permissions: Value =
+        serde_json::from_str(&support::read(&dir.join(".cursor").join("cli.json"))).unwrap();
+    assert_eq!(
+        permissions["permissions"],
+        json!({"allow": ["Mcp(orchestrator:*)", "Read(**)", "Write(**)"], "deny": ["Shell(*)"]})
+    );
+}
+
+#[tokio::test]
 async fn full_adds_force_and_does_not_write_a_permission_file() {
     let root = support::Temp::new("ao-cursor-full");
     let adapter = adapter(&["full-report"]);
