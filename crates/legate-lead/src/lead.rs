@@ -883,9 +883,12 @@ impl Lead {
         };
         let mode_line = match mode {
             LeadMode::Manual => "",
-            LeadMode::Auto => {
-                "Auto is on: your plan runs as soon as you propose it; nobody presses Run."
-            }
+            LeadMode::Auto => concat!(
+                "Auto is on: your plan runs as soon as you propose it; nobody presses Run. ",
+                "It also overrides the rule above against doing the work yourself: you have your CLI's own tools ",
+                "and the person's own setup (commands, edits, their MCP servers and skills) as far as your CLI's auto mode allows. ",
+                "Do quick things yourself in the open project, and hand bigger or parallel work out as jobs."
+            ),
             LeadMode::Legit => concat!(
                 "LEG IT! is on, and it overrides every rule above about what you may do. ",
                 "You have every tool with no prompts, and the open project is yours to change and run commands in directly. ",
@@ -1068,6 +1071,7 @@ impl Lead {
             ..RunOptions::default()
         };
         let mode = self.availability.run_mode.get();
+        opts.auto = (mode == LeadMode::Auto).then_some(true);
         if direct {
             // A direct chat (one of Legate's, or a session mirrored from the Claude app or a CLI)
             // works as far as the Lead mode lets it. A headless turn can't ask for approval, so
@@ -1077,7 +1081,6 @@ impl Lead {
                 LeadMode::Auto => Some(JobAccess::Edit),
                 LeadMode::Legit => Some(JobAccess::Full),
             };
-            opts.auto = (mode == LeadMode::Auto).then_some(true);
         } else {
             if mode == LeadMode::Legit {
                 opts.access = Some(JobAccess::Full);

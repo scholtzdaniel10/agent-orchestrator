@@ -202,12 +202,16 @@ impl ClaudeAdapter {
                 args.push("--add-dir".to_string());
                 args.push(dir.clone());
             }
+            // The Lead loads the person's own settings, MCP servers, hooks and skills the way the
+            // CLI does; Legate's job tools come on top and are always allowed.
             args.push("--mcp-config".to_string());
             args.push(path_string(&config));
-            args.push("--strict-mcp-config".to_string());
             if opts.access == Some(JobAccess::Full) {
                 args.extend(BYPASS.map(str::to_string));
             } else {
+                if opts.auto == Some(true) {
+                    args.extend(["--permission-mode", "auto"].map(str::to_string));
+                }
                 let mut tools: Vec<String> = bridge
                     .tools
                     .iter()
@@ -219,8 +223,6 @@ impl ClaudeAdapter {
                 args.push("--allowedTools".to_string());
                 args.push(tools.join(","));
             }
-            args.push("--setting-sources".to_string());
-            args.push("project".to_string());
         }
         if let Some(model) = non_empty(&opts.model) {
             args.push("--model".to_string());

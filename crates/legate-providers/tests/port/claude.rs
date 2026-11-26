@@ -293,11 +293,8 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
         vec![
             "--mcp-config".to_string(),
             support::path_text(&cwd.join("orchestrator-mcp.json")),
-            "--strict-mcp-config".to_string(),
             "--allowedTools".to_string(),
             "mcp__orchestrator__send_job,mcp__orchestrator__get_result".to_string(),
-            "--setting-sources".to_string(),
-            "project".to_string(),
         ]
     };
     let owned = |args: &[&str]| {
@@ -452,12 +449,9 @@ async fn run_args_cover_no_opts_resume_bridge_and_both() {
             vec![
                 "--mcp-config".to_string(),
                 support::path_text(&reading.join("orchestrator-mcp.json")),
-                "--strict-mcp-config".to_string(),
                 "--allowedTools".to_string(),
                 "mcp__orchestrator__send_job,mcp__orchestrator__get_result,Read,Grep,Glob"
                     .to_string(),
-                "--setting-sources".to_string(),
-                "project".to_string(),
             ],
         ]
         .concat()
@@ -647,7 +641,7 @@ async fn legit_lead_runs_with_every_tool_and_skips_the_bypass_prompt() {
         },
     )
     .await;
-    assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
+    assert!(args.iter().all(|arg| arg != "--strict-mcp-config"));
     assert!(args.iter().all(|arg| arg != "--allowedTools"));
     assert!(args.windows(4).any(|args| {
         args == [
@@ -870,4 +864,28 @@ async fn skills_workers_get_worker_plugins_and_the_lead_gets_lead_plugins() {
             "fix it".to_string()
         ]
     );
+}
+
+#[tokio::test]
+async fn the_lead_loads_your_own_setup_with_the_job_tools_on_top() {
+    let root = support::Temp::new("ao-claude-own-setup");
+    let lead = |auto: Option<bool>| RunOptions {
+        bridge: Some(bridge(&["propose_jobs"])),
+        auto,
+        ..RunOptions::default()
+    };
+    for auto in [None, Some(true)] {
+        let args = args_no_note(&adapter(&["argv"]), &root.join("lead"), &lead(auto)).await;
+        assert!(args.iter().all(|arg| arg != "--strict-mcp-config"));
+        assert!(args.iter().all(|arg| arg != "--setting-sources"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--allowedTools", "mcp__orchestrator__propose_jobs"])
+        );
+        assert_eq!(
+            args.windows(2)
+                .any(|pair| pair == ["--permission-mode", "auto"]),
+            auto == Some(true)
+        );
+    }
 }

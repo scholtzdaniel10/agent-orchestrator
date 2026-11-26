@@ -756,6 +756,8 @@ fn auto_starts_five_plans_per_request_and_legit_starts_the_waiting_sixth() {
             );
             assert_eq!(orch.list().len(), 5);
             assert!(lane.calls()[0].prompt.contains("Auto is on:"));
+            assert_eq!(lane.calls()[0].opts.auto, Some(true));
+            assert!(lane.calls()[0].opts.bridge.is_some());
             lead.set_mode(LeadMode::Legit);
             assert_eq!(orch.list().len(), 6);
             settle(&orch).await;
