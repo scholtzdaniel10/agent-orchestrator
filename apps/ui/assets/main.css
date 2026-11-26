@@ -9765,6 +9765,15 @@ input, textarea {
   border-radius: 0;
 }
 
+/* Settings and Setup open inside the body, under the forehead and header (44 + 56px) and above
+   the status bar and legs (28 + 64px), so their own bar with Close is never under the header. */
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .setup-slot {
+  top: 100px;
+  right: var(--crabd-arm-right);
+  bottom: 92px;
+  left: var(--crabd-arm-left);
+}
+
 /* The forehead: a strip of shell with two eyes the desktop shows through (the window is cut
    there; the lid colour shows only while they blink). */
 .crabd-forehead {
