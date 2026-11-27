@@ -228,9 +228,6 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "{app_class} roman-workspace", style: "{app_style}",
-            if crab {
-                CrabdForehead { busy: running > 0 || lead_busy || agents_working }
-            }
             header { class: "app-header", onmousedown: move |event| drag_window(&event),
                 div { class: "app-brand",
                     span { class: "app-mark roman-standard", aria_hidden: "true",
@@ -307,6 +304,9 @@ pub fn App() -> Element {
                 }
                 WindowControls {}
             }
+            if crab {
+                CrabdForehead { busy: running > 0 || lead_busy || agents_working }
+            }
             div { class: "app-body",
                 nav { class: "command-rail", aria_label: "Workspace tools",
                     div { class: "command-rail-scroll",
@@ -335,7 +335,8 @@ pub fn App() -> Element {
                                         },
                                         onpointerdown: move |event| {
                                             let Some(pointer) = event.try_as_web_event() else { return; };
-                                            if !pointer.is_primary() || pointer.button() != 0 {
+                                            // Crabd's panels are its arms: they stay where they are.
+                                            if crab || !pointer.is_primary() || pointer.button() != 0 {
                                                 return;
                                             }
                                             let Some(target) = pointer.target().and_then(|target| target.dyn_into::<web_sys::Element>().ok()) else { return; };

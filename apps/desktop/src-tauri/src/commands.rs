@@ -1196,6 +1196,26 @@ pub async fn window_control(window: Window, action: String) -> Result<bool, Stri
         }
         "drag" => window.start_dragging().map_err(|err| err.to_string())?,
         "state" => {}
+        // The Crabd theme's floor, so the crab cannot be squeezed until its parts overlap.
+        "min_crab" => window
+            .set_min_size(Some(tauri::LogicalSize::new(1100.0, 720.0)))
+            .map_err(|err| err.to_string())?,
+        "min_none" => window
+            .set_min_size(None::<tauri::Size>)
+            .map_err(|err| err.to_string())?,
+        // A resize begun from Legate's own grips: a shaped window has no system borders.
+        _ if action.starts_with("resize_") => {
+            let edge = action["resize_".len()..].to_string();
+            let target = window.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            window
+                .run_on_main_thread(move || {
+                    let _ = tx.send(crate::shape::start_resize(&target, &edge));
+                })
+                .map_err(|err| err.to_string())?;
+            rx.recv()
+                .map_err(|_| "The window closed before it could resize.".to_string())??;
+        }
         _ => return Err(format!("unknown window action: {action}")),
     }
     window.is_maximized().map_err(|err| err.to_string())

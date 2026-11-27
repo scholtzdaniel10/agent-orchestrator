@@ -9667,7 +9667,7 @@ input, textarea {
   --crabd-meter-high: #4f1405;
 }
 
-/* The shell: forehead, header, rail, status bar and legs, with dark text on the orange. */
+/* The shell: header, brow, rail, status bar and legs, with dark text on the orange. */
 :root[data-theme='crabd'] :is(.crabd-forehead, .app-header, .command-rail, .roman-workspace > .status-bar, .crabd-legs) {
   --text: var(--crabd-shell-text);
   --muted: #3b1709;
@@ -9694,17 +9694,17 @@ input, textarea {
   color: var(--text);
 }
 
-/* The crab's layout, only in the main window with the forehead on: the body in the middle,
+/* The crab's layout, only in the main window with the brow on: the body in the middle,
    the side panels as arms halfway down, the legs underneath. */
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) {
   /* Short arms, like the crab's: a side panel is capped to a slice of the window. */
   --crabd-arm-left: min(var(--layout-sidebar, 0px), 18vw);
   --crabd-arm-right: min(var(--layout-drawer, 0px), 24vw);
   --crabd-arm-height: 62%;
-  grid-template-rows: 44px 56px minmax(0, 1fr) 28px 64px;
+  grid-template-rows: 56px 44px minmax(0, 1fr) 28px 64px;
   grid-template-areas:
-    'forehead'
     'header'
+    'forehead'
     'body'
     'status'
     'legs';
@@ -9731,7 +9731,17 @@ input, textarea {
 
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .sidebar-slot { order: -2; width: var(--crabd-arm-left); }
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .drawer { width: var(--crabd-arm-right); }
-:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) .command-status { display: none; }
+/* The crab's layout is fixed, so what rearranges panels is gone, and the header keeps only what
+   fits its body: the layout menu, New window (Ctrl+Shift+N still opens one), panels' Move. */
+:root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) :is(.command-status, .workspace-layout-menu, .app-header-tools > button[title='New window'], button[aria-label^='Move '], .dock-move) {
+  display: none;
+}
+
+/* The crab's own resize grips: its outer edges (a shaped window has no system borders). */
+:root:is(.crabd-grip-n, .crabd-grip-s), :root:is(.crabd-grip-n, .crabd-grip-s) * { cursor: ns-resize !important; }
+:root:is(.crabd-grip-e, .crabd-grip-w), :root:is(.crabd-grip-e, .crabd-grip-w) * { cursor: ew-resize !important; }
+:root:is(.crabd-grip-ne, .crabd-grip-sw), :root:is(.crabd-grip-ne, .crabd-grip-sw) * { cursor: nesw-resize !important; }
+:root:is(.crabd-grip-nw, .crabd-grip-se), :root:is(.crabd-grip-nw, .crabd-grip-se) * { cursor: nwse-resize !important; }
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > .layout-handle-sidebar { order: -1; }
 
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .app-body > :is(.sidebar-slot, .drawer, .layout-handle-sidebar, .layout-handle-drawer) {
@@ -9765,7 +9775,7 @@ input, textarea {
   border-radius: 0;
 }
 
-/* Settings and Setup open inside the body, under the forehead and header (44 + 56px) and above
+/* Settings and Setup open inside the body, under the header and brow (56 + 44px) and above
    the status bar and legs (28 + 64px), so their own bar with Close is never under the header. */
 :root[data-theme='crabd'] .roman-workspace:has(> .crabd-forehead) > .setup-slot {
   top: 100px;
@@ -9774,8 +9784,8 @@ input, textarea {
   left: var(--crabd-arm-left);
 }
 
-/* The forehead: a strip of shell with two eyes the desktop shows through (the window is cut
-   there; the lid colour shows only while they blink). */
+/* The brow under the header: a strip of shell with two eyes the desktop shows through (the
+   window is cut there; the lid colour shows only while they blink). */
 .crabd-forehead {
   grid-area: forehead;
   position: relative;

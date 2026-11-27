@@ -94,6 +94,50 @@ pub fn apply(
     Ok(())
 }
 
+/// The `WMSZ_*` code for a compass edge (`n`, `se`, ...) of Legate's own resize grips.
+pub fn size_edge(edge: &str) -> Option<usize> {
+    Some(match edge {
+        "w" => 1,
+        "e" => 2,
+        "n" => 3,
+        "nw" => 4,
+        "ne" => 5,
+        "s" => 6,
+        "sw" => 7,
+        "se" => 8,
+        _ => return None,
+    })
+}
+
+/// Starts the system's own resize from `edge`, following the mouse from where it is: a
+/// shaped window has no borders of its own to grab. Runs on the window's thread.
+#[cfg(windows)]
+pub fn start_resize(window: &tauri::Window, edge: &str) -> Result<(), String> {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_SIZE, WM_SYSCOMMAND};
+
+    let code = size_edge(edge).ok_or_else(|| format!("unknown edge: {edge}"))?;
+    let raw = window.hwnd().map_err(|err| err.to_string())?.0 as isize;
+    let hwnd = HWND(raw as _);
+    // SAFETY: plain window messages to this window's own handle.
+    unsafe {
+        let _ = ReleaseCapture();
+        PostMessageW(
+            Some(hwnd),
+            WM_SYSCOMMAND,
+            WPARAM(SC_SIZE as usize + code),
+            LPARAM(0),
+        )
+        .map_err(|err| err.to_string())
+    }
+}
+
+#[cfg(not(windows))]
+pub fn start_resize(_window: &tauri::Window, _edge: &str) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ShapeRect, usable};
@@ -121,5 +165,13 @@ mod tests {
         let (keep, cut) = usable(&[], &[rect(0, 0, 10, 10)]);
         assert!(keep.is_empty());
         assert!(cut.is_empty());
+    }
+
+    #[test]
+    fn every_grip_edge_has_its_system_code() {
+        use super::size_edge;
+        assert_eq!(size_edge("w"), Some(1));
+        assert_eq!(size_edge("se"), Some(8));
+        assert_eq!(size_edge("up"), None);
     }
 }
