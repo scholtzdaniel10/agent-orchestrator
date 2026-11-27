@@ -12,7 +12,7 @@ use crate::components::bot_avatar::{FieldSelect, SelectOption};
 use crate::components::star::Star;
 use crate::components::updates_section::UpdatesSection;
 use crate::logic::field_agents::BACKGROUND_KEY;
-use crate::logic::theme::{THEMES, ThemeId};
+use crate::logic::theme::{THEMES, ThemeId, WindowSpacing, has_desktop};
 use crate::state::use_store;
 
 const SECTIONS: &[(&str, &str, &str)] = &[
@@ -63,6 +63,9 @@ pub fn SettingsPage(
     projects: Vec<ProjectEntry>,
     theme: ThemeId,
     on_theme: Callback<ThemeId>,
+    /// Spaced or close-together panels, offered only in the themes that draw a desktop.
+    windows: WindowSpacing,
+    on_windows: Callback<WindowSpacing>,
     on_remove_project: Callback<String>,
     on_open_setup: Callback,
     on_lead_changed: Callback,
@@ -237,6 +240,24 @@ pub fn SettingsPage(
                                         on_change: Callback::new(move |value: String| {
                                             if let Some(next) = ThemeId::parse(&value) {
                                                 on_theme.call(next);
+                                            }
+                                        }),
+                                    }
+                                }
+                            }
+                            if has_desktop(theme) && (id == "general" || needle_hits(&needle, "Windows", "spacing margins desktop compact")) {
+                                Row { label: "Windows".to_string(), help: "Spaced apart over the desktop, or close together.".to_string(),
+                                    FieldSelect {
+                                        class: "settings-select".to_string(),
+                                        aria_label: "Windows".to_string(),
+                                        value: windows.as_str().to_string(),
+                                        options: vec![
+                                            SelectOption::new("spaced", "Spaced over the desktop"),
+                                            SelectOption::new("compact", "Close together"),
+                                        ],
+                                        on_change: Callback::new(move |value: String| {
+                                            if let Some(next) = WindowSpacing::parse(&value) {
+                                                on_windows.call(next);
                                             }
                                         }),
                                     }

@@ -27,7 +27,7 @@ use crate::logic::layout::{
 };
 use crate::logic::layout_presets::{self, LayoutPreset};
 use crate::logic::setup_seen::{self, SeenStorage};
-use crate::logic::theme::{self, ThemeId, ThemeRoot, ThemeStorage, ThemeTarget};
+use crate::logic::theme::{self, ThemeId, ThemeRoot, ThemeStorage, ThemeTarget, WindowSpacing};
 use crate::logic::update_check;
 use crate::logic::usage_format::usage_figure;
 use crate::state::{self, Store};
@@ -43,6 +43,7 @@ pub fn App() -> Element {
     let mut store = state::provide_store();
     let layout = use_signal(|| layout::load_layout(&WebStore));
     let mut theme = use_signal(|| theme::load_theme(&WebStore));
+    let mut windows = use_signal(|| theme::load_window_spacing(&WebStore));
     let mut started = use_signal(|| false);
     let mut applied = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
@@ -70,6 +71,7 @@ pub fn App() -> Element {
             .set(saved.pane_layout.as_str().to_string());
         let id = theme();
         theme::apply_theme(id, &mut WebStore, &mut WebRoot, &mut WebTarget);
+        theme::apply_window_spacing(windows(), &mut WebStore, &mut WebRoot);
         store
             .setup_open
             .set(!setup_seen::setup_seen(Some(&WebStore)));
@@ -682,6 +684,11 @@ pub fn App() -> Element {
                         on_theme: Callback::new(move |next: ThemeId| {
                             theme.set(next);
                             theme::apply_theme(next, &mut WebStore, &mut WebRoot, &mut WebTarget);
+                        }),
+                        windows: windows(),
+                        on_windows: Callback::new(move |next: WindowSpacing| {
+                            windows.set(next);
+                            theme::apply_window_spacing(next, &mut WebStore, &mut WebRoot);
                         }),
                         on_remove_project: Callback::new(move |path: String| remove_project(store, path)),
                         on_open_setup: Callback::new(move |_| {

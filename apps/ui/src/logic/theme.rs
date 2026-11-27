@@ -111,9 +111,60 @@ pub fn apply_theme(
     target.dispatch("themechange");
 }
 
+pub const WINDOWS_KEY: &str = "orch.windows";
+
+/// How the panels sit in the themes that draw a desktop behind them (XP and both Aeros):
+/// spaced apart as separate windows over the desktop, or close together as in every other theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowSpacing {
+    Spaced,
+    Compact,
+}
+
+impl WindowSpacing {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Spaced => "spaced",
+            Self::Compact => "compact",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "spaced" => Some(Self::Spaced),
+            "compact" => Some(Self::Compact),
+            _ => None,
+        }
+    }
+}
+
+/// Themes whose panels float over a drawn desktop, and so offer the spacing choice.
+pub const fn has_desktop(id: ThemeId) -> bool {
+    matches!(id, ThemeId::Xp | ThemeId::Aero | ThemeId::AeroDark)
+}
+
+pub fn load_window_spacing(storage: &dyn ThemeStorage) -> WindowSpacing {
+    match storage.get_item(WINDOWS_KEY) {
+        Ok(Some(raw)) => WindowSpacing::parse(&raw).unwrap_or(WindowSpacing::Spaced),
+        _ => WindowSpacing::Spaced,
+    }
+}
+
+pub fn apply_window_spacing(
+    spacing: WindowSpacing,
+    storage: &mut dyn ThemeStorage,
+    root: &mut dyn ThemeRoot,
+) {
+    root.set_attribute("data-windows", spacing.as_str());
+    let _ = storage.set_item(WINDOWS_KEY, spacing.as_str());
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ThemeId, ThemeRoot, ThemeStorage, ThemeTarget, apply_theme, load_theme};
+    use super::{
+        ThemeId, ThemeRoot, ThemeStorage, ThemeTarget, WindowSpacing, apply_theme,
+        apply_window_spacing, has_desktop, load_theme, load_window_spacing,
+    };
     use std::collections::BTreeMap;
 
     struct Memory {
@@ -239,6 +290,57 @@ mod tests {
         assert!(super::THEMES.contains(&("aero", "Frutiger Aero (experimental)")));
         assert!(super::THEMES.contains(&("aero-dark", "Dark Aero (experimental)")));
         assert!(super::THEMES.contains(&("crabd", "Crabd (experimental)")));
+    }
+
+    #[test]
+    fn window_spacing_defaults_to_spaced_and_round_trips() {
+        let empty = Memory {
+            data: BTreeMap::new(),
+            fail: false,
+        };
+        assert_eq!(load_window_spacing(&empty), WindowSpacing::Spaced);
+        let odd = Memory {
+            data: BTreeMap::from([("orch.windows".into(), "wide".into())]),
+            fail: false,
+        };
+        assert_eq!(load_window_spacing(&odd), WindowSpacing::Spaced);
+        let blocked = Memory {
+            data: BTreeMap::new(),
+            fail: true,
+        };
+        assert_eq!(load_window_spacing(&blocked), WindowSpacing::Spaced);
+
+        let mut storage = Memory {
+            data: BTreeMap::new(),
+            fail: false,
+        };
+        let mut root = Attrs {
+            data: BTreeMap::new(),
+        };
+        apply_window_spacing(WindowSpacing::Compact, &mut storage, &mut root);
+        assert_eq!(
+            root.data.get("data-windows").map(String::as_str),
+            Some("compact")
+        );
+        assert_eq!(load_window_spacing(&storage), WindowSpacing::Compact);
+        apply_window_spacing(WindowSpacing::Spaced, &mut storage, &mut root);
+        assert_eq!(
+            root.data.get("data-windows").map(String::as_str),
+            Some("spaced")
+        );
+        assert_eq!(load_window_spacing(&storage), WindowSpacing::Spaced);
+    }
+
+    #[test]
+    fn only_the_desktop_themes_offer_window_spacing() {
+        for (id, _) in super::THEMES {
+            let theme = ThemeId::parse(id).unwrap();
+            assert_eq!(
+                has_desktop(theme),
+                matches!(*id, "xp" | "aero" | "aero-dark"),
+                "{id}"
+            );
+        }
     }
 
     #[test]
