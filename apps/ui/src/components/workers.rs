@@ -243,17 +243,15 @@ pub fn Workers(
                         }
                     });
                 }),
-                on_open: Callback::new(move |(provider, worktree): (String, Option<String>)| {
+                on_open: Callback::new(move |provider: String| {
                     open_provider(
                         provider,
-                        worktree,
                         None,
                         opening,
                         open_error,
                         slots,
                         focused(),
                         on_terminal,
-                        on_select_worktree,
                         focus_id,
                         focus_tick,
                     );
@@ -334,14 +332,12 @@ pub fn Workers(
                                     onclick: move |_| {
                                         open_provider(
                                             id.as_str().into(),
-                                            new_worktree_flag(),
                                             None,
                                             opening,
                                             open_error,
                                             slots,
                                             focused(),
                                             on_terminal,
-                                            on_select_worktree,
                                             focus_id,
                                             focus_tick,
                                         );
@@ -384,14 +380,12 @@ pub fn Workers(
                                                         onclick: move |_| {
                                                             open_provider(
                                                                 provider.as_str().into(),
-                                                                new_worktree_flag(),
                                                                 Some(slot),
                                                                 opening,
                                                                 open_error,
                                                                 slots,
                                                                 focused(),
                                                                 on_terminal,
-                                                                on_select_worktree,
                                                                 focus_id,
                                                                 focus_tick,
                                                             );
@@ -550,14 +544,12 @@ fn pane_handles(
 #[allow(clippy::too_many_arguments)]
 fn open_provider(
     provider: String,
-    worktree: Option<String>,
     pane: Option<i64>,
     mut opening: Signal<bool>,
     mut open_error: Signal<Option<String>>,
     mut slots: Signal<Vec<Option<String>>>,
     focused: i64,
     on_terminal: Callback<TerminalInfo>,
-    on_select_worktree: Callback<Option<String>>,
     mut focus_id: Signal<Option<String>>,
     mut focus_tick: Signal<i64>,
 ) {
@@ -566,16 +558,13 @@ fn open_provider(
     }
     opening.set(true);
     spawn(async move {
-        match api::open_terminal(&provider, 100.0, 30.0, worktree.as_deref(), None).await {
+        match api::open_terminal(&provider, 100.0, 30.0, None, None).await {
             Ok(info) => {
                 let next = match pane {
                     Some(index) => place_terminal_in_pane(&slots.read(), index, &info.id),
                     None => place_new_terminal(&slots.read(), focused, &info.id),
                 };
                 slots.set(next);
-                if worktree.as_deref() == Some("new") {
-                    on_select_worktree.call(info.change.clone());
-                }
                 focus_id.set(Some(info.id.clone()));
                 focus_tick.set(focus_tick() + 1);
                 on_terminal.call(info);
@@ -602,14 +591,6 @@ fn agent_avatar(status: JobStatus) -> crate::components::BotState {
         JobStatus::Failed => crate::components::BotState::Error,
         JobStatus::Queued => crate::components::BotState::Resting,
         JobStatus::Done => crate::components::BotState::Idle,
-    }
-}
-
-fn new_worktree_flag() -> Option<String> {
-    let storage = web_sys::window()?.local_storage().ok()??;
-    match storage.get_item("orch.newWorktree").ok()?? {
-        value if value == "1" => Some("new".into()),
-        _ => None,
     }
 }
 

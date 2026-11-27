@@ -255,6 +255,25 @@ body {
   font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
+  /* A drag selects only what is worth copying: what you and the agents wrote, and what you
+     type. Buttons, labels and panels stay put. Terminals select through their own engine. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:is(
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable='false']),
+  .files-editor-host,
+  .lead-body,
+  .rich-text,
+  .agent-pane-prompt,
+  .agent-pane-output,
+  .output-error
+) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 :focus-visible {
@@ -4036,13 +4055,6 @@ button.job-step {
 
 .tab-actions .btn {
   padding: 0 6px;
-}
-
-.tab-worktree[aria-pressed='true'] {
-  border-color: var(--signal);
-  background: var(--raised);
-
-  letter-spacing: 0.1em;
 }
 
 .job-step-title {
@@ -9197,6 +9209,11 @@ input, textarea {
   --aero-menu: rgba(250, 252, 255, 0.95);
   --aero-menu-border: #979797;
   --aero-menu-shadow: 3px 4px 10px rgba(0, 0, 0, 0.28);
+  --aero-menu-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, rgba(240, 246, 251, 0.6) 100%);
+  --aero-menu-inner: rgba(255, 255, 255, 0.9);
+  --aero-gutter: #f1f1f1;
+  --aero-gutter-line: #e2e3e3;
+  --aero-gutter-shine: #fff;
   --aero-track: linear-gradient(to bottom, #e6e6e6 0%, #f7f7f7 100%);
   --aero-track-border: #b2b2b2;
   --aero-focus: #2b8ae0;
@@ -9276,6 +9293,11 @@ input, textarea {
   --aero-menu: rgba(10, 20, 32, 0.95);
   --aero-menu-border: rgba(126, 200, 227, 0.35);
   --aero-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --aero-menu-sheen: linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 100%);
+  --aero-menu-inner: rgba(126, 200, 227, 0.12);
+  --aero-gutter: rgba(126, 200, 227, 0.06);
+  --aero-gutter-line: rgba(0, 0, 0, 0.5);
+  --aero-gutter-shine: rgba(126, 200, 227, 0.18);
   --aero-track: #08111b;
   --aero-track-border: #26394c;
   --aero-focus: #7ec8e3;
@@ -9352,6 +9374,18 @@ input, textarea {
   box-shadow: var(--aero-glass-edge);
 }
 
+/* Settings and the first-run screen float over the same sky as the workspace, hill and all,
+   in a glass pane as clear as the workspace's. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .setup-slot {
+  background: var(--aero-backdrop);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .setup-slot > :is(.settings-page, .setup-screen) {
+  margin: 8px;
+  border: 1px solid var(--aero-glass-border);
+  background: var(--aero-glass);
+}
+
 :root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.tab-bar, .inspector-heading, .drawer-tabs, .settings-head, .output-head) {
   border-bottom: 1px solid var(--border);
   background: var(--aero-sheen);
@@ -9386,8 +9420,9 @@ input, textarea {
     rgba(2, 6, 12, 0.9);
 }
 
-/* Buttons: the two-tone gloss. */
-:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet) {
+/* Buttons, quiet ones too, and the closed dropdowns (Vista's drop-down lists were buttons):
+   the two-tone gloss, blue when pointed at, deeper blue when pressed or open. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.btn, .select) {
   border: 1px solid var(--aero-button-border);
   border-radius: 3px;
   background: var(--aero-button);
@@ -9395,20 +9430,29 @@ input, textarea {
   box-shadow: var(--aero-button-inner);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet):hover:not(:disabled) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(.btn, .select):hover:not(:disabled) {
   border-color: var(--aero-button-hover-border);
   background: var(--aero-button-hover);
   box-shadow: var(--aero-button-hover-glow);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:not(.btn-quiet):active:not(:disabled) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(
+  .btn:active:not(:disabled),
+  .btn[aria-pressed='true'],
+  .select[aria-expanded='true'],
+  .select:active:not(:disabled)
+) {
   border-color: var(--aero-button-down-border);
   background: var(--aero-button-down);
+  box-shadow: inset 0 1px 2px rgba(0, 30, 60, 0.25);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn-quiet:hover:not(:disabled) {
-  background: var(--aero-hover);
-  box-shadow: inset 0 0 0 1px var(--aero-hover-border);
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .select .select-chevron {
+  color: var(--aero-button-text);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .btn:disabled {
+  opacity: 0.55;
 }
 
 /* Primary buttons: the glossy orb. */
@@ -9427,14 +9471,14 @@ input, textarea {
   filter: brightness(1.08);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea) {
   border-color: var(--aero-field-border);
   border-top-color: var(--aero-field-top);
   border-radius: 2px;
   background: var(--aero-field);
 }
 
-:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea, .select):hover:not(:disabled) {
+:root:is([data-theme='aero'], [data-theme='aero-dark']) :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), textarea):hover:not(:disabled) {
   border-color: var(--aero-field-hover);
 }
 
@@ -9478,6 +9522,37 @@ input, textarea {
   background: var(--aero-menu);
   box-shadow: var(--aero-menu-shadow);
   backdrop-filter: blur(14px);
+}
+
+/* Drop-down lists: Vista's menu, a pale gutter down the left behind the tick, a light sheen,
+   and the blue pill on the option pointed at. */
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .select-list {
+  padding: 2px;
+  border-radius: 3px;
+  background:
+    linear-gradient(to right, var(--aero-gutter) 0 26px, var(--aero-gutter-line) 26px 27px, var(--aero-gutter-shine) 27px 28px, transparent 28px),
+    var(--aero-menu-sheen),
+    var(--aero-menu);
+  box-shadow: var(--aero-menu-shadow), inset 0 0 0 1px var(--aero-menu-inner);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .select-option {
+  gap: 14px;
+  min-height: 24px;
+  padding-left: 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .select-option:hover:not([aria-disabled='true']) {
+  border-color: var(--aero-pick-border);
+  background: var(--aero-pick);
+  box-shadow: inset 0 0 0 1px var(--aero-pick-inner);
+}
+
+:root:is([data-theme='aero'], [data-theme='aero-dark']) .select-mark {
+  color: var(--aero-focus);
+  font-weight: 700;
 }
 
 /* Meters: a glossy bar. */

@@ -40,7 +40,7 @@ pub fn TerminalTabs(
     opening: bool,
     on_select: Callback<(String, String)>,
     on_close: Callback<String>,
-    on_open: Callback<(String, Option<String>)>,
+    on_open: Callback<String>,
     on_pane_layout: Callback<String>,
     review: Option<ReviewTab>,
     agents: Option<AgentTabs>,
@@ -52,7 +52,6 @@ pub fn TerminalTabs(
             let _ = api::restore_terminals(80.0, 24.0).await;
         });
     }
-    let mut new_worktree = use_signal(|| false);
     let named: Vec<NamedChange> = changes
         .iter()
         .map(|change| NamedChange {
@@ -156,18 +155,11 @@ pub fn TerminalTabs(
                         class: "btn btn-quiet tab-new",
                         disabled: opening,
                         aria_label: "New {worker_label(id)} terminal",
-                        onclick: move |_| on_open.call((id.as_str().into(), worktree_pick(new_worktree()))),
+                        onclick: move |_| on_open.call(id.as_str().into()),
                         BotAvatar { bot: BotName::Plan(id), state: BotState::Idle, size: 16.0, title: None }
                         span { class: "tab-new-plus", "+" }
                         span { class: "tab-new-label", "{worker_label(id)}" }
                     }
-                }
-                button {
-                    class: "btn btn-quiet tab-worktree",
-                    aria_pressed: "{new_worktree()}",
-                    title: "Start new terminals in their own git worktree",
-                    onclick: move |_| new_worktree.set(!new_worktree()),
-                    "Worktree"
                 }
                 div { class: "pane-layout-picker", role: "radiogroup", aria_label: "Panes",
                     span { class: "pane-layout-label", aria_hidden: "true", "Panes" }
@@ -205,10 +197,6 @@ pub fn TerminalTabs(
             }
         }
     }
-}
-
-fn worktree_pick(on: bool) -> Option<String> {
-    if on { Some("new".into()) } else { None }
 }
 
 fn worker_label(id: ProviderId) -> &'static str {
