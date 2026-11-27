@@ -8878,6 +8878,16 @@ input, textarea {
   --xp-combo-down: linear-gradient(to bottom, #8fb0f2 0%, #a9c3f6 55%, #c3d5fa 100%);
   --xp-task-pane: linear-gradient(to bottom, #7ba2e7 0%, #6375d6 100%);
   --xp-taskbar: linear-gradient(to bottom, #3168d5 0%, #4993e6 4%, #2157d7 8%, #2663e0 12%, #245dd7 88%, #1941a5 100%);
+  /* The desktop: a rolling green hill under a deep blue sky with a few soft clouds. Drawn here,
+     not the Bliss photograph itself, which is Microsoft's. */
+  --xp-desktop:
+    radial-gradient(ellipse 105% 64% at 36% 121%, #2f7a1d 0%, #48a02a 40%, #6dbd36 62%, #8fd24a 69.4%, transparent 70%),
+    radial-gradient(ellipse 85% 52% at 96% 126%, #2c6f1c 0%, #3f8f25 50%, #5aa931 69.4%, transparent 70%),
+    radial-gradient(ellipse 22% 7% at 70% 22%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.4) 45%, transparent 70%),
+    radial-gradient(ellipse 14% 5% at 80% 19%, rgba(255, 255, 255, 0.7), transparent 70%),
+    radial-gradient(ellipse 18% 6% at 18% 30%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.3) 45%, transparent 70%),
+    radial-gradient(ellipse 30% 8% at 48% 44%, rgba(255, 255, 255, 0.55), transparent 70%),
+    linear-gradient(to bottom, #1d5fd0 0%, #3a7fe2 25%, #74abee 48%, #b6d6f7 66%, #dbeafa 80%);
 }
 
 :root[data-theme='xp'] * {
@@ -8938,6 +8948,82 @@ input, textarea {
   border: 3px solid var(--frame);
   border-radius: 8px 8px 0 0;
   box-shadow: 0 0 0 1px #0831d9;
+}
+
+/* The main view is the desktop too: the projects pane, the workspace and the drawer float on
+   it as separate windows, spaced like Settings, with the hill showing below them. */
+:root[data-theme='xp'] .app-body {
+  background: var(--xp-desktop);
+}
+
+:root[data-theme='xp'] .roman-workspace .sidebar-slot {
+  margin: 24px 0 64px 24px;
+  overflow: hidden;
+  border: 3px solid var(--frame);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 0 0 1px #0831d9, 3px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme='xp'] .roman-workspace .workspace {
+  margin: 24px 40px 64px 24px;
+}
+
+:root[data-theme='xp'] .roman-workspace .workspace:has(~ .drawer) {
+  margin-right: 24px;
+}
+
+:root[data-theme='xp'] .roman-workspace .drawer {
+  margin: 24px 40px 64px 0;
+}
+
+:root[data-theme='xp'] .roman-workspace :is(.workspace, .drawer) {
+  box-shadow: 0 0 0 1px #0831d9, 3px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* The drag handles sit in the middle of the gaps, as tall as the windows, and show their line
+   only when pointed at: the desktop is the divider. */
+:root[data-theme='xp'] .roman-workspace .layout-handle-sidebar {
+  margin: 24px -17px 64px 7px;
+}
+
+:root[data-theme='xp'] .roman-workspace .layout-handle-drawer {
+  margin: 24px 0 64px -17px;
+}
+
+:root[data-theme='xp'] .roman-workspace .layout-handle::after {
+  background: transparent;
+}
+
+:root[data-theme='xp'] .roman-workspace .layout-handle:is(:hover, :focus-visible, .is-dragging)::after {
+  background: #fff;
+}
+
+:root[data-theme='xp'] .app.is-drawer-overlay .workspace {
+  margin-right: 40px;
+}
+
+:root[data-theme='xp'] .app.is-drawer-overlay .layout-handle-drawer {
+  top: 24px;
+  right: calc(var(--layout-drawer, 420px) + 40px);
+  bottom: 64px;
+  margin: 0;
+}
+
+/* Settings and the first-run screen: a window on the desktop. */
+:root[data-theme='xp'] .setup-slot {
+  background: var(--xp-desktop);
+}
+
+:root[data-theme='xp'] .setup-slot > :is(.settings-page, .setup-screen) {
+  margin: 24px 40px 64px;
+  overflow: hidden;
+  border: 3px solid var(--frame);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 0 0 1px #0831d9, 3px 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme='xp'] .setup-slot .settings-head {
+  border-radius: 5px 5px 0 0;
 }
 
 :root[data-theme='xp'] .workspace .tab-bar {
