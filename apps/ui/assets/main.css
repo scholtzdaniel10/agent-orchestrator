@@ -8873,6 +8873,9 @@ input, textarea {
   --xp-hot: inset 0 1px 0 #fff0cf, inset 0 -2px 0 #e5a01a, inset 2px 0 0 #fcd590, inset -2px 0 0 #f8b330;
   --xp-start: linear-gradient(to bottom, #6fbf5a 0%, #3a9230 18%, #2e7d23 50%, #2a7420 85%, #3c8f30 100%);
   --xp-pick: #316ac5;
+  --xp-combo: linear-gradient(to bottom, #e6eefc 0%, #d1ddf9 45%, #b9cff8 100%);
+  --xp-combo-hot: linear-gradient(to bottom, #fdfeff 0%, #e3ebfd 45%, #c9dbfd 100%);
+  --xp-combo-down: linear-gradient(to bottom, #8fb0f2 0%, #a9c3f6 55%, #c3d5fa 100%);
   --xp-task-pane: linear-gradient(to bottom, #7ba2e7 0%, #6375d6 100%);
   --xp-taskbar: linear-gradient(to bottom, #3168d5 0%, #4993e6 4%, #2157d7 8%, #2663e0 12%, #245dd7 88%, #1941a5 100%);
 }
@@ -8902,14 +8905,6 @@ input, textarea {
 
 :root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn {
   text-shadow: none;
-}
-
-:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn-quiet {
-  color: #1b1a14;
-}
-
-:root[data-theme='xp'] :is(.app-header, .window-bar, .settings-head, .inspector-heading, .output-head) .btn-quiet:hover:not(:disabled) {
-  background: #d3e1fc;
 }
 
 /* Menus that open from a title bar read like the rest of the window, not like the bar. */
@@ -9007,20 +9002,22 @@ input, textarea {
   color: var(--text);
 }
 
-/* Buttons: Luna's cream gradient, an orange glow on hover. */
-:root[data-theme='xp'] .btn:not(.btn-quiet) {
+/* Buttons, quiet ones too: Luna's cream gradient, an orange glow on hover, pressed in when
+   held down or toggled on. */
+:root[data-theme='xp'] .btn {
   border: 1px solid #003c74;
   border-radius: 3px;
   background: var(--xp-button);
   color: #1b1a14;
 }
 
-:root[data-theme='xp'] .btn:not(.btn-quiet):hover:not(:disabled) {
+:root[data-theme='xp'] .btn:hover:not(:disabled) {
   border-color: #003c74;
+  background: var(--xp-button);
   box-shadow: var(--xp-hot);
 }
 
-:root[data-theme='xp'] .btn:not(.btn-quiet):active:not(:disabled) {
+:root[data-theme='xp'] :is(.btn:active:not(:disabled), .btn[aria-pressed='true']) {
   background: var(--xp-button-down);
   box-shadow: none;
 }
@@ -9062,6 +9059,46 @@ input, textarea {
   border-color: var(--xp-pick);
 }
 
+/* Drop-down lists: the combo box, a white field with Luna's pale-blue arrow button flush
+   against its right edge. The arrow stays put when the list opens; the button presses in. */
+:root[data-theme='xp'] .select {
+  padding-right: 1px;
+}
+
+:root[data-theme='xp'] .select .select-chevron {
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 17px;
+  height: auto;
+  margin-block: 1px;
+  padding: 0 4px;
+  border: 1px solid #b9cdf3;
+  border-radius: 2px;
+  background: var(--xp-combo);
+  color: #4d6185;
+  transform: none;
+}
+
+:root[data-theme='xp'] .select:hover:not(:disabled) .select-chevron {
+  border-color: #c7d7fb;
+  background: var(--xp-combo-hot);
+}
+
+:root[data-theme='xp'] :is(.select[aria-expanded='true'], .select:active:not(:disabled)) .select-chevron {
+  border-color: #8fadef;
+  background: var(--xp-combo-down);
+}
+
+/* The open list: square, a thin border, Explorer's blue under the option pointed at. */
+:root[data-theme='xp'] .select-list {
+  padding: 1px;
+}
+
+:root[data-theme='xp'] .select-option {
+  min-height: 20px;
+  border-radius: 0;
+}
+
 /* Tabs: cream, the open one white with an orange top edge. */
 :root[data-theme='xp'] :is(.tab-item, .drawer-tabs .tab) {
   border: 1px solid #919b9c;
@@ -9092,6 +9129,7 @@ input, textarea {
   .goal-row.is-selected,
   .new-task-choice.is-selected,
   .select-option.is-active,
+  .select-option:hover:not([aria-disabled='true']),
   .side-menu-item:hover:not(:disabled)
 ) {
   --text: #fff;
