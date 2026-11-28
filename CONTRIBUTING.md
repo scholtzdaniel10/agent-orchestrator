@@ -59,5 +59,6 @@ cargo test -p legate-ui --target wasm32-unknown-unknown --test app_smoke --test 
 | `apps/desktop/src-tauri` | Tauri shell |
 | `resources/plugins` | Bundled agent skills |
 | `docs/` | Rewrite plan, Windows install notes, screenshots |
+| `scripts/readme-shots` | Regenerates README app screenshots from a `dx` web build |
 
 See [README.md](README.md) and [docs/rust-rewrite.md](docs/rust-rewrite.md).

@@ -27,7 +27,17 @@ It is a **Rust** workspace: a Tauri 2 + Dioxus desktop app and a `legate` comman
 
 ![A goal, round by round](docs/goal-loop.png)
 
-![The window: projects and worktrees on the left, agents in the centre, files on the right](docs/screenshot.png)
+![The window: projects and worktrees on the left, a live agent in the centre, files on the right](docs/screenshot.png)
+
+![Activity: the router, each plan, and a log of every step](docs/activity.png)
+
+![A goal waiting for you to approve the next round](docs/goals.png)
+
+![Worktrees in Changes, with the diff ready to merge](docs/changes.png)
+
+![Usage: remaining allowance on each plan you already pay for](docs/usage.png)
+
+![Settings](docs/settings.png)
 
 ## Supported providers
 
